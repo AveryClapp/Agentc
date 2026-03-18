@@ -1,3 +1,16 @@
+# Agent orchestration (per-user, loaded via symlink to orchestration-CLAUDE.md)
+.claude/
+
+# Beads runtime state (issues.jsonl is the source of truth, rest is ephemeral)
+.beads/beads.db
+.beads/beads.db-*
+
+# Agent Mail MCP config (per-user server auth)
+.mcp.json
+
+# NTM runtime state
+.ntm/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

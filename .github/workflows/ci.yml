@@ -65,8 +65,6 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-          - os: ubuntu-latest
-            target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -80,9 +78,6 @@ jobs:
           if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
             pip install maturin[zig]
             maturin build --release -m crates/agentc-profiler/Cargo.toml --target ${{ matrix.target }} --zig
-          elif [ "${{ matrix.target }}" = "x86_64-pc-windows-msvc" ]; then
-            rustup target add ${{ matrix.target }}
-            maturin build --release -m crates/agentc-profiler/Cargo.toml --target ${{ matrix.target }}
           else
             maturin build --release -m crates/agentc-profiler/Cargo.toml --target ${{ matrix.target }}
           fi

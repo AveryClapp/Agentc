@@ -79,9 +79,9 @@ jobs:
         run: |
           if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
             pip install maturin[zig]
-            maturin build --release -m crates/agentc-profiler/Cargo.toml --target ${{ matrix.target }} --zig
+            maturin build --release -i python3 -m crates/agentc-profiler/Cargo.toml --target ${{ matrix.target }} --zig
           else
-            maturin build --release -m crates/agentc-profiler/Cargo.toml --target ${{ matrix.target }}
+            maturin build --release -i python3 -m crates/agentc-profiler/Cargo.toml --target ${{ matrix.target }}
           fi
       - uses: actions/upload-artifact@v4
         with:

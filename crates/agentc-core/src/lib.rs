@@ -2,6 +2,7 @@
 
 pub mod db;
 pub mod embedding;
+pub mod hardening;
 pub mod merge;
 pub mod span;
 pub mod storage;

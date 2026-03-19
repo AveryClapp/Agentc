@@ -446,7 +446,9 @@ fn cmd_embed(backfill: bool, storage_path: String) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let db_path = resolve_storage_path(&storage_path).join("traces.db");
+    let storage_dir = resolve_storage_path(&storage_path);
+    agentc_core::hardening::audit_storage_dir(&storage_dir)?;
+    let db_path = storage_dir.join("traces.db");
 
     if !db_path.exists() {
         println!("No traces.db found at {}. Nothing to backfill.", db_path.display());
@@ -476,7 +478,9 @@ fn cmd_embed(backfill: bool, storage_path: String) -> anyhow::Result<()> {
 }
 
 fn cmd_migrate(storage_path: String) -> anyhow::Result<()> {
-    let db_path = resolve_storage_path(&storage_path).join("traces.db");
+    let storage_dir = resolve_storage_path(&storage_path);
+    agentc_core::hardening::audit_storage_dir(&storage_dir)?;
+    let db_path = storage_dir.join("traces.db");
 
     if !db_path.exists() {
         // Create a fresh canonical DB with current schema.

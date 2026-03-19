@@ -78,7 +78,14 @@ CREATE TABLE IF NOT EXISTS model_pricing (
 ///
 /// If `is_canonical` is true, also creates the traces VIEW and model_pricing table.
 /// Per-process DBs omit these (incomplete data / CLI concern).
+///
+/// Security: refuses to create databases under symlinked directories.
 pub fn create_db(path: &Path, is_canonical: bool) -> Result<Connection> {
+    // Security: check for symlink attacks on parent directory.
+    if let Some(parent) = path.parent() {
+        crate::hardening::check_no_symlink(parent)?;
+    }
+
     // Ensure parent directory exists with 0700 permissions.
     if let Some(parent) = path.parent() {
         if !parent.exists() {

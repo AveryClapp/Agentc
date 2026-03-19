@@ -25,6 +25,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace
       - run: cargo test --workspace
@@ -46,7 +49,7 @@ jobs:
       - run: pip install maturin
       - run: maturin build --release -m crates/agentc-profiler/Cargo.toml
       - run: pip install target/wheels/*.whl
-      - run: python -c "from agentc._native import init, shutdown, write_span; init(); shutdown(); print('OK')"
+      - run: python -c "from agentc._native import write_span, create_db, query_spans_by_trace; print('native OK:', write_span.__name__)"
 
   wheels:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -44,7 +44,7 @@ fn get_or_init_model() -> Option<&'static StaticModel> {
     }
 
     // Already failed — don't retry.
-    if LOAD_FAILED.load(Ordering::Relaxed) {
+    if LOAD_FAILED.load(Ordering::Acquire) {
         return None;
     }
 
@@ -72,7 +72,7 @@ fn get_or_init_model() -> Option<&'static StaticModel> {
     match result {
         Ok(model) => Some(model),
         Err(e) => {
-            LOAD_FAILED.store(true, Ordering::Relaxed);
+            LOAD_FAILED.store(true, Ordering::Release);
             eprintln!("ERROR: Failed to load model2vec weights: {e}. Embeddings will be NULL for all spans.");
             None
         }
@@ -327,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_f32_to_f16_roundtrip() {
-        let values = vec![1.0f32, -0.5, 0.0, 3.14, -2.718];
+        let values = vec![1.0f32, -0.5, 0.0, 3.25, -2.75];
         let bytes = f32_to_f16_bytes(&values);
         assert_eq!(bytes.len(), values.len() * 2);
 

@@ -113,7 +113,8 @@ pub fn create_db(path: &Path, is_canonical: bool) -> Result<Connection> {
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA foreign_keys = OFF;
-         PRAGMA synchronous = NORMAL;",
+         PRAGMA synchronous = NORMAL;
+         PRAGMA busy_timeout = 5000;",
     )?;
 
     // Check schema version.
@@ -145,7 +146,8 @@ pub fn open_db(path: &Path) -> Result<Connection> {
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA foreign_keys = OFF;
-         PRAGMA synchronous = NORMAL;",
+         PRAGMA synchronous = NORMAL;
+         PRAGMA busy_timeout = 5000;",
     )?;
 
     let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;

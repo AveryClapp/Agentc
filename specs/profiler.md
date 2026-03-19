@@ -1,7 +1,7 @@
 ---
 title: Profiler
 status: active
-last-updated: 2026-03-18
+last-updated: 2026-03-19
 ---
 
 # Profiler
@@ -168,11 +168,11 @@ The Python layer is as thin as possible. It captures data and hands it to Rust. 
 | SDK patches, decorators, context propagation | **Python** | Must be Python — wrapping Python SDK objects |
 | Span creation, queue management | **Python** | Thin layer, feeds Rust core via PyO3 |
 | Storage (SQLite writes, zstd compression, content dedup) | **Rust (PyO3)** | Build once, avoid rewrite later |
-| Embedding computation (model2vec) | **Rust** | Reimplemented in Rust: `tokenizers` crate for tokenization + matrix lookup + mean pooling. No Python model2vec dependency, no numpy. |
+| Embedding computation (model2vec) | **Rust** | Uses `model2vec-rs` (official Rust crate by MinishLab) with bundled weights via `include_bytes!()`. No Python model2vec dependency, no numpy. |
 | Analysis, waste detection, OTLP export | **Rust** | Performance matters — scanning thousands of spans |
 | CLI (`agentc` binary) | **Rust** | Single binary, no Python runtime needed |
 
-**Embedding model distribution:** potion-base-8M weights (~10MB) are bundled into the Rust binary via `include_bytes!()`. No download-on-first-use, no network dependency. Lazy-loaded on first embedding request via `once_cell::sync::OnceCell`. If loading fails, embeddings are NULL on all spans — waste detectors that need embeddings skip gracefully, SHA-256-based detectors (`cache_miss_repeat`) are unaffected.
+**Embedding model distribution:** potion-base-8M weights (~30MB safetensors: 30,522 vocab x 256 dims x 4 bytes F32, plus optional Zipf weights tensor) are bundled into the Rust binary via `include_bytes!()`. No download-on-first-use, no network dependency. Lazy-loaded on first embedding request via `once_cell::sync::OnceCell`. Format is safetensors (little-endian F32, row-major, tensor name `"embeddings"`). Tokenizer is BertTokenizer (WordPiece, lowercase) loaded from bundled `tokenizer.json`. If loading fails, embeddings are NULL on all spans — waste detectors that need embeddings skip gracefully, SHA-256-based detectors (`cache_miss_repeat`) are unaffected.
 
 **GIL release strategy:** All Rust work called from Python (zstd compression, embedding computation, SQLite writes) releases the GIL via `py.allow_threads(|| ...)` during CPU-bound operations.
 
@@ -326,7 +326,7 @@ def review_agent(files: list[str]):
         write_review(analysis)
 ```
 
-The `@trace` decorator creates a root span for the agent invocation. `span()` context managers create child spans. LLM calls inside a span are automatically nested as children. Works with both sync and async functions. `@trace` inspects the decorated function with `asyncio.iscoroutinefunction()`. If true, the decorator returns an async wrapper that creates and manages the span around an awaited call. Async generators are not supported — `@trace` on an async generator raises `TypeError` at decoration time. `name` defaults to the decorated function's `__qualname__` if not provided.
+The `@trace` decorator creates a root span for the agent invocation. `span()` context managers create child spans. LLM calls inside a span are automatically nested as children. Works with both sync and async functions. `@trace` inspects the decorated function with `asyncio.iscoroutinefunction()`. If true, the decorator returns an async wrapper that creates and manages the span around an awaited call. Async generators are not supported — `@trace` on an async generator raises `TypeError` at decoration time. `name` defaults to the decorated function's `__qualname__` if not provided. `agent_id` defaults to `f"{func.__module__}.{func.__qualname__}"` — deterministic across runs, identifies which agent definition (not which invocation). Override with `@trace(agent_id="my-planner")` for custom multi-agent naming.
 
 **Behavior without `init()`:** `@trace` and `span()` check an internal initialization flag. If `init()` has not been called, they are no-ops: the decorated function runs normally, the context manager is a passthrough. A single debug-level log message is emitted on first use: `"agentc.init() not called — instrumentation disabled."` This ensures library code using agentc decorators does not break when the profiler is not active.
 
@@ -584,8 +584,8 @@ All captured fields map to `gen_ai.*` semantic convention attributes. Pinned to 
 
 | Attribute | Source | Notes |
 |---|---|---|
-| `gen_ai.agent.name` | `@trace(name=...)` | |
-| `gen_ai.agent.id` | Auto-generated | Unique per agent instance |
+| `gen_ai.agent.name` | `@trace(name=...)` | Defaults to decorated function's `__qualname__` |
+| `gen_ai.agent.id` | `@trace(agent_id=...)` | Defaults to `f"{module}.{qualname}"` of the decorated function. Deterministic across runs — identifies *which* agent, not *which invocation*. Override for custom multi-agent naming. |
 
 ### Tool Call Attributes (on tool execution spans)
 
@@ -797,7 +797,7 @@ The profiler captures full prompt and response content by default. LLM prompts r
 
 The profiler must not meaningfully impact the workload it measures:
 - **Latency**: <5ms added per LLM call on the calling thread (span creation + queue push only). For queued spans, embedding computation (~10-20 microseconds) and SQLite writes happen asynchronously on the background writer thread after dequeue — neither blocks the LLM call path. Root spans bypass the queue and call `write_span()` synchronously (adding ~20us for embedding + SQLite write to the calling thread), but root spans occur at most once per trace.
-- **Memory**: <100MB resident for traces with full content capture (zstd compression) + ~10MB for model2vec weights (bundled in binary). <50MB without content.
+- **Memory**: <100MB resident for traces with full content capture (zstd compression) + ~30MB for model2vec weights (bundled in binary). <80MB without content.
 - **Disk**: ~2KB per span metadata (including 1KB embeddings) + compressed content (varies). A 1000-call agent session ~ 5-50MB depending on prompt sizes.
 - **Sampling**: Captures all calls, no sampling. The overhead budget assumes typical agent workloads (10-100 LLM calls per session).
 
@@ -842,7 +842,7 @@ The profiler is useful if it can:
 
 ### Phase 1: Core collection — Anthropic only (weeks 2-3)
 - Rust: Span struct, trace view, per-process SQLite storage with WAL mode, content tables with zstd compression, canonical JSON serialization + SHA-256 content dedup
-- Rust: model2vec inference (tokenizer + matrix lookup + mean pooling), weights bundled via `include_bytes!()`, lazy-loaded via `OnceCell`
+- Rust: model2vec inference via `model2vec-rs` crate (official Rust implementation), weights + tokenizer bundled via `include_bytes!()`/`include_str!()`, lazy-loaded via `OnceCell`
 - Python: `init()`, `shutdown()`, Anthropic SDK patches via wrapt (sync + async + streaming), version detection + adapter selection, `@trace` decorator, `span()` context manager
 - Python: Background writer thread with bounded queue + tail-drop, fail-open error handling, `atexit`/`SIGTERM`/`SIGINT` shutdown handlers, periodic flush (100 spans / 5s)
 - Python: Embedding computation on background writer thread (post-dequeue) via Rust, stored as float16

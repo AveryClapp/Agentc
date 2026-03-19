@@ -131,16 +131,46 @@ fn get_input_cost(conn: &Connection, model: &str) -> Option<f64> {
     .ok()
 }
 
+/// Infer provider from model_id based on naming conventions.
+///
+/// Used to filter `model_pricing` by provider since the table lacks a provider column.
+fn infer_provider_from_model_id(model_id: &str) -> &str {
+    if model_id.starts_with("claude") {
+        "anthropic"
+    } else if model_id.starts_with("gpt")
+        || model_id.starts_with("o1")
+        || model_id.starts_with("o3")
+        || model_id.starts_with("o4")
+    {
+        "openai"
+    } else {
+        "unknown"
+    }
+}
+
 /// Find cheapest same-provider model below frontier threshold.
-fn cheapest_non_frontier_model(conn: &Connection, _provider: &str) -> Option<(String, f64)> {
-    conn.query_row(
-        "SELECT model_id, input_cost FROM model_pricing \
-         WHERE input_cost < ?1 \
-         ORDER BY input_cost ASC LIMIT 1",
-        params![FRONTIER_THRESHOLD_USD],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )
-    .ok()
+///
+/// Filters by provider using model_id prefix heuristic since model_pricing
+/// has no provider column. Returns None if no cheaper same-provider model exists.
+fn cheapest_non_frontier_model(conn: &Connection, provider: &str) -> Option<(String, f64)> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT model_id, input_cost FROM model_pricing \
+             WHERE input_cost < ?1 \
+             ORDER BY input_cost ASC",
+        )
+        .ok()?;
+
+    let rows: Vec<(String, f64)> = stmt
+        .query_map(params![FRONTIER_THRESHOLD_USD], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+        })
+        .ok()?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    rows.into_iter()
+        .find(|(model_id, _)| infer_provider_from_model_id(model_id) == provider)
 }
 
 /// Check if an embedding is usable (non-null and non-zero).
@@ -344,10 +374,13 @@ fn detect_retry_storm(spans: &[AnalysisSpan]) -> Vec<WasteFlag> {
                 continue;
             }
 
-            // Within 5 seconds.
-            let time_diff = (eligible[j].start_time - eligible[i].start_time).abs();
+            // Within 5 seconds (start_time is in microseconds).
+            // Use checked_sub to guard against overflow with malformed timestamps.
+            let time_diff = match eligible[j].start_time.checked_sub(eligible[i].start_time) {
+                Some(d) if d >= 0 => d,
+                _ => break, // overflow or negative ⇒ times far apart or malformed
+            };
             if time_diff > 5_000_000 {
-                // start_time is in microseconds
                 break; // Sorted by start_time, so all subsequent are further.
             }
 
@@ -770,11 +803,10 @@ mod tests {
         let emb2 = make_similar_embedding(1.0);
         // Create a truly orthogonal output embedding.
         let different_output = {
-            let mut v = vec![0.0f32; 256];
             // Alternating positive/negative to be orthogonal to the monotonic pattern.
-            for i in 0..256 {
-                v[i] = if i % 2 == 0 { 1.0 } else { -1.0 };
-            }
+            let v: Vec<f32> = (0..256)
+                .map(|i| if i % 2 == 0 { 1.0 } else { -1.0 })
+                .collect();
             f32_to_f16_bytes(&v)
         };
 
@@ -1115,6 +1147,60 @@ mod tests {
         assert!(!detector_names.contains(&"retry_storm"));
         // cache_miss_repeat should still fire.
         assert!(detector_names.contains(&"cache_miss_repeat"));
+    }
+
+    #[test]
+    fn test_infer_provider_from_model_id() {
+        assert_eq!(infer_provider_from_model_id("claude-sonnet-4-20250514"), "anthropic");
+        assert_eq!(infer_provider_from_model_id("claude-opus-4-20250514"), "anthropic");
+        assert_eq!(infer_provider_from_model_id("claude-3-5-haiku-20241022"), "anthropic");
+        assert_eq!(infer_provider_from_model_id("gpt-4o-2024-11-20"), "openai");
+        assert_eq!(infer_provider_from_model_id("gpt-4.1-mini-2025-04-14"), "openai");
+        assert_eq!(infer_provider_from_model_id("o1-2024-12-17"), "openai");
+        assert_eq!(infer_provider_from_model_id("o3-2025-04-16"), "openai");
+        assert_eq!(infer_provider_from_model_id("o4-mini-2025-04-16"), "openai");
+        assert_eq!(infer_provider_from_model_id("some-custom-model"), "unknown");
+    }
+
+    #[test]
+    fn test_model_overkill_same_provider_only() {
+        let (_dir, conn) = setup_db_with_pricing();
+
+        // Add an OpenAI frontier model.
+        agentc_core::db::insert_pricing(
+            &conn,
+            &ModelPricing {
+                model_id: "gpt-4o-2024-11-20".to_string(),
+                input_cost: 5.0, // Frontier tier.
+                output_cost: 15.0,
+                cache_creation_cost: None,
+                cache_read_cost: None,
+                context_window: Some(128000),
+                updated_at: 1000000,
+                source: "bundled".to_string(),
+            },
+        )
+        .unwrap();
+
+        // Small task on OpenAI frontier model, but no cheaper OpenAI model exists.
+        let mut span = base_span("s1", "t1");
+        span.model = Some("gpt-4o-2024-11-20".to_string());
+        span.provider = Some("openai".to_string());
+        span.input_tokens = Some(200);
+        span.output_tokens = Some(50);
+        span.cost_usd = Some(0.10);
+        insert_span(&conn, &span).unwrap();
+
+        let analysis = analyze_trace(&conn, "t1").unwrap();
+        let overkill: Vec<_> = analysis
+            .flags
+            .iter()
+            .filter(|f| f.detector == "model_overkill")
+            .collect();
+        assert_eq!(overkill.len(), 1);
+        // No cheaper OpenAI model in pricing → savings should be None.
+        // (Haiku is cheaper but it's Anthropic, not OpenAI.)
+        assert!(overkill[0].estimated_cost.is_none());
     }
 
     #[test]

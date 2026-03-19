@@ -2,10 +2,10 @@
 
 JIT optimization runtime for multi-step LLM agent workloads. Intercepts LLM calls and applies principled optimizations to reduce token spend without changing application code.
 
-<!-- NOTE: Will uses a multi-agent orchestration setup (beads, Agent Mail, NTM).
+<!-- NOTE: Multi-agent orchestration (beads, Agent Mail, NTM) is available.
      See orchestration-CLAUDE.md for the full architecture.
-     This is loaded automatically from .claude/CLAUDE.md in his local env.
-     You do NOT need this to contribute — it's for coordinated agent sessions. -->
+     Activate by symlinking .claude/CLAUDE.md → orchestration-CLAUDE.md.
+     Not required for solo contribution — it's for coordinated agent sessions. -->
 
 ## Repo Structure
 

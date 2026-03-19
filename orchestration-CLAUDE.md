@@ -1,7 +1,7 @@
 # Agentc — Multi-Agent Orchestration
 
-<!-- This file is the checked-in reference copy of the orchestration config.
-     Will's .claude/CLAUDE.md symlinks to this so his agent sessions auto-load it.
+<!-- Checked-in reference copy of the orchestration config.
+     To activate: symlink .claude/CLAUDE.md → orchestration-CLAUDE.md (gitignored).
      If you're not running a multi-agent NTM session, you can ignore this file. -->
 
 ---
@@ -40,16 +40,24 @@ Agentc/                          ← monorepo root
 
 ### Session Layout
 
-- Session name: `Agentc` (NTM managed)
 - Pane 1: User/Orchestrator
-- Pane 2: cc_1 (BlueRaven)
-- Pane 3: cc_2 (TealPeak)
-- Pane 4: cc_3 (CopperHawk)
+- Panes 2–N: Worker agents (callsigns assigned at bootstrap via `ntm send`)
+- Use `ntm status <session> --json` to see current pane assignments and identities
+
+### Pane Title Persistence
+
+After renaming a pane (e.g., `tmux select-pane -t %N -T "AgentName"`), lock the title:
+
+```bash
+tmux set-option -p -t %N allow-set-title off
+```
+
+Without this, Claude Code's status spinner overwrites the title via OSC escape sequences. This is especially important for panes moved via `tmux join-pane` (which bypass NTM's `allow-set-title off` setup). NTM-spawned panes already have this set.
 
 ### Communication
 
 - Primary: MCP Agent Mail (threaded messaging, file reservations)
-- Fallback: `ntm send Agentc --skip-first "message"` if Agent Mail unavailable
+- Fallback: `ntm send <session> --skip-first "message"` if Agent Mail unavailable
 - One `thread_id` per coordination topic
 - Include thread ID in Agent Mail subjects and bead notes
 
@@ -288,4 +296,4 @@ Before beginning implementation of any plan or spec section:
 ## 19) Skill Activation Scoping
 
 - **Captain/Orchestrator** (pane 1): may use orchestrator-routing skills (palette-first-orchestrator, state-aware-orchestrator-nudge)
-- **Lane workers** (panes 2-4): implementation and validation only. Do NOT use orchestrator skills unless explicitly assigned orchestration duties.
+- **Lane workers** (panes 2–N): implementation and validation only. Do NOT use orchestrator skills unless explicitly assigned orchestration duties.

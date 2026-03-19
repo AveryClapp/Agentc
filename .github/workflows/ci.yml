@@ -69,6 +69,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

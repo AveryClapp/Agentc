@@ -1,0 +1,4 @@
+# Model data files are too large for git (~31MB).
+# Run scripts/download_model.sh to fetch them.
+*.safetensors
+tokenizer.json

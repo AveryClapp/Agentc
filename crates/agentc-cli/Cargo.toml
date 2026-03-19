@@ -1,0 +1,20 @@
+[package]
+name = "agentc-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Agentc CLI binary"
+
+[[bin]]
+name = "agentc"
+path = "src/main.rs"
+
+[dependencies]
+agentc-core = { workspace = true }
+agentc-analyzer = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+rusqlite = { workspace = true }
+dirs = { workspace = true }
+tempfile = "3"

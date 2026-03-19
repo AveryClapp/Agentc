@@ -1,0 +1,25 @@
+[package]
+name = "agentc-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core library for Agentc: spans, traces, storage, content dedup, embeddings"
+
+[dependencies]
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+zstd = { workspace = true }
+model2vec-rs = { workspace = true }
+half = { workspace = true }
+once_cell = { workspace = true }
+safetensors = { workspace = true }
+tokenizers = { workspace = true }
+dirs = { workspace = true }
+libc = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

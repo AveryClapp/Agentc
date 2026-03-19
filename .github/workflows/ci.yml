@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  rust:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14       # arm64
+            target: aarch64-apple-darwin
+          - os: ubuntu-latest  # x86_64
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace
+      - run: cargo test --workspace
+      - run: cargo clippy --workspace
+
+  python:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+          - os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install maturin
+      - run: maturin build --release -m crates/agentc-profiler/Cargo.toml
+      - run: pip install target/wheels/*.whl
+      - run: python -c "from agentc._native import init, shutdown, write_span; init(); shutdown(); print('OK')"
+
+  wheels:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [rust, python]
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: macos-14
+            target: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install maturin
+      - name: Build wheel
+        run: |
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            pip install maturin[zig]
+            maturin build --release -m crates/agentc-profiler/Cargo.toml --target ${{ matrix.target }} --zig
+          elif [ "${{ matrix.target }}" = "x86_64-pc-windows-msvc" ]; then
+            rustup target add ${{ matrix.target }}
+            maturin build --release -m crates/agentc-profiler/Cargo.toml --target ${{ matrix.target }}
+          else
+            maturin build --release -m crates/agentc-profiler/Cargo.toml --target ${{ matrix.target }}
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.target }}
+          path: target/wheels/*.whl

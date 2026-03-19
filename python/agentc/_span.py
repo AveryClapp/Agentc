@@ -185,11 +185,9 @@ def trace(
 
 def _is_async_generator(func: Any) -> bool:
     """Check if a function is an async generator function."""
-    return getattr(func, "__func__", func).__class__.__name__ == "AsyncGeneratorType" or (
-        hasattr(func, "__wrapped__")
-        and asyncio.iscoroutinefunction(func.__wrapped__)
-        and hasattr(func.__wrapped__, "ag_frame")
-    )
+    import inspect
+
+    return inspect.isasyncgenfunction(func)
 
 
 def _run_traced_sync(

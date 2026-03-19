@@ -320,6 +320,7 @@ class _StreamingIterator:
         self._parent = parent
         self._ttft_recorded = False
         self._usage: Any = None
+        self._finalized = False
 
     def __iter__(self) -> "_StreamingIterator":
         return self
@@ -328,6 +329,9 @@ class _StreamingIterator:
         try:
             chunk = next(self._stream)
         except StopIteration:
+            self._finalize()
+            raise
+        except BaseException:
             self._finalize()
             raise
 
@@ -350,6 +354,10 @@ class _StreamingIterator:
         return chunk
 
     def _finalize(self) -> None:
+        if self._finalized:
+            return
+        self._finalized = True
+
         end_time = _now_us()
         if self._usage is not None:
             if hasattr(self._usage, "prompt_tokens"):

@@ -90,7 +90,7 @@ def enqueue(span_dict: dict[str, Any]) -> None:
             logger.warning("Span queue full: %d spans dropped (logged every %d)", drops, DROP_LOG_INTERVAL)
         else:
             span_id = span_dict.get("span_id", "?")
-            logger.warning("Span queue full. Dropped span %s (%d total drops)", span_id, drops)
+            logger.debug("Span queue full. Dropped span %s (%d total drops)", span_id, drops)
 
 
 def get_stats() -> dict[str, int]:
@@ -166,10 +166,14 @@ def _writer_loop() -> None:
 
 
 def _flush_batch(write_fn: Any, batch: list[dict[str, Any]]) -> None:
-    """Write a batch of spans via the Rust FFI."""
+    """Write a batch of spans via the Rust FFI.
+
+    Catches BaseException (not just Exception) because PyO3 PanicException
+    inherits from BaseException. A Rust panic must not crash the writer thread.
+    """
     for span_dict in batch:
         try:
             write_fn(span_dict)
-        except Exception:
+        except BaseException:
             logger.debug("Failed to write span %s", span_dict.get("span_id", "?"), exc_info=True)
     logger.debug("Flushed %d spans to disk", len(batch))

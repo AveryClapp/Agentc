@@ -400,10 +400,15 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
     return response
 
 
-async def _wrap_stream_async(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
-    """Wrapper for AsyncMessages.stream (async streaming)."""
+def _wrap_stream_async(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
+    """Wrapper for AsyncMessages.stream (async streaming).
+
+    NOTE: This is intentionally a sync def, not async def. AsyncMessages.stream()
+    returns an AsyncMessageStreamManager (not a coroutine), so the wrapper must
+    also return a context manager directly, not a coroutine.
+    """
     if not _is_initialized():
-        return await wrapped(*args, **kwargs)
+        return wrapped(*args, **kwargs)
 
     parent = get_current_span()
     start_time = _now_us()

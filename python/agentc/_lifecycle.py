@@ -20,6 +20,7 @@ logger = logging.getLogger("agentc")
 # Global state
 _initialized = threading.Event()
 _shutdown_in_progress = threading.Event()
+_init_lock = threading.Lock()
 _config: Config | None = None
 _prev_sigterm: Any = None
 _prev_sigint: Any = None
@@ -55,43 +56,47 @@ def init(
         logger.debug("agentc.init() called again — no-op (already initialized)")
         return
 
-    config = resolve_config(
-        capture_content=capture_content,
-        capture_embeddings=capture_embeddings,
-        fail_open=fail_open,
-        storage_path=storage_path,
-    )
+    with _init_lock:
+        # Double-check under lock to prevent concurrent init()
+        if _initialized.is_set():
+            return
 
-    # Create directories
-    config.storage_path.mkdir(mode=0o700, parents=True, exist_ok=True)
-    active_dir = config.storage_path / "active"
-    active_dir.mkdir(mode=0o700, exist_ok=True)
+        config = resolve_config(
+            capture_content=capture_content,
+            capture_embeddings=capture_embeddings,
+            fail_open=fail_open,
+            storage_path=storage_path,
+        )
 
-    # Create per-process DB
-    pid = os.getpid()
-    db_path = active_dir / f"pid-{pid}.db"
-    from agentc._native import create_db
+        # Create directories
+        config.storage_path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        active_dir = config.storage_path / "active"
+        active_dir.mkdir(mode=0o700, exist_ok=True)
 
-    create_db(str(db_path), False)  # per-process DB, no traces VIEW
+        # Create per-process DB
+        pid = os.getpid()
+        db_path = active_dir / f"pid-{pid}.db"
+        from agentc._native import create_db
 
-    # Store config
-    _config = config
+        create_db(str(db_path), False)  # per-process DB, no traces VIEW
 
-    # Start background writer
-    from agentc._writer import start as start_writer
+        # Store config
+        _config = config
 
-    start_writer()
+        # Start background writer
+        from agentc._writer import start as start_writer
 
-    # Apply SDK patches
-    _apply_patches()
+        start_writer()
 
-    # Register shutdown handlers (signal handlers require main thread)
-    _register_shutdown_handlers()
+        # Apply SDK patches
+        _apply_patches()
 
+        # Register shutdown handlers (signal handlers require main thread)
+        _register_shutdown_handlers()
 
-    # Mark as initialized
-    _initialized.set()
-    _shutdown_in_progress.clear()
+        # Mark as initialized
+        _initialized.set()
+        _shutdown_in_progress.clear()
 
     logger.info(
         "agentc initialized (capture_content=%s, capture_embeddings=%s, storage_path=%s, fail_open=%s)",

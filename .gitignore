@@ -222,5 +222,13 @@ __marimo__/
 # bv (beads viewer) local config and caches
 .bv/
 
+# Benchmark results (generated, not checked in)
+bench/results/
+
 # macOS debug symbols
 *.dSYM/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key

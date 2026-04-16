@@ -2,6 +2,8 @@
 //!
 //! Subcommands: record, traces, export.
 
+mod helpers;
+
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -9,6 +11,15 @@ use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, ExitCode};
 
 use clap::Parser;
+
+use agentc_analyzer::report::{
+    render_traces_list, TracesList, TracesListRow,
+};
+use agentc_analyzer::{cost, waste};
+use helpers::{
+    open_canonical_db_if_exists, parse_since_date, resolve_storage_path,
+    try_merge_pending,
+};
 
 #[derive(Parser)]
 #[command(name = "agentc", about = "JIT optimization runtime for LLM agent workloads")]
@@ -372,26 +383,80 @@ fn cmd_traces(
     trace_id: Option<String>,
     limit: usize,
     since: Option<String>,
-    _storage_path: String,
+    storage_path: String,
 ) -> anyhow::Result<()> {
-    // TODO(VelvetHammer, bd-2zc): Merge-on-read for orphaned per-process DBs
+    let storage_dir = resolve_storage_path(&storage_path);
+    try_merge_pending();
 
-    // Header
-    println!(
-        "{:<16} {:<22} {:>10} {:>7} {:>12} {:>10} {:>16}",
-        "TRACE ID", "STARTED", "DURATION", "SPANS", "TOKENS", "COST", "WASTE FLAGS"
-    );
+    let Some(conn) = open_canonical_db_if_exists(&storage_dir)? else {
+        print!("{}", render_traces_list(&TracesList::default()));
+        return Ok(());
+    };
 
-    // TODO(VelvetHammer, bd-2db): Query canonical traces.db
-    // For now, print a message indicating no traces found
-    let _ = (trace_id, limit, since);
-    println!("(no traces found — storage backend not yet connected)");
+    // Backfill costs so cost_usd columns are populated.
+    cost::full_cost_backfill(&conn)?;
 
-    // Footer
-    println!();
-    println!("0 traces | 0 total tokens | $0.00 total cost | 0 waste flags");
+    let since_us = match since {
+        Some(ref s) => Some(parse_since_date(s)?),
+        None => None,
+    };
+    let summaries = agentc_core::db::query_traces(&conn, limit as i64, since_us)?;
 
+    let filtered: Vec<_> = match trace_id.as_deref() {
+        Some(prefix) => summaries
+            .into_iter()
+            .filter(|t| t.trace_id.starts_with(prefix))
+            .collect(),
+        None => summaries,
+    };
+
+    let mut rows = Vec::with_capacity(filtered.len());
+    for summary in &filtered {
+        let row = build_traces_list_row(&conn, summary)?;
+        rows.push(row);
+    }
+
+    print!("{}", render_traces_list(&TracesList { rows }));
     Ok(())
+}
+
+/// Aggregate span stats for one trace and run waste analysis to build a `TracesListRow`.
+fn build_traces_list_row(
+    conn: &rusqlite::Connection,
+    summary: &agentc_core::span::TraceSummary,
+) -> anyhow::Result<TracesListRow> {
+    // Aggregate span stats.
+    let (span_count, total_tokens, total_cost): (i64, i64, f64) = conn.query_row(
+        "SELECT COUNT(*),
+                COALESCE(SUM(COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)), 0),
+                COALESCE(SUM(cost_usd), 0.0)
+         FROM spans WHERE trace_id = ?1",
+        rusqlite::params![summary.trace_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+
+    let duration_us = summary
+        .end_time
+        .map(|end| (end - summary.start_time).max(0))
+        .unwrap_or(0);
+
+    // Waste flag counts.
+    let analysis = waste::analyze_trace(conn, &summary.trace_id)?;
+    let mut flag_counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    for flag in &analysis.flags {
+        *flag_counts.entry(flag.detector.clone()).or_insert(0) += 1;
+    }
+
+    Ok(TracesListRow {
+        trace_id: summary.trace_id.clone(),
+        started_us: summary.start_time,
+        duration_us,
+        span_count: span_count as usize,
+        total_tokens,
+        total_cost_usd: total_cost,
+        flag_counts: flag_counts.into_iter().collect(),
+    })
 }
 
 fn cmd_export(
@@ -513,19 +578,6 @@ fn cmd_migrate(storage_path: String) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Resolve a storage path, expanding `~` to the user's home directory.
-fn resolve_storage_path(path: &str) -> std::path::PathBuf {
-    if let Some(rest) = path.strip_prefix("~/") {
-        dirs::home_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join(rest)
-    } else if path == "~" {
-        dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."))
-    } else {
-        std::path::PathBuf::from(path)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -557,9 +609,79 @@ mod tests {
     }
 
     #[test]
-    fn test_traces_runs_without_error() {
-        let result = cmd_traces(None, 20, None, "~/.agentc".to_string());
+    fn test_traces_empty_storage() {
+        // Nonexistent storage dir renders an empty list without error.
+        let dir = tempfile::TempDir::new().unwrap();
+        let result = cmd_traces(None, 20, None, dir.path().to_string_lossy().into_owned());
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_traces_with_data() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("traces.db");
+        let conn = agentc_core::db::create_db(&db_path, true).unwrap();
+
+        let span = agentc_core::span::Span {
+            span_id: "span-1".to_string(),
+            trace_id: "abcd1234efgh5678".to_string(),
+            parent_span_id: None,
+            name: "test".to_string(),
+            kind: "chat".to_string(),
+            start_time: 1_000_000_000_000_000,
+            end_time: Some(1_000_000_500_000_000),
+            status: "OK".to_string(),
+            model: Some("claude-sonnet-4-20250514".to_string()),
+            provider: Some("anthropic".to_string()),
+            input_tokens: Some(100),
+            output_tokens: Some(50),
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            cost_usd: None,
+            attributes: "{}".to_string(),
+            input_content_id: None,
+            output_content_id: None,
+            input_embedding: None,
+            output_embedding: None,
+            embedding_model: None,
+        };
+        agentc_core::db::insert_span(&conn, &span).unwrap();
+        drop(conn);
+
+        let result = cmd_traces(None, 20, None, dir.path().to_string_lossy().into_owned());
+        assert!(result.is_ok(), "got error: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_traces_prefix_filter_no_match() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("traces.db");
+        let conn = agentc_core::db::create_db(&db_path, true).unwrap();
+        drop(conn);
+
+        // Empty DB + prefix filter should still succeed (renders empty list).
+        let result = cmd_traces(
+            Some("zzzz".to_string()),
+            20,
+            None,
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_traces_invalid_since_date() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("traces.db");
+        let _ = agentc_core::db::create_db(&db_path, true).unwrap();
+
+        let result = cmd_traces(
+            None,
+            20,
+            Some("not-a-date".to_string()),
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_err());
     }
 
     #[test]
@@ -631,23 +753,4 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_resolve_storage_path_tilde() {
-        let resolved = resolve_storage_path("~/.agentc");
-        let home = dirs::home_dir().unwrap();
-        assert_eq!(resolved, home.join(".agentc"));
-    }
-
-    #[test]
-    fn test_resolve_storage_path_absolute() {
-        let resolved = resolve_storage_path("/tmp/agentc");
-        assert_eq!(resolved, std::path::PathBuf::from("/tmp/agentc"));
-    }
-
-    #[test]
-    fn test_resolve_storage_path_tilde_only() {
-        let resolved = resolve_storage_path("~");
-        let home = dirs::home_dir().unwrap();
-        assert_eq!(resolved, home);
-    }
 }

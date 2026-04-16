@@ -30,6 +30,9 @@ class CacheInsertMsg:
 
     Fields mirror the agentc._native.cache_insert signature. output_bytes is
     the raw LLM output serialized to bytes by the caller (the decorator).
+    `embedding` is the 256 × f32 little-endian query embedding; when present
+    the writer also populates the LSH band rows. `None` disables semantic
+    lookup for this entry.
     """
 
     prompt_hash: bytes
@@ -41,6 +44,7 @@ class CacheInsertMsg:
     output_tokens: int
     recorded_cost_usd: float
     ttl_seconds: int
+    embedding: bytes | None = None
 
 
 _queue: queue.Queue[dict[str, Any] | CacheInsertMsg | None] = queue.Queue(maxsize=QUEUE_MAX_SIZE)
@@ -252,6 +256,7 @@ def _flush_batch(
                     item.output_tokens,
                     item.recorded_cost_usd,
                     item.ttl_seconds,
+                    item.embedding,
                 )
             except BaseException:
                 logger.debug(

@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 agentc-core = { workspace = true }
+agentc-embed = { workspace = true }
 agentc-memo = { workspace = true }
 pyo3 = { workspace = true }
 rusqlite = { workspace = true }

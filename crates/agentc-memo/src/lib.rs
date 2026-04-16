@@ -12,8 +12,10 @@ pub mod cache;
 pub mod canonical;
 pub mod ffi;
 pub mod key;
+pub mod lsh;
 pub mod schema;
 
 pub use cache::{Cache, CacheHit, CacheSource, CacheStats, CacheValue, SqliteCache};
 pub use key::{cache_key_hash, CacheKey, InvalidationPattern, HASH_LEN};
+pub use lsh::DEFAULT_SIMILARITY_THRESHOLD;
 pub use schema::ensure_schema;

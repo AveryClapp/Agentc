@@ -51,8 +51,13 @@ def cache_lookup(
     model: str,
     parameters_hash: bytes,
     call_site_id: str,
+    embedding: bytes | None = None,
+    similarity: float | None = None,
 ) -> dict[str, Any] | None:
-    """Look up a memoized response by exact-hash cache key.
+    """Look up a memoized response.
+
+    Tries exact-hash first; if `embedding` is supplied and `similarity < 1.0`,
+    falls back to LSH candidate retrieval with cosine rerank.
 
     Returns None on miss, error, or when memoization is not initialized.
     Hit dict keys: output_content_id, input_tokens, output_tokens,
@@ -71,11 +76,14 @@ def cache_insert(
     output_tokens: int,
     recorded_cost_usd: float,
     ttl_seconds: int,
+    embedding: bytes | None = None,
 ) -> None:
     """Insert a memoization entry.
 
     Writes output_bytes into the shared output_content table and records the
-    cache row in memoization_cache. Fails open on any internal error.
+    cache row in memoization_cache. When `embedding` is provided (256 × f32
+    little-endian bytes) also writes the 8-band LSH index + raw embedding
+    atomically. Fails open on any internal error.
     """
     ...
 

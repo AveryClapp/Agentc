@@ -13,8 +13,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 
-use crate::cache::{Cache, CacheHit, CacheStats, CacheValue, SqliteCache};
+use crate::cache::{Cache, CacheHit, CacheStats, SqliteCache};
 use crate::key::{CacheKey, InvalidationPattern, HASH_LEN};
+use crate::lsh::write_lsh_rows;
 use crate::schema::ensure_schema;
 
 /// Current unix time in microseconds. Falls back to 0 if the system clock is
@@ -55,12 +56,18 @@ pub fn hex(bytes: &[u8]) -> String {
 
 /// FFI-safe `lookup`. Returns `None` on miss or on any error. Failures do not
 /// surface — a miss is always a safe fallback.
+///
+/// `embedding` is the 256-dim query vector when the caller wants LSH
+/// fallback; pass `None` to restrict to exact-hash lookup. `similarity`
+/// overrides the cache's default threshold — `1.0` disables LSH.
 pub fn lookup(
     conn: &Connection,
     prompt_hash: &[u8],
     model: &str,
     parameters_hash: &[u8],
     call_site_id: &str,
+    embedding: Option<&[f32]>,
+    similarity: Option<f32>,
 ) -> Option<CacheHit> {
     let prompt_hash = hash_from_bytes(prompt_hash)?;
     let parameters_hash = hash_from_bytes(parameters_hash)?;
@@ -71,14 +78,17 @@ pub fn lookup(
         call_site_id: call_site_id.to_string(),
     };
 
-    let cache = match SqliteCache::from_shared(conn) {
+    let mut cache = match SqliteCache::from_shared(conn) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("agentc-memo: lookup schema setup failed: {e}");
             return None;
         }
     };
-    match cache.lookup(&key, now_micros()) {
+    if let Some(t) = similarity {
+        cache.set_similarity_threshold(t);
+    }
+    match cache.lookup_with_embedding(&key, embedding, now_micros()) {
         Ok(hit) => hit,
         Err(e) => {
             eprintln!("agentc-memo: lookup failed: {e}");
@@ -105,6 +115,7 @@ pub fn insert(
     output_tokens: u32,
     recorded_cost_usd: f32,
     ttl_seconds: i64,
+    embedding: Option<&[f32]>,
 ) -> Result<(), String> {
     let prompt_hash = hash_from_bytes(prompt_hash).ok_or_else(|| "prompt_hash wrong length".to_string())?;
     let parameters_hash =
@@ -131,12 +142,6 @@ pub fn insert(
         parameters_hash,
         call_site_id: call_site_id.to_string(),
     };
-    let value = CacheValue {
-        output_content_id,
-        input_tokens,
-        output_tokens,
-        recorded_cost_usd,
-    };
 
     tx.execute(
         "INSERT INTO memoization_cache (
@@ -155,10 +160,10 @@ pub fn insert(
             key.prompt_hash_hex(),
             key.model,
             key.parameters_hash_hex(),
-            value.output_content_id,
-            value.input_tokens as i64,
-            value.output_tokens as i64,
-            value.recorded_cost_usd as f64,
+            output_content_id,
+            input_tokens as i64,
+            output_tokens as i64,
+            recorded_cost_usd as f64,
             now,
             now.saturating_add(ttl_micros),
             now,
@@ -166,6 +171,11 @@ pub fn insert(
         ],
     )
     .map_err(|e| format!("memoization_cache insert: {e}"))?;
+
+    if let Some(e) = embedding {
+        write_lsh_rows(&tx, &key.cache_key_hash_hex(), e)
+            .map_err(|err| format!("lsh rows: {err}"))?;
+    }
 
     tx.commit().map_err(|e| format!("commit: {e}"))?;
     Ok(())
@@ -278,10 +288,19 @@ mod tests {
             20,
             0.001,
             3600,
+            None,
         )
         .unwrap();
 
-        let hit = lookup(&conn, &prompt_hash, "gpt-4o", &params_hash, "app:call");
+        let hit = lookup(
+            &conn,
+            &prompt_hash,
+            "gpt-4o",
+            &params_hash,
+            "app:call",
+            None,
+            None,
+        );
         let hit = hit.expect("roundtrip lookup should hit");
         assert_eq!(hit.value.input_tokens, 10);
         assert_eq!(hit.value.output_tokens, 20);
@@ -302,6 +321,7 @@ mod tests {
             1,
             0.0,
             1,
+            None,
         )
         .unwrap();
         let n: i64 = conn
@@ -313,8 +333,8 @@ mod tests {
     #[test]
     fn lookup_returns_none_for_invalid_hash_length() {
         let (_dir, conn) = bootstrap_db();
-        assert!(lookup(&conn, &[0u8; 10], "m", &[0u8; 32], "c").is_none());
-        assert!(lookup(&conn, &[0u8; 32], "m", &[0u8; 10], "c").is_none());
+        assert!(lookup(&conn, &[0u8; 10], "m", &[0u8; 32], "c", None, None).is_none());
+        assert!(lookup(&conn, &[0u8; 32], "m", &[0u8; 10], "c", None, None).is_none());
     }
 
     #[test]
@@ -343,6 +363,7 @@ mod tests {
                 1,
                 0.0,
                 3600,
+                None,
             )
             .unwrap();
         }

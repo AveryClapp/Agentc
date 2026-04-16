@@ -87,6 +87,7 @@ name = "agentc-profiler"
 version = "0.1.0"
 dependencies = [
  "agentc-core",
+ "agentc-embed",
  "agentc-memo",
  "pyo3",
  "rusqlite",

@@ -303,18 +303,30 @@ fn merge_all_pending(py: Python<'_>) -> PyResult<Py<PyDict>> {
 /// initialized. The caller treats `None` as a safe fallback — the LLM call
 /// proceeds normally.
 #[pyfunction]
-#[pyo3(signature = (prompt_hash, model, parameters_hash, call_site_id))]
+#[pyo3(signature = (prompt_hash, model, parameters_hash, call_site_id, embedding=None, similarity=None))]
+#[allow(clippy::too_many_arguments)]
 fn cache_lookup<'py>(
     py: Python<'py>,
     prompt_hash: &[u8],
     model: &str,
     parameters_hash: &[u8],
     call_site_id: &str,
+    embedding: Option<&[u8]>,
+    similarity: Option<f32>,
 ) -> PyResult<Option<Bound<'py, PyDict>>> {
+    let embedding_vec = embedding.and_then(decode_embedding_bytes);
     let hit_opt = py.allow_threads(|| -> Option<agentc_memo::CacheHit> {
         let guard = state().lock().ok()?;
         let conn = guard.conn.as_ref()?;
-        agentc_memo::ffi::lookup(conn, prompt_hash, model, parameters_hash, call_site_id)
+        agentc_memo::ffi::lookup(
+            conn,
+            prompt_hash,
+            model,
+            parameters_hash,
+            call_site_id,
+            embedding_vec.as_deref(),
+            similarity,
+        )
     });
 
     let Some(hit) = hit_opt else {
@@ -346,7 +358,7 @@ fn cache_lookup<'py>(
 /// Fails open: any error is logged (`stderr`) and swallowed; the Python writer
 /// loop is already designed to survive FFI failures.
 #[pyfunction]
-#[pyo3(signature = (prompt_hash, model, parameters_hash, call_site_id, output_bytes, input_tokens, output_tokens, recorded_cost_usd, ttl_seconds))]
+#[pyo3(signature = (prompt_hash, model, parameters_hash, call_site_id, output_bytes, input_tokens, output_tokens, recorded_cost_usd, ttl_seconds, embedding=None))]
 #[allow(clippy::too_many_arguments)]
 fn cache_insert(
     py: Python<'_>,
@@ -359,7 +371,9 @@ fn cache_insert(
     output_tokens: u32,
     recorded_cost_usd: f32,
     ttl_seconds: i64,
+    embedding: Option<&[u8]>,
 ) -> PyResult<()> {
+    let embedding_vec = embedding.and_then(decode_embedding_bytes);
     py.allow_threads(|| -> PyResult<()> {
         let mut guard = state()
             .lock()
@@ -379,11 +393,29 @@ fn cache_insert(
             output_tokens,
             recorded_cost_usd,
             ttl_seconds,
+            embedding_vec.as_deref(),
         ) {
             eprintln!("agentc: cache_insert failed: {e}");
         }
         Ok(())
     })
+}
+
+/// Decode a 256×f32 embedding from little-endian bytes.
+///
+/// Returns `None` when the length is wrong so the rest of the FFI call can
+/// continue without the embedding — a dropped LSH write is always safer than
+/// an aborted cache insert.
+fn decode_embedding_bytes(bytes: &[u8]) -> Option<Vec<f32>> {
+    const EMBED_BYTES: usize = agentc_embed::EMBEDDING_DIM * 4;
+    if bytes.len() != EMBED_BYTES {
+        return None;
+    }
+    let mut out = Vec::with_capacity(agentc_embed::EMBEDDING_DIM);
+    for chunk in bytes.chunks_exact(4) {
+        out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    }
+    Some(out)
 }
 
 /// Invalidate cache entries by `call_site_id` GLOB pattern (e.g. `app.router:*`).

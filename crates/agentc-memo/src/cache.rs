@@ -12,6 +12,7 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::key::{cache_key_hash, CacheKey, InvalidationPattern};
+use crate::lsh::{best_candidate, write_lsh_rows, DEFAULT_SIMILARITY_THRESHOLD};
 use crate::schema::ensure_schema;
 
 /// Value stored alongside a cache entry. `output_content_id` points into the
@@ -76,22 +77,181 @@ pub trait Cache: Send + Sync {
 /// `rusqlite::Connection` is `!Sync`; only one query is in flight at a time.
 pub struct SqliteCache {
     conn: std::sync::Mutex<Connection>,
+    similarity_threshold: f32,
 }
 
 impl SqliteCache {
     /// Wrap an existing connection. Applies the memoization DDL idempotently
     /// so the cache is ready to use after construction.
     pub fn new(conn: Connection) -> Result<Self> {
+        Self::with_threshold(conn, DEFAULT_SIMILARITY_THRESHOLD)
+    }
+
+    /// Build a cache with an explicit similarity threshold. `1.0` disables
+    /// LSH lookup entirely; lookups that miss the exact-hash path return
+    /// `None` without touching the bucket tables.
+    pub fn with_threshold(conn: Connection, similarity_threshold: f32) -> Result<Self> {
         ensure_schema(&conn)?;
         Ok(Self {
             conn: std::sync::Mutex::new(conn),
+            similarity_threshold,
         })
+    }
+
+    /// Replace the similarity threshold at runtime — used by the FFI layer
+    /// when `AGENTC_MEMOIZE_SIMILARITY` is overridden per request.
+    pub fn set_similarity_threshold(&mut self, threshold: f32) {
+        self.similarity_threshold = threshold;
+    }
+
+    /// Current similarity threshold.
+    pub fn similarity_threshold(&self) -> f32 {
+        self.similarity_threshold
+    }
+
+    /// Insert a cache row together with its LSH band rows and embedding.
+    ///
+    /// `embedding` is optional so callers that choose to skip semantic lookup
+    /// (e.g. when `similarity == 1.0` globally) do not have to compute one.
+    /// The full insert runs inside a single SQLite transaction.
+    pub fn insert_with_embedding(
+        &self,
+        key: &CacheKey,
+        value: &CacheValue,
+        embedding: Option<&[f32]>,
+        ttl_micros: i64,
+        now_micros: i64,
+    ) -> Result<()> {
+        let cache_key_hex =
+            hex_of(&cache_key_hash(&key.prompt_hash, &key.model, &key.parameters_hash));
+        let expires_at = now_micros.saturating_add(ttl_micros);
+
+        let mut guard = self
+            .conn
+            .lock()
+            .map_err(|_| anyhow::anyhow!("cache mutex poisoned"))?;
+        let tx = guard
+            .transaction()
+            .context("opening memoization insert transaction")?;
+        tx.execute(
+            "INSERT INTO memoization_cache (
+                cache_key_hash, prompt_hash, model, parameters_hash,
+                output_content_id, input_tokens, output_tokens, recorded_cost_usd,
+                created_at, expires_at, last_hit_at, hit_count, call_site_id
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, ?12)
+             ON CONFLICT(cache_key_hash) DO UPDATE SET
+                expires_at = excluded.expires_at,
+                recorded_cost_usd = excluded.recorded_cost_usd,
+                input_tokens = excluded.input_tokens,
+                output_tokens = excluded.output_tokens,
+                output_content_id = excluded.output_content_id",
+            params![
+                cache_key_hex,
+                key.prompt_hash_hex(),
+                key.model,
+                key.parameters_hash_hex(),
+                value.output_content_id,
+                value.input_tokens as i64,
+                value.output_tokens as i64,
+                value.recorded_cost_usd as f64,
+                now_micros,
+                expires_at,
+                now_micros,
+                key.call_site_id,
+            ],
+        )
+        .context("memoization_cache insert")?;
+
+        if let Some(e) = embedding {
+            write_lsh_rows(&tx, &cache_key_hex, e)?;
+        }
+        tx.commit().context("committing memoization insert")?;
+        Ok(())
+    }
+
+    /// Look up by cache_key_hash, optionally falling back to LSH when the
+    /// exact path misses and a query embedding is available.
+    pub fn lookup_with_embedding(
+        &self,
+        key: &CacheKey,
+        query_embedding: Option<&[f32]>,
+        now_micros: i64,
+    ) -> Result<Option<CacheHit>> {
+        if let Some(hit) = self.lookup(key, now_micros)? {
+            return Ok(Some(hit));
+        }
+        let Some(embedding) = query_embedding else {
+            return Ok(None);
+        };
+        if self.similarity_threshold >= 1.0 {
+            return Ok(None);
+        }
+
+        let guard = self
+            .conn
+            .lock()
+            .map_err(|_| anyhow::anyhow!("cache mutex poisoned"))?;
+        let Some(candidate) =
+            best_candidate(&guard, embedding, self.similarity_threshold, now_micros)?
+        else {
+            return Ok(None);
+        };
+
+        let row = guard
+            .query_row(
+                "SELECT output_content_id, input_tokens, output_tokens, \
+                        recorded_cost_usd, created_at, expires_at \
+                 FROM memoization_cache \
+                 WHERE cache_key_hash = ?1",
+                params![candidate.cache_key_hex],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, f64>(3)?,
+                        row.get::<_, i64>(4)?,
+                        row.get::<_, i64>(5)?,
+                    ))
+                },
+            )
+            .optional()
+            .context("memoization_cache lsh follow-up lookup")?;
+
+        let Some((output_content_id, input_tokens, output_tokens, cost, created_at, expires_at)) =
+            row
+        else {
+            return Ok(None);
+        };
+        if expires_at <= now_micros {
+            return Ok(None);
+        }
+
+        Ok(Some(CacheHit {
+            value: CacheValue {
+                output_content_id,
+                input_tokens: input_tokens as u32,
+                output_tokens: output_tokens as u32,
+                recorded_cost_usd: cost as f32,
+            },
+            source: CacheSource::Lsh {
+                similarity: candidate.similarity,
+            },
+            age_micros: now_micros - created_at,
+        }))
     }
 
     /// Borrow the inner connection for tests. Not exposed publicly; downstream
     /// callers go through the trait.
     #[cfg(test)]
     fn with_conn<R>(&self, f: impl FnOnce(&Connection) -> R) -> R {
+        let guard = self.conn.lock().unwrap();
+        f(&guard)
+    }
+
+    /// Test-only accessor used by sibling modules (e.g. `lsh::tests`).
+    #[cfg(test)]
+    pub(crate) fn with_conn_for_test<R>(&self, f: impl FnOnce(&Connection) -> R) -> R {
         let guard = self.conn.lock().unwrap();
         f(&guard)
     }
@@ -394,6 +554,132 @@ mod tests {
         let stats = cache.stats().unwrap();
         assert_eq!(stats.entries, 1);
         assert!(stats.bytes_on_disk > 0);
+    }
+
+    #[test]
+    fn lsh_hit_returns_near_duplicate() {
+        use agentc_embed::EMBEDDING_DIM;
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE output_content (
+                content_id   TEXT PRIMARY KEY,
+                content_text BLOB NOT NULL,
+                created_at   INTEGER NOT NULL
+            );
+            INSERT INTO output_content (content_id, content_text, created_at)
+            VALUES ('abc123', X'00', 1);",
+        )
+        .unwrap();
+        let cache = SqliteCache::with_threshold(conn, 0.9).unwrap();
+
+        let mut stored = [0f32; EMBEDDING_DIM];
+        for (i, v) in stored.iter_mut().enumerate() {
+            *v = (i as f32 * 0.01).sin();
+        }
+        let stored_key = CacheKey {
+            prompt_hash: [9; 32],
+            model: "gpt-4o".to_string(),
+            parameters_hash: [1; 32],
+            call_site_id: "app:summarize".to_string(),
+        };
+        cache
+            .insert_with_embedding(&stored_key, &sample_value(), Some(&stored), 60_000_000, 100)
+            .unwrap();
+
+        // A different cache_key with a nearly-identical embedding
+        // (perturbation of 1e-5 keeps cosine > 0.9999).
+        let mut query = stored;
+        for v in query.iter_mut() {
+            *v += 1e-5;
+        }
+        let query_key = CacheKey {
+            prompt_hash: [8; 32], // intentionally distinct
+            model: "gpt-4o".to_string(),
+            parameters_hash: [2; 32],
+            call_site_id: "app:summarize".to_string(),
+        };
+        let hit = cache
+            .lookup_with_embedding(&query_key, Some(&query), 200)
+            .unwrap()
+            .expect("LSH should find the near-duplicate");
+        match hit.source {
+            CacheSource::Lsh { similarity } => {
+                assert!(similarity >= 0.9, "similarity = {similarity} below threshold");
+            }
+            CacheSource::Exact => panic!("expected LSH source, got Exact"),
+        }
+    }
+
+    #[test]
+    fn lsh_below_threshold_returns_none() {
+        use agentc_embed::EMBEDDING_DIM;
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE output_content (
+                content_id   TEXT PRIMARY KEY,
+                content_text BLOB NOT NULL,
+                created_at   INTEGER NOT NULL
+            );
+            INSERT INTO output_content (content_id, content_text, created_at)
+            VALUES ('abc123', X'00', 1);",
+        )
+        .unwrap();
+        let cache = SqliteCache::with_threshold(conn, 0.95).unwrap();
+
+        let mut stored = [0f32; EMBEDDING_DIM];
+        stored[0] = 1.0;
+        let key = sample_key(1);
+        cache
+            .insert_with_embedding(&key, &sample_value(), Some(&stored), 60_000_000, 100)
+            .unwrap();
+
+        // Orthogonal query — cosine is 0.
+        let mut query = [0f32; EMBEDDING_DIM];
+        query[1] = 1.0;
+        let miss_key = CacheKey {
+            prompt_hash: [99; 32],
+            model: key.model.clone(),
+            parameters_hash: [99; 32],
+            call_site_id: "other:site".to_string(),
+        };
+        let hit = cache
+            .lookup_with_embedding(&miss_key, Some(&query), 200)
+            .unwrap();
+        assert!(hit.is_none(), "orthogonal vector must not be a hit");
+    }
+
+    #[test]
+    fn lsh_disabled_by_threshold_of_one() {
+        use agentc_embed::EMBEDDING_DIM;
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE output_content (
+                content_id   TEXT PRIMARY KEY,
+                content_text BLOB NOT NULL,
+                created_at   INTEGER NOT NULL
+            );
+            INSERT INTO output_content (content_id, content_text, created_at)
+            VALUES ('abc123', X'00', 1);",
+        )
+        .unwrap();
+        let cache = SqliteCache::with_threshold(conn, 1.0).unwrap();
+
+        let stored = [0.5f32; EMBEDDING_DIM];
+        let key = sample_key(1);
+        cache
+            .insert_with_embedding(&key, &sample_value(), Some(&stored), 60_000_000, 100)
+            .unwrap();
+        let miss_key = CacheKey {
+            prompt_hash: [77; 32],
+            ..key.clone()
+        };
+        assert!(
+            cache
+                .lookup_with_embedding(&miss_key, Some(&stored), 200)
+                .unwrap()
+                .is_none(),
+            "threshold=1.0 must disable LSH fallback",
+        );
     }
 
     #[test]

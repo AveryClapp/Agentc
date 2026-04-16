@@ -29,6 +29,7 @@ version = "0.1.0"
 dependencies = [
  "agentc-analyzer",
  "agentc-core",
+ "agentc-memo",
  "anyhow",
  "clap",
  "dirs",

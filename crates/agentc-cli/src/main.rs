@@ -123,6 +123,62 @@ enum Cli {
         #[arg(long, default_value = "~/.agentc")]
         storage_path: String,
     },
+    /// Inspect and manage the memoization cache.
+    Cache {
+        #[command(subcommand)]
+        cmd: CacheCmd,
+    },
+}
+
+#[derive(clap::Subcommand)]
+enum CacheCmd {
+    /// Summary: entries, hit/miss breakdown, savings, top call sites.
+    Stats {
+        /// Window in hours for the hit/miss breakdown (default 24).
+        #[arg(long, default_value_t = 24)]
+        hours: u64,
+        /// Storage path.
+        #[arg(long, default_value = "~/.agentc")]
+        storage_path: String,
+    },
+    /// Show one cache entry by `cache_key_hash` prefix (>= 4 chars).
+    Inspect {
+        /// cache_key_hash prefix (min 4 chars).
+        prefix: String,
+        /// Storage path.
+        #[arg(long, default_value = "~/.agentc")]
+        storage_path: String,
+    },
+    /// Drop cache entries. Exactly one filter is required.
+    Evict {
+        /// Drop entries older than this duration (e.g. "7d", "12h", "30m").
+        #[arg(long, conflicts_with_all = ["pattern", "all"])]
+        older_than: Option<String>,
+        /// Drop entries whose call_site_id matches this GLOB (e.g. "app.*").
+        #[arg(long, conflicts_with_all = ["older_than", "all"])]
+        pattern: Option<String>,
+        /// Drop every entry.
+        #[arg(long, conflicts_with_all = ["older_than", "pattern"])]
+        all: bool,
+        /// Storage path.
+        #[arg(long, default_value = "~/.agentc")]
+        storage_path: String,
+    },
+    /// Compare a call site's cost with/without memoization.
+    Bench {
+        /// Target call_site_id.
+        #[arg(long)]
+        call_site: String,
+        /// Number of runs (default 100).
+        #[arg(long, default_value_t = 100)]
+        runs: u64,
+        /// Shadow mode: compute divergence between baseline and memoized output.
+        #[arg(long)]
+        shadow: bool,
+        /// Storage path.
+        #[arg(long, default_value = "~/.agentc")]
+        storage_path: String,
+    },
 }
 
 /// The sitecustomize.py content that auto-initializes agentc.
@@ -364,6 +420,10 @@ fn main() -> anyhow::Result<ExitCode> {
             storage_path,
         } => {
             cmd_export(trace_id, output, storage_path)?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Cli::Cache { cmd } => {
+            cmd_cache(cmd)?;
             Ok(ExitCode::SUCCESS)
         }
     }
@@ -974,6 +1034,487 @@ fn cmd_migrate(storage_path: String) -> anyhow::Result<()> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// agentc cache
+// ---------------------------------------------------------------------------
+
+fn cmd_cache(cmd: CacheCmd) -> anyhow::Result<()> {
+    match cmd {
+        CacheCmd::Stats { hours, storage_path } => cmd_cache_stats(hours, storage_path),
+        CacheCmd::Inspect { prefix, storage_path } => cmd_cache_inspect(prefix, storage_path),
+        CacheCmd::Evict {
+            older_than,
+            pattern,
+            all,
+            storage_path,
+        } => cmd_cache_evict(older_than, pattern, all, storage_path),
+        CacheCmd::Bench {
+            call_site,
+            runs,
+            shadow,
+            storage_path,
+        } => cmd_cache_bench(call_site, runs, shadow, storage_path),
+    }
+}
+
+fn open_canonical_for_cache(storage_path: &str) -> anyhow::Result<(rusqlite::Connection, std::path::PathBuf)> {
+    let storage_dir = resolve_storage_path(storage_path);
+    try_merge_pending();
+    let db_path = storage_dir.join("traces.db");
+    if !db_path.exists() {
+        anyhow::bail!(
+            "No traces database found at {}. Nothing cached yet.",
+            db_path.display()
+        );
+    }
+    let conn = agentc_core::db::open_db(&db_path)?;
+    agentc_memo::schema::ensure_schema(&conn)?;
+    Ok((conn, db_path))
+}
+
+fn format_usd(v: f64) -> String {
+    format!("${v:.2}")
+}
+
+fn format_count(n: u64) -> String {
+    // "1,234,567" — thousands separator, no SI prefix (CLI mockup style).
+    let s = n.to_string();
+    let mut out = String::with_capacity(s.len() + s.len() / 3);
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out.chars().rev().collect()
+}
+
+fn format_bytes_human(n: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = 1024.0 * 1024.0;
+    const GB: f64 = 1024.0 * 1024.0 * 1024.0;
+    let f = n as f64;
+    if f >= GB {
+        format!("{:.1} GB", f / GB)
+    } else if f >= MB {
+        format!("{:.1} MB", f / MB)
+    } else if f >= KB {
+        format!("{:.1} KB", f / KB)
+    } else {
+        format!("{n} B")
+    }
+}
+
+fn format_unix_micros(us: i64) -> String {
+    // Rough UTC ISO-8601, seconds precision, no external time crate.
+    let secs_total = (us / 1_000_000).max(0);
+    let (y, mo, d, h, mi, s) = civil_from_epoch_seconds(secs_total);
+    format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{s:02} UTC")
+}
+
+/// Unix seconds → (year, month, day, hour, minute, second) in UTC.
+/// Inverse of Howard Hinnant's civil_to_days algorithm already used in helpers.rs.
+fn civil_from_epoch_seconds(s: i64) -> (i32, u32, u32, u32, u32, u32) {
+    let days = s.div_euclid(86_400);
+    let rem = s.rem_euclid(86_400) as u32;
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    let hour = rem / 3600;
+    let mi = (rem / 60) % 60;
+    let sec = rem % 60;
+    (y as i32, m as u32, d as u32, hour, mi, sec)
+}
+
+/// Parse durations like "7d", "12h", "30m", "45s". Returns microseconds.
+fn parse_duration_micros(s: &str) -> anyhow::Result<i64> {
+    let s = s.trim();
+    if s.is_empty() {
+        anyhow::bail!("empty duration");
+    }
+    let (num_str, unit) = s.split_at(s.len() - 1);
+    let value: i64 = num_str
+        .parse()
+        .map_err(|_| anyhow::anyhow!("bad duration '{}'; expected <number><s|m|h|d>", s))?;
+    let multiplier: i64 = match unit {
+        "s" => 1_000_000,
+        "m" => 60 * 1_000_000,
+        "h" => 3_600 * 1_000_000,
+        "d" => 86_400 * 1_000_000,
+        _ => anyhow::bail!("unknown duration unit '{}' (use s|m|h|d)", unit),
+    };
+    value
+        .checked_mul(multiplier)
+        .ok_or_else(|| anyhow::anyhow!("duration overflow: {}", s))
+}
+
+/// Cache hit/miss breakdown derived from spans tagged by the `@memoize`
+/// decorator. The decorator emits span attributes `agentc.cache.result` in
+/// {"exact","lsh","miss"} and `agentc.cache.saved_cost_usd` on hits. Older
+/// spans without these attributes are ignored.
+struct HitBreakdown {
+    exact: u64,
+    lsh: u64,
+    miss: u64,
+    saved_cost_usd: f64,
+    saved_tokens: i64,
+    p99_lookup_ms: Option<f64>,
+    exact_median_ms: Option<f64>,
+    lsh_median_ms: Option<f64>,
+}
+
+fn query_hit_breakdown(conn: &rusqlite::Connection, window_micros: i64) -> anyhow::Result<HitBreakdown> {
+    let cutoff = now_micros().saturating_sub(window_micros);
+    let mut stmt = conn.prepare(
+        "SELECT attributes, COALESCE(end_time, start_time) - start_time AS lat_us \
+         FROM spans WHERE start_time >= ?1 AND kind = 'chat'",
+    )?;
+    let mut exact = 0u64;
+    let mut lsh = 0u64;
+    let mut miss = 0u64;
+    let mut saved_cost = 0.0f64;
+    let mut saved_tokens = 0i64;
+    let mut lat_exact_ms: Vec<f64> = Vec::new();
+    let mut lat_lsh_ms: Vec<f64> = Vec::new();
+    let mut lat_all_ms: Vec<f64> = Vec::new();
+    let rows = stmt.query_map(rusqlite::params![cutoff], |r| {
+        let attrs: String = r.get(0)?;
+        let lat_us: i64 = r.get(1)?;
+        Ok((attrs, lat_us))
+    })?;
+    for row in rows {
+        let (attrs_json, lat_us) = row?;
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&attrs_json) else {
+            continue;
+        };
+        let Some(result) = val.get("agentc.cache.result").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let lat_ms = lat_us as f64 / 1000.0;
+        lat_all_ms.push(lat_ms);
+        match result {
+            "exact" => {
+                exact += 1;
+                lat_exact_ms.push(lat_ms);
+            }
+            "lsh" => {
+                lsh += 1;
+                lat_lsh_ms.push(lat_ms);
+            }
+            "miss" => miss += 1,
+            _ => continue,
+        }
+        if let Some(c) = val.get("agentc.cache.saved_cost_usd").and_then(|v| v.as_f64()) {
+            saved_cost += c;
+        }
+        if let Some(t) = val.get("agentc.cache.saved_tokens").and_then(|v| v.as_i64()) {
+            saved_tokens += t;
+        }
+    }
+    Ok(HitBreakdown {
+        exact,
+        lsh,
+        miss,
+        saved_cost_usd: saved_cost,
+        saved_tokens,
+        p99_lookup_ms: percentile(&mut lat_all_ms, 0.99),
+        exact_median_ms: percentile(&mut lat_exact_ms, 0.50),
+        lsh_median_ms: percentile(&mut lat_lsh_ms, 0.50),
+    })
+}
+
+fn percentile(samples: &mut [f64], p: f64) -> Option<f64> {
+    if samples.is_empty() {
+        return None;
+    }
+    samples.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let idx = ((samples.len() as f64 - 1.0) * p).round() as usize;
+    samples.get(idx).copied()
+}
+
+fn cmd_cache_stats(hours: u64, storage_path: String) -> anyhow::Result<()> {
+    let (conn, db_path) = open_canonical_for_cache(&storage_path)?;
+    let stats = agentc_memo::ffi::stats(&conn);
+    let window_us = (hours as i64).saturating_mul(3_600 * 1_000_000);
+    let hits = query_hit_breakdown(&conn, window_us)?;
+
+    let total_ops = hits.exact + hits.lsh + hits.miss;
+    let pct = |n: u64| -> String {
+        if total_ops == 0 {
+            "—".to_string()
+        } else {
+            format!("{:.1}%", (n as f64 / total_ops as f64) * 100.0)
+        }
+    };
+
+    let on_disk = db_size_bytes(&db_path).unwrap_or(stats.bytes_on_disk);
+
+    println!("Cache summary (last {hours}h)");
+    println!("─────────────────────────────────────────────────────────");
+    println!(
+        "Entries:          {:<10} ({} on disk)",
+        format_count(stats.entries),
+        format_bytes_human(on_disk)
+    );
+    println!("Exact hits:       {:<10} ({})", format_count(hits.exact), pct(hits.exact));
+    println!("LSH hits:         {:<10} ({})", format_count(hits.lsh), pct(hits.lsh));
+    println!("Misses:           {:<10} ({})", format_count(hits.miss), pct(hits.miss));
+    println!();
+    println!(
+        "Savings:          {:<10} {} tokens",
+        format_usd(hits.saved_cost_usd),
+        format_count(hits.saved_tokens.max(0) as u64)
+    );
+    match (hits.p99_lookup_ms, hits.exact_median_ms, hits.lsh_median_ms) {
+        (Some(p99), Some(e), Some(l)) => println!(
+            "p99 lookup:       {:.1}ms      (exact {:.1}ms, lsh {:.1}ms)",
+            p99, e, l
+        ),
+        (Some(p99), Some(e), None) => {
+            println!("p99 lookup:       {:.1}ms      (exact {:.1}ms)", p99, e)
+        }
+        (Some(p99), None, _) => println!("p99 lookup:       {:.1}ms", p99),
+        _ => println!("p99 lookup:       —"),
+    }
+
+    // Top call sites by hit rate, from span-level agentc.cache.result.
+    let top = query_top_call_sites(&conn, window_us, 4)?;
+    if !top.is_empty() {
+        println!();
+        println!("Top call sites by hit rate:");
+        for row in top {
+            println!("  {:<40} {:.1}% hit", row.call_site, row.hit_rate * 100.0);
+        }
+    }
+    Ok(())
+}
+
+fn db_size_bytes(path: &std::path::Path) -> Option<u64> {
+    std::fs::metadata(path).ok().map(|m| m.len())
+}
+
+struct TopCallSite {
+    call_site: String,
+    hit_rate: f64,
+}
+
+struct CacheEntryRow {
+    key: String,
+    site: String,
+    model: String,
+    hits: i64,
+    created: i64,
+    last_hit: i64,
+    expires: i64,
+    in_tok: i64,
+    out_tok: i64,
+    content_id: String,
+}
+
+fn query_top_call_sites(
+    conn: &rusqlite::Connection,
+    window_micros: i64,
+    limit: usize,
+) -> anyhow::Result<Vec<TopCallSite>> {
+    let cutoff = now_micros().saturating_sub(window_micros);
+    let mut stmt = conn.prepare(
+        "SELECT attributes FROM spans WHERE start_time >= ?1 AND kind = 'chat'",
+    )?;
+    let mut by_site: HashMap<String, (u64, u64)> = HashMap::new(); // site → (hits, total)
+    let rows = stmt.query_map(rusqlite::params![cutoff], |r| {
+        let s: String = r.get(0)?;
+        Ok(s)
+    })?;
+    for row in rows {
+        let attrs_json = row?;
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&attrs_json) else {
+            continue;
+        };
+        let Some(site) = val.get("agentc.cache.call_site").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(result) = val.get("agentc.cache.result").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let entry = by_site.entry(site.to_string()).or_insert((0, 0));
+        entry.1 += 1;
+        if matches!(result, "exact" | "lsh") {
+            entry.0 += 1;
+        }
+    }
+    let mut ranked: Vec<TopCallSite> = by_site
+        .into_iter()
+        .filter(|(_, (_, total))| *total > 0)
+        .map(|(call_site, (hits, total))| TopCallSite {
+            call_site,
+            hit_rate: hits as f64 / total as f64,
+        })
+        .collect();
+    ranked.sort_by(|a, b| b.hit_rate.partial_cmp(&a.hit_rate).unwrap_or(std::cmp::Ordering::Equal));
+    ranked.truncate(limit);
+    Ok(ranked)
+}
+
+fn cmd_cache_inspect(prefix: String, storage_path: String) -> anyhow::Result<()> {
+    if prefix.len() < 4 {
+        anyhow::bail!(
+            "cache_key_hash prefix must be at least 4 characters, got '{}'",
+            prefix
+        );
+    }
+    let (conn, _) = open_canonical_for_cache(&storage_path)?;
+
+    let like = format!("{prefix}%");
+    let mut stmt = conn.prepare(
+        "SELECT cache_key_hash, call_site_id, model, hit_count, \
+                created_at, last_hit_at, expires_at, \
+                input_tokens, output_tokens, output_content_id \
+         FROM memoization_cache WHERE cache_key_hash LIKE ?1 LIMIT 10",
+    )?;
+    let rows: Vec<CacheEntryRow> = stmt
+        .query_map(rusqlite::params![like], |r| {
+            Ok(CacheEntryRow {
+                key: r.get::<_, String>(0)?,
+                site: r.get::<_, String>(1)?,
+                model: r.get::<_, String>(2)?,
+                hits: r.get::<_, i64>(3)?,
+                created: r.get::<_, i64>(4)?,
+                last_hit: r.get::<_, i64>(5)?,
+                expires: r.get::<_, i64>(6)?,
+                in_tok: r.get::<_, i64>(7)?,
+                out_tok: r.get::<_, i64>(8)?,
+                content_id: r.get::<_, String>(9)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+
+    match rows.len() {
+        0 => anyhow::bail!("No cache entry found matching prefix '{}'", prefix),
+        1 => {}
+        _ => {
+            let listed = rows
+                .iter()
+                .map(|r| format!("  {}", &r.key[..16]))
+                .collect::<Vec<_>>()
+                .join("\n");
+            anyhow::bail!(
+                "Ambiguous prefix '{}' — matches {} entries:\n{}",
+                prefix,
+                rows.len(),
+                listed
+            );
+        }
+    }
+
+    let row = &rows[0];
+    let (key, site, model, hits) = (&row.key, &row.site, &row.model, row.hits);
+    let (created, last_hit, expires) = (row.created, row.last_hit, row.expires);
+    let (in_tok, out_tok, content_id) = (row.in_tok, row.out_tok, &row.content_id);
+
+    let output_preview: Option<String> = conn
+        .query_row(
+            "SELECT content_text FROM output_content WHERE content_id = ?1",
+            rusqlite::params![content_id],
+            |r| {
+                let bytes: Vec<u8> = r.get(0)?;
+                Ok(String::from_utf8_lossy(&bytes[..bytes.len().min(200)]).into_owned())
+            },
+        )
+        .ok();
+
+    println!("Cache entry: {}", &key[..key.len().min(24)]);
+    println!("  Call site:       {site}");
+    println!("  Model:           {model}");
+    println!("  Hit count:       {hits}");
+    println!("  Created:         {}", format_unix_micros(created));
+    println!("  Last hit:        {}", format_unix_micros(last_hit));
+    println!("  Expires:         {}", format_unix_micros(expires));
+    println!("  Input tokens:    {}", format_count(in_tok as u64));
+    println!("  Output tokens:   {}", format_count(out_tok as u64));
+    println!("  Output content:  {}", &content_id[..content_id.len().min(16)]);
+    if let Some(preview) = output_preview {
+        println!("  Output (first 200 chars):");
+        for line in preview.lines().take(4) {
+            println!("    {line}");
+        }
+    }
+    Ok(())
+}
+
+fn cmd_cache_evict(
+    older_than: Option<String>,
+    pattern: Option<String>,
+    all: bool,
+    storage_path: String,
+) -> anyhow::Result<()> {
+    let (conn, db_path) = open_canonical_for_cache(&storage_path)?;
+    let size_before = db_size_bytes(&db_path).unwrap_or(0);
+
+    let (removed, label) = match (older_than, pattern, all) {
+        (Some(dur), None, false) => {
+            let dur_us = parse_duration_micros(&dur)?;
+            let cutoff = now_micros().saturating_sub(dur_us);
+            let n = agentc_memo::ffi::invalidate(
+                &conn,
+                agentc_memo::key::InvalidationPattern::OlderThan { micros: cutoff },
+            );
+            (n, format!("older than {dur}"))
+        }
+        (None, Some(glob), false) => {
+            let n = agentc_memo::ffi::invalidate(
+                &conn,
+                agentc_memo::key::InvalidationPattern::CallSiteGlob(glob.clone()),
+            );
+            (n, format!("matching \"{glob}\""))
+        }
+        (None, None, true) => {
+            let n = agentc_memo::ffi::invalidate(&conn, agentc_memo::key::InvalidationPattern::All);
+            (n, "(all entries)".to_string())
+        }
+        _ => anyhow::bail!("specify exactly one of --older-than, --pattern, --all"),
+    };
+
+    // Opportunistic VACUUM. `maintenance` runs ttl_sweep + lru_evict + vacuum,
+    // but we already deleted above, so run a standalone VACUUM via maintenance
+    // with a large cap (no LRU bite, no extra TTL kill since we just swept).
+    let (_, _, _) = agentc_memo::ffi::maintenance(&conn, u64::MAX);
+
+    let size_after = db_size_bytes(&db_path).unwrap_or(size_before);
+    let reclaimed = size_before.saturating_sub(size_after);
+    if reclaimed > 0 {
+        println!(
+            "Evicted {} entries {} ({} reclaimed).",
+            format_count(removed),
+            label,
+            format_bytes_human(reclaimed)
+        );
+    } else {
+        println!("Evicted {} entries {}.", format_count(removed), label);
+    }
+    Ok(())
+}
+
+fn cmd_cache_bench(
+    call_site: String,
+    runs: u64,
+    _shadow: bool,
+    _storage_path: String,
+) -> anyhow::Result<()> {
+    // The reference agent harness (M9) is not yet wired. Until then, `bench`
+    // reports that its prerequisites are missing rather than pretending to run.
+    anyhow::bail!(
+        "agentc cache bench requires the reference-agent harness (tracked in bd-j3k / M9). \
+         Requested: call_site={call_site}, runs={runs}."
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1466,5 +2007,67 @@ mod tests {
         let b = now_micros();
         assert!(b >= a);
         assert!(a > 0);
+    }
+
+    #[test]
+    fn test_parse_duration_micros_units() {
+        assert_eq!(parse_duration_micros("1s").unwrap(), 1_000_000);
+        assert_eq!(parse_duration_micros("2m").unwrap(), 120_000_000);
+        assert_eq!(parse_duration_micros("1h").unwrap(), 3_600_000_000);
+        assert_eq!(parse_duration_micros("7d").unwrap(), 7 * 86_400 * 1_000_000);
+    }
+
+    #[test]
+    fn test_parse_duration_micros_rejects_bad_input() {
+        assert!(parse_duration_micros("").is_err());
+        assert!(parse_duration_micros("10").is_err()); // no unit
+        assert!(parse_duration_micros("10x").is_err()); // unknown unit
+        assert!(parse_duration_micros("abc s").is_err());
+    }
+
+    #[test]
+    fn test_format_count_inserts_separators() {
+        assert_eq!(format_count(0), "0");
+        assert_eq!(format_count(999), "999");
+        assert_eq!(format_count(1_000), "1,000");
+        assert_eq!(format_count(1_234_567), "1,234,567");
+    }
+
+    #[test]
+    fn test_format_bytes_human_scales() {
+        assert_eq!(format_bytes_human(512), "512 B");
+        assert_eq!(format_bytes_human(2 * 1024), "2.0 KB");
+        assert_eq!(format_bytes_human(5 * 1024 * 1024), "5.0 MB");
+        assert_eq!(format_bytes_human(3 * 1024 * 1024 * 1024), "3.0 GB");
+    }
+
+    #[test]
+    fn test_civil_from_epoch_seconds_known_dates() {
+        // Epoch.
+        assert_eq!(civil_from_epoch_seconds(0), (1970, 1, 1, 0, 0, 0));
+        // 2000-01-01 00:00:00 UTC = 946684800.
+        assert_eq!(
+            civil_from_epoch_seconds(946_684_800),
+            (2000, 1, 1, 0, 0, 0)
+        );
+        // 2020-02-29 12:00:00 UTC = 1582977600 (leap day).
+        assert_eq!(
+            civil_from_epoch_seconds(1_582_977_600),
+            (2020, 2, 29, 12, 0, 0)
+        );
+    }
+
+    #[test]
+    fn test_percentile_empty_is_none() {
+        let mut v: Vec<f64> = vec![];
+        assert!(percentile(&mut v, 0.99).is_none());
+    }
+
+    #[test]
+    fn test_percentile_basic() {
+        let mut v: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        assert_eq!(percentile(&mut v, 0.5), Some(3.0));
+        let mut v2: Vec<f64> = vec![10.0];
+        assert_eq!(percentile(&mut v2, 0.99), Some(10.0));
     }
 }

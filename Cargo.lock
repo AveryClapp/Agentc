@@ -106,6 +106,7 @@ dependencies = [
  "agentc-core",
  "agentc-embed",
  "agentc-memo",
+ "agentc-optimizer",
  "pyo3",
  "rusqlite",
  "serde_json",

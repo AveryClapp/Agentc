@@ -6,8 +6,9 @@
 
 #![allow(clippy::useless_conversion)] // PyO3 macro-generated code triggers this
 
+use std::panic::AssertUnwindSafe;
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -16,6 +17,12 @@ use rusqlite::Connection;
 
 use agentc_core::storage::{self, SpanInput, WriteSpanOptions};
 use agentc_memo::key::InvalidationPattern;
+use agentc_optimizer::{
+    config::OptimizerConfig,
+    cost_model::CostModel,
+    ffi::{optimize_observe as rust_observe, optimize_plan as rust_plan, PASS_THROUGH_JSON},
+    planner::Optimizer,
+};
 
 /// Package version, exposed as `agentc._native.__version__`.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -562,6 +569,57 @@ fn canonicalize_parameters_bytes<'py>(
     Ok(PyBytes::new_bound(py, &bytes))
 }
 
+/// Process-global optimizer. Lazily constructed on first FFI call; O2
+/// ships with an empty rule set, so every hot call still falls through to
+/// `PassThrough` unless/until a later bead registers real rules. The
+/// `CostModel` behind it is shared with `optimize_observe`.
+struct OptimizerState {
+    optimizer: Arc<Optimizer>,
+    cost_model: Arc<CostModel>,
+}
+
+static OPTIMIZER: OnceLock<OptimizerState> = OnceLock::new();
+
+fn optimizer_state() -> &'static OptimizerState {
+    OPTIMIZER.get_or_init(|| {
+        let cost_model = Arc::new(CostModel::new());
+        let config = OptimizerConfig::from_env();
+        let optimizer = Arc::new(Optimizer::empty(cost_model.clone(), config));
+        OptimizerState { optimizer, cost_model }
+    })
+}
+
+/// Plan an intercepted LLM call. JSON-in, JSON-out; any panic on the Rust
+/// side is swallowed and the caller receives `{"kind":"pass_through"}`.
+///
+/// Fail-open is a hard requirement: a user's LLM call must never raise
+/// because the optimizer itself crashed.
+#[pyfunction]
+fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
+    // Release the GIL for the Rust-side planning work — keeps the
+    // interceptor from serializing every hot call behind the planner.
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        std::panic::catch_unwind(AssertUnwindSafe(|| {
+            rust_plan(&state.optimizer, call_json)
+        }))
+        .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
+    })
+}
+
+/// Fold a dispatched plan's measured outcome into the cost model. Never
+/// raises — errors are silently dropped because the user-visible call has
+/// already completed.
+#[pyfunction]
+fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) {
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let _ = rust_observe(&state.cost_model, plan_json, outcome_json);
+        }));
+    });
+}
+
 /// The `_native` Python module.
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -579,6 +637,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(embed_text_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(canonicalize_prompt_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(canonicalize_parameters_bytes, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_plan, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_observe, m)?)?;
     Ok(())
 }
 

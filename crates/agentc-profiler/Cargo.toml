@@ -13,6 +13,7 @@ crate-type = ["cdylib"]
 agentc-core = { workspace = true }
 agentc-embed = { workspace = true }
 agentc-memo = { workspace = true }
+agentc-optimizer = { workspace = true }
 pyo3 = { workspace = true }
 rusqlite = { workspace = true }
 serde_json = { workspace = true }

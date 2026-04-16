@@ -42,6 +42,7 @@ name = "agentc-core"
 version = "0.1.0"
 dependencies = [
  "agentc-embed",
+ "agentc-memo",
  "anyhow",
  "dirs",
  "libc",

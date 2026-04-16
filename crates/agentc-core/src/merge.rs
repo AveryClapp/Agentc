@@ -32,6 +32,9 @@ pub struct MergeStats {
     pub spans_merged: i64,
     pub input_content_merged: i64,
     pub output_content_merged: i64,
+    pub memoization_cache_merged: i64,
+    pub memoization_lsh_merged: i64,
+    pub memoization_embedding_merged: i64,
 }
 
 /// RAII file lock guard using flock().
@@ -254,6 +257,12 @@ pub fn merge_per_process_db(
             .with_context(|| "WAL checkpoint failed on per-process DB")?;
     }
 
+    // Ensure the memoization schema exists on the canonical DB so the merge
+    // can INSERT into memoization_cache / memoization_lsh_bucket /
+    // memoization_embedding. No-op for DBs that already have it.
+    agentc_memo::ensure_schema(canonical_conn)
+        .context("Failed to ensure memoization schema on canonical DB")?;
+
     // ATTACH the per-process DB.
     let attach_path = per_process_path.to_string_lossy();
     canonical_conn.execute_batch(&format!(
@@ -288,12 +297,26 @@ pub fn merge_per_process_db(
             )
             .map(|n| n as i64)?;
 
+        // Step 3: Merge memoization tables. Order matters — memoization_cache
+        // must come before the dependent lsh_bucket and embedding tables so
+        // their cache_key_hash references resolve.
+        //
+        // The per-process DB may not have a memoization schema yet (e.g. the
+        // process never touched the cache). Skip gracefully in that case via
+        // `IF EXISTS` + catching "no such table" errors.
+        let memoization_cache_merged = merge_memoization_cache(canonical_conn)?;
+        let memoization_lsh_merged = merge_memoization_lsh(canonical_conn)?;
+        let memoization_embedding_merged = merge_memoization_embedding(canonical_conn)?;
+
         canonical_conn.execute_batch("COMMIT;")?;
 
         Ok(MergeStats {
             spans_merged,
             input_content_merged,
             output_content_merged,
+            memoization_cache_merged,
+            memoization_lsh_merged,
+            memoization_embedding_merged,
         })
     })();
 
@@ -327,6 +350,81 @@ pub fn merge_per_process_db(
     }
 }
 
+/// Probe whether `source.<table>` exists on the attached per-process DB.
+///
+/// A per-process DB may not carry the memoization schema if the process
+/// never imported `agentc.memoize`. Skipping gracefully keeps the merge
+/// backwards-compatible with pre-M2 traces.
+fn source_table_exists(conn: &Connection, table: &str) -> Result<bool> {
+    let n: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM source.sqlite_master WHERE type='table' AND name = ?1",
+        rusqlite::params![table],
+        |r| r.get(0),
+    )?;
+    Ok(n > 0)
+}
+
+/// Fold `memoization_cache` with UPSERT semantics: sum hit counts, take the
+/// later last_hit_at, keep the earlier created_at.
+fn merge_memoization_cache(canonical: &Connection) -> Result<i64> {
+    if !source_table_exists(canonical, "memoization_cache")? {
+        return Ok(0);
+    }
+    let before: i64 =
+        canonical.query_row("SELECT changes()", [], |r| r.get(0)).unwrap_or(0);
+    canonical.execute_batch(
+        "INSERT INTO main.memoization_cache (
+             cache_key_hash, prompt_hash, model, parameters_hash,
+             output_content_id, input_tokens, output_tokens, recorded_cost_usd,
+             created_at, expires_at, last_hit_at, hit_count, call_site_id
+         )
+         SELECT
+             cache_key_hash, prompt_hash, model, parameters_hash,
+             output_content_id, input_tokens, output_tokens, recorded_cost_usd,
+             created_at, expires_at, last_hit_at, hit_count, call_site_id
+         FROM source.memoization_cache
+         WHERE true
+         ON CONFLICT(cache_key_hash) DO UPDATE SET
+             hit_count   = main.memoization_cache.hit_count + excluded.hit_count,
+             last_hit_at = MAX(main.memoization_cache.last_hit_at, excluded.last_hit_at),
+             expires_at  = MAX(main.memoization_cache.expires_at, excluded.expires_at);",
+    )?;
+    let after: i64 = canonical.query_row("SELECT changes()", [], |r| r.get(0))?;
+    Ok(after.saturating_sub(before).max(0))
+}
+
+/// Fold LSH buckets with INSERT OR IGNORE — band rows are bag-equivalent
+/// across processes; duplicates are safe no-ops.
+fn merge_memoization_lsh(canonical: &Connection) -> Result<i64> {
+    if !source_table_exists(canonical, "memoization_lsh_bucket")? {
+        return Ok(0);
+    }
+    canonical
+        .execute(
+            "INSERT OR IGNORE INTO main.memoization_lsh_bucket
+             SELECT * FROM source.memoization_lsh_bucket",
+            [],
+        )
+        .map(|n| n as i64)
+        .map_err(Into::into)
+}
+
+/// Fold embeddings with INSERT OR IGNORE — a cache_key_hash maps to exactly
+/// one embedding, so duplicates are by-definition identical.
+fn merge_memoization_embedding(canonical: &Connection) -> Result<i64> {
+    if !source_table_exists(canonical, "memoization_embedding")? {
+        return Ok(0);
+    }
+    canonical
+        .execute(
+            "INSERT OR IGNORE INTO main.memoization_embedding
+             SELECT * FROM source.memoization_embedding",
+            [],
+        )
+        .map(|n| n as i64)
+        .map_err(Into::into)
+}
+
 /// Merge all pending per-process DBs into the canonical store.
 ///
 /// Acquires a lockfile, opens/creates canonical DB, merges each per-process file.
@@ -351,6 +449,9 @@ pub fn merge_all_pending() -> Result<MergeStats> {
                 total.spans_merged += stats.spans_merged;
                 total.input_content_merged += stats.input_content_merged;
                 total.output_content_merged += stats.output_content_merged;
+                total.memoization_cache_merged += stats.memoization_cache_merged;
+                total.memoization_lsh_merged += stats.memoization_lsh_merged;
+                total.memoization_embedding_merged += stats.memoization_embedding_merged;
             }
             Err(e) => {
                 eprintln!(
@@ -393,6 +494,9 @@ pub fn merge_orphans() -> Result<MergeStats> {
                 total.spans_merged += stats.spans_merged;
                 total.input_content_merged += stats.input_content_merged;
                 total.output_content_merged += stats.output_content_merged;
+                total.memoization_cache_merged += stats.memoization_cache_merged;
+                total.memoization_lsh_merged += stats.memoization_lsh_merged;
+                total.memoization_embedding_merged += stats.memoization_embedding_merged;
             }
             Err(e) => {
                 eprintln!("ERROR: Merge failed for {}: {e}", path.display());

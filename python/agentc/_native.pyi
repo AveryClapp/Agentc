@@ -101,6 +101,21 @@ def cache_stats() -> dict[str, int | float]:
     """
     ...
 
+def output_content_load(content_id: str) -> bytes | None:
+    """Load a row from the shared `output_content` table by content_id.
+
+    Returns None if the row is missing or the DB is not open.
+    """
+    ...
+
+def embed_text_bytes(text: str) -> bytes | None:
+    """Embed `text` into 256 × f32 little-endian bytes.
+
+    Returns None if the embedder is unavailable. Used by the memoize decorator
+    to compute the LSH query embedding.
+    """
+    ...
+
 def canonicalize_prompt_bytes(prompt_json: bytes, provider: str) -> bytes:
     """Canonicalize a prompt via the Rust mirror adapter.
 

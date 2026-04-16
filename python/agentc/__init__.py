@@ -29,6 +29,11 @@ from agentc._propagation import get_trace_context  # noqa: F401
 from agentc._propagation import attach_trace_context  # noqa: F401
 from agentc._propagation import inject_trace_headers  # noqa: F401
 
+# Import memoization API.
+from agentc._memoize import cache_invalidate  # noqa: F401
+from agentc._memoize import cache_invalidate_all  # noqa: F401
+from agentc._memoize import memoize  # noqa: F401
+
 __all__ = [
     "__version__",
     "init",
@@ -43,4 +48,7 @@ __all__ = [
     "write_span",
     "create_db",
     "query_spans_by_trace",
+    "memoize",
+    "cache_invalidate",
+    "cache_invalidate_all",
 ]

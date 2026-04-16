@@ -206,6 +206,11 @@ fn create_db(
     let conn = agentc_core::db::create_db(Path::new(path), is_canonical)
         .map_err(|e| PyRuntimeError::new_err(format!("create_db: {e}")))?;
 
+    // Apply the memoization DDL on the same connection so @memoize can
+    // share the profiler's per-process DB without a separate bootstrap.
+    agentc_memo::ensure_schema(&conn)
+        .map_err(|e| PyRuntimeError::new_err(format!("create_db: memoization schema: {e}")))?;
+
     let mut guard = state()
         .lock()
         .map_err(|e| PyRuntimeError::new_err(format!("create_db: state lock poisoned: {e}")))?;
@@ -459,6 +464,50 @@ fn cache_stats(py: Python<'_>) -> PyResult<Py<PyDict>> {
     Ok(d.unbind())
 }
 
+/// Load a row from the shared `output_content` table by its content_id.
+///
+/// Returns the raw bytes the caller stashed at insert time (for memoization
+/// that's a pickle payload; for spans it's a compressed JSON body). `None`
+/// if the row is missing or the DB is not open — fail-open, the caller
+/// retries the original operation.
+#[pyfunction]
+fn output_content_load<'py>(
+    py: Python<'py>,
+    content_id: &str,
+) -> PyResult<Option<Bound<'py, PyBytes>>> {
+    let content_id = content_id.to_string();
+    let result = py.allow_threads(|| -> Option<Vec<u8>> {
+        let guard = state().lock().ok()?;
+        let conn = guard.conn.as_ref()?;
+        conn.query_row(
+            "SELECT content_text FROM output_content WHERE content_id = ?1",
+            rusqlite::params![content_id],
+            |row| row.get::<_, Vec<u8>>(0),
+        )
+        .ok()
+    });
+    Ok(result.map(|bytes| PyBytes::new_bound(py, &bytes)))
+}
+
+/// Embed `text` and return the 256 × f32 little-endian bytes expected by
+/// `cache_lookup` / `cache_insert`. Returns `None` if the embedder is
+/// unavailable — the decorator treats that as "skip LSH".
+#[pyfunction]
+fn embed_text_bytes<'py>(
+    py: Python<'py>,
+    text: &str,
+) -> PyResult<Option<Bound<'py, PyBytes>>> {
+    let embedding = py.allow_threads(|| agentc_embed::embed_text_f32(text));
+    let Some(vec) = embedding else {
+        return Ok(None);
+    };
+    let mut buf = Vec::with_capacity(vec.len() * 4);
+    for v in vec {
+        buf.extend_from_slice(&v.to_le_bytes());
+    }
+    Ok(Some(PyBytes::new_bound(py, &buf)))
+}
+
 /// Canonicalize a prompt using the Rust mirror adapter.
 ///
 /// Accepts a JSON-encoded prompt (bytes) and a provider tag; returns the
@@ -500,6 +549,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cache_insert, m)?)?;
     m.add_function(wrap_pyfunction!(cache_invalidate, m)?)?;
     m.add_function(wrap_pyfunction!(cache_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(output_content_load, m)?)?;
+    m.add_function(wrap_pyfunction!(embed_text_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(canonicalize_prompt_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(canonicalize_parameters_bytes, m)?)?;
     Ok(())

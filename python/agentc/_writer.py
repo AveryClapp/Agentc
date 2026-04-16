@@ -47,7 +47,20 @@ class CacheInsertMsg:
     embedding: bytes | None = None
 
 
-_queue: queue.Queue[dict[str, Any] | CacheInsertMsg | None] = queue.Queue(maxsize=QUEUE_MAX_SIZE)
+@dataclasses.dataclass
+class _FlushBarrier:
+    """Sentinel that forces the writer to flush its batch and signal an event.
+
+    Used by ``flush_blocking`` so callers — mainly tests — can wait until every
+    item enqueued before the call has hit SQLite. Not part of the public API.
+    """
+
+    done: threading.Event
+
+
+_queue: queue.Queue[dict[str, Any] | CacheInsertMsg | _FlushBarrier | None] = queue.Queue(
+    maxsize=QUEUE_MAX_SIZE
+)
 _writer_thread: threading.Thread | None = None
 _stop_event = threading.Event()
 _total_written = 0
@@ -153,6 +166,23 @@ def get_stats() -> dict[str, int]:
     }
 
 
+def flush_blocking(timeout_s: float = 2.0) -> bool:
+    """Flush the writer's current batch and block until the commit completes.
+
+    Returns True on success, False on timeout or when the writer is stopped.
+    Primarily useful for tests — production code relies on the 5-second
+    interval + batch-size trigger and should not call this.
+    """
+    if _writer_thread is None or not _writer_thread.is_alive():
+        return False
+    barrier = _FlushBarrier(done=threading.Event())
+    try:
+        _queue.put(barrier, timeout=timeout_s)
+    except queue.Full:
+        return False
+    return barrier.done.wait(timeout=timeout_s)
+
+
 def _writer_loop() -> None:
     """Main loop for the background writer thread."""
     global _total_written, _total_cache_inserts
@@ -181,6 +211,18 @@ def _writer_loop() -> None:
         if item is None:
             break
 
+        if isinstance(item, _FlushBarrier):
+            if batch:
+                span_count, cache_count = _counts(batch)
+                _flush_batch(write_span, batch)
+                _total_written += span_count
+                _total_cache_inserts += cache_count
+                spans_since_merge += span_count
+                batch.clear()
+                last_flush = time.monotonic()
+            item.done.set()
+            continue
+
         batch.append(item)
 
         if len(batch) >= FLUSH_BATCH_SIZE:
@@ -203,10 +245,14 @@ def _writer_loop() -> None:
     while True:
         try:
             item = _queue.get_nowait()
-            if item is not None:
-                batch.append(item)
         except queue.Empty:
             break
+        if item is None:
+            continue
+        if isinstance(item, _FlushBarrier):
+            item.done.set()
+            continue
+        batch.append(item)
 
     if batch:
         span_count, cache_count = _counts(batch)

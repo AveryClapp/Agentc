@@ -241,8 +241,8 @@ def _run_bare(trace: MockPipelineTrace) -> dict[str, Any]:
 
     for step in trace.steps:
         for call in step.calls:
-            # Simulate LLM call latency (scaled down for benchmarking)
-            time.sleep(call.latency_ms / 1_000_000)  # microsecond-scale sleep
+            # Simulate LLM call latency (scaled down 100x for benchmarking)
+            time.sleep(call.latency_ms / 1000.0 * 0.01)
 
     elapsed_ns = time.perf_counter_ns() - start
 
@@ -270,8 +270,8 @@ def _run_instrumented(trace: MockPipelineTrace) -> dict[str, Any]:
             for call in calls:
                 with agentc.span(f"llm-{call.model}", kind="chat") as ctx:
                     spans_created.append(ctx.span_id)
-                    # Simulate LLM call latency (scaled down)
-                    time.sleep(call.latency_ms / 1_000_000)
+                    # Simulate LLM call latency (scaled down 100x)
+                    time.sleep(call.latency_ms / 1000.0 * 0.01)
 
         agent_step()
 

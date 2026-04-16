@@ -39,12 +39,24 @@ class OverheadResult:
     bare_peak_memory_bytes: int
     instrumented_peak_memory_bytes: int
 
+    # Real-time pipeline duration (ms) for projected overhead calculation.
+    # This is the sum of mock call latencies at 1x scale.
+    real_pipeline_ms: float = 0.0
+
     @property
     def wall_clock_overhead_pct(self) -> float:
-        if self.bare_wall_clock_ns == 0:
+        """Projected wall-clock overhead against real (unscaled) pipeline duration.
+
+        Since benchmarks use scaled-down sleeps, the measured wall-clock delta
+        is noisy. Instead we project: total instrumentation overhead (per-call
+        mean * n_calls) divided by the real pipeline duration.
+        """
+        if self.real_pipeline_ms <= 0 or not self.per_call_overhead_ns:
             return 0.0
-        delta = self.instrumented_wall_clock_ns - self.bare_wall_clock_ns
-        return (delta / self.bare_wall_clock_ns) * 100
+        total_overhead_ms = (
+            statistics.mean(self.per_call_overhead_ns) * self.total_calls / 1_000_000
+        )
+        return round((total_overhead_ms / self.real_pipeline_ms) * 100, 6)
 
     @property
     def mean_per_call_overhead_us(self) -> float:
@@ -135,14 +147,33 @@ def measure_per_call_overhead(
     return overheads
 
 
+def _call_sleep_seconds(call: MockLLMCall, scale: float) -> float:
+    """Convert a mock call's latency to a sleep duration in seconds.
+
+    scale=1.0 means real-time (e.g. 1000ms call sleeps 1s).
+    scale=0.001 means 1000x speedup (1000ms call sleeps 1ms).
+    Default benchmarks use 0.01 (100x speedup) so a typical pipeline
+    with ~20s total latency completes in ~200ms — fast enough for CI
+    but slow enough that microsecond-level instrumentation overhead
+    doesn't dominate wall-clock measurements.
+    """
+    return call.latency_ms / 1000.0 * scale
+
+
 def measure_pipeline_overhead(
     task_id: str,
     tmp_storage: Path | None = None,
     seed: int | None = None,
+    time_scale: float = 0.01,
 ) -> OverheadResult:
     """Measure full pipeline overhead for a single task.
 
     Runs the pipeline twice: once bare, once instrumented.
+
+    Args:
+        time_scale: Multiplier for mock call latencies. 1.0 = real-time,
+            0.01 = 100x speedup (default). Lower values run faster but
+            produce noisier wall-clock overhead measurements.
     """
     storage = tmp_storage or Path("/tmp/agentc-bench-overhead")
     trace = generate_pipeline_trace(task_id, seed=seed)
@@ -153,7 +184,7 @@ def measure_pipeline_overhead(
 
     for step in trace.steps:
         for call in step.calls:
-            time.sleep(call.latency_ms / 1_000_000)
+            time.sleep(_call_sleep_seconds(call, time_scale))
 
     bare_elapsed = time.perf_counter_ns() - bare_start
     _, bare_peak = tracemalloc.get_traced_memory()
@@ -172,7 +203,7 @@ def measure_pipeline_overhead(
         def run_step(calls: list[MockLLMCall] = step.calls) -> None:
             for call in calls:
                 with agentc.span(f"llm-{call.model}", kind="chat"):
-                    time.sleep(call.latency_ms / 1_000_000)
+                    time.sleep(_call_sleep_seconds(call, time_scale))
 
         with patch("agentc._span._write_root_span"):
             run_step()
@@ -198,6 +229,7 @@ def measure_pipeline_overhead(
         per_call_overhead_ns=per_call_overhead,
         bare_peak_memory_bytes=bare_peak,
         instrumented_peak_memory_bytes=inst_peak,
+        real_pipeline_ms=trace.wall_clock_ms,
     )
 
 
@@ -226,7 +258,7 @@ def format_overhead_report(results: list[OverheadResult]) -> str:
             f"    Per-call overhead: mean={r.mean_per_call_overhead_us:.1f}us "
             f"p99={r.p99_per_call_overhead_us:.1f}us"
         )
-        lines.append(f"    Wall-clock overhead: {r.wall_clock_overhead_pct:.2f}%")
+        lines.append(f"    Wall-clock overhead: {r.wall_clock_overhead_pct:.4f}%")
         lines.append(
             f"    Memory overhead: {r.memory_overhead_bytes / 1024 / 1024:.1f}MB"
         )
@@ -247,8 +279,8 @@ def format_overhead_report(results: list[OverheadResult]) -> str:
         lines.append(f"  Per-call overhead: mean={mean_us:.1f}us p99={p99_us:.1f}us")
     if all_wall_pct:
         lines.append(
-            f"  Wall-clock overhead: mean={statistics.mean(all_wall_pct):.2f}% "
-            f"max={max(all_wall_pct):.2f}%"
+            f"  Wall-clock overhead: mean={statistics.mean(all_wall_pct):.4f}% "
+            f"max={max(all_wall_pct):.4f}%"
         )
     if all_mem:
         lines.append(

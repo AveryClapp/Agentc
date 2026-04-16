@@ -266,16 +266,19 @@ class TestOverheadResult:
             task_id="test",
             total_calls=10,
             bare_wall_clock_ns=1_000_000_000,
-            instrumented_wall_clock_ns=1_100_000_000,  # 10% overhead
+            instrumented_wall_clock_ns=1_100_000_000,
             per_call_overhead_ns=[10_000_000] * 10,  # 10ms each
             bare_peak_memory_bytes=10_000_000,
             instrumented_peak_memory_bytes=10_000_000,
+            real_pipeline_ms=1000.0,  # 1s real pipeline
         )
         budget = result.passes_budget()
         assert budget["latency_per_call_under_5ms"] is False
+        # 10ms * 10 calls = 100ms overhead on 1000ms pipeline = 10%
         assert budget["wall_clock_under_5pct"] is False
 
     def test_wall_clock_overhead_pct(self) -> None:
+        # 50ns * 1 call = 50ns overhead on 0.001ms pipeline = 5%
         result = OverheadResult(
             task_id="test",
             total_calls=1,
@@ -284,6 +287,7 @@ class TestOverheadResult:
             per_call_overhead_ns=[50],
             bare_peak_memory_bytes=0,
             instrumented_peak_memory_bytes=0,
+            real_pipeline_ms=0.001,  # 1us real pipeline
         )
         assert abs(result.wall_clock_overhead_pct - 5.0) < 0.01
 

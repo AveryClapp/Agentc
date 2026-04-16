@@ -105,16 +105,16 @@ class TestWriteSpan:
 
 
 class TestCreateDb:
-    def test_stub_succeeds(self) -> None:
-        _native.create_db("/tmp/test.db", False)
+    def test_stub_succeeds(self, tmp_path: Any) -> None:
+        _native.create_db(str(tmp_path / "test.db"), False)
 
-    def test_canonical_flag(self) -> None:
-        _native.create_db("/tmp/test.db", True)
+    def test_canonical_flag(self, tmp_path: Any) -> None:
+        _native.create_db(str(tmp_path / "test.db"), True)
 
 
 class TestQuerySpansByTrace:
-    def test_stub_returns_empty_list(self) -> None:
-        result = _native.query_spans_by_trace("/tmp/test.db", "abc123")
+    def test_stub_returns_empty_list(self, tmp_path: Any) -> None:
+        result = _native.query_spans_by_trace(str(tmp_path / "test.db"), "abc123")
         assert isinstance(result, list)
         assert len(result) == 0
 

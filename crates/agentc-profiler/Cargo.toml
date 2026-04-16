@@ -12,4 +12,5 @@ crate-type = ["cdylib"]
 [dependencies]
 agentc-core = { workspace = true }
 pyo3 = { workspace = true }
+rusqlite = { workspace = true }
 serde_json = { workspace = true }

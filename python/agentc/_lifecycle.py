@@ -78,7 +78,12 @@ def init(
         db_path = active_dir / f"pid-{pid}.db"
         from agentc._native import create_db
 
-        create_db(str(db_path), False)  # per-process DB, no traces VIEW
+        create_db(
+            str(db_path),
+            False,  # per-process DB, no traces VIEW
+            config.capture_content,
+            config.capture_embeddings,
+        )
 
         # Store config
         _config = config

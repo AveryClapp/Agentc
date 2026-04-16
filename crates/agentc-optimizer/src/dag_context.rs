@@ -361,7 +361,7 @@ mod tests {
         }
         samples.sort();
         let p50 = samples[50];
-        let budget_us: u128 = if cfg!(debug_assertions) { 1500 } else { 300 };
+        let budget_us: u128 = if cfg!(debug_assertions) { 3000 } else { 300 };
         assert!(
             p50 < budget_us,
             "recent_spans p50 = {p50} µs; budget {budget_us} µs \

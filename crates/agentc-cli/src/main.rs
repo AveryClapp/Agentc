@@ -10,6 +10,7 @@ use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, ExitCode};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::Parser;
 
@@ -211,6 +212,10 @@ fn cmd_record(
         ));
     }
 
+    // Capture session start time so the post-exit summary can find the trace
+    // produced by *this* invocation (vs. stale traces from prior sessions).
+    let session_start_us = now_micros();
+
     // Spawn child process
     let status = Command::new(&command[0])
         .args(&command[1..])
@@ -239,13 +244,68 @@ fn cmd_record(
         }
     };
 
-    // TODO(VelvetHammer, bd-2ix/bd-36j): Post-exit summary
-    // - Merge-on-read
-    // - Cost backfill
-    // - Waste detection
-    // - Print summary line
+    // Post-exit: merge pending per-process DBs, analyze the just-recorded trace,
+    // and print a compact summary. Non-fatal — the child already exited, so we
+    // never want to mask its exit code on summary failure.
+    if let Err(e) = post_record_summary(&storage_path, session_start_us) {
+        eprintln!("WARN: agentc post-record summary failed: {e}");
+    }
 
     Ok(ExitCode::from(exit_code))
+}
+
+/// Current wall-clock time in microseconds since the Unix epoch.
+fn now_micros() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0)
+}
+
+/// Post-exit hook: merge pending per-process DBs, find the trace from this
+/// recording session, and render a compact summary.
+///
+/// `session_start_us` is the wall-clock time captured just before the child
+/// was spawned. Traces with `start_time >= session_start_us` are considered
+/// to belong to this session; we pick the earliest one (the first trace the
+/// child produced).
+fn post_record_summary(storage_path: &str, session_start_us: i64) -> anyhow::Result<()> {
+    let storage_dir = resolve_storage_path(storage_path);
+
+    // 1. Merge pending per-process DBs and announce if anything was merged.
+    #[cfg(unix)]
+    {
+        match agentc_core::merge::merge_all_pending() {
+            Ok(stats) if stats.spans_merged > 0 => {
+                eprintln!("Merged {} spans into canonical store.", stats.spans_merged);
+            }
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("WARN: merge of pending DBs failed: {e}");
+            }
+        }
+    }
+
+    // 2. Open the canonical DB. Missing means the child never produced a trace.
+    let Some(conn) = open_canonical_db_if_exists(&storage_dir)? else {
+        return Ok(());
+    };
+
+    // 3. Find the earliest trace started during this session.
+    let traces = agentc_core::db::query_traces(&conn, 50, Some(session_start_us))?;
+    let Some(primary) = traces.last() else {
+        // No traces from this session (e.g. child errored before any LLM call).
+        return Ok(());
+    };
+
+    // 4. Backfill cost, build the analysis report, render it.
+    cost::full_cost_backfill(&conn)?;
+    let report = build_trace_report(&conn, &primary.trace_id)?;
+
+    eprintln!();
+    print!("{}", render_trace_analysis(&report));
+
+    Ok(())
 }
 
 fn main() -> anyhow::Result<ExitCode> {
@@ -1364,4 +1424,47 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn test_post_record_summary_missing_storage_noop() {
+        // Fresh temp dir with no traces.db at all — summary should be a no-op.
+        let dir = tempfile::TempDir::new().unwrap();
+        let result = post_record_summary(
+            dir.path().to_str().unwrap(),
+            0, // session start — irrelevant since no DB exists
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_post_record_summary_with_fresh_trace() {
+        // Storage has one trace whose start_time is > session_start_us —
+        // summary should find it and render successfully.
+        let dir = make_test_dir_with_one_trace("sess1234efgh");
+        // Trace start_time is 1_000_000_000_000_000 — pick a session start strictly before it.
+        let result = post_record_summary(
+            dir.path().to_str().unwrap(),
+            999_999_999_999_999,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_post_record_summary_no_session_traces() {
+        // DB has traces but all pre-date session_start_us — summary is a no-op.
+        let dir = make_test_dir_with_one_trace("old1234efgh");
+        // Trace start_time is 1_000_000_000_000_000 — pick a session start strictly after it.
+        let result = post_record_summary(
+            dir.path().to_str().unwrap(),
+            2_000_000_000_000_000,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_now_micros_monotonic() {
+        let a = now_micros();
+        let b = now_micros();
+        assert!(b >= a);
+        assert!(a > 0);
+    }
 }

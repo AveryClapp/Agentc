@@ -1,0 +1,16 @@
+[package]
+name = "agentc-memo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Semantic memoization cache for Agentc (exact-hash + LSH)"
+
+[dependencies]
+agentc-embed = { workspace = true }
+anyhow = { workspace = true }
+rusqlite = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

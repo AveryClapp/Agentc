@@ -45,3 +45,50 @@ def merge_all_pending() -> dict[str, int]:
     output_content_merged. On non-unix platforms returns a zeroed dict.
     """
     ...
+
+def cache_lookup(
+    prompt_hash: bytes,
+    model: str,
+    parameters_hash: bytes,
+    call_site_id: str,
+) -> dict[str, Any] | None:
+    """Look up a memoized response by exact-hash cache key.
+
+    Returns None on miss, error, or when memoization is not initialized.
+    Hit dict keys: output_content_id, input_tokens, output_tokens,
+    recorded_cost_usd, age_micros, source ('exact' or 'lsh'),
+    similarity (LSH hits only).
+    """
+    ...
+
+def cache_insert(
+    prompt_hash: bytes,
+    model: str,
+    parameters_hash: bytes,
+    call_site_id: str,
+    output_bytes: bytes,
+    input_tokens: int,
+    output_tokens: int,
+    recorded_cost_usd: float,
+    ttl_seconds: int,
+) -> None:
+    """Insert a memoization entry.
+
+    Writes output_bytes into the shared output_content table and records the
+    cache row in memoization_cache. Fails open on any internal error.
+    """
+    ...
+
+def cache_invalidate(pattern: str) -> int:
+    """Delete cache entries matching a SQL GLOB pattern on call_site_id.
+
+    Pass '*' to wipe the whole cache. Returns the number of rows removed.
+    """
+    ...
+
+def cache_stats() -> dict[str, int | float]:
+    """Return aggregate cache statistics.
+
+    Keys: entries, total_hits, estimated_savings_usd, bytes_on_disk.
+    """
+    ...

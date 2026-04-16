@@ -2,6 +2,7 @@
 members = [
     "crates/agentc-core",
     "crates/agentc-embed",
+    "crates/agentc-memo",
     "crates/agentc-profiler",
     "crates/agentc-analyzer",
     "crates/agentc-cli",
@@ -18,6 +19,7 @@ repository = "https://github.com/agentc-ai/agentc"
 # Internal crates
 agentc-core = { path = "crates/agentc-core" }
 agentc-embed = { path = "crates/agentc-embed" }
+agentc-memo = { path = "crates/agentc-memo" }
 agentc-analyzer = { path = "crates/agentc-analyzer" }
 
 # Storage

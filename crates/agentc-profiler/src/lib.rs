@@ -15,6 +15,7 @@ use pyo3::types::{PyDict, PyList};
 use rusqlite::Connection;
 
 use agentc_core::storage::{self, SpanInput, WriteSpanOptions};
+use agentc_memo::key::InvalidationPattern;
 
 /// Package version, exposed as `agentc._native.__version__`.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -296,6 +297,136 @@ fn merge_all_pending(py: Python<'_>) -> PyResult<Py<PyDict>> {
     Ok(d.unbind())
 }
 
+/// Look up a memoized response by exact-hash cache key.
+///
+/// Returns `None` on miss, on any internal error, or when memoization is not
+/// initialized. The caller treats `None` as a safe fallback — the LLM call
+/// proceeds normally.
+#[pyfunction]
+#[pyo3(signature = (prompt_hash, model, parameters_hash, call_site_id))]
+fn cache_lookup<'py>(
+    py: Python<'py>,
+    prompt_hash: &[u8],
+    model: &str,
+    parameters_hash: &[u8],
+    call_site_id: &str,
+) -> PyResult<Option<Bound<'py, PyDict>>> {
+    let hit_opt = py.allow_threads(|| -> Option<agentc_memo::CacheHit> {
+        let guard = state().lock().ok()?;
+        let conn = guard.conn.as_ref()?;
+        agentc_memo::ffi::lookup(conn, prompt_hash, model, parameters_hash, call_site_id)
+    });
+
+    let Some(hit) = hit_opt else {
+        return Ok(None);
+    };
+
+    let d = PyDict::new_bound(py);
+    d.set_item("output_content_id", &hit.value.output_content_id)?;
+    d.set_item("input_tokens", hit.value.input_tokens)?;
+    d.set_item("output_tokens", hit.value.output_tokens)?;
+    d.set_item("recorded_cost_usd", hit.value.recorded_cost_usd)?;
+    d.set_item("age_micros", hit.age_micros)?;
+    d.set_item(
+        "source",
+        match hit.source {
+            agentc_memo::CacheSource::Exact => "exact",
+            agentc_memo::CacheSource::Lsh { .. } => "lsh",
+        },
+    )?;
+    if let agentc_memo::CacheSource::Lsh { similarity } = hit.source {
+        d.set_item("similarity", similarity)?;
+    }
+    Ok(Some(d))
+}
+
+/// Insert a memoization entry. Enqueued from Python by the writer thread.
+///
+/// Writes to `output_content` and `memoization_cache` in a single transaction.
+/// Fails open: any error is logged (`stderr`) and swallowed; the Python writer
+/// loop is already designed to survive FFI failures.
+#[pyfunction]
+#[pyo3(signature = (prompt_hash, model, parameters_hash, call_site_id, output_bytes, input_tokens, output_tokens, recorded_cost_usd, ttl_seconds))]
+#[allow(clippy::too_many_arguments)]
+fn cache_insert(
+    py: Python<'_>,
+    prompt_hash: &[u8],
+    model: &str,
+    parameters_hash: &[u8],
+    call_site_id: &str,
+    output_bytes: &[u8],
+    input_tokens: u32,
+    output_tokens: u32,
+    recorded_cost_usd: f32,
+    ttl_seconds: i64,
+) -> PyResult<()> {
+    py.allow_threads(|| -> PyResult<()> {
+        let mut guard = state()
+            .lock()
+            .map_err(|e| PyRuntimeError::new_err(format!("cache_insert: state lock poisoned: {e}")))?;
+        let Some(conn) = guard.conn.as_mut() else {
+            // No DB — fail-open; the call is opt-in, a miss is safe.
+            return Ok(());
+        };
+        if let Err(e) = agentc_memo::ffi::insert(
+            conn,
+            prompt_hash,
+            model,
+            parameters_hash,
+            call_site_id,
+            output_bytes,
+            input_tokens,
+            output_tokens,
+            recorded_cost_usd,
+            ttl_seconds,
+        ) {
+            eprintln!("agentc: cache_insert failed: {e}");
+        }
+        Ok(())
+    })
+}
+
+/// Invalidate cache entries by `call_site_id` GLOB pattern (e.g. `app.router:*`).
+/// Pass `"*"` to wipe everything. Returns the number of rows removed.
+#[pyfunction]
+fn cache_invalidate(py: Python<'_>, pattern: &str) -> PyResult<u64> {
+    py.allow_threads(|| {
+        let guard = state().lock().map_err(|e| {
+            PyRuntimeError::new_err(format!("cache_invalidate: state lock poisoned: {e}"))
+        })?;
+        let Some(conn) = guard.conn.as_ref() else {
+            return Ok(0u64);
+        };
+        let pat = if pattern == "*" {
+            InvalidationPattern::All
+        } else {
+            InvalidationPattern::CallSiteGlob(pattern.to_string())
+        };
+        Ok(agentc_memo::ffi::invalidate(conn, pat))
+    })
+}
+
+/// Return aggregate cache statistics.
+#[pyfunction]
+fn cache_stats(py: Python<'_>) -> PyResult<Py<PyDict>> {
+    let stats = py.allow_threads(|| -> agentc_memo::CacheStats {
+        let Ok(guard) = state().lock() else {
+            return agentc_memo::CacheStats::default();
+        };
+        let Some(conn) = guard.conn.as_ref() else {
+            return agentc_memo::CacheStats::default();
+        };
+        agentc_memo::ffi::stats(conn)
+    });
+
+    let d = PyDict::new_bound(py);
+    d.set_item("entries", stats.entries)?;
+    d.set_item("total_hits", stats.total_hits)?;
+    d.set_item("estimated_savings_usd", stats.estimated_savings_usd)?;
+    d.set_item("bytes_on_disk", stats.bytes_on_disk)?;
+    Ok(d.unbind())
+}
+
 /// The `_native` Python module.
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -304,6 +435,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(create_db, m)?)?;
     m.add_function(wrap_pyfunction!(query_spans_by_trace, m)?)?;
     m.add_function(wrap_pyfunction!(merge_all_pending, m)?)?;
+    m.add_function(wrap_pyfunction!(cache_lookup, m)?)?;
+    m.add_function(wrap_pyfunction!(cache_insert, m)?)?;
+    m.add_function(wrap_pyfunction!(cache_invalidate, m)?)?;
+    m.add_function(wrap_pyfunction!(cache_stats, m)?)?;
     Ok(())
 }
 

@@ -70,10 +70,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentc-memo"
+version = "0.1.0"
+dependencies = [
+ "agentc-embed",
+ "anyhow",
+ "rusqlite",
+ "sha2",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "agentc-profiler"
 version = "0.1.0"
 dependencies = [
  "agentc-core",
+ "agentc-memo",
  "pyo3",
  "rusqlite",
  "serde_json",

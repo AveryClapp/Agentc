@@ -1,11 +1,13 @@
 """Background writer thread and span queue.
 
-Provides a bounded queue for span collection and a daemon thread that drains
-it to the Rust write_span FFI function.
+Provides a bounded queue for span and cache-insert messages and a daemon
+thread that drains them to the Rust FFI. Cache inserts ride the same queue
+as spans so a single writer thread serializes all SQLite writes.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import queue
 import threading
@@ -21,17 +23,38 @@ MERGE_SPAN_THRESHOLD = 10_000
 MERGE_INTERVAL_S = 30 * 60  # 30 minutes
 DROP_LOG_INTERVAL = 100
 
-_queue: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=QUEUE_MAX_SIZE)
+
+@dataclasses.dataclass
+class CacheInsertMsg:
+    """Cache-insert request enqueued by the @memoize decorator.
+
+    Fields mirror the agentc._native.cache_insert signature. output_bytes is
+    the raw LLM output serialized to bytes by the caller (the decorator).
+    """
+
+    prompt_hash: bytes
+    model: str
+    parameters_hash: bytes
+    call_site_id: str
+    output_bytes: bytes
+    input_tokens: int
+    output_tokens: int
+    recorded_cost_usd: float
+    ttl_seconds: int
+
+
+_queue: queue.Queue[dict[str, Any] | CacheInsertMsg | None] = queue.Queue(maxsize=QUEUE_MAX_SIZE)
 _writer_thread: threading.Thread | None = None
 _stop_event = threading.Event()
 _total_written = 0
+_total_cache_inserts = 0
 _total_drops = 0
 _lock = threading.Lock()
 
 
 def start() -> None:
     """Start the background writer thread."""
-    global _writer_thread, _total_written, _total_drops
+    global _writer_thread, _total_written, _total_cache_inserts, _total_drops
 
     if _writer_thread is not None and _writer_thread.is_alive():
         logger.debug("Background writer already running")
@@ -39,6 +62,7 @@ def start() -> None:
 
     _stop_event.clear()
     _total_written = 0
+    _total_cache_inserts = 0
     _total_drops = 0
 
     # Clear any stale items
@@ -72,7 +96,12 @@ def stop(timeout_ms: int = 5000) -> None:
     if _writer_thread.is_alive():
         logger.warning("Background writer did not stop within %dms", timeout_ms)
 
-    logger.info("Background writer stopped (%d spans written, %d dropped)", _total_written, _total_drops)
+    logger.info(
+        "Background writer stopped (%d spans, %d cache inserts, %d dropped)",
+        _total_written,
+        _total_cache_inserts,
+        _total_drops,
+    )
     _writer_thread = None
 
 
@@ -93,10 +122,28 @@ def enqueue(span_dict: dict[str, Any]) -> None:
             logger.debug("Span queue full. Dropped span %s (%d total drops)", span_id, drops)
 
 
+def enqueue_cache_insert(msg: CacheInsertMsg) -> None:
+    """Enqueue a cache-insert request. Tail-drops on full queue.
+
+    Fails silently if the writer is not running; the @memoize decorator is
+    responsible for logging — cache inserts are best-effort.
+    """
+    global _total_drops
+    try:
+        _queue.put_nowait(msg)
+    except queue.Full:
+        with _lock:
+            _total_drops += 1
+            drops = _total_drops
+        if drops % DROP_LOG_INTERVAL == 0:
+            logger.warning("Writer queue full: %d items dropped", drops)
+
+
 def get_stats() -> dict[str, int]:
     """Get writer statistics."""
     return {
         "total_written": _total_written,
+        "total_cache_inserts": _total_cache_inserts,
         "total_drops": _total_drops,
         "queue_size": _queue.qsize(),
     }
@@ -104,11 +151,11 @@ def get_stats() -> dict[str, int]:
 
 def _writer_loop() -> None:
     """Main loop for the background writer thread."""
-    global _total_written
+    global _total_written, _total_cache_inserts
 
     from agentc._native import write_span
 
-    batch: list[dict[str, Any]] = []
+    batch: list[dict[str, Any] | CacheInsertMsg] = []
     last_flush = time.monotonic()
     spans_since_merge = 0
     last_merge = time.monotonic()
@@ -117,30 +164,30 @@ def _writer_loop() -> None:
         try:
             item = _queue.get(timeout=0.1)
         except queue.Empty:
-            # Check flush interval
             if batch and (time.monotonic() - last_flush) >= FLUSH_INTERVAL_S:
+                span_count, cache_count = _counts(batch)
                 _flush_batch(write_span, batch)
-                _total_written += len(batch)
-                spans_since_merge += len(batch)
+                _total_written += span_count
+                _total_cache_inserts += cache_count
+                spans_since_merge += span_count
                 batch.clear()
                 last_flush = time.monotonic()
             continue
 
         if item is None:
-            # Sentinel — drain remaining and exit
             break
 
         batch.append(item)
 
-        # Flush on batch size
         if len(batch) >= FLUSH_BATCH_SIZE:
+            span_count, cache_count = _counts(batch)
             _flush_batch(write_span, batch)
-            _total_written += len(batch)
-            spans_since_merge += len(batch)
+            _total_written += span_count
+            _total_cache_inserts += cache_count
+            spans_since_merge += span_count
             batch.clear()
             last_flush = time.monotonic()
 
-        # Check periodic merge
         elapsed = time.monotonic() - last_merge
         if spans_since_merge >= MERGE_SPAN_THRESHOLD or elapsed >= MERGE_INTERVAL_S:
             reason = f"{spans_since_merge} spans" if spans_since_merge >= MERGE_SPAN_THRESHOLD else f"{elapsed/60:.0f}min elapsed"
@@ -149,7 +196,6 @@ def _writer_loop() -> None:
             spans_since_merge = 0
             last_merge = time.monotonic()
 
-    # Drain remaining items
     while True:
         try:
             item = _queue.get_nowait()
@@ -159,24 +205,64 @@ def _writer_loop() -> None:
             break
 
     if batch:
+        span_count, cache_count = _counts(batch)
         _flush_batch(write_span, batch)
-        _total_written += len(batch)
+        _total_written += span_count
+        _total_cache_inserts += cache_count
 
-    logger.debug("Writer loop exited (%d total written)", _total_written)
+    logger.debug(
+        "Writer loop exited (%d spans, %d cache inserts written)",
+        _total_written,
+        _total_cache_inserts,
+    )
 
 
-def _flush_batch(write_fn: Any, batch: list[dict[str, Any]]) -> None:
-    """Write a batch of spans via the Rust FFI.
+def _counts(batch: list[dict[str, Any] | CacheInsertMsg]) -> tuple[int, int]:
+    spans = sum(1 for it in batch if not isinstance(it, CacheInsertMsg))
+    cache_inserts = len(batch) - spans
+    return spans, cache_inserts
+
+
+def _flush_batch(
+    write_fn: Any,
+    batch: list[dict[str, Any] | CacheInsertMsg],
+) -> None:
+    """Write a batch of mixed items via the Rust FFI.
 
     Catches BaseException (not just Exception) because PyO3 PanicException
     inherits from BaseException. A Rust panic must not crash the writer thread.
     """
-    for span_dict in batch:
-        try:
-            write_fn(span_dict)
-        except BaseException:
-            logger.debug("Failed to write span %s", span_dict.get("span_id", "?"), exc_info=True)
-    logger.debug("Flushed %d spans to disk", len(batch))
+    cache_insert_fn = None
+    for item in batch:
+        if isinstance(item, CacheInsertMsg):
+            if cache_insert_fn is None:
+                try:
+                    from agentc._native import cache_insert as cache_insert_fn  # type: ignore[no-redef]
+                except ImportError:
+                    logger.debug("cache_insert FFI unavailable; dropping cache messages")
+                    continue
+            try:
+                cache_insert_fn(  # type: ignore[misc]
+                    item.prompt_hash,
+                    item.model,
+                    item.parameters_hash,
+                    item.call_site_id,
+                    item.output_bytes,
+                    item.input_tokens,
+                    item.output_tokens,
+                    item.recorded_cost_usd,
+                    item.ttl_seconds,
+                )
+            except BaseException:
+                logger.debug(
+                    "Failed to insert cache entry for %s", item.call_site_id, exc_info=True
+                )
+        else:
+            try:
+                write_fn(item)
+            except BaseException:
+                logger.debug("Failed to write span %s", item.get("span_id", "?"), exc_info=True)
+    logger.debug("Flushed %d items", len(batch))
 
 
 def _trigger_merge() -> None:

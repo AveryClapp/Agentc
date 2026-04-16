@@ -60,7 +60,6 @@ pub fn try_merge_pending() {}
 ///
 /// Requires prefix >= 4 chars. Returns an error if no match, or if multiple
 /// traces match the prefix (listing the ambiguous IDs).
-#[allow(dead_code)] // Used by cmd_analyze / cmd_export in subsequent phases.
 pub fn resolve_trace_id_prefix(conn: &Connection, prefix: &str) -> Result<String> {
     if prefix.len() < 4 {
         anyhow::bail!(
@@ -97,7 +96,6 @@ pub fn resolve_trace_id_prefix(conn: &Connection, prefix: &str) -> Result<String
 }
 
 /// Find the most recent trace's ID by MAX(start_time).
-#[allow(dead_code)] // Used by cmd_analyze in a subsequent phase.
 pub fn most_recent_trace_id(conn: &Connection) -> Result<Option<String>> {
     let result: Option<String> = conn
         .query_row(
@@ -147,7 +145,6 @@ fn days_since_epoch(year: i32, month: u32, day: u32) -> i64 {
 }
 
 /// Extract `gen_ai.agent.name` from a span's attributes JSON.
-#[allow(dead_code)] // Used by cmd_analyze / cmd_report in subsequent phases.
 pub fn extract_agent_name(attributes_json: &str) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(attributes_json).ok()?;
     value

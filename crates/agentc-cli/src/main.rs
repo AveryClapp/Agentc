@@ -4,6 +4,7 @@
 
 mod helpers;
 
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -13,12 +14,13 @@ use std::process::{Command, ExitCode};
 use clap::Parser;
 
 use agentc_analyzer::report::{
-    render_traces_list, TracesList, TracesListRow,
+    render_trace_analysis, render_traces_list, CallRow, TraceReport, TracesList,
+    TracesListRow,
 };
 use agentc_analyzer::{cost, waste};
 use helpers::{
-    open_canonical_db_if_exists, parse_since_date, resolve_storage_path,
-    try_merge_pending,
+    extract_agent_name, most_recent_trace_id, open_canonical_db_if_exists,
+    parse_since_date, resolve_storage_path, resolve_trace_id_prefix, try_merge_pending,
 };
 
 #[derive(Parser)]
@@ -308,9 +310,9 @@ fn main() -> anyhow::Result<ExitCode> {
 
 fn cmd_analyze(
     trace_id: Option<String>,
-    _storage_path: String,
+    storage_path: String,
 ) -> anyhow::Result<()> {
-    // Validate trace ID prefix if provided
+    // Validate trace ID prefix upfront (even without a DB).
     if let Some(ref tid) = trace_id {
         if tid.len() < 4 {
             anyhow::bail!(
@@ -320,26 +322,126 @@ fn cmd_analyze(
         }
     }
 
-    let display_id = trace_id
-        .as_deref()
-        .unwrap_or("(most recent)");
+    let storage_dir = resolve_storage_path(&storage_path);
+    try_merge_pending();
 
-    // TODO(VelvetHammer, bd-2db): Query trace from storage
-    // TODO(VelvetHammer, bd-2ix): Cost backfill
-    // TODO(VelvetHammer, bd-2va): Waste detection
+    let Some(conn) = open_canonical_db_if_exists(&storage_dir)? else {
+        anyhow::bail!(
+            "No traces database found at {}. Run an agent under `agentc record` first.",
+            storage_dir.display()
+        );
+    };
 
-    println!("CALL BREAKDOWN — trace {}", display_id);
-    println!(
-        "{:>4} {:<16} {:<24} {:>8} {:>8} {:>8} FLAGS",
-        "#", "AGENT", "MODEL", "IN", "OUT", "COST"
-    );
-    println!("{}", "-".repeat(80));
-    println!("(no spans found — storage backend not yet connected)");
-    println!();
-    println!("WASTE REPORT");
-    println!("(no waste flags detected)");
+    cost::full_cost_backfill(&conn)?;
 
+    let full_trace_id = match trace_id {
+        Some(prefix) => resolve_trace_id_prefix(&conn, &prefix)?,
+        None => most_recent_trace_id(&conn)?
+            .ok_or_else(|| anyhow::anyhow!("No traces found in storage."))?,
+    };
+
+    let report = build_trace_report(&conn, &full_trace_id)?;
+    print!("{}", render_trace_analysis(&report));
     Ok(())
+}
+
+/// Build a display-ready `TraceReport` for a single trace.
+///
+/// - Filters the call breakdown to `kind == "chat"` spans (the LLM calls).
+/// - Header totals (span count, tokens, cost, duration) span all span kinds.
+/// - Waste flag span IDs are mapped to 1-based call indices so the waste
+///   report can reference them.
+fn build_trace_report(
+    conn: &rusqlite::Connection,
+    trace_id: &str,
+) -> anyhow::Result<TraceReport> {
+    let spans = agentc_core::db::query_spans_by_trace(conn, trace_id)?;
+    if spans.is_empty() {
+        anyhow::bail!("No spans found for trace '{}'.", trace_id);
+    }
+
+    // Header aggregates over all spans.
+    let mut total_input: i64 = 0;
+    let mut total_output: i64 = 0;
+    let mut total_cost: f64 = 0.0;
+    let mut min_start: i64 = i64::MAX;
+    let mut max_end: i64 = 0;
+    for s in &spans {
+        total_input += s.input_tokens.unwrap_or(0);
+        total_output += s.output_tokens.unwrap_or(0);
+        total_cost += s.cost_usd.unwrap_or(0.0);
+        min_start = min_start.min(s.start_time);
+        if let Some(end) = s.end_time {
+            max_end = max_end.max(end);
+        }
+    }
+    let duration_us = if max_end > min_start {
+        max_end - min_start
+    } else {
+        0
+    };
+
+    // Agent name from the root span (parent_span_id IS NULL) if present.
+    let agent_name = spans
+        .iter()
+        .find(|s| s.parent_span_id.is_none())
+        .and_then(|s| extract_agent_name(&s.attributes));
+
+    // Call breakdown: chat spans only, 1-based indexed by start_time order.
+    let chat_spans: Vec<&agentc_core::span::Span> =
+        spans.iter().filter(|s| s.kind == "chat").collect();
+
+    let mut span_id_to_call_idx: HashMap<String, usize> = HashMap::new();
+    for (i, s) in chat_spans.iter().enumerate() {
+        span_id_to_call_idx.insert(s.span_id.clone(), i + 1);
+    }
+
+    // Run waste detection before building call rows so we can attach flag labels.
+    let waste_analysis = waste::analyze_trace(conn, trace_id)?;
+
+    // Map span_id → list of detectors flagging that span.
+    let mut span_flags: HashMap<&str, Vec<&str>> = HashMap::new();
+    for flag in &waste_analysis.flags {
+        for sid in &flag.span_ids {
+            span_flags
+                .entry(sid.as_str())
+                .or_default()
+                .push(flag.detector.as_str());
+        }
+    }
+
+    let calls: Vec<CallRow> = chat_spans
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let flag_labels = span_flags
+                .get(s.span_id.as_str())
+                .map(|v| v.iter().map(|d| d.to_string()).collect())
+                .unwrap_or_default();
+            CallRow {
+                index: i + 1,
+                agent: extract_agent_name(&s.attributes),
+                model: s.model.clone(),
+                input_tokens: s.input_tokens.unwrap_or(0),
+                output_tokens: s.output_tokens.unwrap_or(0),
+                cost_usd: s.cost_usd,
+                flag_labels,
+            }
+        })
+        .collect();
+
+    Ok(TraceReport {
+        trace_id: trace_id.to_string(),
+        agent_name,
+        duration_us,
+        span_count: spans.len(),
+        total_input_tokens: total_input,
+        total_output_tokens: total_output,
+        total_cost_usd: total_cost,
+        calls,
+        waste: waste_analysis,
+        span_id_to_call_idx,
+    })
 }
 
 fn cmd_report(
@@ -685,21 +787,92 @@ mod tests {
     }
 
     #[test]
-    fn test_analyze_no_trace_id() {
-        let result = cmd_analyze(None, "~/.agentc".to_string());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_analyze_with_valid_prefix() {
-        let result = cmd_analyze(Some("abcd1234".to_string()), "~/.agentc".to_string());
-        assert!(result.is_ok());
-    }
-
-    #[test]
     fn test_analyze_short_prefix_fails() {
-        let result = cmd_analyze(Some("ab".to_string()), "~/.agentc".to_string());
+        // Validation happens before any DB access.
+        let dir = tempfile::TempDir::new().unwrap();
+        let result = cmd_analyze(Some("ab".to_string()), dir.path().to_string_lossy().into_owned());
         assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("at least 4"));
+    }
+
+    #[test]
+    fn test_analyze_no_db() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let result = cmd_analyze(None, dir.path().to_string_lossy().into_owned());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No traces database"));
+    }
+
+    #[test]
+    fn test_analyze_empty_db() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("traces.db");
+        let _conn = agentc_core::db::create_db(&db_path, true).unwrap();
+
+        let result = cmd_analyze(None, dir.path().to_string_lossy().into_owned());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No traces found"));
+    }
+
+    #[test]
+    fn test_analyze_prefix_no_match() {
+        let dir = make_test_dir_with_one_trace("abcd1234efgh");
+        let result = cmd_analyze(
+            Some("zzzz".to_string()),
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No trace found"));
+    }
+
+    #[test]
+    fn test_analyze_with_data() {
+        let dir = make_test_dir_with_one_trace("abcd1234efgh");
+        let result = cmd_analyze(
+            Some("abcd".to_string()),
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_ok(), "got error: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_analyze_most_recent() {
+        let dir = make_test_dir_with_one_trace("abcd1234efgh");
+        let result = cmd_analyze(None, dir.path().to_string_lossy().into_owned());
+        assert!(result.is_ok(), "got error: {:?}", result.err());
+    }
+
+    /// Create a tempdir with a traces.db containing one chat span on the given trace ID.
+    fn make_test_dir_with_one_trace(trace_id: &str) -> tempfile::TempDir {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("traces.db");
+        let conn = agentc_core::db::create_db(&db_path, true).unwrap();
+        let span = agentc_core::span::Span {
+            span_id: "span-1".to_string(),
+            trace_id: trace_id.to_string(),
+            parent_span_id: None,
+            name: "test".to_string(),
+            kind: "chat".to_string(),
+            start_time: 1_000_000_000_000_000,
+            end_time: Some(1_000_000_500_000_000),
+            status: "OK".to_string(),
+            model: Some("claude-sonnet-4-20250514".to_string()),
+            provider: Some("anthropic".to_string()),
+            input_tokens: Some(100),
+            output_tokens: Some(50),
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            cost_usd: None,
+            attributes: r#"{"gen_ai.agent.name": "review-agent"}"#.to_string(),
+            input_content_id: None,
+            output_content_id: None,
+            input_embedding: None,
+            output_embedding: None,
+            embedding_model: None,
+        };
+        agentc_core::db::insert_span(&conn, &span).unwrap();
+        drop(conn);
+        dir
     }
 
     #[test]

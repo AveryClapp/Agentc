@@ -193,3 +193,34 @@ class TestStats:
         stats = get_stats()
         assert stats["total_written"] == 0
         assert stats["total_drops"] == 0
+
+
+class TestMergeTrigger:
+    def test_trigger_merge_calls_native(self) -> None:
+        """_trigger_merge invokes merge_all_pending and tolerates zero results."""
+        from agentc._writer import _trigger_merge
+
+        mock_merge = MagicMock(return_value={
+            "spans_merged": 0,
+            "input_content_merged": 0,
+            "output_content_merged": 0,
+        })
+        with patch("agentc._native.merge_all_pending", mock_merge):
+            _trigger_merge()
+
+        mock_merge.assert_called_once()
+
+    def test_trigger_merge_swallows_errors(self) -> None:
+        """Rust-side merge failure must not propagate out of the writer thread."""
+        from agentc._writer import _trigger_merge
+
+        mock_merge = MagicMock(side_effect=RuntimeError("boom"))
+        with patch("agentc._native.merge_all_pending", mock_merge):
+            _trigger_merge()  # Must not raise
+
+    def test_trigger_merge_handles_non_dict(self) -> None:
+        """Defensive against a future FFI shape change returning None."""
+        from agentc._writer import _trigger_merge
+
+        with patch("agentc._native.merge_all_pending", MagicMock(return_value=None)):
+            _trigger_merge()  # Must not raise

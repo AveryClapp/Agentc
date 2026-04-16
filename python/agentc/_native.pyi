@@ -18,7 +18,12 @@ def write_span(span_dict: dict[str, Any]) -> None:
     """
     ...
 
-def create_db(path: str, is_canonical: bool = False) -> None:
+def create_db(
+    path: str,
+    is_canonical: bool = False,
+    capture_content: bool = True,
+    capture_embeddings: bool = True,
+) -> None:
     """Create or open a SQLite database at the given path.
 
     Creates the schema (spans, input_content, output_content tables) if new.
@@ -30,5 +35,13 @@ def query_spans_by_trace(db_path: str, trace_id: str) -> list[dict[str, Any]]:
     """Query all spans for a given trace_id from a SQLite database.
 
     Returns a list of dicts, each representing a span.
+    """
+    ...
+
+def merge_all_pending() -> dict[str, int]:
+    """Merge pending per-process DBs into the canonical traces.db.
+
+    Returns a dict with keys spans_merged, input_content_merged,
+    output_content_merged. On non-unix platforms returns a zeroed dict.
     """
     ...

@@ -271,6 +271,31 @@ fn span_to_pydict<'py>(py: Python<'py>, span: &agentc_core::span::Span) -> PyRes
     Ok(d)
 }
 
+/// Merge all pending per-process DBs into the canonical store.
+///
+/// Releases the GIL during the merge (which acquires a cross-process flock and
+/// does SQLite IO). Returns a dict with merge statistics:
+/// `{"spans_merged": int, "input_content_merged": int, "output_content_merged": int}`.
+///
+/// On non-unix platforms, returns a zeroed stats dict without touching the disk.
+#[pyfunction]
+fn merge_all_pending(py: Python<'_>) -> PyResult<Py<PyDict>> {
+    #[cfg(unix)]
+    let stats = py.allow_threads(|| {
+        agentc_core::merge::merge_all_pending()
+            .map_err(|e| PyRuntimeError::new_err(format!("merge_all_pending: {e}")))
+    })?;
+
+    #[cfg(not(unix))]
+    let stats = agentc_core::merge::MergeStats::default();
+
+    let d = PyDict::new_bound(py);
+    d.set_item("spans_merged", stats.spans_merged)?;
+    d.set_item("input_content_merged", stats.input_content_merged)?;
+    d.set_item("output_content_merged", stats.output_content_merged)?;
+    Ok(d.unbind())
+}
+
 /// The `_native` Python module.
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -278,6 +303,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(write_span, m)?)?;
     m.add_function(wrap_pyfunction!(create_db, m)?)?;
     m.add_function(wrap_pyfunction!(query_spans_by_trace, m)?)?;
+    m.add_function(wrap_pyfunction!(merge_all_pending, m)?)?;
     Ok(())
 }
 

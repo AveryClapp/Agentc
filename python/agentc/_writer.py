@@ -145,7 +145,7 @@ def _writer_loop() -> None:
         if spans_since_merge >= MERGE_SPAN_THRESHOLD or elapsed >= MERGE_INTERVAL_S:
             reason = f"{spans_since_merge} spans" if spans_since_merge >= MERGE_SPAN_THRESHOLD else f"{elapsed/60:.0f}min elapsed"
             logger.info("Periodic merge triggered (reason: %s)", reason)
-            # TODO(VelvetHammer, bd-2zc): Actual merge protocol
+            _trigger_merge()
             spans_since_merge = 0
             last_merge = time.monotonic()
 
@@ -177,3 +177,23 @@ def _flush_batch(write_fn: Any, batch: list[dict[str, Any]]) -> None:
         except BaseException:
             logger.debug("Failed to write span %s", span_dict.get("span_id", "?"), exc_info=True)
     logger.debug("Flushed %d spans to disk", len(batch))
+
+
+def _trigger_merge() -> None:
+    """Fold pending per-process DBs into the canonical store.
+
+    Runs inline on the writer thread. The underlying Rust call acquires a
+    cross-process flock and releases the GIL during IO. Failures here are
+    non-fatal — the writer keeps running and the next tick retries.
+    """
+    from agentc._native import merge_all_pending
+
+    try:
+        stats = merge_all_pending()
+    except BaseException:
+        logger.debug("Periodic merge failed", exc_info=True)
+        return
+
+    spans = stats.get("spans_merged", 0) if isinstance(stats, dict) else 0
+    if spans > 0:
+        logger.info("Merged %d spans into canonical store", spans)

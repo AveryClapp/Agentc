@@ -92,3 +92,15 @@ def cache_stats() -> dict[str, int | float]:
     Keys: entries, total_hits, estimated_savings_usd, bytes_on_disk.
     """
     ...
+
+def canonicalize_prompt_bytes(prompt_json: bytes, provider: str) -> bytes:
+    """Canonicalize a prompt via the Rust mirror adapter.
+
+    Accepts JSON-encoded bytes and returns canonical UTF-8 JSON bytes.
+    Exists for parity tests against the Python canonicalizer.
+    """
+    ...
+
+def canonicalize_parameters_bytes(params_json: bytes) -> bytes:
+    """Canonicalize parameters via the Rust mirror adapter."""
+    ...

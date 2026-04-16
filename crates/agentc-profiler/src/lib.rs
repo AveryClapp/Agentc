@@ -11,7 +11,7 @@ use std::sync::{Mutex, OnceLock};
 
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::{PyBytes, PyDict, PyList};
 use rusqlite::Connection;
 
 use agentc_core::storage::{self, SpanInput, WriteSpanOptions};
@@ -427,6 +427,35 @@ fn cache_stats(py: Python<'_>) -> PyResult<Py<PyDict>> {
     Ok(d.unbind())
 }
 
+/// Canonicalize a prompt using the Rust mirror adapter.
+///
+/// Accepts a JSON-encoded prompt (bytes) and a provider tag; returns the
+/// canonical UTF-8 JSON bytes. Used by parity tests to confirm Python and
+/// Rust canonicalizers agree.
+#[pyfunction]
+fn canonicalize_prompt_bytes<'py>(
+    py: Python<'py>,
+    prompt_json: &[u8],
+    provider: &str,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let value: serde_json::Value = serde_json::from_slice(prompt_json)
+        .map_err(|e| PyValueError::new_err(format!("invalid JSON: {e}")))?;
+    let bytes = agentc_memo::canonical::canonicalize_prompt(&value, provider);
+    Ok(PyBytes::new_bound(py, &bytes))
+}
+
+/// Canonicalize parameters using the Rust mirror adapter.
+#[pyfunction]
+fn canonicalize_parameters_bytes<'py>(
+    py: Python<'py>,
+    params_json: &[u8],
+) -> PyResult<Bound<'py, PyBytes>> {
+    let value: serde_json::Value = serde_json::from_slice(params_json)
+        .map_err(|e| PyValueError::new_err(format!("invalid JSON: {e}")))?;
+    let bytes = agentc_memo::canonical::canonicalize_parameters(&value);
+    Ok(PyBytes::new_bound(py, &bytes))
+}
+
 /// The `_native` Python module.
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -439,6 +468,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cache_insert, m)?)?;
     m.add_function(wrap_pyfunction!(cache_invalidate, m)?)?;
     m.add_function(wrap_pyfunction!(cache_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(canonicalize_prompt_bytes, m)?)?;
+    m.add_function(wrap_pyfunction!(canonicalize_parameters_bytes, m)?)?;
     Ok(())
 }
 

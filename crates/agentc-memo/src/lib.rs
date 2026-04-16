@@ -9,6 +9,7 @@
 //! profiler FFI) depend on the trait, not on `SqliteCache`.
 
 pub mod cache;
+pub mod canonical;
 pub mod ffi;
 pub mod key;
 pub mod schema;

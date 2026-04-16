@@ -76,6 +76,7 @@ dependencies = [
  "agentc-embed",
  "anyhow",
  "rusqlite",
+ "serde_json",
  "sha2",
  "tempfile",
  "thiserror",

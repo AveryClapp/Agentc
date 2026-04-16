@@ -3,6 +3,7 @@ members = [
     "crates/agentc-core",
     "crates/agentc-embed",
     "crates/agentc-memo",
+    "crates/agentc-optimizer",
     "crates/agentc-profiler",
     "crates/agentc-analyzer",
     "crates/agentc-cli",
@@ -21,6 +22,7 @@ agentc-core = { path = "crates/agentc-core" }
 agentc-embed = { path = "crates/agentc-embed" }
 agentc-memo = { path = "crates/agentc-memo" }
 agentc-analyzer = { path = "crates/agentc-analyzer" }
+agentc-optimizer = { path = "crates/agentc-optimizer" }
 
 # Storage
 rusqlite = { version = "0.31", features = ["bundled"] }

@@ -13,6 +13,7 @@ path = "src/main.rs"
 agentc-core = { workspace = true }
 agentc-analyzer = { workspace = true }
 agentc-memo = { workspace = true }
+agentc-optimizer = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 serde_json = { workspace = true }

@@ -16,6 +16,7 @@ pub mod dag;
 pub mod dag_context;
 pub mod ffi;
 pub mod planner;
+pub mod reporting;
 pub mod rules;
 pub mod schema;
 pub mod shadow;
@@ -27,6 +28,11 @@ pub use cost_model::{CallSiteProfile, CostModel, CostModelUpdate, WelfordStats};
 pub use dag::{Call, DepSource, Message, Outcome, Parameters, Tool};
 pub use dag_context::{DagContextCache, DagSpan, DEFAULT_WINDOW, MAX_TRACES_CACHED};
 pub use planner::{Optimizer, Plan, Proposal, RewriteRule};
+pub use reporting::{
+    build_inspect, build_report, disable_rule, glob_to_sql_like, render_disable_summary,
+    render_inspect, render_report, AccuracyStatus, CallSiteInspect, DisableSummary,
+    OptimizerReport, RuleBreakdown, RuleFiringRate,
+};
 pub use rules::{
     CacheHitRule, ContextCompressRule, ModelDowngradeRoute, ModelDowngradeRule,
     ParallelBranchRule, StateDropRule,

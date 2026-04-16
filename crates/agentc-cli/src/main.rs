@@ -128,6 +128,59 @@ enum Cli {
         #[command(subcommand)]
         cmd: CacheCmd,
     },
+    /// Inspect and manage the JIT optimizer.
+    Optimize {
+        #[command(subcommand)]
+        cmd: OptimizeCmd,
+    },
+}
+
+#[derive(clap::Subcommand)]
+enum OptimizeCmd {
+    /// Aggregate report over the last N hours of optimizer activity.
+    Report {
+        /// Window size in hours (default 24).
+        #[arg(long, default_value_t = 24)]
+        hours: u64,
+        /// Storage path.
+        #[arg(long, default_value = "~/.agentc")]
+        storage_path: String,
+    },
+    /// Per-call-site cost model + rule firing rates + accuracy status.
+    Inspect {
+        /// Target call_site_id.
+        call_site: String,
+        /// Storage path.
+        #[arg(long, default_value = "~/.agentc")]
+        storage_path: String,
+    },
+    /// Operator override: write `optimizer_disabled` rows.
+    Disable {
+        /// Rule name to disable (e.g. ModelDowngrade).
+        #[arg(long)]
+        rule: String,
+        /// Call-site GLOB (`*`, `?`).
+        #[arg(long = "call-site")]
+        call_site: String,
+        /// Reason recorded in the disable row (default "operator override").
+        #[arg(long, default_value = "operator override")]
+        reason: String,
+        /// Cooldown in hours before the rule re-enables (default 24h).
+        #[arg(long, default_value_t = 24)]
+        hours: u64,
+        /// Storage path.
+        #[arg(long, default_value = "~/.agentc")]
+        storage_path: String,
+    },
+    /// Run an agent twice (optimizer off / on) and diff the results.
+    Bench {
+        /// Path to the agent script (passed to `python <agent>`).
+        #[arg(long)]
+        agent: String,
+        /// Storage path.
+        #[arg(long, default_value = "~/.agentc")]
+        storage_path: String,
+    },
 }
 
 #[derive(clap::Subcommand)]
@@ -424,6 +477,10 @@ fn main() -> anyhow::Result<ExitCode> {
         }
         Cli::Cache { cmd } => {
             cmd_cache(cmd)?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Cli::Optimize { cmd } => {
+            cmd_optimize(cmd)?;
             Ok(ExitCode::SUCCESS)
         }
     }
@@ -1513,6 +1570,231 @@ fn cmd_cache_bench(
         "agentc cache bench requires the reference-agent harness (tracked in bd-j3k / M9). \
          Requested: call_site={call_site}, runs={runs}."
     )
+}
+
+// =============================================================================
+// agentc optimize ...
+// =============================================================================
+
+fn cmd_optimize(cmd: OptimizeCmd) -> anyhow::Result<()> {
+    match cmd {
+        OptimizeCmd::Report {
+            hours,
+            storage_path,
+        } => cmd_optimize_report(hours, storage_path),
+        OptimizeCmd::Inspect {
+            call_site,
+            storage_path,
+        } => cmd_optimize_inspect(call_site, storage_path),
+        OptimizeCmd::Disable {
+            rule,
+            call_site,
+            reason,
+            hours,
+            storage_path,
+        } => cmd_optimize_disable(rule, call_site, reason, hours, storage_path),
+        OptimizeCmd::Bench {
+            agent,
+            storage_path,
+        } => cmd_optimize_bench(agent, storage_path),
+    }
+}
+
+/// Open (create if missing) `cost_model.db` in the storage dir. Returns the
+/// connection; ensures the schema is applied.
+fn open_cost_model_db(storage_dir: &std::path::Path) -> anyhow::Result<rusqlite::Connection> {
+    std::fs::create_dir_all(storage_dir)?;
+    let db_path = storage_dir.join("cost_model.db");
+    let conn = rusqlite::Connection::open(&db_path)?;
+    agentc_optimizer::schema::ensure_cost_model_schema(&conn)?;
+    Ok(conn)
+}
+
+/// Open (create if missing) `optimizer_audit.db` in the storage dir. Returns
+/// the connection; ensures the schema is applied.
+fn open_audit_db(storage_dir: &std::path::Path) -> anyhow::Result<rusqlite::Connection> {
+    std::fs::create_dir_all(storage_dir)?;
+    let db_path = storage_dir.join("optimizer_audit.db");
+    let conn = rusqlite::Connection::open(&db_path)?;
+    agentc_optimizer::schema::ensure_audit_schema(&conn)?;
+    Ok(conn)
+}
+
+fn now_us() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0)
+}
+
+fn cmd_optimize_report(hours: u64, storage_path: String) -> anyhow::Result<()> {
+    let storage_dir = resolve_storage_path(&storage_path);
+    let audit = open_audit_db(&storage_dir)?;
+    let cost = open_cost_model_db(&storage_dir)?;
+    let report = agentc_optimizer::build_report(&audit, Some(&cost), now_us(), hours)?;
+    print!("{}", agentc_optimizer::render_report(&report));
+    Ok(())
+}
+
+fn cmd_optimize_inspect(call_site: String, storage_path: String) -> anyhow::Result<()> {
+    let storage_dir = resolve_storage_path(&storage_path);
+    let cost = open_cost_model_db(&storage_dir)?;
+    let audit = open_audit_db(&storage_dir)?;
+    match agentc_optimizer::build_inspect(&cost, &audit, &call_site, 50, now_us())? {
+        Some(inspect) => {
+            print!("{}", agentc_optimizer::render_inspect(&inspect));
+            Ok(())
+        }
+        None => {
+            anyhow::bail!(
+                "No cost-model profile for call site '{}'. Run the agent under \
+                 `agentc record` so the optimizer observes it first.",
+                call_site
+            )
+        }
+    }
+}
+
+fn cmd_optimize_disable(
+    rule: String,
+    call_site: String,
+    reason: String,
+    hours: u64,
+    storage_path: String,
+) -> anyhow::Result<()> {
+    let storage_dir = resolve_storage_path(&storage_path);
+    let mut cost = open_cost_model_db(&storage_dir)?;
+    let now = now_us();
+    let cooldown_us = (hours as i64).saturating_mul(3_600 * 1_000_000);
+    let reenable_at = now.saturating_add(cooldown_us);
+    let summary = agentc_optimizer::disable_rule(
+        &mut cost,
+        &rule,
+        &call_site,
+        &reason,
+        now,
+        reenable_at,
+    )?;
+    print!("{}", agentc_optimizer::render_disable_summary(&summary));
+    Ok(())
+}
+
+/// `agentc optimize bench --agent <path>`: run the agent twice and diff.
+///
+/// Pass 1: `AGENTC_OPTIMIZE=0` — profiling runs, optimizer is a no-op.
+/// Pass 2: default — optimizer is active.
+///
+/// Each pass is captured under a fresh subdirectory of the storage path so
+/// the two runs never share a cost model or audit DB. The actual diff is
+/// then computed from their canonical traces.
+fn cmd_optimize_bench(agent: String, storage_path: String) -> anyhow::Result<()> {
+    let agent_path = std::path::PathBuf::from(&agent);
+    if !agent_path.exists() {
+        anyhow::bail!("Agent script not found: {}", agent);
+    }
+
+    let base_dir = resolve_storage_path(&storage_path);
+    std::fs::create_dir_all(&base_dir)?;
+    let baseline_dir = base_dir.join("bench-baseline");
+    let optimized_dir = base_dir.join("bench-optimized");
+    // Clean slate for each run — otherwise stale traces pollute the diff.
+    let _ = std::fs::remove_dir_all(&baseline_dir);
+    let _ = std::fs::remove_dir_all(&optimized_dir);
+    std::fs::create_dir_all(&baseline_dir)?;
+    std::fs::create_dir_all(&optimized_dir)?;
+
+    eprintln!("Running baseline (optimizer disabled)...");
+    let baseline = bench_run(&agent_path, &baseline_dir, false)?;
+    eprintln!("Running optimized...");
+    let optimized = bench_run(&agent_path, &optimized_dir, true)?;
+
+    println!("─────────────────────────────────────────────────────────");
+    println!(
+        "Baseline:     {}   avg {:.1}s per task",
+        format_usd(baseline.total_cost_usd),
+        baseline.mean_duration_s
+    );
+    println!(
+        "Optimized:    {}   avg {:.1}s per task",
+        format_usd(optimized.total_cost_usd),
+        optimized.mean_duration_s
+    );
+    let savings_frac = if baseline.total_cost_usd > 0.0 {
+        (baseline.total_cost_usd - optimized.total_cost_usd) / baseline.total_cost_usd
+    } else {
+        0.0
+    };
+    let latency_delta = if baseline.mean_duration_s > 0.0 {
+        (optimized.mean_duration_s - baseline.mean_duration_s) / baseline.mean_duration_s
+    } else {
+        0.0
+    };
+    println!(
+        "Savings:      {:.1}%    (latency {:+.1}%)",
+        savings_frac * 100.0,
+        latency_delta * 100.0
+    );
+    Ok(())
+}
+
+struct BenchRun {
+    total_cost_usd: f64,
+    mean_duration_s: f64,
+}
+
+fn bench_run(
+    agent: &std::path::Path,
+    storage_dir: &std::path::Path,
+    optimize: bool,
+) -> anyhow::Result<BenchRun> {
+    use std::process::Command;
+
+    // Use `agentc record -- python <agent>` so profiling is wired the same
+    // way it is for end users. The current process is the bench harness, not
+    // the child — re-invoke the bin with Record.
+    let self_exe = std::env::current_exe()
+        .unwrap_or_else(|_| std::path::PathBuf::from("agentc"));
+    let status = Command::new(&self_exe)
+        .arg("record")
+        .arg("--storage-path")
+        .arg(storage_dir)
+        .arg("--")
+        .arg("python")
+        .arg(agent)
+        .env("AGENTC_OPTIMIZE", if optimize { "1" } else { "0" })
+        .status()?;
+    if !status.success() {
+        anyhow::bail!("agent run failed (exit code {:?})", status.code());
+    }
+
+    // Aggregate cost + wall-clock duration from traces.db.
+    let db_path = storage_dir.join("traces.db");
+    if !db_path.exists() {
+        return Ok(BenchRun {
+            total_cost_usd: 0.0,
+            mean_duration_s: 0.0,
+        });
+    }
+    let conn = agentc_core::db::open_db(&db_path)?;
+    agentc_analyzer::cost::full_cost_backfill(&conn)?;
+    let (total_cost, duration_us, trace_count): (f64, i64, i64) = conn
+        .query_row(
+            "SELECT COALESCE(SUM(cost_usd), 0.0), \
+                    COALESCE(MAX(COALESCE(end_time, start_time)) - MIN(start_time), 0), \
+                    COUNT(DISTINCT trace_id) \
+             FROM spans",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
+    let mean_duration_s = if trace_count > 0 {
+        (duration_us as f64 / 1_000_000.0) / trace_count as f64
+    } else {
+        0.0
+    };
+    Ok(BenchRun {
+        total_cost_usd: total_cost,
+        mean_duration_s,
+    })
 }
 
 #[cfg(test)]

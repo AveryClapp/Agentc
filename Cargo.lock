@@ -30,6 +30,7 @@ dependencies = [
  "agentc-analyzer",
  "agentc-core",
  "agentc-memo",
+ "agentc-optimizer",
  "anyhow",
  "clap",
  "dirs",

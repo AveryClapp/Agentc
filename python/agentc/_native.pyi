@@ -135,3 +135,22 @@ def canonicalize_prompt_bytes(prompt_json: bytes, provider: str) -> bytes:
 def canonicalize_parameters_bytes(params_json: bytes) -> bytes:
     """Canonicalize parameters via the Rust mirror adapter."""
     ...
+
+def optimize_plan(call_json: str) -> str:
+    """Run the optimizer for one intercepted Call and return a JSON Plan.
+
+    Fail-open: on any Rust panic, deserialization error, or misconfiguration
+    the native side returns '{"kind":"pass_through"}'. The caller should
+    treat that as "just run the original call."
+    """
+    ...
+
+def optimize_observe(plan_json: str, outcome_json: str) -> None:
+    """Feed an Outcome back into the cost model after a Plan dispatch.
+
+    `plan_json` is the JSON that `optimize_plan` returned. `outcome_json`
+    carries input_tokens / output_tokens / latency_ms / cost_usd /
+    output_is_structured / output_is_short. Internally fail-open — any
+    error is dropped.
+    """
+    ...

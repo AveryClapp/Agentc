@@ -34,6 +34,13 @@ from agentc._memoize import cache_invalidate  # noqa: F401
 from agentc._memoize import cache_invalidate_all  # noqa: F401
 from agentc._memoize import memoize  # noqa: F401
 
+# Import optimizer API.
+from agentc._optimizer import Plan  # noqa: F401
+from agentc._optimizer import observe_outcome  # noqa: F401
+from agentc._optimizer import plan_call  # noqa: F401
+from agentc._executor import dispatch  # noqa: F401
+from agentc._intercept import intercept  # noqa: F401
+
 __all__ = [
     "__version__",
     "init",
@@ -51,4 +58,9 @@ __all__ = [
     "memoize",
     "cache_invalidate",
     "cache_invalidate_all",
+    "Plan",
+    "plan_call",
+    "observe_outcome",
+    "dispatch",
+    "intercept",
 ]

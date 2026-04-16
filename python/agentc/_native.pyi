@@ -101,6 +101,14 @@ def cache_stats() -> dict[str, int | float]:
     """
     ...
 
+def cache_maintenance(max_entries: int = 0) -> dict[str, int | bool]:
+    """Run TTL sweep + LRU eviction + opportunistic VACUUM.
+
+    `max_entries` of 0 disables the LRU cap (the caller relies solely on TTL).
+    Returns {ttl_rows, lru_rows, vacuumed}.
+    """
+    ...
+
 def output_content_load(content_id: str) -> bytes | None:
     """Load a row from the shared `output_content` table by content_id.
 

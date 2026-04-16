@@ -10,6 +10,7 @@
 
 pub mod cache;
 pub mod canonical;
+pub mod eviction;
 pub mod ffi;
 pub mod key;
 pub mod lsh;

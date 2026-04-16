@@ -181,6 +181,59 @@ pub fn insert(
     Ok(())
 }
 
+/// Combined maintenance pass: TTL sweep → LRU cap → opportunistic VACUUM.
+///
+/// Returns `(ttl_rows, lru_rows, vacuumed)`. Errors are fail-open: any step
+/// that fails returns `0` / `false` for its slot and the remaining steps
+/// still run.
+pub fn maintenance(conn: &Connection, max_entries: u64) -> (u64, u64, bool) {
+    if let Err(e) = ensure_schema(conn) {
+        eprintln!("agentc-memo: maintenance schema setup failed: {e}");
+        return (0, 0, false);
+    }
+
+    // Capture size before so we can estimate reclaimed bytes. `page_count *
+    // page_size` is SQLite's on-disk footprint — close enough to drive the
+    // VACUUM trigger.
+    let size_before = on_disk_bytes(conn).unwrap_or(0);
+
+    let ttl_rows = match crate::eviction::ttl_sweep(conn, now_micros()) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("agentc-memo: ttl_sweep failed: {e}");
+            0
+        }
+    };
+
+    let lru_rows = match crate::eviction::lru_evict(conn, max_entries) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("agentc-memo: lru_evict failed: {e}");
+            0
+        }
+    };
+
+    let size_after = on_disk_bytes(conn).unwrap_or(size_before);
+    let freed = size_before.saturating_sub(size_after);
+
+    let vacuumed = match crate::eviction::maybe_vacuum(conn, freed) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("agentc-memo: maybe_vacuum failed: {e}");
+            false
+        }
+    };
+
+    (ttl_rows, lru_rows, vacuumed)
+}
+
+fn on_disk_bytes(conn: &Connection) -> rusqlite::Result<u64> {
+    let page_count: i64 =
+        conn.query_row("PRAGMA page_count", [], |r| r.get(0))?;
+    let page_size: i64 = conn.query_row("PRAGMA page_size", [], |r| r.get(0))?;
+    Ok((page_count.max(0) as u64).saturating_mul(page_size.max(0) as u64))
+}
+
 /// FFI-safe `invalidate`. Returns rows deleted, or 0 on error.
 pub fn invalidate(conn: &Connection, pattern: InvalidationPattern) -> u64 {
     let cache = match SqliteCache::from_shared(conn) {

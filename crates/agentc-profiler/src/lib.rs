@@ -464,6 +464,31 @@ fn cache_stats(py: Python<'_>) -> PyResult<Py<PyDict>> {
     Ok(d.unbind())
 }
 
+/// Run the memoization cache's maintenance pass (TTL + LRU + VACUUM).
+///
+/// Returns a dict with keys `ttl_rows`, `lru_rows`, `vacuumed`. Invoked
+/// periodically from the Python writer thread. Fail-open: every internal
+/// failure is swallowed and the corresponding stat is 0.
+#[pyfunction]
+#[pyo3(signature = (max_entries=0))]
+fn cache_maintenance(py: Python<'_>, max_entries: u64) -> PyResult<Py<PyDict>> {
+    let (ttl_rows, lru_rows, vacuumed) = py.allow_threads(|| -> (u64, u64, bool) {
+        let Ok(guard) = state().lock() else {
+            return (0, 0, false);
+        };
+        let Some(conn) = guard.conn.as_ref() else {
+            return (0, 0, false);
+        };
+        agentc_memo::ffi::maintenance(conn, max_entries)
+    });
+
+    let d = PyDict::new_bound(py);
+    d.set_item("ttl_rows", ttl_rows)?;
+    d.set_item("lru_rows", lru_rows)?;
+    d.set_item("vacuumed", vacuumed)?;
+    Ok(d.unbind())
+}
+
 /// Load a row from the shared `output_content` table by its content_id.
 ///
 /// Returns the raw bytes the caller stashed at insert time (for memoization
@@ -549,6 +574,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cache_insert, m)?)?;
     m.add_function(wrap_pyfunction!(cache_invalidate, m)?)?;
     m.add_function(wrap_pyfunction!(cache_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(cache_maintenance, m)?)?;
     m.add_function(wrap_pyfunction!(output_content_load, m)?)?;
     m.add_function(wrap_pyfunction!(embed_text_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(canonicalize_prompt_bytes, m)?)?;

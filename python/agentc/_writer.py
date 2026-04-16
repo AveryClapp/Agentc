@@ -23,6 +23,12 @@ MERGE_SPAN_THRESHOLD = 10_000
 MERGE_INTERVAL_S = 30 * 60  # 30 minutes
 DROP_LOG_INTERVAL = 100
 
+# Memoization cache eviction cadence — matches spec default
+# `ttl_sweep_interval_seconds = 300`. `MEMO_MAX_ENTRIES` is the soft cap
+# passed to the LRU pass; 0 disables LRU (TTL-only).
+MEMO_MAINTENANCE_INTERVAL_S = 300.0
+MEMO_MAX_ENTRIES = 100_000
+
 
 @dataclasses.dataclass
 class CacheInsertMsg:
@@ -193,6 +199,7 @@ def _writer_loop() -> None:
     last_flush = time.monotonic()
     spans_since_merge = 0
     last_merge = time.monotonic()
+    last_maintenance = time.monotonic()
 
     while not _stop_event.is_set():
         try:
@@ -241,6 +248,10 @@ def _writer_loop() -> None:
             _trigger_merge()
             spans_since_merge = 0
             last_merge = time.monotonic()
+
+        if (time.monotonic() - last_maintenance) >= MEMO_MAINTENANCE_INTERVAL_S:
+            _trigger_cache_maintenance()
+            last_maintenance = time.monotonic()
 
     while True:
         try:
@@ -314,6 +325,30 @@ def _flush_batch(
             except BaseException:
                 logger.debug("Failed to write span %s", item.get("span_id", "?"), exc_info=True)
     logger.debug("Flushed %d items", len(batch))
+
+
+def _trigger_cache_maintenance() -> None:
+    """Run a TTL + LRU + VACUUM pass for the memoization cache.
+
+    Called from the writer loop so eviction cannot race with an insert.
+    Failures are swallowed — a stale cache entry is always safer than a
+    crashed writer.
+    """
+    try:
+        from agentc._native import cache_maintenance
+    except ImportError:
+        return
+
+    try:
+        stats = cache_maintenance(MEMO_MAX_ENTRIES)
+    except BaseException:
+        logger.debug("Periodic cache maintenance failed", exc_info=True)
+        return
+
+    ttl = stats.get("ttl_rows", 0) if isinstance(stats, dict) else 0
+    lru = stats.get("lru_rows", 0) if isinstance(stats, dict) else 0
+    if ttl or lru:
+        logger.info("Cache maintenance: %d TTL, %d LRU evicted", ttl, lru)
 
 
 def _trigger_merge() -> None:

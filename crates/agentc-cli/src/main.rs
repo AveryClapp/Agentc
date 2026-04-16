@@ -14,8 +14,9 @@ use std::process::{Command, ExitCode};
 use clap::Parser;
 
 use agentc_analyzer::report::{
-    render_trace_analysis, render_traces_list, CallRow, TraceReport, TracesList,
-    TracesListRow,
+    render_aggregate_report, render_trace_analysis, render_traces_list, AgentBreakdown,
+    AggregateReport, CallRow, ModelBreakdown, TraceReport, TracesList, TracesListRow,
+    WasteDetectorSummary,
 };
 use agentc_analyzer::{cost, waste};
 use helpers::{
@@ -449,36 +450,159 @@ fn cmd_report(
     since: Option<String>,
     agent: Option<String>,
     model: Option<String>,
-    _storage_path: String,
+    storage_path: String,
 ) -> anyhow::Result<()> {
-    let _ = (last, since, agent, model);
+    let storage_dir = resolve_storage_path(&storage_path);
+    try_merge_pending();
 
-    // TODO(VelvetHammer, bd-2db): Query traces from storage
+    let Some(conn) = open_canonical_db_if_exists(&storage_dir)? else {
+        print!("{}", render_aggregate_report(&AggregateReport::default()));
+        return Ok(());
+    };
 
-    println!("SUMMARY");
-    println!("  Traces: 0");
-    println!("  Spans:  0");
-    println!("  Tokens: 0");
-    println!("  Cost:   $0.00");
-    println!();
-    println!("BY MODEL");
-    println!(
-        "  {:<24} {:>8} {:>8} {:>8} {:>8}",
-        "MODEL", "CALLS", "IN", "OUT", "COST"
-    );
-    println!("  (no data)");
-    println!();
-    println!("BY AGENT");
-    println!(
-        "  {:<24} {:>8} {:>8} {:>8} {:>8}",
-        "AGENT", "CALLS", "IN", "OUT", "COST"
-    );
-    println!("  (no data)");
-    println!();
-    println!("WASTE SUMMARY");
-    println!("  (no waste flags detected)");
+    cost::full_cost_backfill(&conn)?;
 
+    let since_us = match since {
+        Some(ref s) => Some(parse_since_date(s)?),
+        None => None,
+    };
+
+    // --last is a trace-level cap (most recent N). Default matches the spec's 50.
+    let limit = last.unwrap_or(50) as i64;
+    let trace_summaries = agentc_core::db::query_traces(&conn, limit, since_us)?;
+
+    let report = build_aggregate_report(
+        &conn,
+        &trace_summaries,
+        agent.as_deref(),
+        model.as_deref(),
+    )?;
+    print!("{}", render_aggregate_report(&report));
     Ok(())
+}
+
+/// Aggregate spans across the given traces into a display-ready `AggregateReport`.
+///
+/// `agent_filter` and `model_filter` filter at the span level: a span is counted
+/// only if all provided filters match. Traces whose spans are all filtered out
+/// contribute zero to the totals (but still count in `trace_count` if they had
+/// any matching spans).
+fn build_aggregate_report(
+    conn: &rusqlite::Connection,
+    trace_summaries: &[agentc_core::span::TraceSummary],
+    agent_filter: Option<&str>,
+    model_filter: Option<&str>,
+) -> anyhow::Result<AggregateReport> {
+    let mut total_tokens: i64 = 0;
+    let mut total_cost: f64 = 0.0;
+    let mut min_start: Option<i64> = None;
+    let mut max_start: Option<i64> = None;
+    let mut matched_trace_count: usize = 0;
+
+    let mut by_model: HashMap<String, (i64, f64)> = HashMap::new();
+    let mut by_agent: HashMap<String, (i64, f64)> = HashMap::new();
+    let mut waste_totals: HashMap<String, (usize, f64)> = HashMap::new();
+
+    for summary in trace_summaries {
+        let spans = agentc_core::db::query_spans_by_trace(conn, &summary.trace_id)?;
+        if spans.is_empty() {
+            continue;
+        }
+
+        let mut matched_any = false;
+        for s in &spans {
+            if let Some(m) = model_filter {
+                if s.model.as_deref() != Some(m) {
+                    continue;
+                }
+            }
+            let span_agent = extract_agent_name(&s.attributes);
+            if let Some(a) = agent_filter {
+                if span_agent.as_deref() != Some(a) {
+                    continue;
+                }
+            }
+
+            matched_any = true;
+            let tokens = s.input_tokens.unwrap_or(0) + s.output_tokens.unwrap_or(0);
+            let cost = s.cost_usd.unwrap_or(0.0);
+            total_tokens += tokens;
+            total_cost += cost;
+
+            if let Some(ref m) = s.model {
+                let e = by_model.entry(m.clone()).or_insert((0, 0.0));
+                e.0 += tokens;
+                e.1 += cost;
+            }
+            if let Some(a) = span_agent {
+                let e = by_agent.entry(a).or_insert((0, 0.0));
+                e.0 += tokens;
+                e.1 += cost;
+            }
+        }
+
+        if !matched_any {
+            continue;
+        }
+        matched_trace_count += 1;
+        min_start = Some(min_start.map_or(summary.start_time, |m| m.min(summary.start_time)));
+        max_start = Some(max_start.map_or(summary.start_time, |m| m.max(summary.start_time)));
+
+        // Waste analysis is trace-level; it inherits the trace-set filter only.
+        let analysis = waste::analyze_trace(conn, &summary.trace_id)?;
+        for flag in &analysis.flags {
+            let e = waste_totals
+                .entry(flag.detector.clone())
+                .or_insert((0, 0.0));
+            e.0 += 1;
+            e.1 += flag.estimated_cost.unwrap_or(0.0);
+        }
+    }
+
+    let mut by_model_vec: Vec<ModelBreakdown> = by_model
+        .into_iter()
+        .map(|(model, (t, c))| ModelBreakdown {
+            model,
+            total_tokens: t,
+            total_cost_usd: c,
+        })
+        .collect();
+    by_model_vec.sort_by(|a, b| b.total_cost_usd.partial_cmp(&a.total_cost_usd).unwrap());
+
+    let mut by_agent_vec: Vec<AgentBreakdown> = by_agent
+        .into_iter()
+        .map(|(agent, (t, c))| AgentBreakdown {
+            agent,
+            total_tokens: t,
+            total_cost_usd: c,
+        })
+        .collect();
+    by_agent_vec.sort_by(|a, b| b.total_cost_usd.partial_cmp(&a.total_cost_usd).unwrap());
+
+    let mut waste_vec: Vec<WasteDetectorSummary> = waste_totals
+        .into_iter()
+        .map(|(detector, (count, waste_usd))| WasteDetectorSummary {
+            detector,
+            flag_count: count,
+            estimated_waste_usd: waste_usd,
+        })
+        .collect();
+    waste_vec.sort_by(|a, b| {
+        b.estimated_waste_usd
+            .partial_cmp(&a.estimated_waste_usd)
+            .unwrap()
+    });
+
+    Ok(AggregateReport {
+        trace_count: matched_trace_count,
+        date_start_us: min_start,
+        date_end_us: max_start,
+        total_tokens,
+        total_cost_usd: total_cost,
+        by_model: by_model_vec,
+        by_agent: by_agent_vec,
+        waste_summary: waste_vec,
+    })
 }
 
 fn cmd_traces(
@@ -876,9 +1000,95 @@ mod tests {
     }
 
     #[test]
-    fn test_report_runs_without_error() {
-        let result = cmd_report(Some(10), None, None, None, "~/.agentc".to_string());
-        assert!(result.is_ok());
+    fn test_report_empty_storage() {
+        // No traces.db at path — should render an empty aggregate report, not error.
+        let dir = tempfile::TempDir::new().unwrap();
+        let result = cmd_report(
+            Some(10),
+            None,
+            None,
+            None,
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_ok(), "got error: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_report_with_data() {
+        let dir = make_test_dir_with_one_trace("abcd1234efgh");
+        let result = cmd_report(
+            Some(10),
+            None,
+            None,
+            None,
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_ok(), "got error: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_report_agent_filter_match() {
+        let dir = make_test_dir_with_one_trace("abcd1234efgh");
+        let result = cmd_report(
+            Some(10),
+            None,
+            Some("review-agent".to_string()),
+            None,
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_ok(), "got error: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_report_agent_filter_no_match() {
+        let dir = make_test_dir_with_one_trace("abcd1234efgh");
+        let result = cmd_report(
+            Some(10),
+            None,
+            Some("nonexistent-agent".to_string()),
+            None,
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_ok(), "got error: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_report_model_filter() {
+        let dir = make_test_dir_with_one_trace("abcd1234efgh");
+        let result = cmd_report(
+            Some(10),
+            None,
+            None,
+            Some("claude-sonnet-4-20250514".to_string()),
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_ok(), "got error: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_report_since_filter() {
+        let dir = make_test_dir_with_one_trace("abcd1234efgh");
+        let result = cmd_report(
+            Some(10),
+            Some("2020-01-01".to_string()),
+            None,
+            None,
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_ok(), "got error: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_report_invalid_since_date() {
+        let dir = make_test_dir_with_one_trace("abcd1234efgh");
+        let result = cmd_report(
+            Some(10),
+            Some("not-a-date".to_string()),
+            None,
+            None,
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_err());
     }
 
     #[test]

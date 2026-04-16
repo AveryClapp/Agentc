@@ -9,8 +9,8 @@
 //! Bernoulli; divergence is 1 - Jaccard on output tokens for text
 //! outputs, and a structural comparison for tool calls.
 
-use std::cell::RefCell;
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::Value;
 
@@ -26,7 +26,7 @@ pub const DEFAULT_SHADOW_RATE: f32 = 0.02;
 /// depend on `rand` for a one-off Bernoulli.
 pub struct ShadowSampler {
     rate: f32,
-    state: RefCell<u64>,
+    state: AtomicU64,
 }
 
 impl ShadowSampler {
@@ -39,7 +39,7 @@ impl ShadowSampler {
         let seed = if seed == 0 { 0x9E3779B97F4A7C15 } else { seed };
         Self {
             rate: rate.clamp(0.0, 1.0),
-            state: RefCell::new(seed),
+            state: AtomicU64::new(seed),
         }
     }
 
@@ -47,11 +47,13 @@ impl ShadowSampler {
         self.rate
     }
 
-    /// Returns true when this call should run shadow. Not `&mut self`
-    /// because the hot path holds the sampler behind an `Arc`; the
-    /// internal `RefCell` + single-threaded state-update is fine since
-    /// the planner invokes this once per call and the worst failure
-    /// mode is a mis-sampled Bernoulli (no memory safety issue).
+    /// Returns true when this call should run shadow. Uses an atomic
+    /// load/xor/store sequence so concurrent callers may observe
+    /// slightly correlated samples, but the ensemble still converges
+    /// to the configured Bernoulli rate (verified in the sampling-rate
+    /// test). We accept that correlation because the planner holds the
+    /// sampler behind an `Arc` and hot-path mutex contention would
+    /// dominate the divergence budget.
     pub fn should_sample(&self) -> bool {
         if self.rate <= 0.0 {
             return false;
@@ -59,13 +61,17 @@ impl ShadowSampler {
         if self.rate >= 1.0 {
             return true;
         }
-        let mut s = self.state.borrow_mut();
-        *s ^= *s << 13;
-        *s ^= *s >> 7;
-        *s ^= *s << 17;
+        let mut s = self.state.load(Ordering::Relaxed);
+        s ^= s << 13;
+        s ^= s >> 7;
+        s ^= s << 17;
+        // Write back for next call. `Relaxed` ordering is fine — we
+        // don't care about inter-thread visibility for a statistical
+        // coin toss.
+        self.state.store(s, Ordering::Relaxed);
         // Map to [0, 1). The top 53 bits of an xorshift64 give a
         // 2^{-53}-resolution uniform — plenty for a Bernoulli decision.
-        let u = (*s >> 11) as f64 / (1u64 << 53) as f64;
+        let u = (s >> 11) as f64 / (1u64 << 53) as f64;
         (u as f32) < self.rate
     }
 }

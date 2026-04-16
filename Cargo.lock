@@ -89,6 +89,7 @@ name = "agentc-optimizer"
 version = "0.1.0"
 dependencies = [
  "agentc-core",
+ "agentc-memo",
  "anyhow",
  "dashmap",
  "parking_lot",

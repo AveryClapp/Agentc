@@ -688,9 +688,8 @@ fn build_traces_list_row(
 fn cmd_export(
     trace_id: String,
     output: Option<String>,
-    _storage_path: String,
+    storage_path: String,
 ) -> anyhow::Result<()> {
-    // Validate trace ID prefix (min 4 chars)
     if trace_id.len() < 4 {
         anyhow::bail!(
             "Trace ID prefix must be at least 4 characters, got: '{}'",
@@ -698,9 +697,19 @@ fn cmd_export(
         );
     }
 
-    // TODO(VelvetHammer, bd-2db): Query spans by trace ID prefix
+    let storage_dir = resolve_storage_path(&storage_path);
+    try_merge_pending();
 
-    // Build OTLP JSON structure (empty for now)
+    let conn = open_canonical_db_if_exists(&storage_dir)?.ok_or_else(|| {
+        anyhow::anyhow!("No traces database at {}", storage_dir.display())
+    })?;
+
+    cost::full_cost_backfill(&conn)?;
+    let resolved = resolve_trace_id_prefix(&conn, &trace_id)?;
+    let spans = agentc_core::db::query_spans_by_trace(&conn, &resolved)?;
+
+    let otlp_spans: Vec<serde_json::Value> = spans.iter().map(span_to_otlp_json).collect();
+
     let otlp_json = serde_json::json!({
         "resourceSpans": [{
             "resource": {
@@ -711,13 +720,12 @@ fn cmd_export(
             },
             "scopeSpans": [{
                 "scope": { "name": "agentc", "version": env!("CARGO_PKG_VERSION") },
-                "spans": []
+                "spans": otlp_spans,
             }]
         }]
     });
 
     let json_str = serde_json::to_string_pretty(&otlp_json)?;
-
     match output {
         Some(path) => {
             fs::write(&path, &json_str)?;
@@ -727,8 +735,110 @@ fn cmd_export(
             println!("{}", json_str);
         }
     }
-
     Ok(())
+}
+
+/// Convert a stored `Span` into an OTLP/HTTP JSON span object.
+///
+/// Column values (model, provider, tokens, cost) are promoted into `gen_ai.*`
+/// attributes and override any matching keys in the stored `attributes` JSON.
+fn span_to_otlp_json(span: &agentc_core::span::Span) -> serde_json::Value {
+    use serde_json::Value;
+
+    let mut attrs: serde_json::Map<String, Value> =
+        match serde_json::from_str::<Value>(&span.attributes) {
+            Ok(Value::Object(m)) => m,
+            _ => serde_json::Map::new(),
+        };
+
+    attrs.insert(
+        "gen_ai.operation.name".into(),
+        Value::String(span.kind.clone()),
+    );
+    if let Some(ref m) = span.model {
+        attrs.insert("gen_ai.response.model".into(), Value::String(m.clone()));
+    }
+    if let Some(ref p) = span.provider {
+        attrs.insert("gen_ai.provider.name".into(), Value::String(p.clone()));
+    }
+    if let Some(t) = span.input_tokens {
+        attrs.insert("gen_ai.usage.input_tokens".into(), Value::from(t));
+    }
+    if let Some(t) = span.output_tokens {
+        attrs.insert("gen_ai.usage.output_tokens".into(), Value::from(t));
+    }
+    if let Some(t) = span.cache_creation_tokens {
+        attrs.insert(
+            "gen_ai.usage.cache_creation.input_tokens".into(),
+            Value::from(t),
+        );
+    }
+    if let Some(t) = span.cache_read_tokens {
+        attrs.insert(
+            "gen_ai.usage.cache_read.input_tokens".into(),
+            Value::from(t),
+        );
+    }
+    if let Some(c) = span.cost_usd {
+        if let Some(n) = serde_json::Number::from_f64(c) {
+            attrs.insert("agentc.cost_usd".into(), Value::Number(n));
+        }
+    }
+
+    let otlp_attrs: Vec<Value> = attrs
+        .into_iter()
+        .map(|(k, v)| json_to_otlp_attr(k, v))
+        .collect();
+
+    // OTel SpanKind enum: CHAT spans are CLIENT (3) — outbound LLM API calls.
+    // Internal work (tool execution, agent invocation) is INTERNAL (1).
+    let otel_kind = if span.kind == "chat" { 3 } else { 1 };
+    let status_code = match span.status.as_str() {
+        "OK" => 1,
+        "ERROR" => 2,
+        _ => 0,
+    };
+
+    let mut span_obj = serde_json::json!({
+        "traceId": span.trace_id,
+        "spanId": span.span_id,
+        "name": span.name,
+        "kind": otel_kind,
+        "startTimeUnixNano": (span.start_time * 1000).to_string(),
+        "attributes": otlp_attrs,
+        "status": { "code": status_code },
+    });
+    if let Some(end) = span.end_time {
+        span_obj["endTimeUnixNano"] =
+            serde_json::Value::String((end * 1000).to_string());
+    }
+    if let Some(ref p) = span.parent_span_id {
+        span_obj["parentSpanId"] = serde_json::Value::String(p.clone());
+    }
+    span_obj
+}
+
+/// Wrap a JSON leaf into an OTLP AnyValue. Complex values are JSON-stringified.
+fn json_to_otlp_attr(key: String, value: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    let otlp_value = match &value {
+        Value::String(s) => serde_json::json!({ "stringValue": s }),
+        Value::Bool(b) => serde_json::json!({ "boolValue": b }),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                serde_json::json!({ "intValue": i.to_string() })
+            } else if let Some(f) = n.as_f64() {
+                serde_json::json!({ "doubleValue": f })
+            } else {
+                serde_json::json!({ "stringValue": n.to_string() })
+            }
+        }
+        Value::Null => serde_json::json!({ "stringValue": "" }),
+        _ => serde_json::json!({
+            "stringValue": serde_json::to_string(&value).unwrap_or_default(),
+        }),
+    };
+    serde_json::json!({ "key": key, "value": otlp_value })
 }
 
 fn cmd_embed(backfill: bool, storage_path: String) -> anyhow::Result<()> {
@@ -822,16 +932,134 @@ mod tests {
 
     #[test]
     fn test_export_trace_id_min_length() {
-        let result = cmd_export("abc".to_string(), None, "~/.agentc".to_string());
+        let dir = tempfile::TempDir::new().unwrap();
+        let result = cmd_export(
+            "abc".to_string(),
+            None,
+            dir.path().to_string_lossy().into_owned(),
+        );
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("at least 4 characters"));
     }
 
     #[test]
-    fn test_export_valid_prefix() {
-        let result = cmd_export("abcd1234".to_string(), None, "~/.agentc".to_string());
-        assert!(result.is_ok());
+    fn test_export_no_db() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let result = cmd_export(
+            "abcd1234".to_string(),
+            None,
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No traces database"));
+    }
+
+    #[test]
+    fn test_export_no_match() {
+        let dir = make_test_dir_with_one_trace("abcd1234efgh");
+        let result = cmd_export(
+            "zzzz".to_string(),
+            None,
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No trace found"));
+    }
+
+    #[test]
+    fn test_export_stdout() {
+        let dir = make_test_dir_with_one_trace("abcd1234efgh");
+        let result = cmd_export(
+            "abcd".to_string(),
+            None,
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_ok(), "got error: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_export_to_file() {
+        let dir = make_test_dir_with_one_trace("abcd1234efgh");
+        let out_path = dir.path().join("trace.json");
+        let result = cmd_export(
+            "abcd".to_string(),
+            Some(out_path.to_string_lossy().into_owned()),
+            dir.path().to_string_lossy().into_owned(),
+        );
+        assert!(result.is_ok(), "got error: {:?}", result.err());
+        assert!(out_path.exists());
+
+        let contents = std::fs::read_to_string(&out_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&contents).unwrap();
+        let spans = &parsed["resourceSpans"][0]["scopeSpans"][0]["spans"];
+        assert!(spans.is_array());
+        assert_eq!(spans.as_array().unwrap().len(), 1);
+        let span = &spans[0];
+        assert_eq!(span["traceId"], "abcd1234efgh");
+        assert_eq!(span["spanId"], "span-1");
+        assert_eq!(span["kind"], 3); // chat → CLIENT
+
+        // Verify promoted gen_ai attributes made it into the attribute list.
+        let attrs = span["attributes"].as_array().unwrap();
+        let keys: Vec<&str> = attrs.iter().map(|a| a["key"].as_str().unwrap()).collect();
+        assert!(keys.contains(&"gen_ai.operation.name"));
+        assert!(keys.contains(&"gen_ai.response.model"));
+        assert!(keys.contains(&"gen_ai.usage.input_tokens"));
+        assert!(keys.contains(&"gen_ai.agent.name"));
+    }
+
+    #[test]
+    fn test_span_to_otlp_json_all_value_types() {
+        // Parent span, end_time, cost, cache tokens exercised.
+        let span = agentc_core::span::Span {
+            span_id: "s2".to_string(),
+            trace_id: "t2".to_string(),
+            parent_span_id: Some("s1".to_string()),
+            name: "child".to_string(),
+            kind: "execute_tool".to_string(),
+            start_time: 1_000,
+            end_time: Some(2_000),
+            status: "ERROR".to_string(),
+            model: Some("claude-haiku-4-5".to_string()),
+            provider: Some("anthropic".to_string()),
+            input_tokens: Some(10),
+            output_tokens: Some(5),
+            cache_creation_tokens: Some(1),
+            cache_read_tokens: Some(2),
+            cost_usd: Some(0.0123),
+            attributes: r#"{"custom.bool": true, "custom.list": [1,2,3]}"#.to_string(),
+            input_content_id: None,
+            output_content_id: None,
+            input_embedding: None,
+            output_embedding: None,
+            embedding_model: None,
+        };
+        let json = span_to_otlp_json(&span);
+        assert_eq!(json["kind"], 1); // execute_tool → INTERNAL
+        assert_eq!(json["status"]["code"], 2); // ERROR
+        assert_eq!(json["parentSpanId"], "s1");
+        assert_eq!(json["startTimeUnixNano"], "1000000"); // us → ns
+        assert_eq!(json["endTimeUnixNano"], "2000000");
+
+        let attrs = json["attributes"].as_array().unwrap();
+        // bool and array types round-trip correctly.
+        let bool_attr = attrs
+            .iter()
+            .find(|a| a["key"] == "custom.bool")
+            .expect("custom.bool missing");
+        assert_eq!(bool_attr["value"]["boolValue"], true);
+        let list_attr = attrs
+            .iter()
+            .find(|a| a["key"] == "custom.list")
+            .expect("custom.list missing");
+        assert!(list_attr["value"]["stringValue"].is_string());
+
+        let cost_attr = attrs
+            .iter()
+            .find(|a| a["key"] == "agentc.cost_usd")
+            .expect("cost missing");
+        assert!(cost_attr["value"]["doubleValue"].is_f64());
     }
 
     #[test]

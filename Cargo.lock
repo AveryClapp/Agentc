@@ -41,21 +41,32 @@ dependencies = [
 name = "agentc-core"
 version = "0.1.0"
 dependencies = [
+ "agentc-embed",
  "anyhow",
  "dirs",
- "half",
  "libc",
- "model2vec-rs",
- "once_cell",
  "rusqlite",
- "safetensors",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "thiserror",
- "tokenizers",
  "zstd",
+]
+
+[[package]]
+name = "agentc-embed"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "half",
+ "model2vec-rs",
+ "once_cell",
+ "safetensors",
+ "serde_json",
+ "tempfile",
+ "tokenizers",
 ]
 
 [[package]]

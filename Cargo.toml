@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/agentc-core",
+    "crates/agentc-embed",
     "crates/agentc-profiler",
     "crates/agentc-analyzer",
     "crates/agentc-cli",
@@ -16,6 +17,7 @@ repository = "https://github.com/agentc-ai/agentc"
 [workspace.dependencies]
 # Internal crates
 agentc-core = { path = "crates/agentc-core" }
+agentc-embed = { path = "crates/agentc-embed" }
 agentc-analyzer = { path = "crates/agentc-analyzer" }
 
 # Storage

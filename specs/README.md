@@ -26,21 +26,21 @@ Ships first because it has standalone value and generates the execution data eve
 
 ## 2. Semantic Memoization — [memoization.md](memoization.md)
 
-> **Status: Outline**
+> **Status: Active** | Implementation-ready
 
-Content-addressed caching that deduplicates LLM inference at the semantic level. Semantically equivalent prompts return cached results. Includes negative caching — if agent A hit a dead-end, agent B skips it.
+Opt-in caching that deduplicates LLM inference. Exact-prompt hash lookup on the hot path; LSH over 256-dim embeddings as a secondary tier for semantically-similar prompts. Cache state piggybacks on the profiler's canonical `traces.db` and reuses its flock-merged cross-process infrastructure.
 
-Currently an outline. Depends on profiler traces for calibration.
+Users annotate high-repetition call sites with `@agentc.memoize(...)`. The profiler's `redundant_call` detector surfaces candidates; users promote them with full knowledge of what's being cached.
 
 ---
 
 ## 3. Optimizer — [optimizer.md](optimizer.md)
 
-> **Status: Outline**
+> **Status: Active** | Implementation-ready
 
-The full JIT runtime optimizer. DAG of typed nodes, empirical cost model from profiler data, named rewrite rules (ContextCompress, ParallelBranch, ModelDowngrade, StateDrop, DeferredEvaluation) applied at call boundaries.
+JIT runtime that intercepts LLM calls on hot call sites and applies cost-ranked rewrite rules subject to a per-rule accuracy budget. Five rules ship in v1: `CacheHit`, `ContextCompress`, `ParallelBranch`, `ModelDowngrade`, `StateDrop`.
 
-The long-term vision. Currently an outline.
+Cold calls pass through; optimization engages after `hot_threshold` observations, when the empirical cost model has real data to rank proposals. Shadow-mode sampling at 2% provides ground-truth divergence for the accuracy budget.
 
 ---
 
@@ -61,8 +61,8 @@ specs/
 ├── README.md              # this file — project overview for humans
 ├── CLAUDE.md              # style guide + constraints for agents writing specs
 ├── profiler.md            # Profiler spec (active, implementation-ready)
-├── memoization.md         # Semantic Memoization spec (outline)
-├── optimizer.md           # Optimizer spec (outline)
+├── memoization.md         # Semantic Memoization spec (active)
+├── optimizer.md           # Optimizer spec (active)
 ├── future-work.md         # out-of-scope items, organized by component
 └── working/               # research, analysis, handoffs
     ├── profiler-gap-analysis.md

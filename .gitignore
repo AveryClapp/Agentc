@@ -157,6 +157,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Materialized evaluation fixtures — regenerate from bench/build_fixtures/*
+bench/fixtures/*.json
+
 # Spyder project settings
 .spyderproject
 .spyproject

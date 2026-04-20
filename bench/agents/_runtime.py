@@ -16,6 +16,38 @@ from bench.agents._fixtures import SyntheticTask
 
 
 FIXTURES_ROOT = Path(__file__).resolve().parent.parent / "fixtures"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _load_dotenv(path: Path = REPO_ROOT / ".env") -> None:
+    """Minimal ``.env`` loader: ``KEY=VALUE`` lines, blanks + ``#``
+    comments skipped. Values already present in ``os.environ`` win —
+    an explicit shell ``export`` always overrides the file. Missing
+    file is a silent no-op.
+
+    We avoid the ``python-dotenv`` dependency: the format we support
+    here is a strict subset (no multi-line strings, no variable
+    interpolation) but it's enough for API keys, which is all the
+    bench harness reads from this file."""
+    if not path.is_file():
+        return
+    try:
+        for raw in path.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except OSError:
+        pass
+
+
+_load_dotenv()
 
 
 @dataclass

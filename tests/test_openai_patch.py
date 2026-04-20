@@ -335,6 +335,7 @@ class TestWithTraceContext:
 
 class TestPatchUnpatch:
     def test_patch_applies(self) -> None:
+        pytest.importorskip("openai")
         import agentc._patches._openai as mod
 
         mod._patched = False

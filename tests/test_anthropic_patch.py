@@ -460,6 +460,7 @@ class TestIntegration:
 class TestPatchUnpatch:
     def test_patch_applies_to_class(self) -> None:
         """patch() wraps the Anthropic Messages.create method."""
+        pytest.importorskip("anthropic")
         import agentc._patches._anthropic as mod
 
         mod._patched = False
@@ -472,6 +473,7 @@ class TestPatchUnpatch:
             mod._patched = False
 
     def test_unpatch_restores(self) -> None:
+        pytest.importorskip("anthropic")
         import agentc._patches._anthropic as mod
 
         mod._patched = False

@@ -183,7 +183,7 @@ def _emit_span(
         attrs.get("gen_ai.usage.output_tokens", "?"),
     )
 
-    _write_root_span(span_dict)  # TODO(VelvetHammer, bd-2k4): enqueue non-root
+    _write_root_span(span_dict)  # bd-4hy: route non-root spans through writer queue
 
 
 # --- Sync wrapper ---

@@ -134,20 +134,12 @@ def shutdown(timeout_ms: int = 5000) -> None:
     logger.info("agentc shutdown started (timeout_ms=%d)", timeout_ms)
 
     try:
-        # Flush span queue
-        # TODO(VelvetHammer, bd-2k4): Drain queue with timeout
+        # Drain the span queue (writer logs its own counters on stop).
         _flush_queue(timeout_ms)
-
-        # Merge per-process DB into canonical traces.db
-        # TODO(VelvetHammer, bd-2zc): Implement merge protocol
-        _merge_db()
-
-        # Unpatch all SDKs
+        # Merge happens on the writer thread (bd-2os.2) and on CLI reads —
+        # nothing to do here.
         _remove_patches()
-
-        n_flushed = 0  # TODO: track actual count
-        n_merged = 0  # TODO: track actual count
-        logger.info("agentc shutdown complete (%d spans flushed, %d merged)", n_flushed, n_merged)
+        logger.info("agentc shutdown complete")
     finally:
         _initialized.clear()
         _config = None
@@ -176,14 +168,6 @@ def _flush_queue(timeout_ms: int) -> None:
     from agentc._writer import stop as stop_writer
 
     stop_writer(timeout_ms=timeout_ms)
-
-
-def _merge_db() -> None:
-    """Merge per-process DB into canonical traces.db.
-
-    TODO(VelvetHammer, bd-2zc): Implement merge protocol.
-    """
-    pass
 
 
 def _register_shutdown_handlers() -> None:

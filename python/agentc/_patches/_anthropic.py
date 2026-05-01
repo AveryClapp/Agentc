@@ -165,7 +165,7 @@ def _emit_span(
 
     if parent_span_id is None:
         logger.debug("Root span bypass: writing %s directly", span_id)
-    _write_root_span(span_dict)  # TODO(VelvetHammer, bd-2k4): enqueue non-root
+    _write_root_span(span_dict)  # bd-4hy: route non-root spans through writer queue
 
 
 # --- Sync wrappers ---

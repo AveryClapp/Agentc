@@ -86,20 +86,16 @@ def _read_env_vars() -> dict[str, Any]:
 
 def resolve_config(
     *,
-    capture_content: bool = True,
+    capture_content: bool | None = None,
     capture_embeddings: bool | None = None,
-    fail_open: bool = True,
-    storage_path: str = "~/.agentc",
+    fail_open: bool | None = None,
+    storage_path: str | None = None,
 ) -> Config:
     """Resolve config with precedence: kwargs > env > toml > defaults.
 
-    Args:
-        capture_content: Store full prompt/response text.
-        capture_embeddings: Compute embeddings. None follows capture_content.
-        fail_open: If True, profiler errors are logged but never propagated.
-        storage_path: Base directory for trace storage.
+    ``None`` for any arg means "not explicitly passed" — env / toml / defaults
+    apply for that field. Pass a concrete value only to force it past those layers.
     """
-    # Defaults
     defaults: dict[str, Any] = {
         "capture_content": True,
         "capture_embeddings": None,
@@ -107,14 +103,15 @@ def resolve_config(
         "storage_path": "~/.agentc",
     }
 
-    # Kwargs (only include non-default values to allow lower layers to show through)
     kwargs: dict[str, Any] = {}
-    # We always include kwargs since they take highest precedence
-    kwargs["capture_content"] = capture_content
+    if capture_content is not None:
+        kwargs["capture_content"] = capture_content
     if capture_embeddings is not None:
         kwargs["capture_embeddings"] = capture_embeddings
-    kwargs["fail_open"] = fail_open
-    kwargs["storage_path"] = storage_path
+    if fail_open is not None:
+        kwargs["fail_open"] = fail_open
+    if storage_path is not None:
+        kwargs["storage_path"] = storage_path
 
     # Read toml (needs resolved storage path to find config.toml)
     resolved_path = _resolve_storage_path(kwargs.get("storage_path", defaults["storage_path"]))

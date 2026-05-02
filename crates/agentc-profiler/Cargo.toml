@@ -7,7 +7,7 @@ description = "PyO3 bindings for Agentc profiler"
 
 [lib]
 name = "_native"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 agentc-core = { workspace = true }

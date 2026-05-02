@@ -38,15 +38,18 @@ def get_config() -> Config | None:
 
 def init(
     *,
-    capture_content: bool = True,
+    capture_content: bool | None = None,
     capture_embeddings: bool | None = None,
-    fail_open: bool = True,
-    storage_path: str = "~/.agentc",
+    fail_open: bool | None = None,
+    storage_path: str | None = None,
 ) -> None:
     """Initialize the Agentc profiler runtime.
 
     Idempotent: second calls are a no-op. First-caller-wins for config.
     After shutdown(), init() can be called again to re-initialize.
+
+    Unset args (``None``) defer to env vars / config.toml / defaults — pass
+    a value here only to force it past those layers.
 
     Raises on failure (not suppressed by fail_open — init is an explicit user call).
     """

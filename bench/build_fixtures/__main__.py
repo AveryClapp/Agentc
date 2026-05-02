@@ -7,6 +7,7 @@ will print a clear "pending approval" message.
 
 from __future__ import annotations
 
+from bench.agents import _runtime  # noqa: F401 — side effect: loads .env
 from bench.build_fixtures import gaia, multiagent, rag, swebench
 
 

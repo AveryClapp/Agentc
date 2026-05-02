@@ -63,19 +63,12 @@ class TestConfig:
     def test_env_overrides_defaults(self) -> None:
         with patch.dict(os.environ, {"AGENTC_CAPTURE_CONTENT": "false"}):
             config = resolve_config()
-            # kwargs take precedence over env
-            assert config.capture_content is True  # kwarg default wins
+            assert config.capture_content is False
 
-    def test_env_capture_content_false(self) -> None:
-        """Env var works when kwargs don't explicitly set the value."""
+    def test_explicit_kwarg_overrides_env(self) -> None:
         with patch.dict(os.environ, {"AGENTC_CAPTURE_CONTENT": "false"}):
-            # Since kwargs always include capture_content=True by default,
-            # env var only wins if kwargs don't set it.
-            # This tests the env reading path directly.
-            from agentc._config import _read_env_vars
-
-            env_config = _read_env_vars()
-            assert env_config["capture_content"] is False
+            config = resolve_config(capture_content=True)
+            assert config.capture_content is True
 
     def test_storage_path_custom(self, tmp_storage: Path) -> None:
         config = resolve_config(storage_path=str(tmp_storage))

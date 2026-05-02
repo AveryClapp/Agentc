@@ -32,7 +32,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from bench.optimizer_bench import (
     BenchResult,
@@ -130,10 +130,25 @@ def _run_config(
     return AblationRow.from_result(config, result)
 
 
-def sweep_agent(agent_module: str, storage_root: Path) -> list[AblationRow]:
-    """Run all 1 + N + N configurations for one agent."""
+def sweep_agent(
+    agent_module: str,
+    storage_root: Path,
+    on_row: Optional[Callable[[AblationRow], None]] = None,
+) -> list[AblationRow]:
+    """Run all 1 + N + N configurations for one agent.
+
+    ``on_row`` is invoked after each configuration finishes so callers
+    can flush results to disk incrementally — a partial sweep then
+    survives a crash or budget cutoff.
+    """
     rows: list[AblationRow] = []
-    rows.append(
+
+    def add(row: AblationRow) -> None:
+        rows.append(row)
+        if on_row is not None:
+            on_row(row)
+
+    add(
         _run_config(
             agent_module=agent_module,
             config="all-on",
@@ -142,7 +157,7 @@ def sweep_agent(agent_module: str, storage_root: Path) -> list[AblationRow]:
         )
     )
     for rule in RULES:
-        rows.append(
+        add(
             _run_config(
                 agent_module=agent_module,
                 config=f"{rule}-off",
@@ -152,7 +167,7 @@ def sweep_agent(agent_module: str, storage_root: Path) -> list[AblationRow]:
         )
     for rule in RULES:
         others = [r for r in RULES if r != rule]
-        rows.append(
+        add(
             _run_config(
                 agent_module=agent_module,
                 config=f"{rule}-only",
@@ -163,35 +178,51 @@ def sweep_agent(agent_module: str, storage_root: Path) -> list[AblationRow]:
     return rows
 
 
-def write_csv(rows: list[AblationRow], out_path: Path) -> None:
+_CSV_COLUMNS = [
+    "agent_module",
+    "config",
+    "cost_savings_pct",
+    "accuracy_delta_pp",
+    "baseline_cost_usd",
+    "optimized_cost_usd",
+    "n_tasks",
+    "n_passed_optimized",
+]
+
+
+def _row_values(r: AblationRow) -> list:
+    return [
+        r.agent_module,
+        r.config,
+        f"{r.cost_savings_pct:.3f}",
+        f"{r.accuracy_delta_pp:.3f}",
+        f"{r.baseline_cost_usd:.6f}",
+        f"{r.optimized_cost_usd:.6f}",
+        r.n_tasks,
+        r.n_passed_optimized,
+    ]
+
+
+def write_header(out_path: Path) -> None:
+    """Write CSV header (truncates the file)."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(
-            [
-                "agent_module",
-                "config",
-                "cost_savings_pct",
-                "accuracy_delta_pp",
-                "baseline_cost_usd",
-                "optimized_cost_usd",
-                "n_tasks",
-                "n_passed_optimized",
-            ]
-        )
-        for r in rows:
-            w.writerow(
-                [
-                    r.agent_module,
-                    r.config,
-                    f"{r.cost_savings_pct:.3f}",
-                    f"{r.accuracy_delta_pp:.3f}",
-                    f"{r.baseline_cost_usd:.6f}",
-                    f"{r.optimized_cost_usd:.6f}",
-                    r.n_tasks,
-                    r.n_passed_optimized,
-                ]
-            )
+        csv.writer(f).writerow(_CSV_COLUMNS)
+
+
+def append_row(row: AblationRow, out_path: Path) -> None:
+    """Append a single row to an already-headered CSV, fsync'ing to disk."""
+    with out_path.open("a", newline="") as f:
+        csv.writer(f).writerow(_row_values(row))
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def write_csv(rows: list[AblationRow], out_path: Path) -> None:
+    """One-shot writer for callers that already have all rows in memory."""
+    write_header(out_path)
+    for r in rows:
+        append_row(r, out_path)
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -219,16 +250,23 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     args = p.parse_args(argv)
 
-    all_rows: list[AblationRow] = []
+    out = Path(args.out)
+    write_header(out)
+    n_written = 0
+
+    def flush(row: AblationRow) -> None:
+        nonlocal n_written
+        append_row(row, out)
+        n_written += 1
+        print(f"  [{n_written}] {row.agent_module} / {row.config} → {out}")
+
     for agent in args.agents:
         agent_root = Path(args.storage_root) / agent.replace(".", "_")
         if agent_root.exists():
             shutil.rmtree(agent_root)
-        all_rows.extend(sweep_agent(agent, agent_root))
+        sweep_agent(agent, agent_root, on_row=flush)
 
-    out = Path(args.out)
-    write_csv(all_rows, out)
-    print(f"\nWrote {len(all_rows)} rows to {out}")
+    print(f"\nWrote {n_written} rows to {out}")
     return 0
 
 

@@ -104,6 +104,13 @@ pub struct Outcome {
     /// True if `output_tokens <= 128`.
     #[serde(default)]
     pub output_is_short: bool,
+    /// Call site this outcome belongs to. Required for `Plan::PassThrough`
+    /// (where we can't recover the site from the plan itself); the FFI
+    /// path falls back to this when the plan doesn't carry a `Call`.
+    /// Optional so existing callers that always wrap a Rewritten/Parallel
+    /// plan keep compiling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call_site_id: Option<String>,
 }
 
 mod serde_hex8 {
@@ -216,6 +223,7 @@ mod tests {
             cost_usd: 0.0012,
             output_is_structured: false,
             output_is_short: true,
+            call_site_id: None,
         };
         let json = serde_json::to_string(&outcome).unwrap();
         let back: Outcome = serde_json::from_str(&json).unwrap();

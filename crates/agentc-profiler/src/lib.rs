@@ -18,10 +18,13 @@ use rusqlite::Connection;
 use agentc_core::storage::{self, SpanInput, WriteSpanOptions};
 use agentc_memo::key::InvalidationPattern;
 use agentc_optimizer::{
+    audit::{insert as audit_insert, PlanAudit, PlanKind},
+    build_optimizer,
     config::OptimizerConfig,
     cost_model::CostModel,
     ffi::{optimize_observe as rust_observe, optimize_plan as rust_plan, PASS_THROUGH_JSON},
-    planner::Optimizer,
+    planner::{Optimizer, Plan},
+    Budget, Wired,
 };
 
 /// Package version, exposed as `agentc._native.__version__`.
@@ -569,24 +572,85 @@ fn canonicalize_parameters_bytes<'py>(
     Ok(PyBytes::new_bound(py, &bytes))
 }
 
-/// Process-global optimizer. Lazily constructed on first FFI call; O2
-/// ships with an empty rule set, so every hot call still falls through to
-/// `PassThrough` unless/until a later bead registers real rules. The
-/// `CostModel` behind it is shared with `optimize_observe`.
+/// Process-global optimizer. Lazily constructed on first FFI call. The
+/// state holds:
+///
+/// - A fully-wired `Optimizer` with all five rewrite rules.
+/// - The `CostModel` and `Budget` warmed from `cost_model.db` on init.
+/// - A `Mutex<Connection>` for `optimizer_audit.db`. We write `plan_audit`
+///   rows synchronously from the hot path; SQLite WAL mode keeps the
+///   per-row latency well under a millisecond.
+/// - An `AtomicU64` observe counter so we can periodically flush the
+///   cost-model `dirty` set without spawning a thread.
+///
+/// On any wiring failure (e.g. corrupted `cost_model.db`) we fall back to
+/// an empty optimizer — the user's LLM call must never break because the
+/// optimizer itself failed to initialize.
 struct OptimizerState {
     optimizer: Arc<Optimizer>,
     cost_model: Arc<CostModel>,
+    #[allow(dead_code)]
+    budget: Arc<Budget>,
+    audit: Option<Mutex<Connection>>,
+    cost_db: Option<Mutex<Connection>>,
+    observe_counter: std::sync::atomic::AtomicU64,
 }
 
 static OPTIMIZER: OnceLock<OptimizerState> = OnceLock::new();
 
+/// Flush the cost model to `cost_model.db` every N observes. 16 is a
+/// compromise between losing too many in-flight samples on a crash and
+/// hammering SQLite for every observe; bench runs do ~100 observes, so 16
+/// → ~6 flushes per run.
+const COST_MODEL_FLUSH_EVERY: u64 = 16;
+
+fn resolve_storage_dir() -> std::path::PathBuf {
+    agentc_core::merge::agentc_data_dir()
+}
+
 fn optimizer_state() -> &'static OptimizerState {
     OPTIMIZER.get_or_init(|| {
-        let cost_model = Arc::new(CostModel::new());
         let config = OptimizerConfig::from_env();
-        let optimizer = Arc::new(Optimizer::empty(cost_model.clone(), config));
-        OptimizerState { optimizer, cost_model }
+        let storage = resolve_storage_dir();
+
+        match build_optimizer(&storage, config.clone()) {
+            Ok(Wired { optimizer, cost_model, budget, audit_conn }) => {
+                // Reopen cost DB for periodic flush — the `Wired::audit_conn`
+                // is for the audit table; `cost_model.db` is a separate file.
+                let cost_db = Connection::open(storage.join("cost_model.db"))
+                    .ok()
+                    .map(Mutex::new);
+                OptimizerState {
+                    optimizer,
+                    cost_model,
+                    budget,
+                    audit: Some(Mutex::new(audit_conn)),
+                    cost_db,
+                    observe_counter: std::sync::atomic::AtomicU64::new(0),
+                }
+            }
+            Err(e) => {
+                eprintln!("[agentc-profiler] optimizer wiring failed: {e}");
+                let cost_model = Arc::new(CostModel::new());
+                let optimizer = Arc::new(Optimizer::empty(cost_model.clone(), config));
+                OptimizerState {
+                    optimizer,
+                    cost_model,
+                    budget: Arc::new(Budget::new()),
+                    audit: None,
+                    cost_db: None,
+                    observe_counter: std::sync::atomic::AtomicU64::new(0),
+                }
+            }
+        }
     })
+}
+
+fn now_us_i64() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0)
 }
 
 /// Plan an intercepted LLM call. JSON-in, JSON-out; any panic on the Rust
@@ -594,22 +658,121 @@ fn optimizer_state() -> &'static OptimizerState {
 ///
 /// Fail-open is a hard requirement: a user's LLM call must never raise
 /// because the optimizer itself crashed.
+///
+/// Side effect: writes one row to `optimizer_audit.db::plan_audit` per
+/// invocation (synchronous; lock-protected). Audit failures are logged
+/// but never propagated.
 #[pyfunction]
 fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
-    // Release the GIL for the Rust-side planning work — keeps the
-    // interceptor from serializing every hot call behind the planner.
     py.allow_threads(|| {
         let state = optimizer_state();
-        std::panic::catch_unwind(AssertUnwindSafe(|| {
+        let t0 = std::time::Instant::now();
+        let plan_json = std::panic::catch_unwind(AssertUnwindSafe(|| {
             rust_plan(&state.optimizer, call_json)
         }))
-        .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
+        .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string());
+        let overhead_us = t0.elapsed().as_micros() as i64;
+
+        // Best-effort audit. The plan is always returned regardless of
+        // whether the audit row lands.
+        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            write_plan_audit(state, call_json, &plan_json, overhead_us);
+        }));
+
+        plan_json
     })
+}
+
+/// Decode just enough of the call/plan to log one audit row. Anything
+/// missing is treated as "pass-through, no rule" — we'd rather log a
+/// partial truth than skip the row entirely.
+fn write_plan_audit(state: &OptimizerState, call_json: &str, plan_json: &str, overhead_us: i64) {
+    let Some(audit_mu) = state.audit.as_ref() else { return; };
+
+    // Pull call_site_id + span_id from the call. If the call is malformed
+    // we already returned PassThrough; record it as such with empty IDs so
+    // the audit row count still tracks invocations.
+    let (call_site_id, span_id) = match serde_json::from_str::<serde_json::Value>(call_json) {
+        Ok(v) => {
+            let site = v.get("call_site_id")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            let span = v.get("span_id")
+                .and_then(|x| x.as_str())
+                .map(|s| decode_hex8(s).unwrap_or([0u8; 8]))
+                .unwrap_or([0u8; 8]);
+            (site, span)
+        }
+        Err(_) => (String::new(), [0u8; 8]),
+    };
+
+    let plan: Plan = match serde_json::from_str(plan_json) {
+        Ok(p) => p,
+        Err(_) => Plan::PassThrough,
+    };
+
+    let (plan_kind, rule, projected) = match &plan {
+        Plan::PassThrough => (PlanKind::PassThrough, None, None),
+        Plan::Cached { .. } => (PlanKind::Cached, None, None),
+        Plan::Rewritten { rule, projected_savings_usd, .. } => (
+            PlanKind::Rewritten,
+            Some(rule.clone()),
+            Some(*projected_savings_usd as f64),
+        ),
+        Plan::Parallel { rule, projected_savings_usd, .. } => (
+            PlanKind::Parallel,
+            Some(rule.clone()),
+            Some(*projected_savings_usd as f64),
+        ),
+    };
+
+    let row = PlanAudit {
+        ts_us: now_us_i64(),
+        call_site_id,
+        span_id,
+        plan_kind,
+        rule,
+        projected_savings_usd: projected,
+        measured_savings_usd: None,
+        overhead_us,
+        shadow_sampled: false,
+        shadow_divergence: None,
+    };
+
+    let Ok(conn) = audit_mu.lock() else { return; };
+    if let Err(e) = audit_insert(&conn, &row) {
+        eprintln!("[agentc-profiler] plan_audit insert failed: {e}");
+    }
+}
+
+fn decode_hex8(s: &str) -> Option<[u8; 8]> {
+    if s.len() != 16 {
+        return None;
+    }
+    let mut out = [0u8; 8];
+    for (i, b) in out.iter_mut().enumerate() {
+        let hi = (s.as_bytes().get(2 * i)?).to_ascii_lowercase();
+        let lo = (s.as_bytes().get(2 * i + 1)?).to_ascii_lowercase();
+        *b = (hex_nib(hi)? << 4) | hex_nib(lo)?;
+    }
+    Some(out)
+}
+
+fn hex_nib(c: u8) -> Option<u8> {
+    match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        _ => None,
+    }
 }
 
 /// Fold a dispatched plan's measured outcome into the cost model. Never
 /// raises — errors are silently dropped because the user-visible call has
 /// already completed.
+///
+/// Periodically flushes the cost-model `dirty` set to `cost_model.db` so
+/// the next process can warm up without re-observing every hot site.
 #[pyfunction]
 fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) {
     py.allow_threads(|| {
@@ -617,6 +780,39 @@ fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) {
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let _ = rust_observe(&state.cost_model, plan_json, outcome_json);
         }));
+
+        let n = state
+            .observe_counter
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
+        if n % COST_MODEL_FLUSH_EVERY == 0 {
+            if let Some(mu) = state.cost_db.as_ref() {
+                let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                    if let Ok(mut conn) = mu.lock() {
+                        if let Err(e) = state.cost_model.flush_dirty(&mut conn) {
+                            eprintln!("[agentc-profiler] cost_model flush failed: {e}");
+                        }
+                    }
+                }));
+            }
+        }
+    });
+}
+
+/// Force-flush the cost model to `cost_model.db`. Called from Python at
+/// process shutdown so the final partial batch isn't lost. No-op when the
+/// optimizer wasn't successfully wired.
+#[pyfunction]
+fn optimize_flush(py: Python<'_>) {
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        if let Some(mu) = state.cost_db.as_ref() {
+            let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                if let Ok(mut conn) = mu.lock() {
+                    let _ = state.cost_model.flush_dirty(&mut conn);
+                }
+            }));
+        }
     });
 }
 
@@ -639,6 +835,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(canonicalize_parameters_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_plan, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_observe, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_flush, m)?)?;
     Ok(())
 }
 

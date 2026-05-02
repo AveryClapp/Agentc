@@ -20,6 +20,7 @@ pub mod reporting;
 pub mod rules;
 pub mod schema;
 pub mod shadow;
+pub mod wiring;
 
 pub use audit::{PlanAudit, PlanKind, RING_BUFFER_CAP};
 pub use budget::{Budget, BudgetEntry, DisabledEntry, SampleOutcome, BREACH_STREAK, COOLDOWN_US};
@@ -40,3 +41,4 @@ pub use rules::{
 pub use shadow::{
     text_divergence, tool_call_divergence, ShadowSampler, ToolCall, DEFAULT_SHADOW_RATE,
 };
+pub use wiring::{build_optimizer, Wired};

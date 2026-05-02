@@ -15,10 +15,11 @@
 //! "First-match wins, no rule composition").
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+use crate::budget::Budget;
 use crate::config::OptimizerConfig;
 use crate::cost_model::{CallSiteProfile, CostModel};
 use crate::dag::Call;
@@ -107,6 +108,7 @@ pub struct Optimizer {
     cost_model: Arc<CostModel>,
     rules: Vec<Box<dyn RewriteRule>>,
     config: OptimizerConfig,
+    budget: Arc<Budget>,
 }
 
 impl Optimizer {
@@ -115,7 +117,20 @@ impl Optimizer {
         rules: Vec<Box<dyn RewriteRule>>,
         config: OptimizerConfig,
     ) -> Self {
-        Self { cost_model, rules, config }
+        Self::with_budget(cost_model, rules, config, Arc::new(Budget::new()))
+    }
+
+    /// Construct an optimizer with an explicit shared `Budget`. Production
+    /// builds use this so the budget warmed from `cost_model.db` is
+    /// consulted on every plan; tests stick with [`Optimizer::new`] which
+    /// supplies a fresh budget.
+    pub fn with_budget(
+        cost_model: Arc<CostModel>,
+        rules: Vec<Box<dyn RewriteRule>>,
+        config: OptimizerConfig,
+        budget: Arc<Budget>,
+    ) -> Self {
+        Self { cost_model, rules, config, budget }
     }
 
     /// Construct an optimizer with no rules (fail-open pass-through for
@@ -127,6 +142,13 @@ impl Optimizer {
 
     pub fn config(&self) -> &OptimizerConfig {
         &self.config
+    }
+
+    /// Read-only handle to the shared accuracy budget. The FFI layer uses
+    /// this to fold shadow-mode divergence samples in without holding a
+    /// separate `Arc<Budget>`.
+    pub fn budget(&self) -> &Arc<Budget> {
+        &self.budget
     }
 
     /// Add a rule post-construction (primarily for tests that want to
@@ -165,8 +187,15 @@ impl Optimizer {
 
         // Step 3 — gather proposals. `applies` is the cheap filter;
         // `propose` does the potentially-expensive projection math.
+        // Each rule is gated by `Budget::is_disabled` so that operator
+        // overrides and auto-disables (post-cooldown re-enable) take
+        // effect without touching this loop.
+        let now_us = now_us();
         let mut proposals: Vec<(String, Proposal)> = Vec::with_capacity(self.rules.len());
         for rule in &self.rules {
+            if self.budget.is_disabled(&call.call_site_id, rule.name(), now_us) {
+                continue;
+            }
             if !rule.applies(call, &profile) {
                 continue;
             }
@@ -206,6 +235,13 @@ impl Optimizer {
 
         Plan::PassThrough
     }
+}
+
+fn now_us() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_micros() as i64)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]

@@ -99,6 +99,11 @@ async def intercept(
     elapsed_s = time.perf_counter() - t0
     try:
         outcome = extract_outcome(result, elapsed_s)
+        # Inject call_site_id so the FFI can warm the cost model on
+        # PassThrough plans (the plan itself doesn't carry the site).
+        site = call.get("call_site_id")
+        if site and "call_site_id" not in outcome:
+            outcome["call_site_id"] = site
         observe_outcome(plan, outcome)
     except BaseException:
         log.debug("extract_outcome / observe failed; skipping", exc_info=True)

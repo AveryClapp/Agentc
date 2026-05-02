@@ -50,12 +50,13 @@ pub fn optimize_observe(
             .first()
             .map(|c| c.call_site_id.clone())
             .unwrap_or_default(),
-        Plan::PassThrough | Plan::Cached { .. } => {
-            // PassThrough still feeds the cost model — but the caller
-            // must supply the site via a separate path; we can't recover
-            // it from a Plan::PassThrough. Treat as a no-op here.
-            return Ok(());
-        }
+        // For PassThrough / Cached the plan itself doesn't carry a Call,
+        // so the caller must populate `outcome.call_site_id`. Without it
+        // the cost model never warms up cold sites.
+        Plan::PassThrough | Plan::Cached { .. } => outcome
+            .call_site_id
+            .clone()
+            .unwrap_or_default(),
     };
     if call_site_id.is_empty() {
         return Ok(());
@@ -104,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn observe_on_pass_through_is_noop() {
+    fn observe_on_pass_through_without_site_is_noop() {
         let cm = Arc::new(CostModel::new());
         let plan = Plan::PassThrough;
         let outcome = Outcome {
@@ -114,6 +115,7 @@ mod tests {
             cost_usd: 0.001,
             output_is_structured: false,
             output_is_short: true,
+            call_site_id: None,
         };
         let ok = optimize_observe(
             &cm,
@@ -122,5 +124,28 @@ mod tests {
         );
         assert!(ok.is_ok());
         assert!(cm.get("anything").is_none());
+    }
+
+    #[test]
+    fn observe_on_pass_through_with_site_updates_cost_model() {
+        let cm = Arc::new(CostModel::new());
+        let plan = Plan::PassThrough;
+        let outcome = Outcome {
+            input_tokens: 100,
+            output_tokens: 50,
+            latency_ms: 100.0,
+            cost_usd: 0.001,
+            output_is_structured: false,
+            output_is_short: true,
+            call_site_id: Some("site-warm".to_string()),
+        };
+        let ok = optimize_observe(
+            &cm,
+            &serde_json::to_string(&plan).unwrap(),
+            &serde_json::to_string(&outcome).unwrap(),
+        );
+        assert!(ok.is_ok());
+        let prof = cm.get("site-warm").expect("site warmed");
+        assert_eq!(prof.n_observations, 1);
     }
 }

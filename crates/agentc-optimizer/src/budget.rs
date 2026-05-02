@@ -132,10 +132,21 @@ impl Budget {
     /// Returns true iff the `(site, rule)` pair is currently disabled
     /// (i.e. a row exists and `now_us < reenable_at_us`). `now_us` is
     /// caller-supplied so tests can pin time.
+    ///
+    /// A wildcard row with `call_site_id == "*"` disables the rule for
+    /// every site — the operator-override path used by ablation sweeps
+    /// where no `call_site_profile` rows exist yet.
     pub fn is_disabled(&self, call_site_id: &str, rule: &str, now_us: i64) -> bool {
         let guard = self.disabled.read();
         if let Some(entry) = guard.get(&(call_site_id.to_string(), rule.to_string())) {
-            return now_us < entry.reenable_at_us;
+            if now_us < entry.reenable_at_us {
+                return true;
+            }
+        }
+        if let Some(entry) = guard.get(&("*".to_string(), rule.to_string())) {
+            if now_us < entry.reenable_at_us {
+                return true;
+            }
         }
         false
     }
@@ -265,6 +276,27 @@ mod tests {
         let c = Connection::open_in_memory().unwrap();
         ensure_cost_model_schema(&c).unwrap();
         c
+    }
+
+    #[test]
+    fn wildcard_disabled_row_matches_every_site() {
+        let b = Budget::new();
+        let conn = fresh_conn();
+        let now = 1_000_i64;
+        let until = 9_000_i64;
+        conn.execute(
+            "INSERT INTO optimizer_disabled \
+                (call_site_id, rule, reason, disabled_at, reenable_at) \
+             VALUES ('*', 'RuleA', 'ablation', ?1, ?2)",
+            params![now, until],
+        )
+        .unwrap();
+        b.warm_from_db(&conn).unwrap();
+
+        assert!(b.is_disabled("never-seen-site", "RuleA", now + 1));
+        assert!(b.is_disabled("another-site", "RuleA", now + 1));
+        assert!(!b.is_disabled("any-site", "RuleB", now + 1));
+        assert!(!b.is_disabled("any-site", "RuleA", until + 1));
     }
 
     #[test]

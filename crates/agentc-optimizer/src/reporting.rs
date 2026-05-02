@@ -500,6 +500,15 @@ pub fn disable_rule(
         }
     }
 
+    // Operator-override fallback: when the glob is `*` and no call_site_profile
+    // rows match (e.g. the cost model is empty because the optimizer has not
+    // yet observed any sites — typical for ablation harnesses), write a single
+    // wildcard row. `Budget::is_disabled` treats `call_site_id == "*"` as
+    // matching every site for the given rule.
+    if ordered.is_empty() && call_site_glob == "*" {
+        ordered.push("*".to_string());
+    }
+
     let tx = cost_conn.transaction().context("begin disable tx")?;
     for site in &ordered {
         tx.execute(

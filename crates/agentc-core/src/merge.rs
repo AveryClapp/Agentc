@@ -135,8 +135,22 @@ fn is_lockfile_stale(path: &Path) -> bool {
     age.as_secs() > STALE_LOCK_AGE_SECS
 }
 
-/// Return the default agentc data directory: `~/.agentc/`.
+/// Return the agentc data directory. Honors `AGENTC_STORAGE_PATH` if set
+/// (with `~` expansion), else defaults to `~/.agentc/`.
 pub fn agentc_data_dir() -> PathBuf {
+    if let Ok(p) = std::env::var("AGENTC_STORAGE_PATH") {
+        if let Some(rest) = p.strip_prefix("~/") {
+            if let Some(home) = dirs::home_dir() {
+                return home.join(rest);
+            }
+        }
+        if p == "~" {
+            if let Some(home) = dirs::home_dir() {
+                return home;
+            }
+        }
+        return PathBuf::from(p);
+    }
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".agentc")

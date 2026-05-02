@@ -381,6 +381,16 @@ fn now_micros() -> i64 {
 fn post_record_summary(storage_path: &str, session_start_us: i64) -> anyhow::Result<()> {
     let storage_dir = resolve_storage_path(storage_path);
 
+    // The merge helpers in agentc-core read AGENTC_STORAGE_PATH to locate the
+    // per-process active/ dir and the canonical traces.db. The parent CLI
+    // process inherits whatever the user's shell set; for `agentc record
+    // --storage-path X` we have to point it at X explicitly so the merge
+    // lands in the same dir we just told the child to write to.
+    // SAFETY: process is single-threaded at this point — child has exited.
+    unsafe {
+        std::env::set_var("AGENTC_STORAGE_PATH", storage_path);
+    }
+
     // 1. Merge pending per-process DBs and announce if anything was merged.
     #[cfg(unix)]
     {

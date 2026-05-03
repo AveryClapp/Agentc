@@ -1,7 +1,7 @@
 ---
 title: Optimizer
 status: active
-last-updated: 2026-04-16
+last-updated: 2026-05-03
 ---
 
 # Optimizer
@@ -91,6 +91,18 @@ print(plan.call_site_id)
 print(plan.rules_fired)             # [("CacheHit", "skipped: miss"), ("ModelDowngrade", "fired: gpt-4o → gpt-4o-mini")]
 print(plan.projected_savings_usd)
 print(plan.measured_savings_usd)
+```
+
+Fan-out:
+
+```python
+# Replaces a serial list comprehension with a thread-pool dispatch.
+# Each item is auto-tagged with a fresh UserInput DepSource, and a
+# parallel_peer descriptor is staged on a per-thread local so the
+# optimizer's ParallelBranch rule fires and writes a Plan::Parallel
+# audit row. Concurrent dispatch is performed in Python; the rule's
+# role is to verify disjointness and record the optimization.
+summaries = agentc.parallel_map(_summarize_chunk, chunks)
 ```
 
 ### CLI
@@ -427,9 +439,9 @@ Rules never compose in a single plan — the first passing rule wins. Compositio
 
 #### `ParallelBranch`
 
-- **Applies when:** The last-executed N spans in the trace contain ≥ 2 consecutive `LlmOutput` or `ToolOutput` calls whose `input_deps` are disjoint (no span's output feeds another's input).
-- **Safety check:** The disjointness proof must hold on the exact `DepSource` annotations; no heuristic overlap. The SDK must expose an async dispatch primitive for the rule to issue concurrent calls (OpenAI/Anthropic SDKs both do; raw `requests` calls don't qualify).
-- **Rewrite:** `Plan::Parallel { calls, rule: "ParallelBranch" }`. Python executor dispatches via `asyncio.gather` or a thread pool depending on the SDK.
+- **Applies when:** The current call carries a `parallel_peer` descriptor on `parameters.extra` (staged by `agentc.parallel_map` via a thread-local), AND both the call and the peer have at least one non-`Literal` `DepSource`, AND the deps are disjoint (no span's output feeds another's input).
+- **Safety check:** The disjointness proof must hold on the exact `DepSource` annotations; no heuristic overlap.
+- **Rewrite:** `Plan::Parallel { calls, rule: "ParallelBranch", projected_savings_usd }`. Concurrent dispatch happens in `agentc.parallel_map` (driver pattern) — the executor's `Plan::Parallel` branch is observe-only, falling through to the original call so a serial-mode environment doesn't double-dispatch. The rule's contribution is the audit row plus the disjointness proof.
 - **Projection:** `0` on cost; `(n - 1) * latency / n` on wall clock.
 
 #### `ModelDowngrade`

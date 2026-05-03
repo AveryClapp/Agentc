@@ -27,6 +27,16 @@
       "output_cost": 10.00,
       "context_window": 128000
     },
+    "gpt-4o-2024-08-06": {
+      "input_cost": 2.50,
+      "output_cost": 10.00,
+      "context_window": 128000
+    },
+    "gpt-4o-2024-05-13": {
+      "input_cost": 5.00,
+      "output_cost": 15.00,
+      "context_window": 128000
+    },
     "gpt-4o-mini-2024-07-18": {
       "input_cost": 0.15,
       "output_cost": 0.60,

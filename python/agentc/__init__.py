@@ -41,6 +41,11 @@ from agentc._optimizer import plan_call  # noqa: F401
 from agentc._executor import dispatch  # noqa: F401
 from agentc._intercept import intercept  # noqa: F401
 
+# Driver-style fan-out helper. Replaces a serial list comprehension
+# with a thread-pool dispatch that exposes the fan-out to
+# ``ParallelBranchRule``.
+from agentc._parallel import parallel_map  # noqa: F401
+
 __all__ = [
     "__version__",
     "init",
@@ -63,4 +68,5 @@ __all__ = [
     "observe_outcome",
     "dispatch",
     "intercept",
+    "parallel_map",
 ]

@@ -116,8 +116,17 @@ def call_llm(
     API key is available — the harness still exercises the optimizer's
     interception path, just without real cost numbers.
 
+    The ``model`` argument is the *agent's intended* model. When
+    ``BENCH_BASELINE_MODEL`` is set in the environment (e.g. for an
+    ablation where we want ModelDowngrade to fire on a `gpt-4o → mini`
+    route), it overrides the agent's choice. This lets us flip every
+    bench agent to a routable baseline without editing the agent files.
+
     Stub shape: ``f"[stub:{model}] {prompt[:80]}"`` — includes part of
     the prompt so the fixture ``expected`` substring can still match."""
+    override = os.environ.get("BENCH_BASELINE_MODEL")
+    if override:
+        model = override
     client = llm_client()
     if client is None:
         return f"[stub:{model}] {prompt}"
@@ -136,8 +145,17 @@ def run_all(
     check: Callable[[str, Any], bool] = default_check,
 ) -> list[AgentResult]:
     """Boilerplate loop shared by all four agents. Each agent's
-    ``main()`` calls this; it is not meant to be invoked directly."""
+    ``main()`` calls this; it is not meant to be invoked directly.
+
+    ``BENCH_MAX_TASKS`` env var caps the iteration count — useful for
+    smoke tests where a full fixture would burn budget."""
     tasks = load_tasks(agent_key, synthetic_fallback)
+    cap = os.environ.get("BENCH_MAX_TASKS")
+    if cap:
+        try:
+            tasks = tasks[: int(cap)]
+        except ValueError:
+            pass
     results: list[AgentResult] = []
     for t in tasks:
         answer = run_one(t)

@@ -96,24 +96,37 @@ def build_call_dict_openai(
     span_id_hex: str,
 ) -> dict[str, Any]:
     """Translate OpenAI ``chat.completions.create`` kwargs into a Call dict."""
-    messages = []
+    from agentc._parallel import get_parallel_peer
+    from agentc._provenance import as_json, tag_of
+
+    messages: list[dict[str, str]] = []
+    # Track the *original* content objects so we can look up their
+    # provenance tags. Stringifying via ``str(...)`` would create a
+    # fresh object whose ``id()`` no longer matches the tagged input.
+    raw_contents: list[Any] = []
     for msg in kwargs.get("messages", []) or []:
         if isinstance(msg, dict):
+            raw = msg.get("content", "")
             messages.append({
                 "role": str(msg.get("role", "user")),
-                "content": str(msg.get("content", "")),
+                "content": str(raw),
             })
         elif hasattr(msg, "model_dump"):
             d = msg.model_dump()
+            raw = d.get("content", "")
             messages.append({
                 "role": str(d.get("role", "user")),
-                "content": str(d.get("content", "")),
+                "content": str(raw),
             })
         else:
+            raw = getattr(msg, "content", "")
             messages.append({
                 "role": str(getattr(msg, "role", "user")),
-                "content": str(getattr(msg, "content", "")),
+                "content": str(raw),
             })
+        raw_contents.append(raw)
+
+    input_deps = [as_json(tag_of(content)) for content in raw_contents]
 
     parameters: dict[str, Any] = {}
     if "temperature" in kwargs and kwargs["temperature"] is not None:
@@ -140,6 +153,15 @@ def build_call_dict_openai(
                 "schema": fn.get("parameters", {}),
             })
 
+    peer = get_parallel_peer()
+    if peer is not None:
+        existing_extra = parameters.get("extra")
+        extra_obj: dict[str, Any] = (
+            dict(existing_extra) if isinstance(existing_extra, dict) else {}
+        )
+        extra_obj["parallel_peer"] = peer
+        parameters["extra"] = extra_obj
+
     return {
         "call_site_id": call_site_id,
         "trace_id": trace_id_hex,
@@ -148,7 +170,7 @@ def build_call_dict_openai(
         "messages": messages,
         "parameters": parameters,
         "tools": tools,
-        "input_deps": [],
+        "input_deps": input_deps,
         "occurrence_ix": 0,
     }
 

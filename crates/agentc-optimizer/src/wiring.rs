@@ -36,18 +36,24 @@ use crate::schema::{ensure_audit_schema, ensure_cost_model_schema};
 /// Default GPT-4o-mini downgrade route. Spec § Rule specifications >
 /// ModelDowngrade. The price ratio is `gpt-4o-mini / gpt-4o ≈ 0.067`.
 fn default_routes() -> Vec<ModelDowngradeRoute> {
+    // ``max_output_tokens`` is the destination model's safe output ceiling;
+    // ModelDowngrade refuses to route when ``output_token_p95`` exceeds it.
+    // gpt-4o-mini supports up to 16k output tokens, so 256 was overly
+    // conservative and excluded most real agent outputs (writers, planners,
+    // summarizers routinely emit 200–500 tokens). 512 keeps the rule from
+    // touching long-form generation while admitting normal agent outputs.
     vec![
         ModelDowngradeRoute {
             from: "gpt-4o".to_string(),
             to: "gpt-4o-mini".to_string(),
             price_ratio: 0.07,
-            max_output_tokens: 256,
+            max_output_tokens: 512,
         },
         ModelDowngradeRoute {
             from: "gpt-4-turbo".to_string(),
             to: "gpt-4o-mini".to_string(),
             price_ratio: 0.05,
-            max_output_tokens: 256,
+            max_output_tokens: 512,
         },
     ]
 }

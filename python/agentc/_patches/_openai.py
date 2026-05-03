@@ -186,6 +186,78 @@ def _emit_span(
     _write_root_span(span_dict)  # bd-4hy: route non-root spans through writer queue
 
 
+# --- Optimizer plumbing ---
+
+
+def _plan_openai_call(
+    kwargs: dict[str, Any],
+    parent: SpanContext | None,
+) -> tuple[Any, str | None]:
+    """Build a Call dict and ask the optimizer for a Plan.
+
+    Returns ``(plan, call_site_id)`` on success, ``(None, None)`` if
+    optimization should be skipped (opt-out, planning error, missing
+    optimizer module). Callers fall through to direct dispatch on None.
+    """
+    try:
+        from agentc._intercept import is_opted_out
+        from agentc._optimizer import plan_call
+        from agentc._patches._optimizer_glue import (
+            build_call_dict_openai,
+            derive_call_site_id,
+        )
+    except BaseException:
+        logger.debug("optimizer modules unavailable; skipping", exc_info=True)
+        return None, None
+
+    if is_opted_out(kwargs.get("extra_headers")):
+        return None, None
+
+    try:
+        call_site_id = derive_call_site_id()
+        trace_id_hex = parent.trace_id if parent is not None else _generate_trace_id()
+        span_id_hex = _generate_span_id()
+        call = build_call_dict_openai(
+            kwargs,
+            call_site_id=call_site_id,
+            trace_id_hex=trace_id_hex,
+            span_id_hex=span_id_hex,
+        )
+        plan = plan_call(call)
+    except BaseException:
+        logger.debug("optimizer planning failed; falling through", exc_info=True)
+        return None, None
+
+    return plan, call_site_id
+
+
+def _observe_openai_outcome(
+    *,
+    plan: Any,
+    response: Any,
+    call_site_id: str,
+    kwargs: dict[str, Any],
+    elapsed_s: float,
+) -> None:
+    """Build an Outcome and feed it back to the cost model. Best-effort."""
+    try:
+        from agentc._optimizer import observe_outcome
+        from agentc._patches._optimizer_glue import build_outcome_openai
+
+        # Prefer the model echoed by the response (matches what was
+        # actually billed when the optimizer rewrote the request).
+        model = str(getattr(response, "model", None) or kwargs.get("model", "") or "")
+        outcome = build_outcome_openai(
+            response,
+            elapsed_s=elapsed_s,
+            model=model,
+            call_site_id=call_site_id,
+        )
+        observe_outcome(plan, outcome)
+    except BaseException:
+        logger.debug("optimizer observe failed; skipping", exc_info=True)
+
+
 # --- Sync wrapper ---
 
 
@@ -204,9 +276,26 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
     if is_streaming:
         return _handle_streaming_sync(wrapped, args, kwargs, parent, start_time, req_attrs, input_msgs)
 
+    plan, call_site_id = _plan_openai_call(kwargs, parent)
+
     # Non-streaming
     try:
-        response = wrapped(*args, **kwargs)
+        if plan is not None:
+            from agentc._patches._optimizer_glue import (
+                apply_call_mutations_openai,
+                dispatch_sync,
+            )
+
+            def _run_original() -> Any:
+                return wrapped(*args, **kwargs)
+
+            def _run_mutated(mutated_call: dict[str, Any]) -> Any:
+                new_kwargs = apply_call_mutations_openai(kwargs, mutated_call)
+                return wrapped(*args, **new_kwargs)
+
+            response = dispatch_sync(plan, run_original=_run_original, run_mutated=_run_mutated)
+        else:
+            response = wrapped(*args, **kwargs)
     except BaseException as exc:
         end_time = _now_us()
         req_attrs["error.type"] = type(exc).__name__
@@ -227,6 +316,16 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
         raise
 
     end_time = _now_us()
+
+    if plan is not None and call_site_id is not None:
+        _observe_openai_outcome(
+            plan=plan,
+            response=response,
+            call_site_id=call_site_id,
+            kwargs=kwargs,
+            elapsed_s=(end_time - start_time) / 1_000_000.0,
+        )
+
     resp_attrs = _extract_response_attrs(response)
     req_attrs.update(resp_attrs)
     output_msgs = _extract_output_messages(response)
@@ -402,9 +501,24 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
     req_attrs = _extract_request_attrs(kwargs)
     input_msgs = _extract_input_messages(kwargs)
 
+    plan, call_site_id = _plan_openai_call(kwargs, parent)
+
     # For now, handle non-streaming only (async streaming is similar pattern)
     try:
-        response = await wrapped(*args, **kwargs)
+        if plan is not None:
+            from agentc._executor import dispatch
+            from agentc._patches._optimizer_glue import apply_call_mutations_openai
+
+            async def _run_original() -> Any:
+                return await wrapped(*args, **kwargs)
+
+            async def _run_mutated(mutated_call: dict[str, Any]) -> Any:
+                new_kwargs = apply_call_mutations_openai(kwargs, mutated_call)
+                return await wrapped(*args, **new_kwargs)
+
+            response = await dispatch(plan, run_original=_run_original, run_mutated=_run_mutated)
+        else:
+            response = await wrapped(*args, **kwargs)
     except BaseException as exc:
         end_time = _now_us()
         req_attrs["error.type"] = type(exc).__name__
@@ -425,6 +539,16 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
         raise
 
     end_time = _now_us()
+
+    if plan is not None and call_site_id is not None:
+        _observe_openai_outcome(
+            plan=plan,
+            response=response,
+            call_site_id=call_site_id,
+            kwargs=kwargs,
+            elapsed_s=(end_time - start_time) / 1_000_000.0,
+        )
+
     resp_attrs = _extract_response_attrs(response)
     req_attrs.update(resp_attrs)
     output_msgs = _extract_output_messages(response)

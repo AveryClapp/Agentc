@@ -166,13 +166,30 @@ def _decode_messages(raw: Any) -> list[Any]:
 
 
 def _salient_signal(messages: list[dict[str, Any]], trace_id: str | None) -> set[str]:
-    """Pick the salient signal: prior-trace union if available, else the
-    most recent user message of the current call."""
+    """Pick the salient signal: the current call's last user message
+    when present, falling back to prior-trace tokens otherwise.
+
+    The current user message is the right signal for QA-shaped calls:
+    it's the question, and distractor messages don't share its
+    vocabulary by construction. Prior-trace tokens are only the right
+    signal when the *current* call has no fresh user input — e.g. a
+    multi-turn agent processing a tool-output turn whose user
+    instruction lives several spans back.
+
+    We previously unioned the two, but that breaks single-turn
+    workloads that put many tasks under one ``@agentc.trace`` (one
+    trace, many disjoint questions): prior-task tokens accumulate
+    into the salient set and inflate scores for distractors that
+    happen to share their vocabulary.
+    """
+    current = _last_user_tokens(messages)
+    if current:
+        return current
     if trace_id:
         prior = _prior_trace_tokens(trace_id)
         if prior:
             return prior
-    return _last_user_tokens(messages)
+    return set()
 
 
 def compute_attention_scores(

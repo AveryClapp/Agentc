@@ -93,7 +93,7 @@ class TestSalientSignal:
         # Should NOT include the first question's tokens
         assert "first" not in signal
 
-    def test_picks_prior_span_union_when_trace_has_history(
+    def test_current_question_dominates_when_present(
         self, initialized: Path
     ) -> None:
         from agentc import _native
@@ -114,10 +114,40 @@ class TestSalientSignal:
             messages=[{"role": "user", "content": "current question"}],
             trace_id=trace,
         )
-        # Prior union wins, NOT the current call's user message.
+        # The current call's user message dominates — prior-trace
+        # tokens are only used as a fallback when the current call
+        # has no fresh user input. Mixing them in pollutes scoring
+        # for single-turn workloads (one trace, many disjoint tasks).
+        assert "current" in signal
+        assert "question" in signal
+        assert "alpha" not in signal
+        assert "delta" not in signal
+
+    def test_falls_back_to_prior_when_no_current_user(
+        self, initialized: Path
+    ) -> None:
+        from agentc import _native
+
+        trace = "fbktrtfbktrtfbktrtfbktrtfbktrt00"
+        d = {
+            "span_id": "fbk0000000000001",
+            "trace_id": trace,
+            "name": "prior",
+            "kind": "chat",
+            "start_time": 1000,
+            "input_messages": json.dumps([{"role": "user", "content": "alpha beta gamma"}]),
+            "output_messages": json.dumps([{"role": "assistant", "content": "delta epsilon"}]),
+        }
+        _native.write_span(d)
+
+        # System-only call (e.g. a tool-output turn) → no fresh user
+        # tokens → use prior-trace as the salient signal.
+        signal = _salient_signal(
+            messages=[{"role": "system", "content": "system prompt"}],
+            trace_id=trace,
+        )
         assert "alpha" in signal
         assert "delta" in signal
-        assert "current" not in signal
 
     def test_falls_back_to_user_when_prior_empty(self, initialized: Path) -> None:
         # Trace exists but has no spans — falls through to single-turn.

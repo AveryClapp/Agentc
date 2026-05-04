@@ -228,6 +228,9 @@ __marimo__/
 # Benchmark results (generated, not checked in)
 bench/results/
 
+# Local design / planning notes (not for the public repo)
+docs/plans/
+
 # macOS debug symbols
 *.dSYM/
 

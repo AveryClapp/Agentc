@@ -32,9 +32,10 @@ pub const DEFAULT_MIN_DEAD_FRACTION: f32 = 0.30;
 /// Default accuracy budget (spec § Accuracy budget).
 pub const DEFAULT_ACCURACY_BUDGET: f32 = 0.02;
 /// Messages whose attention score falls at or below this threshold are
-/// eligible for extraction. We treat "zero attention" as a practical
-/// threshold rather than exact-zero to account for float-quantization
-/// noise in the profiler's slice-attribution.
+/// eligible for extraction. The default is appropriate for true model
+/// attention (near-zero); proxies that emit scores on a coarser scale
+/// (e.g. token-overlap fractions) should override via
+/// `parameters.extra.dead_attention_epsilon`.
 pub const DEAD_ATTENTION_EPSILON: f32 = 1e-4;
 
 pub struct ContextCompressRule {
@@ -82,6 +83,7 @@ impl RewriteRule for ContextCompressRule {
         if scores.len() != call.messages.len() {
             return None;
         }
+        let epsilon = extract_dead_attention_epsilon(call).unwrap_or(DEAD_ATTENTION_EPSILON);
         let follow_ons = extract_follow_on_tokens(call);
         let user_input_messages = user_input_message_indices(call);
         let roles_to_keep_one: HashSet<String> = call
@@ -102,14 +104,14 @@ impl RewriteRule for ContextCompressRule {
                 if contains_any_token(&msg.content, &follow_ons) {
                     return false;
                 }
-                *score <= DEAD_ATTENTION_EPSILON
+                *score <= epsilon
             })
             .collect();
 
         // Dead-fraction check on the token side.
         let dead_fraction = scores
             .iter()
-            .filter(|s| **s <= DEAD_ATTENTION_EPSILON)
+            .filter(|s| **s <= epsilon)
             .count() as f32
             / (scores.len() as f32);
         if dead_fraction < self.min_dead_fraction {
@@ -210,6 +212,12 @@ fn extract_attention_scores(call: &Call) -> Option<Vec<f32>> {
     serde_json::from_value::<Vec<f32>>(v).ok()
 }
 
+fn extract_dead_attention_epsilon(call: &Call) -> Option<f32> {
+    let obj = call.parameters.extra.as_object()?;
+    let v = obj.get("dead_attention_epsilon")?;
+    v.as_f64().map(|f| f as f32)
+}
+
 #[derive(Debug, Deserialize)]
 struct FollowOn {
     #[serde(default)]
@@ -250,10 +258,19 @@ fn user_input_message_indices(call: &Call) -> HashSet<usize> {
 }
 
 fn contains_any_token(haystack: &str, needles: &[String]) -> bool {
+    // Needles arrive lowercase from the proxy's tokenizer; haystack is
+    // raw message content (mixed case, punctuation). Lowercase + strip
+    // punctuation on the haystack side so the protection actually fires
+    // for proper-noun overlaps like "Scott Derrickson".
     if needles.is_empty() {
         return false;
     }
-    let tokens: HashSet<&str> = haystack.split_whitespace().collect();
+    let lowered = haystack.to_lowercase();
+    let tokens: HashSet<String> = lowered
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .filter(|t| !t.is_empty())
+        .map(|t| t.to_string())
+        .collect();
     needles.iter().any(|n| tokens.contains(n.as_str()))
 }
 
@@ -421,5 +438,71 @@ mod tests {
         let call = call_with(msgs, scores, deps, vec![]);
         let rule = ContextCompressRule::default();
         assert!(rule.propose(&call, &hot_profile()).is_none());
+    }
+
+    #[test]
+    fn epsilon_override_unlocks_proxy_scale_scores() {
+        // Token-overlap proxy emits scores in [0.05, 1.0]; the 1e-4
+        // default would never see anything as dead. With override = 0.10,
+        // scores at 0.05 become drop-eligible.
+        let msgs = vec![
+            Message { role: "system".into(), content: "system".into() },
+            Message { role: "user".into(), content: "live question".into() },
+            Message { role: "user".into(), content: big("x ", 5000) },
+            Message { role: "user".into(), content: big("y ", 5000) },
+            Message { role: "user".into(), content: big("z ", 5000) },
+        ];
+        let scores = vec![0.05, 1.0, 0.05, 0.05, 0.05];
+        let deps = vec![
+            DepSource::Literal,
+            DepSource::UserInput { span_id: [1u8; 8] },
+            DepSource::Literal,
+            DepSource::Literal,
+            DepSource::Literal,
+        ];
+        let extra = json!({
+            "attention_scores": scores,
+            "message_deps": deps,
+            "follow_on_tokens": [],
+            "dead_attention_epsilon": 0.10_f32,
+        });
+        let call = Call {
+            call_site_id: "site".into(),
+            trace_id: [0u8; 16],
+            span_id: [0u8; 8],
+            model: "gpt-4o".into(),
+            messages: msgs,
+            parameters: Parameters { extra, ..Default::default() },
+            tools: vec![],
+            input_deps: vec![],
+            occurrence_ix: 0,
+        };
+        let rule = ContextCompressRule::default();
+        // Without override, default 1e-4 skips everything → no fire.
+        // With override at 0.10, distractors qualify and dead_fraction
+        // = 4/5 = 0.80 > 0.30 → fires.
+        let prop = rule.propose(&call, &hot_profile()).expect("must fire");
+        match &prop.rewritten {
+            Plan::Rewritten { call, .. } => {
+                // System role survives via roles_to_keep_one; user input
+                // survives via DepSource::UserInput protection.
+                assert!(call.messages.iter().any(|m| m.role == "system"));
+                assert!(call.messages.iter().any(|m| m.content == "live question"));
+            }
+            _ => panic!("expected Rewritten"),
+        }
+    }
+
+    #[test]
+    fn contains_any_token_is_case_and_punctuation_insensitive() {
+        // The proxy lowercases tokens; raw paragraph text is mixed-case
+        // with punctuation. The protection must still fire.
+        let needles = vec!["scott".to_string(), "derrickson".to_string()];
+        assert!(contains_any_token(
+            "Scott Derrickson is an American director.",
+            &needles
+        ));
+        assert!(contains_any_token("...Scott, Derrickson!?", &needles));
+        assert!(!contains_any_token("Henry IV ruled England.", &needles));
     }
 }

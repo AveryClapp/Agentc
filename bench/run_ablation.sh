@@ -37,7 +37,8 @@ AGENTS=(
 )
 
 cost_so_far() {
-    awk -F, 'FNR>1 {sum+=$7} END {printf "%.4f", sum+0}' \
+    # Sum optimized_cost_usd; skip values ≥ 1 (which are n_tasks from old-format CSVs).
+    awk -F, 'FNR>1 && $7+0 < 1 {sum+=$7} END {printf "%.4f", sum+0}' \
         "$RESULTS"/ablation-*.csv 2>/dev/null || echo "0"
 }
 

@@ -322,7 +322,11 @@ class TestWithTraceContext:
         parent_ctx = SpanContext(span_id="parent123456789a", trace_id="trace12345678901234567890123456ab", name="my-agent")
         set_current_span(parent_ctx)
 
-        with patch("agentc._patches._openai._write_root_span", side_effect=lambda d: written.append(d)):
+        # Non-root spans now route through ``_enqueue_span`` (bd-4hy);
+        # mock both endpoints so the test stays correct regardless of
+        # which path the patch chooses.
+        with patch("agentc._patches._openai._write_root_span", side_effect=lambda d: written.append(d)), \
+             patch("agentc._patches._openai._enqueue_span", side_effect=lambda d: written.append(d)):
             wrapped = MagicMock(return_value=MockChatCompletion())
             _wrap_create(wrapped, None, (), {"model": "test", "messages": []})
 

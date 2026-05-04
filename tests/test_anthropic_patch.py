@@ -386,7 +386,10 @@ class TestWithTraceContext:
         parent_ctx = SpanContext(span_id="parent123456789a", trace_id="trace12345678901234567890123456ab", name="my-agent")
         set_current_span(parent_ctx)
 
-        with patch("agentc._patches._anthropic._write_root_span", side_effect=lambda d: written.append(d)):
+        # Non-root spans now route through ``_enqueue_span`` (bd-4hy);
+        # mock both so the test pins span content regardless of route.
+        with patch("agentc._patches._anthropic._write_root_span", side_effect=lambda d: written.append(d)), \
+             patch("agentc._patches._anthropic._enqueue_span", side_effect=lambda d: written.append(d)):
             wrapped = MagicMock(return_value=MockMessage())
             _wrap_create(wrapped, None, (), {"model": "test", "messages": []})
 
@@ -404,7 +407,8 @@ class TestWithTraceContext:
         parent_ctx = SpanContext(span_id="parent123456789a", trace_id="trace12345678901234567890123456ab", name="reviewer")
         set_current_span(parent_ctx)
 
-        with patch("agentc._patches._anthropic._write_root_span", side_effect=lambda d: written.append(d)):
+        with patch("agentc._patches._anthropic._write_root_span", side_effect=lambda d: written.append(d)), \
+             patch("agentc._patches._anthropic._enqueue_span", side_effect=lambda d: written.append(d)):
             wrapped = MagicMock(return_value=MockMessage())
             _wrap_create(wrapped, None, (), {"model": "test", "messages": []})
 
@@ -431,20 +435,22 @@ class TestIntegration:
         """Full flow: @trace → _wrap_create → spans linked correctly."""
         written: list[dict[str, Any]] = []
 
-        with patch("agentc._patches._anthropic._write_root_span", side_effect=lambda d: written.append(d)):
-            with patch("agentc._span._write_root_span", side_effect=lambda d: written.append(d)):
+        with patch("agentc._patches._anthropic._write_root_span", side_effect=lambda d: written.append(d)), \
+             patch("agentc._patches._anthropic._enqueue_span", side_effect=lambda d: written.append(d)), \
+             patch("agentc._span._write_root_span", side_effect=lambda d: written.append(d)), \
+             patch("agentc._span._enqueue_span", side_effect=lambda d: written.append(d)):
 
-                @agentc.trace(name="my-agent")
-                def agent() -> Any:
-                    wrapped = MagicMock(return_value=MockMessage())
-                    return _wrap_create(
-                        wrapped,
-                        None,
-                        (),
-                        {"model": "claude-sonnet-4-20250514", "max_tokens": 1024, "messages": [{"role": "user", "content": "hi"}]},
-                    )
+            @agentc.trace(name="my-agent")
+            def agent() -> Any:
+                wrapped = MagicMock(return_value=MockMessage())
+                return _wrap_create(
+                    wrapped,
+                    None,
+                    (),
+                    {"model": "claude-sonnet-4-20250514", "max_tokens": 1024, "messages": [{"role": "user", "content": "hi"}]},
+                )
 
-                result = agent()
+            result = agent()
 
         assert isinstance(result, MockMessage)
         agent_spans = [s for s in written if s["name"] == "my-agent"]

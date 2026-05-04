@@ -17,6 +17,7 @@ import wrapt
 from agentc._context import SpanContext, get_current_span
 from agentc._span import (
     _build_span_dict,
+    _enqueue_span,
     _generate_span_id,
     _generate_trace_id,
     _is_initialized,
@@ -183,7 +184,15 @@ def _emit_span(
         attrs.get("gen_ai.usage.output_tokens", "?"),
     )
 
-    _write_root_span(span_dict)  # bd-4hy: route non-root spans through writer queue
+    # bd-4hy: chat spans are almost always non-root (they have a parent
+    # @trace span). Hitting the synchronous FFI on every chat call adds
+    # millisecond overhead per LLM hop; the writer queue batches and
+    # backs off. Roots still bypass — there's no queue running yet at
+    # the very first event of a trace.
+    if parent_span_id is None:
+        _write_root_span(span_dict)
+    else:
+        _enqueue_span(span_dict)
 
 
 # --- Optimizer plumbing ---

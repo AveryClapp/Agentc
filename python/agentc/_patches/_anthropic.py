@@ -22,6 +22,7 @@ from agentc._span import (
     _generate_trace_id,
     _is_initialized,
     _now_us,
+    _enqueue_span,
     _write_root_span,
 )
 
@@ -163,9 +164,14 @@ def _emit_span(
         attrs.get("gen_ai.usage.output_tokens", "?"),
     )
 
+    # bd-4hy: chat spans are almost always non-root (they sit under a
+    # @trace span). Direct FFI on every hop is wasted overhead — route
+    # children through the writer queue.
     if parent_span_id is None:
         logger.debug("Root span bypass: writing %s directly", span_id)
-    _write_root_span(span_dict)  # bd-4hy: route non-root spans through writer queue
+        _write_root_span(span_dict)
+    else:
+        _enqueue_span(span_dict)
 
 
 # --- Sync wrappers ---

@@ -35,6 +35,7 @@ proxy hit a snag.
 from __future__ import annotations
 
 import logging
+import math
 import re
 from collections import OrderedDict
 from typing import Any
@@ -195,30 +196,55 @@ def compute_attention_scores(
     if not salient:
         return [], []
 
-    scores: list[float] = []
+    # --- First pass: tokenize all messages and compute per-token document
+    # frequency so we can IDF-weight the overlap score.  Tokens that appear
+    # in many messages (e.g. "director" across 10 HotpotQA paragraphs) are
+    # weak discriminators; IDF downweights them relative to tokens unique to
+    # a few messages ("scottish", "1960") which are strong discriminators.
     per_msg_tokens: list[set[str]] = []
+    doc_freq: dict[str, int] = {}
+    n_docs = 0
     for msg in messages:
         if not isinstance(msg, dict):
-            scores.append(1.0)
             per_msg_tokens.append(set())
             continue
-        content = str(msg.get("content", ""))
-        toks = _tokenize(content)
+        toks = _tokenize(str(msg.get("content", "")))
         per_msg_tokens.append(toks)
+        if toks:
+            n_docs += 1
+            for tok in toks:
+                doc_freq[tok] = doc_freq.get(tok, 0) + 1
+
+    if n_docs == 0:
+        return [1.0] * len(messages), []
+
+    # Add-1 smoothed IDF: log((n+1)/(df+1)) + 1.  Unknown tokens receive
+    # maximum weight; tokens in every document approach weight 1.0.
+    def _idf(tok: str) -> float:
+        return math.log((n_docs + 1) / (doc_freq.get(tok, 0) + 1)) + 1.0
+
+    salient_idf_total = sum(_idf(t) for t in salient)
+    if salient_idf_total == 0.0:
+        return [1.0] * len(messages), []
+
+    # --- Second pass: score = IDF-weighted overlap / salient_idf_total.
+    # A message that contains ALL salient tokens scores 1.0 (the question
+    # message itself in single-turn mode); a distractor that only shares
+    # high-frequency tokens scores near zero.
+    scores: list[float] = []
+    for msg, toks in zip(messages, per_msg_tokens):
+        if not isinstance(msg, dict):
+            scores.append(1.0)
+            continue
         if not toks:
             scores.append(1.0)
             continue
-        overlap = toks & salient
-        scores.append(len(overlap) / len(toks))
+        w_overlap = sum(_idf(t) for t in toks if t in salient)
+        scores.append(w_overlap / salient_idf_total)
 
-    # Follow-on tokens are used by the Rust rule's `contains_any_token`
-    # guard to protect messages that share question vocabulary. On a
-    # topical document set (HotpotQA distractor) every paragraph shares
-    # generic question tokens like "arena" / "played" — they're not
-    # discriminative, and treating them as protectors disables compression
-    # entirely. Drop tokens that appear in more than half the messages.
-    # Skip the filter for very short calls where we don't have enough
-    # signal to discriminate.
+    # Follow-on tokens: drop tokens that appear in more than half the
+    # messages — they are not discriminative and would protect everything.
+    # Skip the filter for very short calls where we lack signal.
     n_msgs = len(messages)
     if n_msgs < 4:
         follow_on = sorted(salient)

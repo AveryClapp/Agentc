@@ -262,6 +262,98 @@ fn query_spans_by_trace(
     Ok(list.unbind())
 }
 
+/// Read prior-span content for a trace from the per-process active DB.
+///
+/// Returns a list of dicts with keys `span_id`, `trace_id`, `parent_span_id`,
+/// `start_time`, `input_messages` (decompressed JSON string or `None`),
+/// `output_messages` (decompressed JSON string or `None`). Used by the
+/// attention proxy in `agentc._attention` to build a multi-turn salient
+/// signal without re-tokenizing every prior call from scratch.
+///
+/// Fail-open: if the per-process DB isn't open, returns an empty list. Per-row
+/// decompression failures drop just that field, not the row, so a corrupted
+/// content blob doesn't blind us to the rest of the trace.
+#[pyfunction]
+fn read_trace_content<'py>(py: Python<'py>, trace_id: &str) -> PyResult<Py<PyList>> {
+    let trace_id = trace_id.to_string();
+    let rows = py.allow_threads(|| -> Vec<TraceContentRow> {
+        let Ok(guard) = state().lock() else {
+            return Vec::new();
+        };
+        let Some(conn) = guard.conn.as_ref() else {
+            return Vec::new();
+        };
+        read_trace_content_rows(conn, &trace_id).unwrap_or_default()
+    });
+
+    let list = PyList::empty_bound(py);
+    for row in &rows {
+        let d = PyDict::new_bound(py);
+        d.set_item("span_id", &row.span_id)?;
+        d.set_item("trace_id", &row.trace_id)?;
+        d.set_item("parent_span_id", &row.parent_span_id)?;
+        d.set_item("start_time", row.start_time)?;
+        d.set_item("input_messages", &row.input_messages)?;
+        d.set_item("output_messages", &row.output_messages)?;
+        list.append(d)?;
+    }
+    Ok(list.unbind())
+}
+
+struct TraceContentRow {
+    span_id: String,
+    trace_id: String,
+    parent_span_id: Option<String>,
+    start_time: i64,
+    input_messages: Option<String>,
+    output_messages: Option<String>,
+}
+
+fn read_trace_content_rows(
+    conn: &Connection,
+    trace_id: &str,
+) -> rusqlite::Result<Vec<TraceContentRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT s.span_id, s.trace_id, s.parent_span_id, s.start_time, \
+                ic.content_text, oc.content_text \
+         FROM spans s \
+         LEFT JOIN input_content  ic ON s.input_content_id  = ic.content_id \
+         LEFT JOIN output_content oc ON s.output_content_id = oc.content_id \
+         WHERE s.trace_id = ?1 \
+         ORDER BY s.start_time ASC",
+    )?;
+    let rows: Vec<TraceContentRow> = stmt
+        .query_map([trace_id], |row| {
+            let span_id: String = row.get(0)?;
+            let trace_id: String = row.get(1)?;
+            let parent_span_id: Option<String> = row.get(2)?;
+            let start_time: i64 = row.get(3)?;
+            let input_blob: Option<Vec<u8>> = row.get(4)?;
+            let output_blob: Option<Vec<u8>> = row.get(5)?;
+            let input_messages = input_blob.and_then(|b| {
+                storage::decompress_content(&b)
+                    .ok()
+                    .and_then(|bytes| String::from_utf8(bytes).ok())
+            });
+            let output_messages = output_blob.and_then(|b| {
+                storage::decompress_content(&b)
+                    .ok()
+                    .and_then(|bytes| String::from_utf8(bytes).ok())
+            });
+            Ok(TraceContentRow {
+                span_id,
+                trace_id,
+                parent_span_id,
+                start_time,
+                input_messages,
+                output_messages,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
 /// Convert a `Span` into a Python dict (no compression/embedding round-trip; raw fields).
 fn span_to_pydict<'py>(py: Python<'py>, span: &agentc_core::span::Span) -> PyResult<Bound<'py, PyDict>> {
     let d = PyDict::new_bound(py);
@@ -823,6 +915,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(write_span, m)?)?;
     m.add_function(wrap_pyfunction!(create_db, m)?)?;
     m.add_function(wrap_pyfunction!(query_spans_by_trace, m)?)?;
+    m.add_function(wrap_pyfunction!(read_trace_content, m)?)?;
     m.add_function(wrap_pyfunction!(merge_all_pending, m)?)?;
     m.add_function(wrap_pyfunction!(cache_lookup, m)?)?;
     m.add_function(wrap_pyfunction!(cache_insert, m)?)?;

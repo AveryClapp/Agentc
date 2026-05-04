@@ -38,6 +38,17 @@ def query_spans_by_trace(db_path: str, trace_id: str) -> list[dict[str, Any]]:
     """
     ...
 
+def read_trace_content(trace_id: str) -> list[dict[str, Any]]:
+    """Read prior-span content for a trace from the per-process active DB.
+
+    Returns rows ordered by start_time ascending with keys: span_id, trace_id,
+    parent_span_id, start_time, input_messages (decompressed JSON string or
+    None), output_messages (decompressed JSON string or None). Used by the
+    attention proxy to build a multi-turn salient signal. Fail-open: returns
+    [] when the per-process DB is not open.
+    """
+    ...
+
 def merge_all_pending() -> dict[str, int]:
     """Merge pending per-process DBs into the canonical traces.db.
 

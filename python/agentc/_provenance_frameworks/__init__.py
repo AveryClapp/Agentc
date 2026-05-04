@@ -29,7 +29,7 @@ from agentc._provenance_frameworks import autogen, crewai, langgraph
 
 log = logging.getLogger("agentc.provenance_frameworks")
 
-__all__ = ["install_all", "langgraph", "crewai", "autogen"]
+__all__ = ["install_all", "uninstall_all", "langgraph", "crewai", "autogen"]
 
 
 def install_all() -> dict[str, bool]:
@@ -45,3 +45,15 @@ def install_all() -> dict[str, bool]:
         "crewai": crewai.install(),
         "autogen": autogen.install(),
     }
+
+
+def uninstall_all() -> None:
+    """Best-effort symmetric un-patch. Called from agentc shutdown so a
+    re-init in the same process re-attaches cleanly. Each adapter's
+    ``uninstall`` is idempotent — calling it on a never-installed
+    adapter is a no-op."""
+    for mod in (langgraph, crewai, autogen):
+        try:
+            mod.uninstall()
+        except BaseException:
+            log.debug("framework adapter uninstall failed (suppressed)", exc_info=True)

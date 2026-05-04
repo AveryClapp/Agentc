@@ -41,6 +41,11 @@ from agentc._optimizer import plan_call  # noqa: F401
 from agentc._executor import dispatch  # noqa: F401
 from agentc._intercept import intercept  # noqa: F401
 
+# Provenance / state tagging surface used by ParallelBranch and StateDrop.
+from agentc._provenance import State  # noqa: F401
+from agentc._provenance import state_read  # noqa: F401
+from agentc._provenance import state_write  # noqa: F401
+
 # Driver-style fan-out helper. Replaces a serial list comprehension
 # with a thread-pool dispatch that exposes the fan-out to
 # ``ParallelBranchRule``.
@@ -69,4 +74,7 @@ __all__ = [
     "dispatch",
     "intercept",
     "parallel_map",
+    "State",
+    "state_read",
+    "state_write",
 ]

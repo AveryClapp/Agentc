@@ -41,6 +41,10 @@ __all__ = [
     "clear",
     "as_json",
     "PROVENANCE_UNSET",
+    "state_read",
+    "state_write",
+    "consume_state_reads",
+    "record_state_read",
 ]
 
 
@@ -163,6 +167,64 @@ def clear() -> None:
         _weak_tags.clear()
         _primitive_tags.clear()
         _primitive_order.clear()
+    s = getattr(_state_reads_local, "keys", None)
+    if s is not None:
+        s.clear()
+
+
+# --- State read window -----------------------------------------------------
+#
+# StateDrop's window-of-recent-state-reads is sourced here. The window is
+# thread-local — concurrent agent runs in a thread pool keep their reads
+# isolated. ``consume_state_reads`` snapshots and clears so the next LLM
+# call sees a fresh window (matches the spec's "reads since the last
+# call" semantic — not a global rolling deque).
+
+_state_reads_local = threading.local()
+
+
+def _reads_set() -> set[str]:
+    s = getattr(_state_reads_local, "keys", None)
+    if s is None:
+        s = set()
+        _state_reads_local.keys = s
+    return s
+
+
+def record_state_read(key: str) -> None:
+    """Record that the agent read ``state[key]``. Window is thread-local."""
+    _reads_set().add(key)
+
+
+def consume_state_reads() -> list[str]:
+    """Return + clear the current thread's state-read window. Called by
+    the SDK interceptor at call-build time so each LLM call observes
+    only the reads that happened since the previous call on this thread."""
+    s = _reads_set()
+    out = sorted(s)
+    s.clear()
+    return out
+
+
+def state_write(key: str, value: Any) -> Any:
+    """Tag ``value`` with ``State(key)`` and return it.
+
+    Idiom: ``notes = agentc.state_write("notes", llm_call(...))`` — the
+    returned object carries provenance so a later LLM call that includes
+    ``notes`` in its messages can be optimized by ``StateDrop``."""
+    return tag(value, State(key=key))
+
+
+def state_read(key: str, value: Any) -> Any:
+    """Record a read of ``state[key]``, tag ``value``, and return it.
+
+    The recorded read enters the current thread's window. The next LLM
+    call assembled on this thread carries the window in its
+    ``parameters.extra.window_state_reads``, so messages tagged with
+    ``State(key)`` are *retained* — only state keys NOT read since the
+    previous call become drop-eligible."""
+    record_state_read(key)
+    return tag(value, State(key=key))
 
 
 def as_json(source: Optional[DepSource]) -> dict[str, Any]:

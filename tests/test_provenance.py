@@ -21,6 +21,10 @@ from agentc._provenance import (
     UserInput,
     as_json,
     clear,
+    consume_state_reads,
+    record_state_read,
+    state_read,
+    state_write,
     tag,
     tag_of,
 )
@@ -109,6 +113,62 @@ def test_raw_sdk_fallback_produces_literal_everywhere():
 
 def test_as_json_handles_none():
     assert as_json(None) == {"kind": "literal"}
+
+
+def test_state_window_records_and_consumes():
+    record_state_read("notes")
+    record_state_read("plan")
+    record_state_read("notes")  # dedupe
+    snap = consume_state_reads()
+    assert snap == ["notes", "plan"]
+    # consume clears.
+    assert consume_state_reads() == []
+
+
+def test_state_write_tags_but_does_not_record():
+    notes = "abc-research-notes-content-xxxxx"  # avoid interning
+    returned = state_write("notes", notes)
+    assert returned is notes
+    assert as_json(tag_of(notes)) == {"kind": "state", "key": "notes"}
+    # write must NOT enter the read window.
+    assert consume_state_reads() == []
+
+
+def test_state_read_records_and_tags():
+    critique = "abc-critique-content-xxxxx"
+    returned = state_read("critique", critique)
+    assert returned is critique
+    assert as_json(tag_of(critique)) == {"kind": "state", "key": "critique"}
+    assert consume_state_reads() == ["critique"]
+
+
+def test_clear_also_clears_state_window():
+    record_state_read("k1")
+    record_state_read("k2")
+    clear()
+    assert consume_state_reads() == []
+
+
+def test_state_window_is_thread_local():
+    import threading
+
+    record_state_read("main-only")
+    other_window: list[list[str]] = []
+
+    def worker() -> None:
+        # Worker thread starts with an empty window.
+        other_window.append(consume_state_reads())
+        record_state_read("worker-only")
+        other_window.append(consume_state_reads())
+
+    t = threading.Thread(target=worker)
+    t.start()
+    t.join()
+
+    assert other_window[0] == []  # fresh in worker
+    assert other_window[1] == ["worker-only"]
+    # Main thread's window untouched by the worker.
+    assert consume_state_reads() == ["main-only"]
 
 
 def test_as_json_emits_valid_json():

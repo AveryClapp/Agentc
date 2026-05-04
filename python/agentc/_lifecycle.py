@@ -158,21 +158,40 @@ def shutdown(timeout_ms: int = 5000) -> None:
 
 
 def _apply_patches() -> None:
-    """Apply SDK monkey-patches via wrapt."""
+    """Apply SDK monkey-patches via wrapt + framework provenance adapters.
+
+    Framework adapters (langgraph / crewai / autogen) tag inter-node
+    payloads with ``LlmOutput`` so ``ParallelBranch`` and ``StateDrop``
+    can see provenance for messages that didn't originate in user code.
+    Each adapter no-ops if its framework isn't importable, so this is
+    safe to call unconditionally."""
     from agentc._patches._anthropic import patch as patch_anthropic
     from agentc._patches._openai import patch as patch_openai
+    from agentc._provenance_frameworks import install_all
 
     patch_anthropic()
     patch_openai()
+    try:
+        installed = install_all()
+        active = [name for name, ok in installed.items() if ok]
+        if active:
+            logger.debug("provenance adapters installed: %s", ", ".join(active))
+    except BaseException:
+        logger.debug("provenance adapter install failed (suppressed)", exc_info=True)
 
 
 def _remove_patches() -> None:
-    """Remove SDK monkey-patches."""
+    """Remove SDK monkey-patches and framework provenance adapters."""
     from agentc._patches._anthropic import unpatch as unpatch_anthropic
     from agentc._patches._openai import unpatch as unpatch_openai
+    from agentc._provenance_frameworks import uninstall_all
 
     unpatch_anthropic()
     unpatch_openai()
+    try:
+        uninstall_all()
+    except BaseException:
+        logger.debug("provenance adapter uninstall failed (suppressed)", exc_info=True)
 
 
 def _flush_queue(timeout_ms: int) -> None:

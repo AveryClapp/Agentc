@@ -42,6 +42,7 @@ class RunStats:
     n_tasks: int
     n_passed: int
     stub_mode: bool
+    total_input_tokens: int = 0
 
     @property
     def pass_rate(self) -> float:
@@ -82,6 +83,13 @@ class BenchResult:
         return 100.0 * delta / self.baseline.total_cost_usd
 
     @property
+    def input_token_savings_pct(self) -> float:
+        if self.baseline.total_input_tokens <= 0:
+            return 0.0
+        delta = self.baseline.total_input_tokens - self.optimized.total_input_tokens
+        return 100.0 * delta / self.baseline.total_input_tokens
+
+    @property
     def accuracy_delta_pct(self) -> float:
         return 100.0 * (self.optimized.pass_rate - self.baseline.pass_rate)
 
@@ -112,25 +120,26 @@ def _find_agentc_binary() -> str:
     )
 
 
-def _aggregate_from_db(db_path: Path) -> tuple[float, float]:
-    """Return ``(total_cost_usd, wall_clock_s)`` from a traces.db.
+def _aggregate_from_db(db_path: Path) -> tuple[float, float, int]:
+    """Return ``(total_cost_usd, wall_clock_s, total_input_tokens)`` from a traces.db.
 
-    Missing db → ``(0.0, 0.0)``. We don't backfill costs here; the Rust
+    Missing db → ``(0.0, 0.0, 0)``. We don't backfill costs here; the Rust
     post-record hook already runs the full-cost backfill before exit."""
     if not db_path.is_file():
-        return (0.0, 0.0)
+        return (0.0, 0.0, 0)
     conn = sqlite3.connect(str(db_path))
     try:
         row = conn.execute(
             "SELECT COALESCE(SUM(cost_usd), 0.0), "
             "       COALESCE(MAX(COALESCE(end_time, start_time)) - "
-            "                MIN(start_time), 0) "
+            "                MIN(start_time), 0), "
+            "       COALESCE(SUM(input_tokens), 0) "
             "FROM spans"
         ).fetchone()
     finally:
         conn.close()
-    cost, duration_us = row
-    return (float(cost), float(duration_us) / 1_000_000.0)
+    cost, duration_us, input_tokens = row
+    return (float(cost), float(duration_us) / 1_000_000.0, int(input_tokens))
 
 
 def _read_shadow_divergence(storage_dir: Path) -> list[ShadowDivergence]:
@@ -246,7 +255,7 @@ def _run_side(
         )
 
     n_total, n_passed = _parse_pass_fail(proc.stdout)
-    cost, wall = _aggregate_from_db(storage_dir / "traces.db")
+    cost, wall, input_tokens = _aggregate_from_db(storage_dir / "traces.db")
     stub_mode = not os.environ.get("OPENAI_API_KEY")
     return RunStats(
         total_cost_usd=cost,
@@ -254,6 +263,7 @@ def _run_side(
         n_tasks=n_total,
         n_passed=n_passed,
         stub_mode=stub_mode,
+        total_input_tokens=input_tokens,
     )
 
 
@@ -263,16 +273,25 @@ def run_bench(
     storage_root: Path,
     extra_env: Optional[dict[str, str]] = None,
     rules_disabled: Optional[list[str]] = None,
+    shared_baseline: Optional[RunStats] = None,
 ) -> BenchResult:
-    """Run ``agent_module`` twice and diff. Returns a :class:`BenchResult`."""
+    """Run ``agent_module`` twice and diff. Returns a :class:`BenchResult`.
+
+    If ``shared_baseline`` is provided the baseline subprocess is skipped and
+    the pre-computed :class:`RunStats` is used directly. This lets
+    ``sweep_agent`` run the baseline once and share it across all ablation
+    configs, eliminating inter-config baseline variance."""
     baseline_dir = storage_root / "baseline"
     optimized_dir = storage_root / "optimized"
-    baseline = _run_side(
-        agent_module=agent_module,
-        storage_dir=baseline_dir,
-        optimize=False,
-        extra_env=extra_env,
-    )
+    if shared_baseline is not None:
+        baseline = shared_baseline
+    else:
+        baseline = _run_side(
+            agent_module=agent_module,
+            storage_dir=baseline_dir,
+            optimize=False,
+            extra_env=extra_env,
+        )
     optimized = _run_side(
         agent_module=agent_module,
         storage_dir=optimized_dir,
@@ -297,7 +316,8 @@ def render_result(result: BenchResult) -> str:
         f"Optimized:  ${result.optimized.total_cost_usd:.4f}  "
         f"pass {result.optimized.n_passed}/{result.optimized.n_tasks}  "
         f"{result.optimized.wall_clock_s:.2f}s",
-        f"Savings:    {result.cost_savings_pct:+.1f}%   "
+        f"Savings:    {result.cost_savings_pct:+.1f}%  "
+        f"Input-tok Δ: {result.input_token_savings_pct:+.1f}%  "
         f"Accuracy Δ: {result.accuracy_delta_pct:+.1f} pp",
     ]
     if result.rules_disabled:

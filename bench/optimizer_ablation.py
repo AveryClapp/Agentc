@@ -36,7 +36,9 @@ from typing import Callable, Optional
 
 from bench.optimizer_bench import (
     BenchResult,
+    RunStats,
     _find_agentc_binary,
+    _run_side,
     render_result,
     run_bench,
 )
@@ -56,6 +58,7 @@ class AblationRow:
     agent_module: str
     config: str  # "all-on" | "<rule>-off" | "<rule>-only"
     cost_savings_pct: float
+    input_token_savings_pct: float
     accuracy_delta_pp: float
     baseline_cost_usd: float
     optimized_cost_usd: float
@@ -68,6 +71,7 @@ class AblationRow:
             agent_module=result.agent_module,
             config=config,
             cost_savings_pct=result.cost_savings_pct,
+            input_token_savings_pct=result.input_token_savings_pct,
             accuracy_delta_pp=result.accuracy_delta_pct,
             baseline_cost_usd=result.baseline.total_cost_usd,
             optimized_cost_usd=result.optimized.total_cost_usd,
@@ -112,6 +116,7 @@ def _run_config(
     config: str,
     rules_off: list[str],
     storage_root: Path,
+    shared_baseline: Optional[RunStats] = None,
 ) -> AblationRow:
     sub_root = storage_root / config
     if sub_root.exists():
@@ -124,6 +129,7 @@ def _run_config(
         agent_module=agent_module,
         storage_root=sub_root,
         rules_disabled=rules_off,
+        shared_baseline=shared_baseline,
     )
     print(f"\n=== {config} ({agent_module}) ===")
     print(render_result(result))
@@ -134,13 +140,33 @@ def sweep_agent(
     agent_module: str,
     storage_root: Path,
     on_row: Optional[Callable[[AblationRow], None]] = None,
+    extra_env: Optional[dict[str, str]] = None,
 ) -> list[AblationRow]:
     """Run all 1 + N + N configurations for one agent.
+
+    Runs the baseline subprocess exactly once and reuses it across all
+    configurations so inter-config baseline variance (from non-deterministic
+    LLM output tokens) cannot contaminate per-rule attribution.
 
     ``on_row`` is invoked after each configuration finishes so callers
     can flush results to disk incrementally — a partial sweep then
     survives a crash or budget cutoff.
     """
+    baseline_dir = storage_root / "_shared_baseline"
+    baseline_dir.mkdir(parents=True, exist_ok=True)
+    print(f"\n=== shared-baseline ({agent_module}) ===")
+    shared_baseline = _run_side(
+        agent_module=agent_module,
+        storage_dir=baseline_dir,
+        optimize=False,
+        extra_env=extra_env,
+    )
+    print(
+        f"  cost=${shared_baseline.total_cost_usd:.6f}  "
+        f"input_tokens={shared_baseline.total_input_tokens}  "
+        f"pass={shared_baseline.n_passed}/{shared_baseline.n_tasks}"
+    )
+
     rows: list[AblationRow] = []
 
     def add(row: AblationRow) -> None:
@@ -154,6 +180,7 @@ def sweep_agent(
             config="all-on",
             rules_off=[],
             storage_root=storage_root,
+            shared_baseline=shared_baseline,
         )
     )
     for rule in RULES:
@@ -163,6 +190,7 @@ def sweep_agent(
                 config=f"{rule}-off",
                 rules_off=[rule],
                 storage_root=storage_root,
+                shared_baseline=shared_baseline,
             )
         )
     for rule in RULES:
@@ -173,6 +201,7 @@ def sweep_agent(
                 config=f"{rule}-only",
                 rules_off=others,
                 storage_root=storage_root,
+                shared_baseline=shared_baseline,
             )
         )
     return rows
@@ -182,6 +211,7 @@ _CSV_COLUMNS = [
     "agent_module",
     "config",
     "cost_savings_pct",
+    "input_token_savings_pct",
     "accuracy_delta_pp",
     "baseline_cost_usd",
     "optimized_cost_usd",
@@ -195,6 +225,7 @@ def _row_values(r: AblationRow) -> list:
         r.agent_module,
         r.config,
         f"{r.cost_savings_pct:.3f}",
+        f"{r.input_token_savings_pct:.3f}",
         f"{r.accuracy_delta_pp:.3f}",
         f"{r.baseline_cost_usd:.6f}",
         f"{r.optimized_cost_usd:.6f}",

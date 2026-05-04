@@ -37,7 +37,7 @@ AGENTS=(
 )
 
 cost_so_far() {
-    awk -F, 'FNR>1 {sum+=$6} END {printf "%.4f", sum+0}' \
+    awk -F, 'FNR>1 {sum+=$7} END {printf "%.4f", sum+0}' \
         "$RESULTS"/ablation-*.csv 2>/dev/null || echo "0"
 }
 

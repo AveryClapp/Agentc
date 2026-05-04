@@ -1,0 +1,12 @@
+agent_module,config,cost_savings_pct,input_token_savings_pct,accuracy_delta_pp,baseline_cost_usd,optimized_cost_usd,n_tasks,n_passed_optimized
+bench.agents.long_context_qa,all-on,34.455,34.548,-2.000,0.062211,0.040776,100,52
+bench.agents.long_context_qa,CacheHit-off,34.287,34.379,-2.000,0.062211,0.040881,100,52
+bench.agents.long_context_qa,ContextCompress-off,-0.002,0.000,1.000,0.062211,0.062212,100,55
+bench.agents.long_context_qa,ParallelBranch-off,34.762,34.856,-2.000,0.062211,0.040585,100,52
+bench.agents.long_context_qa,ModelDowngrade-off,34.770,34.856,-4.000,0.062211,0.040581,100,50
+bench.agents.long_context_qa,StateDrop-off,34.765,34.856,-4.000,0.062211,0.040584,100,50
+bench.agents.long_context_qa,CacheHit-only,-0.001,0.000,1.000,0.062211,0.062212,100,55
+bench.agents.long_context_qa,ContextCompress-only,34.761,34.856,-2.000,0.062211,0.040586,100,52
+bench.agents.long_context_qa,ParallelBranch-only,0.003,0.000,3.000,0.062211,0.062209,100,57
+bench.agents.long_context_qa,ModelDowngrade-only,-0.001,0.000,0.000,0.062211,0.062212,100,54
+bench.agents.long_context_qa,StateDrop-only,-0.001,0.000,-1.000,0.062211,0.062212,100,53

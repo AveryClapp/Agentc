@@ -226,6 +226,8 @@ __marimo__/
 .bv/
 
 # Benchmark results (generated, not checked in)
+# — except bench/paper_results/, which carries the canonical CSVs
+# referenced by the paper for reproducibility.
 bench/results/
 
 # Local design / planning notes (not for the public repo)

@@ -1,0 +1,12 @@
+agent_module,config,cost_savings_pct,input_token_savings_pct,accuracy_delta_pp,baseline_cost_usd,optimized_cost_usd,n_tasks,n_passed_optimized
+bench.agents.gaia_router,all-on,33.499,-0.092,-3.150,0.100635,0.066923,127,13
+bench.agents.gaia_router,CacheHit-off,29.287,0.015,-1.575,0.100635,0.071162,127,15
+bench.agents.gaia_router,ContextCompress-off,30.168,-0.011,0.000,0.100635,0.070275,127,17
+bench.agents.gaia_router,ParallelBranch-off,29.324,0.023,1.575,0.100635,0.071125,127,19
+bench.agents.gaia_router,ModelDowngrade-off,-3.818,0.011,-1.575,0.100635,0.104478,127,15
+bench.agents.gaia_router,StateDrop-off,32.502,-0.008,-1.575,0.100635,0.067927,127,15
+bench.agents.gaia_router,CacheHit-only,-0.450,-0.004,-0.787,0.100635,0.101087,127,16
+bench.agents.gaia_router,ContextCompress-only,0.517,0.000,2.362,0.100635,0.100115,127,20
+bench.agents.gaia_router,ParallelBranch-only,1.697,-0.004,4.724,0.100635,0.098928,127,23
+bench.agents.gaia_router,ModelDowngrade-only,35.290,0.015,-2.362,0.100635,0.065121,127,14
+bench.agents.gaia_router,StateDrop-only,3.788,0.004,3.937,0.100635,0.096823,127,22

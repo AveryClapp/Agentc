@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Targeted per-rule ablation:
+# Targeted per-rule ablation.
+# Self-caffeinated: re-execs under caffeinate if not already running under it.
 #
 #   Experiment 1 — gaia_router (n=127)
 #     Rule under test: ModelDowngrade
@@ -13,6 +14,12 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
+
+# Re-exec under caffeinate if not already running under it (prevents sleep
+# mid-run when the machine is idle and no explicit caffeinate wrapper was used).
+if ! pgrep -x caffeinate > /dev/null 2>&1; then
+    exec caffeinate -is bash "$0" "$@"
+fi
 
 if [[ -f .env ]]; then set -a; . ./.env; set +a; fi
 export PYTHONPATH=python

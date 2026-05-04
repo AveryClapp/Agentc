@@ -10,11 +10,11 @@ Targets per ``specs/optimizer.md``: savings ≥ 25%, accuracy floor
 7.1/10 quality. Synthetic fixtures fall back to substring-match; the
 real quality scorer lives in the ship-gate runner.
 
-StateDrop choreography: the refiner's call carries both ``State("notes")``
-and ``State("critique")`` in its message list, but only ``critique``
-was ``state_read`` since the previous LLM call — so the rule drops
-``State("notes")`` from the message list (system + critique + final
-prompt remain, ≥ 50% retention).
+State tagging: notes and critique are both explicitly declared as
+dependencies of the refiner call via ``state_read``, so StateDrop keeps
+both. This workload is too short (3 steps) for StateDrop to fire
+meaningfully — the rule is validated on longer-horizon pipelines where
+early state becomes genuinely stale.
 """
 
 from __future__ import annotations
@@ -84,8 +84,11 @@ def _run_one(task: SyntheticTask) -> str:
     critique = agentc.state_write(
         "critique", _critique(agentc.state_read("notes", notes))
     )
+    # Explicitly re-read notes so StateDrop sees window={"notes","critique"}
+    # at refiner time and keeps both messages. The refiner genuinely needs
+    # both the research content and the critic's correction.
     refined = _refine(
-        notes,
+        agentc.state_read("notes", notes),
         agentc.state_read("critique", critique),
         f"Compose the final paragraph for: {task.prompt}",
     )

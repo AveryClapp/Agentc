@@ -51,11 +51,11 @@ def main(argv: list[str] | None = None) -> int:
         ])
         w.writerow([
             args.agent_module,
-            result.n_total,
+            result.baseline.n_tasks,
             result.baseline.n_passed,
             result.optimized.n_passed,
-            f"{result.baseline.cost_usd:.6f}",
-            f"{result.optimized.cost_usd:.6f}",
+            f"{result.baseline.total_cost_usd:.6f}",
+            f"{result.optimized.total_cost_usd:.6f}",
             result.baseline.total_input_tokens,
             result.optimized.total_input_tokens,
             f"{result.baseline.wall_clock_s:.3f}",
@@ -63,10 +63,10 @@ def main(argv: list[str] | None = None) -> int:
         ])
 
     print(f"\nWrote {args.out}")
-    print(f"  cost: ${result.baseline.cost_usd:.4f} (baseline) / "
-          f"${result.optimized.cost_usd:.4f} (optimized)")
-    print(f"  pass: {result.baseline.n_passed}/{result.n_total} (baseline) / "
-          f"{result.optimized.n_passed}/{result.n_total} (optimized)")
+    print(f"  cost: ${result.baseline.total_cost_usd:.4f} (baseline) / "
+          f"${result.optimized.total_cost_usd:.4f} (optimized)")
+    print(f"  pass: {result.baseline.n_passed}/{result.baseline.n_tasks} (baseline) / "
+          f"{result.optimized.n_passed}/{result.optimized.n_tasks} (optimized)")
     return 0
 
 

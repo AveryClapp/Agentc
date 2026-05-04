@@ -28,6 +28,7 @@ ANSWER_SYSTEM = (
 )
 
 
+@agentc.memoize(model="gpt-4o-mini")
 def _classify(prompt: str) -> str:
     with agentc.span("gaia.classify"):
         return call_llm(prompt, model="gpt-4o-mini", system=CLASSIFIER_SYSTEM)

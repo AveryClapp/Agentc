@@ -13,6 +13,13 @@ if [[ -f .env ]]; then
 fi
 export PYTHONPATH=python
 
+# ModelDowngrade routes gpt-4o → gpt-4o-mini. The reference agents
+# hardcode gpt-4o-mini as their default, which would leave the
+# downgrade rule with nothing to do. Force the baseline to gpt-4o so
+# the rule has a real ratio to optimize against; the optimized side
+# still routes back to mini after the cost model warms.
+export BENCH_BASELINE_MODEL="${BENCH_BASELINE_MODEL:-gpt-4o}"
+
 PY=".venv/bin/python"
 RESULTS=bench/results
 mkdir -p "$RESULTS"

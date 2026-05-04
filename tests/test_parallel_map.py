@@ -81,7 +81,9 @@ def test_build_call_dict_threads_tag_and_peer():
         ],
     }
 
-    # No peer: input_deps populated, no extra.
+    # No peer: input_deps populated, parameters.extra carries the
+    # StateDrop / ContextCompress contract (mirrored message_deps and an
+    # empty window_state_reads), but no parallel_peer.
     d = build_call_dict_openai(
         kwargs, call_site_id="cs", trace_id_hex="0" * 32, span_id_hex="0" * 16
     )
@@ -89,7 +91,10 @@ def test_build_call_dict_threads_tag_and_peer():
         {"kind": "literal"},
         {"kind": "user_input", "span_id": "cafefacecafeface"},
     ]
-    assert "extra" not in d["parameters"]
+    extra = d["parameters"]["extra"]
+    assert "parallel_peer" not in extra
+    assert extra["message_deps"] == d["input_deps"]
+    assert extra["window_state_reads"] == []
 
     # With peer staged: parameters.extra.parallel_peer present.
     _set_peer({"input_deps": [{"kind": "user_input", "span_id": "deadbeefdeadbeef"}]})

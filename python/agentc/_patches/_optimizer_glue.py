@@ -97,7 +97,7 @@ def build_call_dict_openai(
 ) -> dict[str, Any]:
     """Translate OpenAI ``chat.completions.create`` kwargs into a Call dict."""
     from agentc._parallel import get_parallel_peer
-    from agentc._provenance import as_json, tag_of
+    from agentc._provenance import as_json, consume_state_reads, tag_of
 
     messages: list[dict[str, str]] = []
     # Track the *original* content objects so we can look up their
@@ -153,13 +153,48 @@ def build_call_dict_openai(
                 "schema": fn.get("parameters", {}),
             })
 
+    existing_extra = parameters.get("extra")
+    extra_obj: dict[str, Any] = (
+        dict(existing_extra) if isinstance(existing_extra, dict) else {}
+    )
+
     peer = get_parallel_peer()
     if peer is not None:
-        existing_extra = parameters.get("extra")
-        extra_obj: dict[str, Any] = (
-            dict(existing_extra) if isinstance(existing_extra, dict) else {}
-        )
         extra_obj["parallel_peer"] = peer
+
+    # StateDrop / ContextCompress consume per-message provenance from
+    # ``parameters.extra.message_deps`` (parallel to ``messages``). Mirror
+    # ``input_deps`` here — the rules read this slot, not the top-level
+    # ``input_deps`` (which feeds ParallelBranch's peer-dependency check).
+    extra_obj["message_deps"] = input_deps
+
+    # StateDrop also reads ``parameters.extra.window_state_reads``: the
+    # set of state keys the agent has read on this thread *since the
+    # previous LLM call*. Snapshot + clear so each call sees a fresh
+    # window — matches the spec's "reads since the last call" semantic.
+    extra_obj["window_state_reads"] = consume_state_reads()
+
+    # ContextCompress reads ``parameters.extra.attention_scores`` (per
+    # message) and ``parameters.extra.follow_on_tokens`` (must-keep).
+    # Compute via the online token-overlap proxy: prior-trace tokens for
+    # multi-turn agents, last user message for single-turn QA.
+    from agentc._attention import compute_attention_scores
+
+    try:
+        attn_scores, follow_on = compute_attention_scores(messages, trace_id_hex)
+    except BaseException:
+        log.debug("compute_attention_scores raised (suppressed)", exc_info=True)
+        attn_scores, follow_on = [], []
+    if attn_scores:
+        extra_obj["attention_scores"] = attn_scores
+        extra_obj["follow_on_tokens"] = follow_on
+        # The Rust rule's default DEAD_ATTENTION_EPSILON (1e-4) is
+        # calibrated for true model attention; our token-overlap proxy
+        # emits scores roughly in [0.05, 1.0]. Override so distractors
+        # actually qualify as drop-eligible.
+        extra_obj["dead_attention_epsilon"] = 0.10
+
+    if extra_obj:
         parameters["extra"] = extra_obj
 
     return {

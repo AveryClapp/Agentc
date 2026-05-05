@@ -1,0 +1,11 @@
+agent_module,config,cost_savings_pct,input_token_savings_pct,accuracy_delta_pp,baseline_cost_usd,optimized_cost_usd,n_tasks,n_passed_optimized
+bench.agents.iterative_refiner,all-on,6.000,9.630,0.000,0.082910,0.077936,50,49
+bench.agents.iterative_refiner,CacheHit-off,7.603,10.945,2.000,0.082910,0.076606,50,50
+bench.agents.iterative_refiner,ContextCompress-off,6.883,10.469,-2.000,0.082910,0.077203,50,48
+bench.agents.iterative_refiner,ParallelBranch-off,6.930,10.658,-2.000,0.082910,0.077164,50,48
+bench.agents.iterative_refiner,ModelDowngrade-off,6.604,10.242,-2.000,0.082910,0.077435,50,48
+bench.agents.iterative_refiner,StateDrop-off,1.823,1.569,-2.000,0.082910,0.081399,50,48
+bench.agents.iterative_refiner,CacheHit-only,2.076,1.797,0.000,0.082910,0.081189,50,49
+bench.agents.iterative_refiner,ContextCompress-only,0.950,1.026,0.000,0.082910,0.082122,50,49
+bench.agents.iterative_refiner,ParallelBranch-only,1.443,1.357,0.000,0.082910,0.081713,50,49
+bench.agents.iterative_refiner,ModelDowngrade-only,2.310,2.005,0.000,0.082910,0.080995,50,49

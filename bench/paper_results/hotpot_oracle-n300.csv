@@ -1,0 +1,2 @@
+agent_module,n_tasks,n_passed_baseline,n_passed_optimized,baseline_cost_usd,optimized_cost_usd,baseline_input_tokens,optimized_input_tokens,baseline_wall_clock_s,optimized_wall_clock_s
+bench.agents.hotpot_oracle,300,193,196,0.014495,0.014492,92885,92885,219.416,207.094

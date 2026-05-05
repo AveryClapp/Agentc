@@ -1,0 +1,8 @@
+agent_module,config,cost_savings_pct,input_token_savings_pct,accuracy_delta_pp,baseline_cost_usd,optimized_cost_usd,n_tasks,n_passed_optimized
+bench.agents.hotpot_qa,all-on,0.170,0.195,1.333,0.078578,0.078445,300,175
+bench.agents.hotpot_qa,CacheHit-off,0.191,0.195,0.333,0.078578,0.078428,300,172
+bench.agents.hotpot_qa,ContextCompress-off,0.005,0.000,0.333,0.078578,0.078574,300,172
+bench.agents.hotpot_qa,ParallelBranch-off,0.194,0.195,0.667,0.078578,0.078425,300,173
+bench.agents.hotpot_qa,ModelDowngrade-off,0.185,0.195,0.667,0.078578,0.078433,300,173
+bench.agents.hotpot_qa,StateDrop-off,0.192,0.195,1.333,0.078578,0.078427,300,175
+bench.agents.hotpot_qa,CacheHit-only,-0.001,0.000,0.000,0.078578,0.078579,300,171

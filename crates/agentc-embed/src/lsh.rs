@@ -84,8 +84,8 @@ pub fn lsh_signature(embedding: &[f32]) -> u64 {
 /// is the SQL `bucket_id` for `band_ix = i`.
 pub fn lsh_bands(signature: u64) -> [u8; NUM_BANDS] {
     let mut out = [0u8; NUM_BANDS];
-    for i in 0..NUM_BANDS {
-        out[i] = ((signature >> (i * ROWS_PER_BAND)) & 0xFF) as u8;
+    for (i, b) in out.iter_mut().enumerate() {
+        *b = ((signature >> (i * ROWS_PER_BAND)) & 0xFF) as u8;
     }
     out
 }

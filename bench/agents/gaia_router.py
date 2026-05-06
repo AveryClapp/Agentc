@@ -28,17 +28,17 @@ ANSWER_SYSTEM = (
 )
 
 
-@agentc.memoize(model="gpt-4o-mini")
+@agentc.memoize(model="gpt-4o-mini-2024-07-18")
 def _classify(prompt: str) -> str:
     with agentc.span("gaia.classify"):
-        return call_llm(prompt, model="gpt-4o-mini", system=CLASSIFIER_SYSTEM)
+        return call_llm(prompt, model="gpt-4o-mini-2024-07-18", system=CLASSIFIER_SYSTEM)
 
 
 def _answer(prompt: str, category: str) -> str:
     with agentc.span("gaia.answer"):
         return call_llm(
             f"[class={category}] {prompt}",
-            model="gpt-4o-mini",
+            model="gpt-4o-mini-2024-07-18",
             system=ANSWER_SYSTEM,
         )
 

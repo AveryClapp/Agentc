@@ -59,12 +59,4 @@ jobs:
       - run: pip install target/wheels/*.whl
       - run: pip install -e ".[dev]"
       - run: python -c "from agentc._native import write_span, create_db, query_spans_by_trace; print('native OK:', write_span.__name__)"
-      # test_parallel_branch_fires_and_audits is order-dependent: it
-      # requires being the first test in the process to call
-      # agentc.init() (the SDK doesn't fully reset on shutdown — see
-      # the docstring on the test). Passes when run in isolation,
-      # fails as part of the full suite. Deselected here pending a
-      # subprocess-isolated rewrite.
-      - run: >-
-          pytest tests/ -v --tb=short
-          --deselect tests/test_parallel_map.py::test_parallel_branch_fires_and_audits
+      - run: pytest tests/ -v --tb=short

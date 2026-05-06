@@ -79,7 +79,7 @@ def _classify(text: str) -> str:
     so identical prompts hitting this exact frame yield a cache hit.
     """
     with agentc.span("classify"):
-        model = os.environ.get("BENCH_BASELINE_MODEL") or "gpt-4o-mini"
+        model = os.environ.get("BENCH_BASELINE_MODEL") or "gpt-4o-mini-2024-07-18"
         client = llm_client()
         if client is None:
             # Stub: emit a deterministic label so the harness still

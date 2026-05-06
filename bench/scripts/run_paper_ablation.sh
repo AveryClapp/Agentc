@@ -21,10 +21,10 @@
 # the parallelism is already provided by the user-side parallel_map
 # helper; the rule is observability, not cost.
 #
-# Usage: bash bench/run_paper_ablation.sh
+# Usage: bash bench/scripts/run_paper_ablation.sh
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 if ! pgrep -x caffeinate > /dev/null 2>&1; then
     exec caffeinate -is bash "$0" "$@"

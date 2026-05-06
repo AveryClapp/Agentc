@@ -68,7 +68,7 @@ def _build_messages(task: SyntheticTask) -> list[dict[str, str]]:
 
 def _run_one(task: SyntheticTask) -> str:
     with agentc.span("hotpot_oracle.answer"):
-        model = os.environ.get("BENCH_BASELINE_MODEL") or "gpt-4o-mini"
+        model = os.environ.get("BENCH_BASELINE_MODEL") or "gpt-4o-mini-2024-07-18"
         client = llm_client()
         if client is None:
             gold = (task.meta or {}).get("gold_answer", "") or task.expected

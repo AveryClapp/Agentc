@@ -10,10 +10,10 @@
 #     Rule under test: ContextCompress
 #     Expected: positive input-token savings, <=1.5pp accuracy delta
 #
-# Usage: caffeinate -is bash bench/run_targeted_ablation.sh
+# Usage: caffeinate -is bash bench/scripts/run_targeted_ablation.sh
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 # Re-exec under caffeinate if not already running under it (prevents sleep
 # mid-run when the machine is idle and no explicit caffeinate wrapper was used).

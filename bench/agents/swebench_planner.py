@@ -25,7 +25,7 @@ SYSTEM = (
 
 def _plan(task: SyntheticTask) -> str:
     with agentc.span("swebench.plan"):
-        return call_llm(task.prompt, model="gpt-4o-mini", system=SYSTEM)
+        return call_llm(task.prompt, model="gpt-4o-mini-2024-07-18", system=SYSTEM)
 
 
 @agentc.trace(name="swebench_planner")

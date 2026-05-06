@@ -42,15 +42,15 @@ REFINER_SYSTEM = (
 )
 
 
-@agentc.memoize(model="gpt-4o-mini")
+@agentc.memoize(model="gpt-4o-mini-2024-07-18")
 def _research(prompt: str) -> str:
     with agentc.span("multi.researcher"):
-        return call_llm(prompt, model="gpt-4o-mini", system=RESEARCHER_SYSTEM)
+        return call_llm(prompt, model="gpt-4o-mini-2024-07-18", system=RESEARCHER_SYSTEM)
 
 
 def _critique(notes: str) -> str:
     with agentc.span("multi.critic"):
-        return call_llm(notes, model="gpt-4o-mini", system=CRITIC_SYSTEM)
+        return call_llm(notes, model="gpt-4o-mini-2024-07-18", system=CRITIC_SYSTEM)
 
 
 def _refine(notes_msg: str, critique_msg: str, final_prompt: str) -> str:
@@ -62,7 +62,7 @@ def _refine(notes_msg: str, critique_msg: str, final_prompt: str) -> str:
     with agentc.span("multi.refiner"):
         # Mirror ``call_llm`` so the ablation's ``BENCH_BASELINE_MODEL``
         # override flows through here too.
-        model = os.environ.get("BENCH_BASELINE_MODEL") or "gpt-4o-mini"
+        model = os.environ.get("BENCH_BASELINE_MODEL") or "gpt-4o-mini-2024-07-18"
 
         client = llm_client()
         messages = [

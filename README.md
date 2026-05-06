@@ -60,8 +60,9 @@ bench/                       Evaluation harness
 ├── optimizer_bench.py       run an agent twice (optimizer off / on)
 ├── optimizer_ablation.py    11-config sweep per agent: shared baseline +
 │                            <rule>-off ×5 + <rule>-only ×5
-├── run_paper_ablation.sh    paper-experiment driver (long_context + refiner)
-├── run_targeted_ablation.sh per-rule targeted runs (gaia + hotpot)
+├── scripts/                 driver shell scripts: run_paper_ablation.sh,
+│                            run_pushback_ablation.sh, run_targeted_ablation.sh,
+│                            run_ablation.sh
 └── harness.py + …           profiler-overhead validation suite
 
 specs/                       Technical specifications
@@ -138,7 +139,7 @@ python -m bench.optimizer_bench bench.agents.rag_summarizer
 python -m bench.optimizer_ablation bench.agents.long_context_qa
 
 # 4. Reproduce paper experiments (ContextCompress + StateDrop)
-bash bench/run_paper_ablation.sh
+bash bench/scripts/run_paper_ablation.sh
 ```
 
 The reference agents stub LLM calls when no API key is set, so the harness wires up cleanly without spending money. To generate real cost/accuracy numbers, set `OPENAI_API_KEY` (and `HF_TOKEN` for GAIA) in `.env`.

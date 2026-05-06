@@ -38,6 +38,9 @@ REFINER_SYSTEM = (
 
 _NUM_STEPS = 10
 
+# Synthetic fixture: 50 topics. Effective n is ``min(BENCH_MAX_TASKS,
+# len(_TOPICS))`` — setting BENCH_MAX_TASKS above 50 doesn't grow the
+# task count, it caps at this list's length.
 _TOPICS: list[tuple[str, str]] = [
     ("Write a paragraph explaining what a binary search tree is.", "tree"),
     ("Write a paragraph explaining the concept of a hash table.", "hash"),
@@ -114,7 +117,7 @@ def _refine_step(
     being dropped.
     """
     with agentc.span("refiner.step"):
-        model = os.environ.get("BENCH_BASELINE_MODEL") or "gpt-4o-mini"
+        model = os.environ.get("BENCH_BASELINE_MODEL") or "gpt-4o-mini-2024-07-18"
         client = llm_client()
         if client is None:
             return f"[stub:{model}] {task_prompt}"

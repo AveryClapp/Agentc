@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Run the per-agent ablation sweep end-to-end with budget guards.
-# Usage:   caffeinate -is bash bench/run_ablation.sh
-# Or:      nohup caffeinate -is bash bench/run_ablation.sh &
+# Usage:   caffeinate -is bash bench/scripts/run_ablation.sh
+# Or:      nohup caffeinate -is bash bench/scripts/run_ablation.sh &
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 # Setup
 chflags nohidden .venv/lib/python3.12/site-packages/agentc.pth 2>/dev/null || true

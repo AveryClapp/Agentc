@@ -112,59 +112,77 @@ def test_parallel_branch_fires_and_audits(storage):
     produces a ``Plan::Parallel`` proposal with ``rule=ParallelBranch``,
     and the corresponding audit row lands in ``optimizer_audit.db``.
 
-    Combined into one test because ``agentc.init()`` reads the storage
-    path on first init and doesn't fully reset on subsequent
-    init/shutdown cycles within the same Python process — splitting this
-    across two tests would require subprocess isolation which isn't
-    worth the complexity for a single rule-firing assertion."""
+    Run in a subprocess: ``agentc.init()`` reads ``AGENTC_STORAGE_PATH``
+    on first init and doesn't fully reset on subsequent init/shutdown
+    cycles within the same Python process. If any earlier test in the
+    suite already initialized agentc, our monkeypatched env wouldn't
+    take effect. Subprocess isolation gives this test a fresh
+    interpreter where its env is the only env."""
+    import subprocess
     import sqlite3
+    import sys
 
-    import agentc
+    script = """
+import os, sys
+import agentc
+from agentc._optimizer import observe_outcome, plan_call
 
-    agentc.init()
-    try:
-        from agentc._optimizer import observe_outcome, plan_call
+agentc.init()
+try:
+    warm_call = {
+        "call_site_id": "cs.test_pb",
+        "trace_id": "0" * 32,
+        "span_id": "0" * 16,
+        "model": "gpt-4o-mini",
+        "messages": [{"role": "user", "content": "warm"}],
+        "parameters": {},
+        "tools": [],
+        "input_deps": [{"kind": "user_input", "span_id": "deadbeefdeadbeef"}],
+        "occurrence_ix": 0,
+    }
+    warm_out = {
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "latency_ms": 100.0,
+        "cost_usd": 0.0001,
+        "output_is_structured": False,
+        "output_is_short": True,
+        "call_site_id": "cs.test_pb",
+    }
+    for _ in range(5):
+        observe_outcome(plan_call(warm_call), warm_out)
 
-        warm_call = {
-            "call_site_id": "cs.test_pb",
-            "trace_id": "0" * 32,
-            "span_id": "0" * 16,
-            "model": "gpt-4o-mini",
-            "messages": [{"role": "user", "content": "warm"}],
-            "parameters": {},
-            "tools": [],
-            "input_deps": [{"kind": "user_input", "span_id": "deadbeefdeadbeef"}],
-            "occurrence_ix": 0,
-        }
-        warm_out = {
-            "input_tokens": 10,
-            "output_tokens": 5,
-            "latency_ms": 100.0,
-            "cost_usd": 0.0001,
-            "output_is_structured": False,
-            "output_is_short": True,
-            "call_site_id": "cs.test_pb",
-        }
-        for _ in range(5):
-            observe_outcome(plan_call(warm_call), warm_out)
-
-        peer_call = dict(warm_call)
-        peer_call["parameters"] = {
-            "extra": {
-                "parallel_peer": {
-                    "input_deps": [
-                        {"kind": "user_input", "span_id": "abababababababab"},
-                    ]
-                }
+    peer_call = dict(warm_call)
+    peer_call["parameters"] = {
+        "extra": {
+            "parallel_peer": {
+                "input_deps": [
+                    {"kind": "user_input", "span_id": "abababababababab"},
+                ]
             }
         }
-        plan = plan_call(peer_call)
-        assert plan.kind == "parallel"
-        assert getattr(plan, "rule", None) == "ParallelBranch"
-        assert len(getattr(plan, "calls", [])) == 2
-        observe_outcome(plan, warm_out)
-    finally:
-        agentc.shutdown()
+    }
+    plan = plan_call(peer_call)
+    assert plan.kind == "parallel", f"expected parallel, got {plan.kind}"
+    assert getattr(plan, "rule", None) == "ParallelBranch", \\
+        f"expected rule ParallelBranch, got {getattr(plan, 'rule', None)}"
+    assert len(getattr(plan, "calls", [])) == 2, \\
+        f"expected 2 calls, got {len(getattr(plan, 'calls', []))}"
+    observe_outcome(plan, warm_out)
+finally:
+    agentc.shutdown()
+"""
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env={**os.environ, "AGENTC_STORAGE_PATH": storage},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, (
+        f"subprocess failed (rc={proc.returncode}):\n"
+        f"--- stdout ---\n{proc.stdout}\n--- stderr ---\n{proc.stderr}"
+    )
 
     db = os.path.join(storage, "optimizer_audit.db")
     assert os.path.exists(db), "audit DB should exist after shutdown"

@@ -109,7 +109,7 @@ def llm_client():
 
 def call_llm(
     prompt: str,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-4o-mini-2024-07-18",
     system: Optional[str] = None,
 ) -> str:
     """One-shot chat completion. Returns a deterministic stub when no

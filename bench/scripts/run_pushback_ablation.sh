@@ -4,7 +4,7 @@
 #
 # Targets the three workshop-paper push-backs:
 #
-#   1. StateDrop n bigger     — iterative_refiner at n=60 (was n=30)
+#   1. StateDrop n bigger     — iterative_refiner at n=50 (was n=30; synthetic fixture caps at 50)
 #                               Tightens accuracy SE from ±9pp to ±6.5pp.
 #
 #   2. ContextCompress real   — hotpot_qa on the public HotpotQA-distractor
@@ -18,10 +18,10 @@
 #                               ContextCompress's job is to come close to it
 #                               without seeing the labels.
 #
-# Usage: bash bench/run_pushback_ablation.sh
+# Usage: bash bench/scripts/run_pushback_ablation.sh
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 if ! pgrep -f "caffeinate -is" > /dev/null 2>&1; then
     exec caffeinate -is bash "$0" "$@"
@@ -98,7 +98,7 @@ log "log: $LOG"
 
 run_oracle 300
 run_ablation "hotpot_qa"          "hotpot-real-n300"   300
-run_ablation "iterative_refiner"  "refiner-n60"        60
+run_ablation "iterative_refiner"  "refiner-n50"        50
 
 log "FINAL spend: \$$(cost_so_far)"
 log "pushback ablation complete"

@@ -98,14 +98,14 @@ def _research_aspect(question: str) -> str:
     """Per-aspect research call. Wrapped in ``parallel_map`` below so
     sibling calls stage parallel-peer descriptors for each other."""
     with agentc.span("research.aspect"):
-        return call_llm(question, model="gpt-4o-mini", system=ASPECT_SYSTEM)
+        return call_llm(question, model="gpt-4o-mini-2024-07-18", system=ASPECT_SYSTEM)
 
 
 def _synthesize(partials: list[str]) -> str:
     with agentc.span("research.synthesize"):
         return call_llm(
             "\n".join(f"- {p}" for p in partials),
-            model="gpt-4o-mini",
+            model="gpt-4o-mini-2024-07-18",
             system=SYNTHESIZE_SYSTEM,
         )
 

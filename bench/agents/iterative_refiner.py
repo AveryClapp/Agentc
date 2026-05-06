@@ -138,7 +138,15 @@ def _refine_step(
             "content": "Produce the next revision now.",
         })
 
-        resp = client.chat.completions.create(model=model, messages=messages)
+        # temperature=0 collapses LLM output stochasticity. The
+        # iterative chain compounds variance across 10 steps (each
+        # step's input depends on the previous step's output), so
+        # default-temperature runs at n=50 produced cost deltas
+        # within the LLM's own noise floor. Deterministic sampling
+        # makes the rule's effect distinguishable from sampling.
+        resp = client.chat.completions.create(
+            model=model, messages=messages, temperature=0
+        )
         return resp.choices[0].message.content or ""
 
 

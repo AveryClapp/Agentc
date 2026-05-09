@@ -21,6 +21,7 @@ Agentc/
 │   ├── memoization.md
 │   ├── optimizer.md
 │   └── working/             ← research, gap analyses, handoff docs
+├── paper-intelligence/      ← paper evidence/literature/venue workspace; not specs
 └── (submodules planned)
 ```
 

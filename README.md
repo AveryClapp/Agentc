@@ -66,6 +66,7 @@ bench/                       Evaluation harness
 └── harness.py + …           profiler-overhead validation suite
 
 specs/                       Technical specifications
+paper-intelligence/          Paper evidence, literature, venue, and experiment ledgers
 tests/                       Python unit tests (~250 tests)
 ```
 

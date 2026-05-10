@@ -1,0 +1,12 @@
+agent_module,config,cost_savings_pct,input_token_savings_pct,accuracy_delta_pp,baseline_cost_usd,optimized_cost_usd,n_tasks,n_passed_optimized
+bench.agents.multirule_qa,all-on,31.333,31.419,-5.000,0.036450,0.025029,20,9
+bench.agents.multirule_qa,CacheHit-off,31.333,31.419,-5.000,0.036450,0.025029,20,9
+bench.agents.multirule_qa,ContextCompress-off,0.072,0.062,-10.000,0.036450,0.036424,20,8
+bench.agents.multirule_qa,ParallelBranch-off,31.333,31.419,-5.000,0.036450,0.025029,20,9
+bench.agents.multirule_qa,ModelDowngrade-off,31.332,31.419,-5.000,0.036450,0.025030,20,9
+bench.agents.multirule_qa,StateDrop-off,31.333,31.419,-5.000,0.036450,0.025029,20,9
+bench.agents.multirule_qa,CacheHit-only,0.014,0.002,-10.000,0.036450,0.036445,20,8
+bench.agents.multirule_qa,ContextCompress-only,31.333,31.419,-5.000,0.036450,0.025029,20,9
+bench.agents.multirule_qa,ParallelBranch-only,0.000,0.000,0.000,0.036450,0.036450,20,10
+bench.agents.multirule_qa,ModelDowngrade-only,0.014,0.002,-10.000,0.036450,0.036445,20,8
+bench.agents.multirule_qa,StateDrop-only,0.062,0.060,-10.000,0.036450,0.036428,20,8

@@ -45,7 +45,7 @@ pub fn optimize_observe(
     // attributing; Cached is served from memoization's cache stats, not
     // the optimizer's cost model.
     let call_site_id = match &plan {
-        Plan::Rewritten { call, .. } => call.call_site_id.clone(),
+        Plan::Rewritten { call, .. } | Plan::Composed { call, .. } => call.call_site_id.clone(),
         Plan::Parallel { calls, .. } => calls
             .first()
             .map(|c| c.call_site_id.clone())

@@ -24,9 +24,18 @@ use crate::config::OptimizerConfig;
 use crate::cost_model::{CallSiteProfile, CostModel};
 use crate::dag::Call;
 
+/// Per-rule attribution inside a `Plan::Composed`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuleApplication {
+    pub rule: String,
+    pub projected_savings_usd: f32,
+    pub cost_driver: CostDriver,
+}
+
 /// The Optimizer's output. Python's executor dispatches each variant:
 /// `Cached` returns directly, `Rewritten` dispatches the mutated call,
-/// `Parallel` issues `asyncio.gather`, `PassThrough` runs the original.
+/// `Parallel` issues `asyncio.gather`, `Composed` dispatches the multi-rule
+/// mutated call, `PassThrough` runs the original.
 ///
 /// `serde`-tagged so the FFI boundary is readable (no positional indices).
 ///
@@ -53,6 +62,12 @@ pub enum Plan {
         calls: Vec<Call>,
         projected_savings_usd: f32,
     },
+    /// V2: two or more orthogonal rules applied in one pass.
+    Composed {
+        rules: Vec<RuleApplication>,
+        call: Call,
+        net_savings_usd: f32,
+    },
 }
 
 impl Plan {
@@ -60,10 +75,12 @@ impl Plan {
         matches!(self, Plan::PassThrough)
     }
 
+    /// The first (highest-savings) rule that contributed to this plan.
     pub fn rule(&self) -> Option<&str> {
         match self {
             Plan::PassThrough | Plan::Cached { .. } => None,
             Plan::Rewritten { rule, .. } | Plan::Parallel { rule, .. } => Some(rule.as_str()),
+            Plan::Composed { rules, .. } => rules.first().map(|r| r.rule.as_str()),
         }
     }
 }
@@ -468,5 +485,29 @@ mod tests {
         let p = Plan::PassThrough;
         let s = serde_json::to_string(&p).unwrap();
         assert_eq!(s, "{\"kind\":\"pass_through\"}");
+    }
+
+    #[test]
+    fn plan_composed_serializes_with_tag() {
+        let p = Plan::Composed {
+            rules: vec![
+                RuleApplication {
+                    rule: "ContextCompress".into(),
+                    projected_savings_usd: 0.3,
+                    cost_driver: CostDriver::InputTokens,
+                },
+                RuleApplication {
+                    rule: "OutputBudget".into(),
+                    projected_savings_usd: 0.1,
+                    cost_driver: CostDriver::OutputTokens,
+                },
+            ],
+            call: sample_call("site"),
+            net_savings_usd: 0.4,
+        };
+        let s = serde_json::to_string(&p).unwrap();
+        assert!(s.contains("\"composed\""), "tag missing: {s}");
+        assert!(s.contains("ContextCompress"));
+        assert!(s.contains("OutputBudget"));
     }
 }

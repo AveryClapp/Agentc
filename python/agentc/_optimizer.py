@@ -21,7 +21,7 @@ from agentc import _native
 
 log = logging.getLogger(__name__)
 
-PlanKind = Literal["pass_through", "cached", "rewritten", "parallel"]
+PlanKind = Literal["pass_through", "cached", "rewritten", "parallel", "composed"]
 
 
 @dataclass
@@ -37,6 +37,8 @@ class Plan:
     value: Any = None
     call: Optional[dict[str, Any]] = None
     calls: list[dict[str, Any]] = field(default_factory=list)
+    # For composed plans: list of rule names that contributed.
+    rules: list[str] = field(default_factory=list)
     projected_savings_usd: float = 0.0
     raw_json: str = "{\"kind\":\"pass_through\"}"
     # Thread-through fields for TraceOptimizer.record() in observe_outcome.
@@ -115,6 +117,16 @@ def _plan_from_dict(data: dict[str, Any], raw_json: str) -> Plan:
             rule=data.get("rule"),
             calls=list(data.get("calls", [])),
             projected_savings_usd=float(data.get("projected_savings_usd", 0.0)),
+            raw_json=raw_json,
+        )
+    if kind == "composed":
+        rule_apps = data.get("rules", [])
+        return Plan(
+            kind="composed",
+            rules=[r.get("rule", "") for r in rule_apps],
+            rule=rule_apps[0].get("rule") if rule_apps else None,
+            call=data.get("call"),
+            projected_savings_usd=float(data.get("net_savings_usd", 0.0)),
             raw_json=raw_json,
         )
     log.debug("plan_call: unknown kind %r from native", kind)

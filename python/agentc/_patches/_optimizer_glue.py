@@ -314,13 +314,13 @@ def dispatch_sync(
         except BaseException:
             log.debug("cached plan decode failed; falling back", exc_info=True)
             return run_original()
-    if plan.kind == "rewritten":
+    if plan.kind in ("rewritten", "composed"):
         if plan.call is None:
             return run_original()
         try:
             return run_mutated(plan.call)
         except BaseException:
-            log.debug("rewritten plan failed; falling back", exc_info=True)
+            log.debug("rewritten/composed plan failed; falling back", exc_info=True)
             return run_original()
     if plan.kind == "parallel":
         # Sync path can't gather; degrade to original.

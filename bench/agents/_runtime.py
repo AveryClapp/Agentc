@@ -104,7 +104,9 @@ def llm_client():
         from openai import OpenAI  # type: ignore[import-not-found]
     except ImportError:
         return None
-    return OpenAI()
+    # Tier-1 rate limits are tight on gpt-4o (30k TPM). The SDK default is
+    # 2 retries; bump to 8 so bursty multi-step ablations don't fail mid-run.
+    return OpenAI(max_retries=int(os.environ.get("OPENAI_MAX_RETRIES", "8")))
 
 
 def call_llm(

@@ -43,6 +43,7 @@ class RunStats:
     n_passed: int
     stub_mode: bool
     total_input_tokens: int = 0
+    per_task: list[tuple[str, bool]] = field(default_factory=list)
 
     @property
     def pass_rate(self) -> float:
@@ -98,6 +99,7 @@ class BenchResult:
 
 
 _PASS_FAIL_RE = re.compile(r"^(PASS|FAIL)\s+\S+", re.MULTILINE)
+_PASS_FAIL_TASK_RE = re.compile(r"^(PASS|FAIL)\s+(\S+)", re.MULTILINE)
 
 
 def _find_agentc_binary() -> str:
@@ -213,6 +215,17 @@ def _parse_pass_fail(stdout: str) -> tuple[int, int]:
     return (n_total, n_passed)
 
 
+def _parse_per_task_pass_fail(stdout: str) -> list[tuple[str, bool]]:
+    """Extract ``[(task_id, passed), ...]`` from the agent's PASS/FAIL lines.
+
+    Used for paired-test analyses (e.g. McNemar) that need per-task
+    binary outcomes rather than just aggregate pass counts."""
+    out: list[tuple[str, bool]] = []
+    for m in _PASS_FAIL_TASK_RE.finditer(stdout):
+        out.append((m.group(2), m.group(1) == "PASS"))
+    return out
+
+
 def _run_side(
     *,
     agent_module: str,
@@ -255,6 +268,7 @@ def _run_side(
         )
 
     n_total, n_passed = _parse_pass_fail(proc.stdout)
+    per_task = _parse_per_task_pass_fail(proc.stdout)
     cost, wall, input_tokens = _aggregate_from_db(storage_dir / "traces.db")
     stub_mode = not os.environ.get("OPENAI_API_KEY")
     return RunStats(
@@ -264,6 +278,7 @@ def _run_side(
         n_passed=n_passed,
         stub_mode=stub_mode,
         total_input_tokens=input_tokens,
+        per_task=per_task,
     )
 
 

@@ -30,7 +30,7 @@ import os
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -64,9 +64,19 @@ class AblationRow:
     optimized_cost_usd: float
     n_tasks: int
     n_passed_optimized: int
+    # Paired per-task results (baseline-pass, optimized-pass) keyed by
+    # task_id. Empty when stdout did not include PASS/FAIL lines (older
+    # runs or non-paper agents).
+    per_task: list[tuple[str, bool, bool]] = field(default_factory=list)
 
     @classmethod
     def from_result(cls, config: str, result: BenchResult) -> "AblationRow":
+        baseline_per = dict(result.baseline.per_task)
+        optimized_per = dict(result.optimized.per_task)
+        per_task: list[tuple[str, bool, bool]] = []
+        for tid in baseline_per:
+            if tid in optimized_per:
+                per_task.append((tid, baseline_per[tid], optimized_per[tid]))
         return cls(
             agent_module=result.agent_module,
             config=config,
@@ -77,6 +87,7 @@ class AblationRow:
             optimized_cost_usd=result.optimized.total_cost_usd,
             n_tasks=result.baseline.n_tasks,
             n_passed_optimized=result.optimized.n_passed,
+            per_task=per_task,
         )
 
 
@@ -234,19 +245,51 @@ def _row_values(r: AblationRow) -> list:
     ]
 
 
+_PER_TASK_COLUMNS = [
+    "agent_module",
+    "config",
+    "task_id",
+    "baseline_passed",
+    "optimized_passed",
+]
+
+
+def per_task_path(out_path: Path) -> Path:
+    """Sidecar path: ``foo.csv`` -> ``foo.per_task.csv``."""
+    return out_path.with_suffix(".per_task.csv")
+
+
 def write_header(out_path: Path) -> None:
-    """Write CSV header (truncates the file)."""
+    """Write CSV header (truncates the aggregate + per-task sidecar)."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", newline="") as f:
         csv.writer(f).writerow(_CSV_COLUMNS)
+    with per_task_path(out_path).open("w", newline="") as f:
+        csv.writer(f).writerow(_PER_TASK_COLUMNS)
 
 
 def append_row(row: AblationRow, out_path: Path) -> None:
-    """Append a single row to an already-headered CSV, fsync'ing to disk."""
+    """Append a single row to an already-headered CSV, fsync'ing to disk.
+
+    Also appends paired per-task pass/fail to the sidecar CSV when the
+    agent stdout produced PASS/FAIL lines."""
     with out_path.open("a", newline="") as f:
         csv.writer(f).writerow(_row_values(row))
         f.flush()
         os.fsync(f.fileno())
+    if row.per_task:
+        with per_task_path(out_path).open("a", newline="") as f:
+            w = csv.writer(f)
+            for tid, baseline_passed, optimized_passed in row.per_task:
+                w.writerow([
+                    row.agent_module,
+                    row.config,
+                    tid,
+                    int(baseline_passed),
+                    int(optimized_passed),
+                ])
+            f.flush()
+            os.fsync(f.fileno())
 
 
 def write_csv(rows: list[AblationRow], out_path: Path) -> None:

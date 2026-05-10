@@ -252,13 +252,28 @@ impl Optimizer {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Step 5 (V2) — compose orthogonal proposals. For solo proposals the
-        // result is identical to V1's first-safety-check-wins logic.
-        let result = crate::composition::compose_proposals(proposals, call);
-        if deadline.elapsed().as_micros() > max_overhead_us {
-            return Plan::PassThrough;
-        }
-        result.plan
+        // Step 5 — either V2 composition or V1 first-match-wins.
+        // `AGENTC_COMPOSE=0` disables composition for baseline comparisons.
+        let plan = if self.config.compose {
+            let result = crate::composition::compose_proposals(proposals, call);
+            if deadline.elapsed().as_micros() > max_overhead_us {
+                return Plan::PassThrough;
+            }
+            result.plan
+        } else {
+            // V1 first-safety-check-wins: proposals already sorted by savings desc.
+            proposals
+                .into_iter()
+                .find_map(|(_name, prop)| {
+                    if (prop.safety_check)(call) {
+                        Some(prop.rewritten)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(Plan::PassThrough)
+        };
+        plan
     }
 }
 

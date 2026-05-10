@@ -25,6 +25,9 @@ pub struct OptimizerConfig {
     /// Bernoulli probability that an optimized call also runs its shadow
     /// counterpart for divergence measurement.
     pub shadow_rate: f32,
+    /// When false, the planner uses V1 first-match-wins logic instead of
+    /// V2 composition. Controlled by `AGENTC_COMPOSE=0`.
+    pub compose: bool,
 }
 
 impl Default for OptimizerConfig {
@@ -43,6 +46,7 @@ impl Default for OptimizerConfig {
             cost_model_window: 50,
             max_overhead_ms,
             shadow_rate: 0.02,
+            compose: true,
         }
     }
 }
@@ -58,6 +62,7 @@ impl OptimizerConfig {
     /// | `AGENTC_OPTIMIZE_COST_MODEL_WINDOW` | `cost_model_window` |
     /// | `AGENTC_OPTIMIZE_MAX_OVERHEAD_MS` | `max_overhead_ms` |
     /// | `AGENTC_OPTIMIZE_SHADOW` | `shadow_rate` |
+    /// | `AGENTC_COMPOSE` | `compose` (0/false = V1 first-match; 1/true = V2 compose) |
     pub fn apply_env_overrides(&mut self) {
         if let Some(v) = env::var("AGENTC_OPTIMIZE").ok().and_then(parse_bool) {
             self.enabled = v;
@@ -85,6 +90,9 @@ impl OptimizerConfig {
             .and_then(|s| s.parse().ok())
         {
             self.shadow_rate = v;
+        }
+        if let Some(v) = env::var("AGENTC_COMPOSE").ok().and_then(parse_bool) {
+            self.compose = v;
         }
     }
 

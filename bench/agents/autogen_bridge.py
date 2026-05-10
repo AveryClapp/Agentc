@@ -97,7 +97,7 @@ def _run_one(task: SyntheticTask) -> str:
         messages_2: list[dict[str, str]] = [
             {"role": "system", "content": "Answer concisely using only the context. One sentence."},
             *_doc_messages(task),
-            {"role": "user", "content": f"Question: {task.prompt}. The answer label is: label"},
+            {"role": "user", "content": f"Question: {task.prompt}"},
         ]
         if client:
             r2 = client.chat.completions.create(

@@ -1,7 +1,7 @@
 ---
 title: Manual Writing Brief
 status: draft
-last-updated: 2026-05-08
+last-updated: 2026-05-09
 owner: paper-intelligence
 ---
 
@@ -22,13 +22,13 @@ This file is a compact briefing for human writing. It is intentionally not final
 - Do not claim all five rules are equally end-to-end benchmarked.
 - Do not claim partial matrices are complete.
 - Do not claim oracle-level compression is achieved by the automated rule.
-- Do not claim "first runtime optimizer" without narrowing against Autellix, Halo, FrugalGPT, LLMCompiler, RouteLLM, LLMLingua, and GPTCache.
+- Do not claim "first runtime optimizer" without narrowing against Agentix/Autellix, Halo, Murakkab, AIOS, Cognify, DSPy, LMQL, SGLang, LLMCompiler, LLM-Tool Compiler, vCache, and the rule-specific baselines.
 - Do not claim behavior-preserving semantics without defining the metric, tolerance, and uncertainty treatment.
-- Do not treat StateDrop as equally literature-supported until program-analysis/liveness citations are verified.
+- Do not treat StateDrop as sound program slicing unless AgentC defines its dependency/read-window model.
 
 ## Next Inputs Needed
 
-- Primary-source verification for the candidate literature rows.
+- Metadata promotion from `literature-verified-blurbs.md` into the ledger and bibliography.
 - Decision on ATC 2026 versus longer-run MLSys/COLM.
 - Decision on finishing partial experiments.
 - Statistical/uncertainty analysis for accuracy deltas.

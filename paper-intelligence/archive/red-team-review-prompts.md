@@ -99,7 +99,7 @@ Review the paper intelligence base for reader orientation.
 Read:
 - paper-intelligence/README.md
 - paper-intelligence/manual-writing-brief.md
-- paper-intelligence/handoff.md
+- paper-intelligence/current-fit-and-publishability.md
 - paper-intelligence/paper-angle-matrix.md
 - paper-intelligence/paper-gap-register.md
 
@@ -111,4 +111,3 @@ Return:
 - duplicated or contradictory status labels;
 - the shortest path from "new contributor" to "I know what to do next."
 ```
-

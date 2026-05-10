@@ -1,92 +1,99 @@
 ---
 title: Paper Intelligence README
-status: draft
+status: active
 last-updated: 2026-05-09
 owner: paper-intelligence
 ---
 
 # AgentC Paper Intelligence
 
-This directory is the research and planning base for a human-written AgentC paper. It stores evidence, result ledgers, literature-review notes, gap analysis, venue strategy, experiment priorities, and writing briefs. It is not the manuscript.
+This folder is the paper-planning and evidence base for AgentC. It is not the manuscript.
 
-It lives at repo root on purpose. `specs/` is for technical implementation specs; `paper-intelligence/` is an active research/evidence workspace.
+Use it to answer:
 
-## Purpose
+1. What is AgentC's current paper shape?
+2. What experiments and artifacts support that shape?
+3. What prior work is closest?
+4. What claims are safe or unsafe?
+5. What should be run, verified, or written next?
 
-Use this folder to answer four paper-planning questions:
+`specs/` is for implementation specs. `paper-intelligence/` is for literature, evidence, venue strategy, and reviewer-risk planning.
 
-1. What current work is closest to AgentC?
-2. Where is AgentC actually different?
-3. Which evidence gaps would a reviewer attack?
-4. Which experiments, literature checks, or venue choices should we do next?
+## Fast Read Paths
 
-The folder is intentionally a map, not a paper draft. It should help William and Avery decide what to write by hand and where to push the project next.
+### 10 minutes
 
-## Fast Read For Avery
+1. `current-fit-and-publishability.md`
+2. `claims-gaps-and-risks.md`
+3. skim the top of `results-experiments-and-repro.md`
 
-If you only have 20 minutes, read these first:
+### 30 minutes
 
-1. `handoff.md` - current state and next useful actions.
-2. `literature-review-section-plan.md` - whole-paper literature-review shape.
-3. `literature-verified-blurbs.md` - primary-source checked source blurbs and differentiation notes.
-4. `paper-gap-register.md` - main missing evidence and positioning gaps.
-5. `reviewer-risk-register.md` - likely reviewer objections.
-6. `experiment-priority-board.md` - what to run next if spending tokens.
-7. `venue-positioning-matrix.md` - where the paper might fit.
+1. `current-fit-and-publishability.md`
+2. `literature-and-nearest-neighbors.md`
+3. `claims-gaps-and-risks.md`
+4. `results-experiments-and-repro.md`
+5. `strategy-and-venues.md`
 
-## Read Order
+### 60 minutes
 
-1. `AGENTS.md` - operating rules for research/gap-finding agents.
-2. `metadata-schemas.md` - IDs, statuses, and row templates.
-3. `agentc-paper-intelligence-workplan.md` - full workplan.
-4. `artifact-inventory.md` - source artifacts currently known.
-5. `repo-source-map.md` - where paper evidence lives in the repo.
-6. `results-ledger.md` - validated or candidate experiment results.
-7. `paper-gap-register.md` - canonical gaps, risks, and missing evidence.
-8. `literature-ingestion-workflow.md` - how deep research becomes durable notes.
-9. `literature-review-section-plan.md` - whole-paper literature review structure.
-10. `literature-verified-blurbs.md` - checked source blurbs and citation-use notes.
-11. `literature-blurb-todo.md` - original candidate checklist and scoring queue.
-12. `deep-research-prompt-templates.md` - reusable prompts.
-13. `venue-positioning-matrix.md` - venue strategy and evidence expectations.
-14. `reviewer-risk-register.md` and `weak-point-resolution-plan.md` - red-team risks and concrete fixes.
-15. `style-guide.md` - literature-review and comparison-writing rules.
-16. `section-briefs/` - human-writing briefs, not final prose.
+Read the 30-minute path, then add:
 
-## Storage Model
+1. `evidence-and-sources.md`
+2. `research-prompts.md`
+3. `archive/README.md` if you need to understand what was consolidated
+4. `research-inbox/` only if you need raw deep-research provenance
 
-- `references/source/` stores source artifacts: copied Markdown, PDFs, attachments, and other original inputs.
-- `research-inbox/` stores raw generated research drops before triage.
-- `section-briefs/` stores human-writing briefs, not final prose.
-- `experiments/` stores per-run notes for experiments, not large generated outputs.
+## Active Files
 
-## Manual Writing Boundary
+| File | Purpose |
+|---|---|
+| `current-fit-and-publishability.md` | Short reality check: alpha, publishability, and strongest next moves. |
+| `literature-and-nearest-neighbors.md` | Whole-paper literature map, verified blurbs, nearest-neighbor matrix, baseline table. |
+| `claims-gaps-and-risks.md` | Safe claims, unsafe claims, gaps, reviewer risks, citation gaps, questions, weak-point plan. |
+| `results-experiments-and-repro.md` | Current results, artifact map, experiment queue, statistics/repro rules. |
+| `strategy-and-venues.md` | Venue ladder, paper angles, section guidance, title/figure ideas. |
+| `evidence-and-sources.md` | Source hygiene, raw-provenance map, repo source map, ID prefixes. |
+| `research-prompts.md` | Reusable deep-research, red-team, and idea-generation prompts. |
+| `AGENTS.md` | Maintenance rules for agents working in this folder. |
 
-Agents may summarize, map, audit, compare, and propose. Agents should not draft final manuscript prose unless William explicitly asks for prose. The default output is evidence, gaps, ideas, and briefings.
+## Raw And Provenance Areas
+
+| Path | Purpose |
+|---|---|
+| `references/source/` | Original local source artifacts, copied Markdown, and PDFs. Keep. |
+| `research-inbox/` | Raw deep-research drops. Keep as provenance. |
+| `archive/` | Superseded granular files after consolidation. Do not use as active source of truth. |
+
+## Current Paper Read
+
+AgentC is currently strongest as a **runtime trace optimizer for multi-step LLM agents**. The individual rewrite families are known in the literature; AgentC's possible contribution is the control plane over framework-emitted calls.
+
+The best current evidence is:
+
+- `RES-001`: `ContextCompress` saves substantial tokens/cost on long-context stress workloads.
+- `RES-002`: `ModelDowngrade` saves substantial dollars on a routing workload.
+- `RES-004`: `StateDrop` is promising but partial/caveated.
+- `RES-005`: real HotpotQA near-zero savings is useful activation-boundary evidence.
+
+The paper is not ready to claim:
+
+- first runtime optimizer for LLM agents;
+- all five rewrites equally validated;
+- CacheHit or ParallelBranch as headline contributions;
+- semantic behavior preservation without uncertainty treatment;
+- StateDrop as sound compiler slicing.
 
 ## Promotion Rule
 
-Use this path for any new research or result:
+Use this path for new material:
 
 ```text
-chat/research output -> inbox -> verification -> ledger/gap/claim update -> validation -> brief/use
+raw input -> research-inbox or references/source -> verification -> consolidated doc update -> claim/gap/result linkage
 ```
 
-New evidence is not paper-ready until it is linked to stable IDs and appears in the relevant ledger.
+Do not add a new top-level paper-intelligence file unless it will stay active. Prefer updating one of the active files above.
 
-## Current Bootstrap State
+## Next Work
 
-The workspace currently has:
-
-- Stable ID/schema rules.
-- Migrated source artifacts from the repo root.
-- Initial artifact inventory.
-- Initial source map.
-- Initial result ledger.
-- Deep-research prompt templates.
-- Literature ingestion workflow.
-- Venue-positioning scaffold.
-- Pizza-derived paper-process structure adapted into AgentC-specific control files.
-- Section briefs, reviewer-risk register, weak-point plan, outline options, and title/abstract idea bank.
-
-Next high-value work is to promote verified metadata from `literature-verified-blurbs.md` into `literature-ledger.md` and turn the strongest runnable baselines into concrete experiment tickets.
+The durable task graph starts at `bd-399`: consolidate Paper Intelligence into a reader-first packet. The highest-value follow-up after consolidation is still experimental: end-to-end multi-rule evidence, overhead/tail-latency measurement, baseline feasibility, paired uncertainty, and a StateDrop dependency model.

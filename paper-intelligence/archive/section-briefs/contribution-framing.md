@@ -1,7 +1,7 @@
 ---
 title: Contribution Framing Brief
 status: draft
-last-updated: 2026-05-08
+last-updated: 2026-05-09
 owner: paper-intelligence
 ---
 
@@ -19,8 +19,8 @@ owner: paper-intelligence
 
 - Broad claims that AgentC optimizes all agent workloads.
 - Claims that all rules have equivalent empirical support.
-- Strong novelty claims without related-work verification.
-- "First runtime optimizer" unless carefully narrowed against Autellix/Halo and rule-specific prior art.
+- Strong novelty claims that ignore the verified nearest neighbors.
+- "First runtime optimizer" unless carefully narrowed against Agentix/Autellix, Halo, Murakkab, AIOS, Cognify, DSPy, LMQL, SGLang, and rule-specific prior art.
 
 ## Evidence Pointers
 
@@ -28,3 +28,4 @@ owner: paper-intelligence
 - `results-ledger.md`
 - `repo-source-map.md`
 - `paper-angle-matrix.md`
+- `current-fit-and-publishability.md`

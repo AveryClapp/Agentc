@@ -378,9 +378,9 @@ Current result posture:
   - **For each idea:** title, one-sentence pitch, paper angle, risks, and required evidence.
   - **Done when:** good framing ideas are saved for the human writing pass.
 
-- [x] **P6.4 Create `handoff.md`**
-  - **Goal:** provide a compact state summary for Avery/collaborators.
-  - **File:** `paper-intelligence/handoff.md`.
+- [x] **P6.4 Create front-door current-state docs**
+  - **Goal:** provide a compact state summary for Avery/collaborators without adding another competing entry point.
+  - **Files:** `paper-intelligence/README.md` and `paper-intelligence/current-fit-and-publishability.md`.
   - **Must include:** current result state, open gaps, best paper angle, open questions, next experiments, and what input is needed from collaborators.
   - **Done when:** a collaborator can understand the paper state in under ten minutes.
 

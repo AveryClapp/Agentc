@@ -11,6 +11,7 @@
 
 pub mod cache_hit;
 pub mod context_compress;
+pub mod dead_output_truncation;
 pub mod model_downgrade;
 pub mod output_budget;
 pub mod parallel_branch;
@@ -20,6 +21,7 @@ pub mod structured_truncation;
 
 pub use cache_hit::CacheHitRule;
 pub use context_compress::ContextCompressRule;
+pub use dead_output_truncation::DeadOutputTruncationRule;
 pub use model_downgrade::{ModelDowngradeRoute, ModelDowngradeRule};
 pub use output_budget::OutputBudgetRule;
 pub use parallel_branch::ParallelBranchRule;

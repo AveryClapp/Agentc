@@ -818,7 +818,7 @@ fn write_plan_audit(state: &OptimizerState, call_json: &str, plan_json: &str, ov
             Some(*projected_savings_usd as f64),
         ),
         Plan::Composed { rules, net_savings_usd, .. } => (
-            PlanKind::Rewritten, // audit rows use Rewritten kind for the primary attribution
+            PlanKind::Composed,
             rules.first().map(|r| r.rule.clone()),
             Some(*net_savings_usd as f64),
         ),

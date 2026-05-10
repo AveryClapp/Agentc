@@ -29,11 +29,19 @@ pub struct OptimizerConfig {
 
 impl Default for OptimizerConfig {
     fn default() -> Self {
+        // Debug builds run unoptimised JSON deserialization that easily takes
+        // 10-20 ms per call. Release builds are much faster; 5 ms is the
+        // production spec target.
+        #[cfg(debug_assertions)]
+        let max_overhead_ms = 50.0_f32;
+        #[cfg(not(debug_assertions))]
+        let max_overhead_ms = 5.0_f32;
+
         Self {
             enabled: true,
             hot_threshold: 3,
             cost_model_window: 50,
-            max_overhead_ms: 5.0,
+            max_overhead_ms,
             shadow_rate: 0.02,
         }
     }
@@ -106,6 +114,10 @@ mod tests {
         assert!(c.enabled);
         assert_eq!(c.hot_threshold, 3);
         assert_eq!(c.cost_model_window, 50);
+        // Debug builds use 50 ms; release builds use 5 ms.
+        #[cfg(debug_assertions)]
+        assert!((c.max_overhead_ms - 50.0).abs() < 1e-6);
+        #[cfg(not(debug_assertions))]
         assert!((c.max_overhead_ms - 5.0).abs() < 1e-6);
         assert!((c.shadow_rate - 0.02).abs() < 1e-6);
     }

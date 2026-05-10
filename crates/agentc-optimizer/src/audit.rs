@@ -25,6 +25,7 @@ pub enum PlanKind {
     Cached,
     Rewritten,
     Parallel,
+    Composed,
 }
 
 impl PlanKind {
@@ -34,6 +35,7 @@ impl PlanKind {
             PlanKind::Cached => "cached",
             PlanKind::Rewritten => "rewritten",
             PlanKind::Parallel => "parallel",
+            PlanKind::Composed => "composed",
         }
     }
 }

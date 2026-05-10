@@ -28,8 +28,9 @@ use crate::dag::Call;
 use crate::planner::{Optimizer, RewriteRule};
 use crate::rules::cache_hit::CacheKeyBuilder;
 use crate::rules::{
-    CacheHitRule, ContextCompressRule, ModelDowngradeRoute, ModelDowngradeRule,
-    ParallelBranchRule, StateDropRule,
+    CacheHitRule, ContextCompressRule, DeadOutputTruncationRule, ModelDowngradeRoute,
+    ModelDowngradeRule, OutputBudgetRule, ParallelBranchRule, PromptDedupRule,
+    StateDropRule, StructuredTruncationRule,
 };
 use crate::schema::{ensure_audit_schema, ensure_cost_model_schema};
 
@@ -167,12 +168,18 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
         rules.push(Box::new(CacheHitRule::new(cache, key_builder)));
     }
     rules.push(Box::new(ContextCompressRule::default()));
+    rules.push(Box::new(PromptDedupRule::default()));
     rules.push(Box::new(ParallelBranchRule::default()));
     rules.push(Box::new(ModelDowngradeRule::new(
         default_routes(),
         budget.clone(),
     )));
     rules.push(Box::new(StateDropRule::default()));
+    rules.push(Box::new(OutputBudgetRule::default()));
+    rules.push(Box::new(StructuredTruncationRule::default()));
+    // DeadOutputTruncation is gated on autogen_bridge validation; include it
+    // unconditionally here since the rule's applies() checks the flag itself.
+    rules.push(Box::new(DeadOutputTruncationRule::default()));
 
     let optimizer = Arc::new(Optimizer::with_budget(
         cost_model.clone(),

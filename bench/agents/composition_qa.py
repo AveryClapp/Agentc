@@ -17,7 +17,7 @@ from typing import Any
 
 import agentc
 from bench.agents._fixtures import SyntheticTask
-from bench.agents._runtime import AgentResult, llm_client, load_tasks, run_all
+from bench.agents._runtime import AgentResult, default_check, llm_client, load_tasks
 
 AGENT_KEY = "composition_qa"
 _TOOL_JSON = json.dumps({
@@ -52,7 +52,7 @@ def _run_one(task: SyntheticTask) -> str:
             })
 
         tool_tagged = agentc.state_write("tool_result", _TOOL_JSON)
-        messages.append({"role": "tool", "content": tool_tagged})
+        messages.append({"role": "user", "content": f"[tool output] {tool_tagged}"})
 
         # Prior revision (State-tagged, creates StateDrop opportunity on 2nd+ call)
         if hasattr(task, "_prev_answer") and task._prev_answer:
@@ -70,7 +70,21 @@ def _run_one(task: SyntheticTask) -> str:
 
 @agentc.trace(name=AGENT_KEY)
 def run() -> list[AgentResult]:
-    return run_all(AGENT_KEY, [], _run_one)
+    import os
+    tasks = load_tasks("long_context_qa", [])
+    cap = os.environ.get("BENCH_MAX_TASKS")
+    if cap:
+        tasks = tasks[: int(cap)]
+    results: list[AgentResult] = []
+    for t in tasks:
+        answer = _run_one(t)
+        results.append(AgentResult(
+            task_id=t.task_id,
+            answer=answer,
+            passed=default_check(answer, t.expected),
+            expected=t.expected,
+        ))
+    return results
 
 
 if __name__ == "__main__":

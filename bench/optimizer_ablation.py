@@ -50,6 +50,10 @@ RULES: list[str] = [
     "ParallelBranch",
     "ModelDowngrade",
     "StateDrop",
+    "StructuredTruncation",   # v2
+    "OutputBudget",            # v2
+    "PromptDedup",             # v2
+    "DeadOutputTruncation",    # v2 (conditional on autogen_bridge validation)
 ]
 
 

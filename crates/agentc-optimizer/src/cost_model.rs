@@ -164,6 +164,9 @@ fn now_micros() -> i64 {
 pub struct CostModel {
     map: Arc<DashMap<String, CallSiteProfile>>,
     dirty: Arc<RwLock<HashMap<String, ()>>>,
+    /// Per-(call_site_id, sorted-rule-set) savings distribution.
+    /// Key format: `(call_site_id, "RuleA|RuleB|...")` (rules sorted ascending).
+    rule_set_map: Arc<DashMap<(String, String), WelfordStats>>,
 }
 
 impl Default for CostModel {
@@ -177,7 +180,31 @@ impl CostModel {
         Self {
             map: Arc::new(DashMap::new()),
             dirty: Arc::new(RwLock::new(HashMap::new())),
+            rule_set_map: Arc::new(DashMap::new()),
         }
+    }
+
+    /// Record the realized savings for a composition rule set.
+    pub fn observe_rule_set(&self, call_site_id: &str, rules: &[&str], savings_usd: f64) {
+        let mut sorted = rules.to_vec();
+        sorted.sort();
+        let key = (call_site_id.to_string(), sorted.join("|"));
+        self.rule_set_map
+            .entry(key)
+            .and_modify(|w| w.update(savings_usd))
+            .or_insert_with(|| {
+                let mut w = WelfordStats::default();
+                w.update(savings_usd);
+                w
+            });
+    }
+
+    /// Retrieve aggregated savings stats for a specific rule set combination.
+    pub fn get_rule_set_stats(&self, call_site_id: &str, rules: &[&str]) -> Option<WelfordStats> {
+        let mut sorted = rules.to_vec();
+        sorted.sort();
+        let key = (call_site_id.to_string(), sorted.join("|"));
+        self.rule_set_map.get(&key).map(|e| e.clone())
     }
 
     /// Read-side snapshot. Clones the profile so the caller does not hold
@@ -634,5 +661,30 @@ mod tests {
         }
         let p = cm.get("concurrent.site").unwrap();
         assert_eq!(p.n_observations, 800);
+    }
+
+    #[test]
+    fn rule_set_observe_tracks_distinct_combinations() {
+        let cm = CostModel::new();
+        cm.observe_rule_set("site", &["ContextCompress", "OutputBudget"], 0.05);
+        cm.observe_rule_set("site", &["ContextCompress", "OutputBudget"], 0.06);
+        cm.observe_rule_set("site", &["StateDrop"], 0.02);
+
+        let combined =
+            cm.get_rule_set_stats("site", &["ContextCompress", "OutputBudget"]).unwrap();
+        assert_eq!(combined.n, 2);
+        assert!((combined.mean - 0.055).abs() < 0.001, "mean={}", combined.mean);
+
+        let solo = cm.get_rule_set_stats("site", &["StateDrop"]).unwrap();
+        assert_eq!(solo.n, 1);
+    }
+
+    #[test]
+    fn rule_set_key_is_order_independent() {
+        let cm = CostModel::new();
+        cm.observe_rule_set("s", &["B", "A"], 0.1);
+        cm.observe_rule_set("s", &["A", "B"], 0.2);
+        let stats = cm.get_rule_set_stats("s", &["A", "B"]).unwrap();
+        assert_eq!(stats.n, 2);
     }
 }

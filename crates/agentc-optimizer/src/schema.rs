@@ -52,6 +52,16 @@ CREATE TABLE IF NOT EXISTS optimizer_disabled (
     reenable_at           INTEGER NOT NULL,
     PRIMARY KEY (call_site_id, rule)
 ) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS rule_set_stats (
+    call_site_id          TEXT NOT NULL,
+    rule_set              TEXT NOT NULL,
+    n                     INTEGER NOT NULL,
+    mean                  REAL NOT NULL,
+    m2                    REAL NOT NULL,
+    updated_at            INTEGER NOT NULL,
+    PRIMARY KEY (call_site_id, rule_set)
+) STRICT, WITHOUT ROWID;
 "#;
 
 /// Schema for `optimizer_audit.db`:

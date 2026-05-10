@@ -62,7 +62,7 @@ pub fn optimize_observe(
         return Ok(());
     }
     cost_model.observe(CostModelUpdate {
-        call_site_id,
+        call_site_id: call_site_id.clone(),
         input_tokens: outcome.input_tokens,
         output_tokens: outcome.output_tokens,
         latency_ms: outcome.latency_ms,
@@ -71,6 +71,14 @@ pub fn optimize_observe(
         output_is_short: outcome.output_is_short,
         now_us: None,
     });
+
+    // For composed plans, also record per-rule-set realized savings so the
+    // cost model can track composition payoff vs. solo rules over time.
+    if let Plan::Composed { rules, net_savings_usd, .. } = &plan {
+        let rule_names: Vec<&str> = rules.iter().map(|r| r.rule.as_str()).collect();
+        cost_model.observe_rule_set(&call_site_id, &rule_names, *net_savings_usd as f64);
+    }
+
     Ok(())
 }
 

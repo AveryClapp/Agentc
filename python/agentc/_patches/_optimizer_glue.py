@@ -172,7 +172,27 @@ def build_call_dict_openai(
     # set of state keys the agent has read on this thread *since the
     # previous LLM call*. Snapshot + clear so each call sees a fresh
     # window — matches the spec's "reads since the last call" semantic.
-    extra_obj["window_state_reads"] = consume_state_reads()
+    explicit_reads = consume_state_reads()
+    extra_obj["window_state_reads"] = explicit_reads
+
+    # Merge TraceOptimizer inferred state reads (StateReadWindowPropagation).
+    # Keys inferred from prior LlmOutput tokens are added here so StateDrop
+    # fires transparently on uninstrumented agents.
+    try:
+        from agentc._trace_optimizer import get_trace_optimizer
+
+        trace_opt = get_trace_optimizer()
+        if trace_opt is not None:
+            recs = trace_opt.get_recommendations(trace_id_hex)
+            if recs.inferred_state_reads:
+                merged = list(set(explicit_reads) | set(recs.inferred_state_reads))
+                extra_obj["window_state_reads"] = merged
+            if recs.output_is_dead_branch:
+                extra_obj["output_is_dead_branch"] = True
+            if recs.shared_prefix_messages:
+                extra_obj["shared_prefix_messages"] = recs.shared_prefix_messages
+    except BaseException:
+        log.debug("trace_optimizer recommendations failed; skipping", exc_info=True)
 
     # ContextCompress reads ``parameters.extra.attention_scores`` (per
     # message) and ``parameters.extra.follow_on_tokens`` (must-keep).

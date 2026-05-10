@@ -96,6 +96,11 @@ def init(
 
         start_writer()
 
+        # Start cross-call trace optimizer (StateReadWindowPropagation, etc.)
+        from agentc._trace_optimizer import init_trace_optimizer
+
+        init_trace_optimizer()
+
         # Apply SDK patches
         _apply_patches()
 

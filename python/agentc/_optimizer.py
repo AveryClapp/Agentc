@@ -39,6 +39,9 @@ class Plan:
     calls: list[dict[str, Any]] = field(default_factory=list)
     projected_savings_usd: float = 0.0
     raw_json: str = "{\"kind\":\"pass_through\"}"
+    # Thread-through fields for TraceOptimizer.record() in observe_outcome.
+    trace_id: Optional[str] = None
+    messages: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def is_pass_through(self) -> bool:
@@ -68,7 +71,10 @@ def plan_call(call: dict[str, Any]) -> Plan:
         log.debug("plan_call: bad JSON from native; passing through: %r", plan_json)
         return PASS_THROUGH
 
-    return _plan_from_dict(data, plan_json)
+    plan = _plan_from_dict(data, plan_json)
+    plan.trace_id = call.get("trace_id")
+    plan.messages = list(call.get("messages") or [])
+    return plan
 
 
 def observe_outcome(plan: Plan, outcome: dict[str, Any]) -> None:

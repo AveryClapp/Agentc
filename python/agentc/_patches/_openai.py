@@ -266,6 +266,34 @@ def _observe_openai_outcome(
     except BaseException:
         logger.debug("optimizer observe failed; skipping", exc_info=True)
 
+    # Record completed call in TraceOptimizer for cross-call inference passes.
+    try:
+        from agentc._trace_optimizer import CallRecord, get_trace_optimizer
+
+        trace_opt = get_trace_optimizer()
+        if trace_opt is not None and getattr(plan, "trace_id", None):
+            output_text = ""
+            choices = getattr(response, "choices", None) or []
+            if choices:
+                msg = getattr(choices[0], "message", None)
+                if msg is not None:
+                    output_text = str(getattr(msg, "content", "") or "")
+            model = str(getattr(response, "model", None) or kwargs.get("model", "") or "")
+            trace_opt.record(
+                CallRecord(
+                    trace_id=plan.trace_id,
+                    span_id="",
+                    call_site_id=call_site_id,
+                    model=model,
+                    messages=list(getattr(plan, "messages", [])),
+                    output_content=output_text,
+                    input_deps=[],
+                    fired_rules=[plan.rule] if plan.rule else [],
+                )
+            )
+    except BaseException:
+        logger.debug("trace_optimizer record failed; skipping", exc_info=True)
+
 
 # --- Sync wrapper ---
 

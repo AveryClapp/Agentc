@@ -25,7 +25,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::cost_model::CallSiteProfile;
 use crate::dag::{Call, DepSource};
-use crate::planner::{Plan, Proposal, RewriteRule};
+use crate::planner::{CostDriver, Plan, Proposal, RewriteRule};
 
 pub const DEFAULT_ACCURACY_BUDGET: f32 = 0.01;
 /// Messages with fewer tokens than this are not candidates for dedup.
@@ -194,6 +194,7 @@ impl RewriteRule for PromptDedupRule {
                 projected_savings_usd: projected,
             },
             projected_savings_usd: projected,
+            cost_driver: CostDriver::InputTokens,
             safety_check: Box::new(move |c| {
                 // At least 2 messages must remain after dedup.
                 c.messages.len() >= 2 && c.messages.len() + drop_count >= 2

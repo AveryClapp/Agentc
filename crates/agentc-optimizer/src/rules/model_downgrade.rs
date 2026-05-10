@@ -17,7 +17,7 @@ use std::sync::Arc;
 use crate::budget::Budget;
 use crate::cost_model::CallSiteProfile;
 use crate::dag::Call;
-use crate::planner::{Plan, Proposal, RewriteRule};
+use crate::planner::{CostDriver, Plan, Proposal, RewriteRule};
 use crate::shadow::ShadowSampler;
 
 /// Default accuracy budget from spec § Accuracy budget.
@@ -133,6 +133,7 @@ impl RewriteRule for ModelDowngradeRule {
                 projected_savings_usd: projected_savings,
             },
             projected_savings_usd: projected_savings,
+            cost_driver: CostDriver::ModelPrice,
             safety_check: Box::new(move |_| true),
         })
     }

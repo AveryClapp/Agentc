@@ -14,7 +14,7 @@ use agentc_optimizer::{
     cost_model::{CostModel, CostModelUpdate},
     dag::Call,
     ffi::{optimize_plan, PASS_THROUGH_JSON},
-    planner::{Optimizer, Plan, Proposal, RewriteRule},
+    planner::{CostDriver, Optimizer, Plan, Proposal, RewriteRule},
     CallSiteProfile, OptimizerConfig,
 };
 
@@ -64,6 +64,7 @@ impl RewriteRule for SleepyRule {
                 projected_savings_usd: 10.0,
             },
             projected_savings_usd: 10.0,
+            cost_driver: CostDriver::InputTokens,
             safety_check: Box::new(|_| true),
         })
     }

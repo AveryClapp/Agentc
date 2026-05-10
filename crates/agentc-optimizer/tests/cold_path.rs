@@ -7,7 +7,7 @@ use std::sync::Arc;
 use agentc_optimizer::{
     cost_model::{CostModel, CostModelUpdate},
     dag::Call,
-    planner::{Optimizer, Plan, Proposal, RewriteRule},
+    planner::{CostDriver, Optimizer, Plan, Proposal, RewriteRule},
     CallSiteProfile, OptimizerConfig,
 };
 
@@ -56,6 +56,7 @@ impl RewriteRule for AlwaysFires {
                 projected_savings_usd: 1.0,
             },
             projected_savings_usd: 1.0,
+            cost_driver: CostDriver::InputTokens,
             safety_check: Box::new(|_| true),
         })
     }

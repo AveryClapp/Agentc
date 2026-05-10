@@ -23,7 +23,7 @@ use serde_json::Value;
 
 use crate::cost_model::CallSiteProfile;
 use crate::dag::{Call, DepSource, Message};
-use crate::planner::{Plan, Proposal, RewriteRule};
+use crate::planner::{CostDriver, Plan, Proposal, RewriteRule};
 
 /// Default minimum prompt size to consider compressing, in bytes.
 pub const DEFAULT_MIN_PROMPT_BYTES: usize = 8 * 1024;
@@ -173,6 +173,7 @@ impl RewriteRule for ContextCompressRule {
                 projected_savings_usd: projected,
             },
             projected_savings_usd: projected,
+            cost_driver: CostDriver::InputTokens,
             safety_check: Box::new(|call| {
                 // The rewritten call must still carry every UserInput
                 // message's content (by token presence, not identity —
@@ -504,5 +505,23 @@ mod tests {
         ));
         assert!(contains_any_token("...Scott, Derrickson!?", &needles));
         assert!(!contains_any_token("Henry IV ruled England.", &needles));
+    }
+
+    #[test]
+    fn proposal_carries_input_tokens_cost_driver() {
+        let msgs = vec![
+            Message { role: "system".into(), content: "sys".into() },
+            Message { role: "user".into(), content: "live question".into() },
+            Message { role: "user".into(), content: big("x ", 5000) },
+        ];
+        let call = call_with(
+            msgs,
+            vec![1.0, 1.0, 0.0],
+            vec![DepSource::Literal, DepSource::UserInput { span_id: [1u8; 8] }, DepSource::Literal],
+            vec![],
+        );
+        let rule = ContextCompressRule::default();
+        let prop = rule.propose(&call, &hot_profile()).expect("must fire on dead context");
+        assert_eq!(prop.cost_driver, CostDriver::InputTokens);
     }
 }

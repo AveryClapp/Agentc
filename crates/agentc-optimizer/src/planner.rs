@@ -68,6 +68,20 @@ impl Plan {
     }
 }
 
+/// Primary cost dimension targeted by a rule. Used by the `CompositionPlanner`
+/// to classify rules as orthogonal (different drivers → safe to compose) or
+/// overlapping (same driver, same `messages` mutation → unsafe unless
+/// explicitly allowlisted).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CostDriver {
+    InputTokens,
+    OutputTokens,
+    ModelPrice,
+    CallElimination,
+    Structural,
+}
+
 /// A rule's bid to rewrite a call, produced by `RewriteRule::propose`.
 ///
 /// The safety check is a separate closure because we want to evaluate it
@@ -76,6 +90,7 @@ impl Plan {
 pub struct Proposal {
     pub rewritten: Plan,
     pub projected_savings_usd: f32,
+    pub cost_driver: CostDriver,
     pub safety_check: Box<dyn Fn(&Call) -> bool + Send + Sync>,
 }
 
@@ -296,6 +311,7 @@ mod tests {
                     projected_savings_usd: self.savings,
                 },
                 projected_savings_usd: self.savings,
+                cost_driver: CostDriver::InputTokens,
                 safety_check: Box::new(|_| true),
             })
         }
@@ -336,6 +352,7 @@ mod tests {
                     projected_savings_usd: 999.0, // ranks first, but fails safety
                 },
                 projected_savings_usd: 999.0,
+                cost_driver: CostDriver::InputTokens,
                 safety_check: Box::new(|_| false),
             })
         }

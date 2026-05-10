@@ -29,7 +29,7 @@ use serde::Deserialize;
 
 use crate::cost_model::CallSiteProfile;
 use crate::dag::{Call, DepSource};
-use crate::planner::{Plan, Proposal, RewriteRule};
+use crate::planner::{CostDriver, Plan, Proposal, RewriteRule};
 
 pub const DEFAULT_ACCURACY_BUDGET: f32 = 0.0;
 
@@ -113,6 +113,7 @@ impl RewriteRule for ParallelBranchRule {
                 projected_savings_usd: projected,
             },
             projected_savings_usd: projected,
+            cost_driver: CostDriver::Structural,
             safety_check: Box::new(|call| {
                 // Final safety gate: re-verify disjointness + concrete
                 // deps at commit time.

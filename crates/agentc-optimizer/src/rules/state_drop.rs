@@ -22,7 +22,7 @@ use serde_json::Value;
 
 use crate::cost_model::CallSiteProfile;
 use crate::dag::{Call, DepSource, Message};
-use crate::planner::{Plan, Proposal, RewriteRule};
+use crate::planner::{CostDriver, Plan, Proposal, RewriteRule};
 
 pub const DEFAULT_ACCURACY_BUDGET: f32 = 0.01;
 
@@ -109,6 +109,7 @@ impl RewriteRule for StateDropRule {
                 projected_savings_usd: projected,
             },
             projected_savings_usd: projected,
+            cost_driver: CostDriver::InputTokens,
             safety_check: Box::new(move |call| {
                 let Some(deps) = extract_message_deps(call) else { return false; };
                 if deps.len() != call.messages.len() {

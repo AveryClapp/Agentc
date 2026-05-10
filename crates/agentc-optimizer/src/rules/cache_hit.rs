@@ -19,7 +19,7 @@ use serde_json::json;
 
 use crate::cost_model::CallSiteProfile;
 use crate::dag::Call;
-use crate::planner::{Plan, Proposal, RewriteRule};
+use crate::planner::{CostDriver, Plan, Proposal, RewriteRule};
 
 /// LSH similarity threshold the optimizer requires — spec-mandated 0.95.
 pub const LSH_SIMILARITY_THRESHOLD: f32 = 0.95;
@@ -95,6 +95,7 @@ impl RewriteRule for CacheHitRule {
         Some(Proposal {
             rewritten: Plan::Cached { value },
             projected_savings_usd: projected,
+            cost_driver: CostDriver::CallElimination,
             // Source gate already ran; the memoization cache enforces TTL
             // on lookup, so safety is structurally guaranteed.
             safety_check: Box::new(|_| true),

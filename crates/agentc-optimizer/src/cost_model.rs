@@ -108,6 +108,7 @@ pub struct CallSiteProfile {
     pub latency_ms: WelfordStats,
     pub cost_usd: WelfordStats,
     pub output_token_p95: f32,
+    pub output_token_p99: f32,
     pub output_is_structured: f32,
     pub output_is_short: f32,
     pub updated_at_us: i64,
@@ -227,7 +228,8 @@ impl CostModel {
                         output_tokens_mean, output_tokens_var, \
                         latency_ms_mean, latency_ms_var, \
                         cost_usd_mean, cost_usd_var, \
-                        output_token_p95, output_is_structured, output_is_short, \
+                        output_token_p95, output_token_p99, \
+                        output_is_structured, output_is_short, \
                         updated_at \
                  FROM call_site_profile",
             )
@@ -306,6 +308,15 @@ fn apply_update(profile: &mut CallSiteProfile, update: &CostModelUpdate, now_us:
     };
     profile.output_token_p95 = next_p95.max(0.0) as f32;
 
+    let target_p99 = 0.99f64;
+    let cur_p99 = profile.output_token_p99 as f64;
+    let next_p99 = if obs > cur_p99 {
+        cur_p99 + step * target_p99 * obs.max(1.0)
+    } else {
+        cur_p99 - step * (1.0 - target_p99) * cur_p99.max(1.0)
+    };
+    profile.output_token_p99 = next_p99.max(0.0) as f32;
+
     profile.updated_at_us = now_us;
 }
 
@@ -317,9 +328,10 @@ fn upsert_profile(conn: &Connection, p: &CallSiteProfile) -> rusqlite::Result<()
             output_tokens_mean, output_tokens_var, \
             latency_ms_mean, latency_ms_var, \
             cost_usd_mean, cost_usd_var, \
-            output_token_p95, output_is_structured, output_is_short, \
+            output_token_p95, output_token_p99, \
+            output_is_structured, output_is_short, \
             updated_at\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) \
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
          ON CONFLICT(call_site_id) DO UPDATE SET \
             n_observations = excluded.n_observations, \
             input_tokens_mean = excluded.input_tokens_mean, \
@@ -331,6 +343,7 @@ fn upsert_profile(conn: &Connection, p: &CallSiteProfile) -> rusqlite::Result<()
             cost_usd_mean = excluded.cost_usd_mean, \
             cost_usd_var = excluded.cost_usd_var, \
             output_token_p95 = excluded.output_token_p95, \
+            output_token_p99 = excluded.output_token_p99, \
             output_is_structured = excluded.output_is_structured, \
             output_is_short = excluded.output_is_short, \
             updated_at = excluded.updated_at",
@@ -346,6 +359,7 @@ fn upsert_profile(conn: &Connection, p: &CallSiteProfile) -> rusqlite::Result<()
             p.cost_usd.mean,
             p.cost_usd.variance(),
             p.output_token_p95 as f64,
+            p.output_token_p99 as f64,
             p.output_is_structured as f64,
             p.output_is_short as f64,
             p.updated_at_us,
@@ -363,7 +377,8 @@ pub fn load_profile(conn: &Connection, call_site_id: &str) -> Result<Option<Call
                 output_tokens_mean, output_tokens_var, \
                 latency_ms_mean, latency_ms_var, \
                 cost_usd_mean, cost_usd_var, \
-                output_token_p95, output_is_structured, output_is_short, \
+                output_token_p95, output_token_p99, \
+                output_is_structured, output_is_short, \
                 updated_at \
          FROM call_site_profile WHERE call_site_id = ?1",
         params![call_site_id],
@@ -386,9 +401,10 @@ fn row_to_profile(r: &rusqlite::Row<'_>) -> rusqlite::Result<CallSiteProfile> {
     let cost_mean: f64 = r.get(8)?;
     let cost_var: f64 = r.get(9)?;
     let p95: f64 = r.get(10)?;
-    let is_struct: f64 = r.get(11)?;
-    let is_short: f64 = r.get(12)?;
-    let updated_at: i64 = r.get(13)?;
+    let p99: f64 = r.get(11)?;
+    let is_struct: f64 = r.get(12)?;
+    let is_short: f64 = r.get(13)?;
+    let updated_at: i64 = r.get(14)?;
     Ok(CallSiteProfile {
         call_site_id,
         n_observations: n_i as u32,
@@ -397,6 +413,7 @@ fn row_to_profile(r: &rusqlite::Row<'_>) -> rusqlite::Result<CallSiteProfile> {
         latency_ms: WelfordStats::from_persisted(n, lat_mean, lat_var),
         cost_usd: WelfordStats::from_persisted(n, cost_mean, cost_var),
         output_token_p95: p95 as f32,
+        output_token_p99: p99 as f32,
         output_is_structured: is_struct as f32,
         output_is_short: is_short as f32,
         updated_at_us: updated_at,
@@ -572,6 +589,24 @@ mod tests {
         p.n_observations = 1_000;
         assert_eq!(p.confidence(100), 1.0);
         assert_eq!(p.confidence(0), 0.0);
+    }
+
+    #[test]
+    fn p99_tracker_stays_at_or_above_p95() {
+        let cm = CostModel::new();
+        for _ in 0..95 {
+            cm.observe(an_update("site", 50));
+        }
+        for _ in 0..5 {
+            cm.observe(an_update("site", 500));
+        }
+        let p = cm.get("site").unwrap();
+        assert!(
+            p.output_token_p99 >= p.output_token_p95,
+            "p99={} p95={}",
+            p.output_token_p99,
+            p.output_token_p95,
+        );
     }
 
     #[test]

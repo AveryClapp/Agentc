@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS call_site_profile (
     cost_usd_mean         REAL NOT NULL,
     cost_usd_var          REAL NOT NULL,
     output_token_p95      REAL NOT NULL,
+    output_token_p99      REAL NOT NULL,
     output_is_structured  REAL NOT NULL,
     output_is_short       REAL NOT NULL,
     updated_at            INTEGER NOT NULL
@@ -81,9 +82,20 @@ CREATE INDEX IF NOT EXISTS idx_audit_ts ON plan_audit(ts_us);
 "#;
 
 /// Apply `cost_model.db` DDL to a connection. Idempotent.
+///
+/// Also runs column-addition migrations for databases created before
+/// `output_token_p99` was added. SQLite silently errors on duplicate column
+/// names; we treat that as "already migrated".
 pub fn ensure_cost_model_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(COST_MODEL_SCHEMA)
         .context("applying cost_model schema")?;
+    // Migration: add output_token_p99 if absent (old DB). The error
+    // "duplicate column name" means the column already exists — safe to
+    // ignore.
+    let _ = conn.execute_batch(
+        "ALTER TABLE call_site_profile \
+         ADD COLUMN output_token_p99 REAL NOT NULL DEFAULT 0.0",
+    );
     Ok(())
 }
 

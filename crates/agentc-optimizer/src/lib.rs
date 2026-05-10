@@ -10,6 +10,7 @@
 
 pub mod audit;
 pub mod budget;
+pub mod composition;
 pub mod config;
 pub mod cost_model;
 pub mod dag;
@@ -28,7 +29,8 @@ pub use config::OptimizerConfig;
 pub use cost_model::{CallSiteProfile, CostModel, CostModelUpdate, WelfordStats};
 pub use dag::{Call, DepSource, Message, Outcome, Parameters, Tool};
 pub use dag_context::{DagContextCache, DagSpan, DEFAULT_WINDOW, MAX_TRACES_CACHED};
-pub use planner::{CostDriver, Optimizer, Plan, Proposal, RewriteRule};
+pub use composition::{compose_proposals, CompositionResult};
+pub use planner::{CostDriver, Optimizer, Plan, Proposal, RewriteRule, RuleApplication};
 pub use reporting::{
     build_inspect, build_report, disable_rule, glob_to_sql_like, render_disable_summary,
     render_inspect, render_report, AccuracyStatus, CallSiteInspect, DisableSummary,

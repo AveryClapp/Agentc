@@ -244,28 +244,21 @@ impl Optimizer {
             }
         }
 
-        // Step 4 — rank by projected savings descending.
+        // Step 4 — rank by projected savings descending (highest-value rules
+        // are considered first in the composition selection loop).
         proposals.sort_by(|a, b| {
             b.1.projected_savings_usd
                 .partial_cmp(&a.1.projected_savings_usd)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Step 5 — first safety-check pass wins.
-        for (_name, prop) in proposals {
-            if (prop.safety_check)(call) {
-                // Final kill-switch check: if evaluation already blew
-                // past the budget, do not commit the rewrite. The caller
-                // must never see a Plan that took longer than
-                // `max_overhead_ms` to compute.
-                if deadline.elapsed().as_micros() > max_overhead_us {
-                    return Plan::PassThrough;
-                }
-                return prop.rewritten;
-            }
+        // Step 5 (V2) — compose orthogonal proposals. For solo proposals the
+        // result is identical to V1's first-safety-check-wins logic.
+        let result = crate::composition::compose_proposals(proposals, call);
+        if deadline.elapsed().as_micros() > max_overhead_us {
+            return Plan::PassThrough;
         }
-
-        Plan::PassThrough
+        result.plan
     }
 }
 

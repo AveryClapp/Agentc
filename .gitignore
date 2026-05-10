@@ -233,6 +233,9 @@ bench/results/
 # Local design / planning notes (not for the public repo)
 docs/plans/
 
+# macOS metadata
+.DS_Store
+
 # macOS debug symbols
 *.dSYM/
 

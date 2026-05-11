@@ -1,0 +1,17 @@
+Agent diversity — per-rule activation rates
+=================================================================
+
+rag_summarizer  (63 optimizer calls, 41 non-pass-through)
+  rule                 plan_kind     n_fired  fire_rate%  avg_mUSD
+  --------------------------------------------------------------
+  none                 pass_through       22       34.9%     0.000
+  ContextCompress      rewritten          34       54.0%    0.210
+  StateDrop            rewritten           6        9.5%    0.065
+  ContextCompress      composed            1        1.6%    0.419
+
+autogen_bridge  (83 optimizer calls, 45 non-pass-through)
+  rule                 plan_kind     n_fired  fire_rate%  avg_mUSD
+  --------------------------------------------------------------
+  none                 pass_through       38       45.8%     0.000
+  ContextCompress      rewritten          25       30.1%    0.204
+  StateDrop            rewritten          20       24.1%    0.068

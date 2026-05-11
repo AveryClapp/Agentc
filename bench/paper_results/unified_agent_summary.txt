@@ -2,8 +2,8 @@ Unified multi-agent evaluation — Experiments 1–3
 ================================================================================
 Agent                  Type         Rules               n   TokΔ%   CostΔ%  AccΔpp   McNemar p
 --------------------------------------------------------------------------------
-iterative_refiner      built-in     StateDrop          50   +43.4    +41.2    -2.0      1.0000
-multirule_qa           built-in     CC+SD composed     20   +31.4    +31.3    -5.0      1.0000
+iterative_refiner      built-in     StateDrop          50    +9.6     +6.0    -2.0      1.0000
+multirule_qa           built-in     CC (SD+0)          20   +31.4    +31.3    -5.0      1.0000
 rag_summarizer         built-in     OutputBudget       30    -0.3     -1.5    +0.0      1.0000
 autogen_bridge         built-in     SD+OB, CC+OB       30   +12.4    +11.4    +0.0      1.0000
 support_qa             cold-agent   OutputBudget       39    +0.0     -0.1    +0.0      1.0000
@@ -14,5 +14,9 @@ Notes:
   McNemar p: two-sided exact test on per-task discordant pairs
   'cold-agent': support_qa was never designed for or shown Agentc (Exp 2)
   iterative_refiner, multirule_qa: prior V1 benchmark agents
+  iterative_refiner figures: from n50-partial10of11 all-on config (independent baselines, baseline=$0.082910)
+    EXCLUDED: n50-paired ablation (baseline=$0.136192; CacheHit-only saves 39% — contaminated baseline)
+  multirule_qa: CC drives all savings; StateDrop-off=31.33% (identical to all-on); SD marginal contribution=0
+    ablation clean: CacheHit-only=0.01%, ParallelBranch-only=0.00%
   rag_summarizer, autogen_bridge: new Exp 1 generalization agents
   support_qa: Exp 2 cold-agent generalization probe

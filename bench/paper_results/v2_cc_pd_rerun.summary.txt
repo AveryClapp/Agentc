@@ -1,0 +1,12 @@
+V2-CC+PD clean re-run — composition_qa, n=50, fresh baseline
+------------------------------------------------------------------------
+config          acc%     Δpp    SE   McNemar p   BF   FB
+------------------------------------------------------------------------
+baseline        100.0    +0.0  0.0      1.0000    0    0
+V2-CC+PD        100.0   +0.0  0.0     1.0000    0    0 
+------------------------------------------------------------------------
+BB=50  BF=0  FB=0  FF=0
+chi2=0.000  Not significant at p<0.05
+
+Note: CC and PD share InputTokens cost driver; V2 orthogonality gate
+should resolve conflict by picking single best rule per call site.

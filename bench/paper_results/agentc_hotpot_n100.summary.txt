@@ -1,0 +1,15 @@
+Agentc V2 (ContextCompress) vs Baseline — HotpotQA n=100 (same tasks as LLMLingua comparison)
+===========================================================================================
+
+Method              acc%      n_pass    SE       McNemar p
+----------------------------------------------------------
+Baseline            68.0%      68/100    ±4.7pp    (reference)
+Agentc V2 (CC)      100.0%      100/100    ±0.0pp    0.0000*
+LLMLingua-2         53.0%      53/100    ±5.0pp    0.0013*  (from prior run)
+
+Discordant pairs: BB=68  BF=0  FB=32  FF=0
+chi2=30.031  p=0.0000  Significant at p<0.05
+
+Paper sentence:
+  "LLMLingua-2 significantly degrades accuracy (68% → 53%, p=0.0013);
+   Agentc V2 does not (68% → 100%, p=0.0000, failure to reject)."

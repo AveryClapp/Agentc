@@ -1,0 +1,3 @@
+config,n_pass,n_total,acc_pct,acc_delta_pp,se_pp,mcnemar_p,BF,FB
+baseline,50,50,100.0,0.0,0.0,1.0,0,0
+V2-CC+PD,50,50,100.0,0.0,0.0,1.0,0,0

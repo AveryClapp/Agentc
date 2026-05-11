@@ -9,6 +9,7 @@ description = "JIT optimization runtime for multi-step LLM agent workloads"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
+    "wikipedia>=1.4.0",
     "wrapt>=1.16",
 ]
 

@@ -1,0 +1,17 @@
+ContextCompress vs LLMLingua-2 vs Baseline — Wikipedia QA n=39
+Natural long-form contexts: Wikipedia articles, no injected distractors.
+Each context: 8-18 paragraphs about the same topic, question targets ONE fact.
+=====================================================================================
+
+Method          acc%    ±SE    Δpp    McNemar p  BB  BF  FB  FF  tok_reduction  compress_ms
+--------------------------------------------------------------------------------------------
+Baseline        94.9%  ±3.5pp   +0.0   (ref)     —   —   —   —    N/A            N/A
+Agentc V2 (CC)  94.9%  ±3.5pp  +0.0   1.0000    37  0  0  2   from audit     <1 ms
+LLMLingua-2     97.4%  ±2.5pp  +2.6   1.0000    37  0  1  1   53.5%          13678 ms
+--------------------------------------------------------------------------------------------
+
+Comparison with HotpotQA-distractor result:
+  HotpotQA-distractor: Agentc 68%→100% (p<0.0001), LLMLingua-2 68%→53% (p=0.0013)
+  Wikipedia natural:   Agentc 95%→95% (p=1.0000), LLMLingua-2 95%→97% (p=1.0000)
+
+LLMLingua-2 details: 53.5% avg token reduction, 13678 ms avg compression overhead

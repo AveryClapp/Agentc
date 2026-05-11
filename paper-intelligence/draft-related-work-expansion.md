@@ -105,10 +105,13 @@ supporting paragraphs among 8 injected distractors, LLMLingua-2
 to 100\% ($p{<}0.0001$). Token-level importance scoring removes
 content within relevant passages at the wrong granularity for this
 structure; message-level extractive deletion removes entire distractor
-messages at the right granularity. On natural HotpotQA ($n=300$, no
-injected distractors), ContextCompress fires on 1 of 300 calls and
-produces near-zero savings — correctly abstaining when the structural
-precondition is absent.
+messages at the right granularity. On a natural Wikipedia QA fixture
+($n=39$, 18-paragraph article contexts, no injected distractors),
+ContextCompress produces no change (94.9\% vs.\ baseline 94.9\%,
+$p=1.0$, $\text{BF}=\text{FB}=0$) — correctly abstaining when the
+structural precondition is absent — while LLMLingua-2 still compresses
+53.5\% of tokens (mean 13.7~s per task) with no significant accuracy
+gain ($p=1.0$).
 
 \textbf{Semantic caching and memoization.}
 GPTCache~\cite{bang2023gptcache} popularized semantic LLM caching

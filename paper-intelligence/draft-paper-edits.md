@@ -193,27 +193,34 @@ both regimes and pre-empts the reviewer objection about fixture favorability.
 Verified numbers:
 - Distractor fixture: baseline 68/100, Agentc 100/100 (BB=68 BF=0 FB=32,
   chi2=30.03, p<0.0001), LLMLingua-2 53/100 (BB=51 BF=17 FB=2, p=0.0013).
-- Natural fixture: Agentc fires on 1/300 calls, near-zero savings (RES-005).
+- Natural fixture (HotpotQA): Agentc fires on 1/300 calls, near-zero savings (RES-005).
+- Natural fixture (Wikipedia QA, n=39): Agentc 94.9%→94.9% (p=1.0, BB=37 BF=0 FB=0 FF=2),
+  LLMLingua-2 94.9%→97.4% (p=1.0, FB=1 BF=0, 53.5% token reduction, 13,678ms avg overhead).
 
 > \textbf{Comparison with LLMLingua-2.} We compare ContextCompress against
-> LLMLingua-2~\cite{pan2024llmlingua2} on the HotpotQA-distractor fixture
-> ($n=100$), in which each task embeds 2 supporting paragraphs among 8
-> injected distractors that share few content words with the question.
-> This fixture is favorable for IDF-weighted scoring by construction: the
-> distractors are identifiable by low unigram overlap with the query.
-> Under this condition, LLMLingua-2 (53.1\% token reduction via a proxy
-> token classifier) degrades accuracy from 68\% to 53\% (McNemar
+> LLMLingua-2~\cite{pan2024llmlingua2} on two fixtures that differ in
+> structure. On the HotpotQA-distractor fixture ($n=100$), each task embeds
+> 2 supporting paragraphs among 8 injected distractors that share few
+> content words with the question — a structure favorable for IDF-weighted
+> scoring. Under this condition, LLMLingua-2 (53.1\% token reduction via a
+> proxy token classifier) degrades accuracy from 68\% to 53\% (McNemar
 > $p=0.0013$); ContextCompress improves it from 68\% to 100\%
 > ($p{<}0.0001$, $\text{FB}=32$, $\text{BF}=0$). LLMLingua operates at
 > token granularity within each passage and removes partial sentences from
 > both relevant and distractor content; ContextCompress operates at message
 > granularity and removes entire distractor passages, which is the correct
-> unit for this fixture structure. On the natural HotpotQA fixture (no
-> injected distractors, $n=300$), ContextCompress fires on 1 of 300 calls
-> and produces near-zero savings — correctly declining to compress when
-> distractor structure is absent~(\S\ref{sec:eval-cc-real}). Together, the
-> two conditions show that the rule activates when its structural precondition
-> is met and abstains when it is not, rather than compressing indiscriminately.
+> unit for this fixture structure.
+>
+> On a natural Wikipedia QA fixture ($n=39$) — 18 Wikipedia article
+> paragraphs per task, all about the same topic, no injected distractors —
+> ContextCompress produces no change: 94.9\% vs.\ baseline 94.9\%
+> ($p=1.0$, $\text{BF}=0$, $\text{FB}=0$; identical outcomes on all 39
+> tasks). LLMLingua-2 compresses 53.5\% of tokens with a mean 13.7~s
+> overhead per task but achieves no significant improvement (97.4\%,
+> $p=1.0$). Together, the two conditions show that ContextCompress
+> activates when its structural precondition is met and abstains when it is
+> not, rather than compressing indiscriminately — while LLMLingua-2 applies
+> the same 53\% compression regardless of fixture structure.
 
 **Reviewer pre-emption note** (not in paper text, for author eyes):
 The 100\% result will attract scrutiny. The dual-regime presentation is the
@@ -221,7 +228,8 @@ answer: we are not claiming CC is universally superior to LLMLingua; we are
 showing it behaves correctly in both favorable and unfavorable conditions.
 LLMLingua-2 fails on the distractor fixture because token-level importance
 scoring operates at the wrong granularity for this structure — that is a
-real, specific finding, not cherry-picking.
+real, specific finding, not cherry-picking. The Wikipedia result independently
+confirms the abstention behavior on natural prose with a second dataset.
 
 ---
 

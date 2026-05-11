@@ -86,6 +86,17 @@ pub fn compose_proposals(proposals: Vec<(String, Proposal)>, call: &Call) -> Com
             }
             break;
         }
+        // Structural (ParallelBranch) changes the execution model — produces
+        // Plan::Parallel, not Plan::Rewritten. The field-level apply_rewrite
+        // loop cannot merge it with other proposals, so it is always solo.
+        if prop.cost_driver == CostDriver::Structural {
+            if selected.is_empty() {
+                selected.push((name, prop));
+            } else {
+                unselected.push((name, prop));
+            }
+            break;
+        }
         // Reject explicitly unsafe pairings with already-selected rules.
         let explicitly_unsafe =
             selected.iter().any(|(sel_name, _)| is_explicit_unsafe(sel_name, &name));

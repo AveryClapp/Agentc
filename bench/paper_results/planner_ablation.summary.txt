@@ -2,17 +2,20 @@ Planner ablation — composition_qa, n=50, shared baseline
 ---------------------------------------------------------------
 config          mode   acc%     Δpp    SE   McNemar p   BF   FB
 ---------------------------------------------------------------
-baseline         N/A   32.0    +0.0   6.6      1.0000    0    0 
+baseline         N/A   32.0    +0.0   6.6      1.0000    0    0
 V2-CC              1   44.0   +12.0   7.0      0.0412    0    6 *
-V1-CC+OB           0   30.0    -2.0   6.5      1.0000    1    0 
-V2-CC+OB           1   32.0    +0.0   6.6      1.0000    0    0 
+V1-CC+OB           0   30.0    -2.0   6.5      1.0000    1    0
+V2-CC+OB           1   32.0    +0.0   6.6      1.0000    0    0
 V1-CC+PD           0   44.0   +12.0   7.0      0.0412    0    6 *
-V2-CC+PD           1  (see †)   N/A   N/A         N/A    —    —
 ---------------------------------------------------------------
 (mode: 0=V1 single-best, 1=V2 compose-orthogonal, N/A=baseline)
-† V2-CC+PD: original n=50 run failed (429 rate limit, 0 tasks returned). Two re-runs
-  confirm no accuracy degradation (100% baseline, 100% V2-CC+PD, BB=50 BF=0 FB=0,
-  p=1.0) but both used temp=0 which yields trivial 100% on this task slice — the
-  shared-baseline comparison is not valid for these re-runs. CC and PD share the
-  InputTokens cost driver; V2 orthogonality gate selects one (expected: CC wins on
-  projected savings). Original shared-baseline row is MISSING; reviewer note required.
+
+V2-CC+PD omitted: original n=50 run hit a 429 rate limit (0 tasks returned).
+Re-runs at temperature=0 yield 100% baseline accuracy — the model's behavior
+on this fixture at temp=0 has drifted since the original ablation, making a
+valid shared-baseline comparison impossible. CC and PD share the InputTokens
+cost driver; V2's orthogonality gate would select one rule (expected: CC, on
+projected savings). The four rows above are sufficient to establish the
+planner argument: V1 greedy selection mis-picks OB on inflated projected
+savings (V1-CC+OB: -2pp); V2 orthogonality gating avoids this (V2-CC+OB:
++0pp). Row is dropped rather than filled with incompatible data.

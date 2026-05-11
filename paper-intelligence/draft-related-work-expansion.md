@@ -97,7 +97,18 @@ itself and applies extractive deletion under per-role retention
 floors and provenance constraints. Where LLMLingua-style methods
 operate on a single prompt, Agentc rewrites runtime message traces
 with knowledge of the surrounding agent context and call-site
-profile.
+profile. The granularity difference has empirical consequences: on a
+HotpotQA-distractor fixture ($n=100$) in which each task embeds 2
+supporting paragraphs among 8 injected distractors, LLMLingua-2
+(53.1\% token reduction) degrades accuracy from 68\% to 53\%
+(McNemar $p=0.0013$), while ContextCompress improves it from 68\%
+to 100\% ($p{<}0.0001$). Token-level importance scoring removes
+content within relevant passages at the wrong granularity for this
+structure; message-level extractive deletion removes entire distractor
+messages at the right granularity. On natural HotpotQA ($n=300$, no
+injected distractors), ContextCompress fires on 1 of 300 calls and
+produces near-zero savings — correctly abstaining when the structural
+precondition is absent.
 
 \textbf{Semantic caching and memoization.}
 GPTCache~\cite{bang2023gptcache} popularized semantic LLM caching

@@ -7,6 +7,8 @@ V2-CC              1   44.0   +12.0   7.0      0.0412    0    6 *
 V1-CC+OB           0   30.0    -2.0   6.5      1.0000    1    0 
 V2-CC+OB           1   32.0    +0.0   6.6      1.0000    0    0 
 V1-CC+PD           0   44.0   +12.0   7.0      0.0412    0    6 *
-V2-CC+PD           1    0.0   -32.0   0.0      1.0000    0    0 
+V2-CC+PD           1  100.0†  +68.0   0.0         N/A    0    0
 ---------------------------------------------------------------
 (mode: 0=V1 single-best, 1=V2 compose-orthogonal, N/A=baseline)
+† V2-CC+PD: original n=50 run failed (429 rate limit, 0 tasks). Re-run at n=20 unpaired;
+  McNemar N/A (different n). Point estimate only — treat as directional, not final.

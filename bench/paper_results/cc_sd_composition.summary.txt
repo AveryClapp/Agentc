@@ -1,0 +1,12 @@
+CC+StateDrop composition — multirule_qa, n=30, actual token savings
+-------------------------------------------------------------------
+config         acc%     Δpp    SE   McNemar p   BF   FB  tok_saved%
+-------------------------------------------------------------------
+baseline       43.3    +0.0   9.0      1.0000    0    0        +0.0%
+CC-only        50.0    +6.7   9.1      0.4795    0    2       +33.1%
+SD-only        46.7    +3.3   9.1      1.0000    0    1        +0.1%
+CC+SD          50.0    +6.7   9.1      0.4795    0    2       +21.7%
+-------------------------------------------------------------------
+Baseline tokens: 379880 input, 311 output across 30 tasks
+Additivity: CC(33.1%) + SD(0.1%) = 33.2% additive ideal
+CC+SD actual: 21.7% = 65.3% of additive ideal

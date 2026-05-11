@@ -1,0 +1,21 @@
+task_id,tokens_before,tokens_after,reduction_pct,compression_ms,baseline_pass,baseline_answer,llmlingua_pass,llmlingua_answer
+hotpot_5a85b2d95542997b5ce40028,3176,1492,53.0,15325,True,"Eenasul Fateh, also known by his stage name Aladin, is a Ban",True,Eenasul Fateh was known by his stage name Aladin and helped 
+hotpot_5a87ab905542996e4f3088c1,5229,2433,53.5,12669,False,"The Androscoggin Bank Colisée, where the Lewiston Maineiacs ",False,"The Androscoggin Bank Colisée, where the Lewiston Maineiacs "
+hotpot_5a7166395542994082a3e814,3476,1649,52.6,10927,True,"The fight song of the University of Kansas is called ""Kansas",True,"The fight song of the University of Kansas is called ""Kansas"
+hotpot_5ab56e32554299637185c594,4938,2324,52.9,13681,False,"Yes, both Random House Tower and 888 7th Avenue are used for",False,"Yes, both Random House Tower and 888 7th Avenue are associat"
+hotpot_5ae0d4c9554299603e418468,3093,1470,52.5,11454,False,Roger O. Egeberg served as Assistant Secretary for Health an,False,Roger O. Egeberg served as Assistant Secretary for Health an
+hotpot_5adddccd5542997dc7907069,3808,1800,52.7,11463,False,The Apple Remote can be controlled by the Apple Remote Deskt,False,The Front Row media program.
+hotpot_5abf63f15542997ec76fd3ea,3168,1470,53.6,10833,False,The Russian Civil War ended in 1923.,False,The Russian Civil War ended in 1923.
+hotpot_5ab2d3df554299194fa9352c,3238,1477,54.4,10580,True,"The battle in which Giuseppe Arimondi lost his life, the Bat",True,The battle in which Giuseppe Arimondi lost his life secured 
+hotpot_5a760ab65542994ccc918697,4414,2082,52.8,11160,True,Alfred Balk served as the secretary of the Committee on the ,False,Alfred Balk served as the secretary of the Committee on the 
+hotpot_5ab859a955429934fafe6d7b,4053,1901,53.1,10879,True,"The writer of the song ""To Know Him Is to Love Him,"" inspire",True,The writer of the song inspired by words on a tombstone and 
+hotpot_5add61d65542995b365fab21,3625,1716,52.7,10621,False,"A former Soviet statesman, Mikhail Gorbachev, initiated the ",False,A former Soviet statesman initiated the World Summit of Nobe
+hotpot_5a8b20335542996c9b8d5fb3,3685,1730,53.1,10502,False,"The distinction held by Tyrone Curtis ""Muggsy"" Bogues is tha",False,Muggsy Bogues is distinguished as the shortest player in NBA
+hotpot_5a8361b65542992ef85e22a0,3505,1677,52.2,10928,True,Vince Phillips held a junior welterweight title by an organi,True,Vince Phillips held a junior welterweight title by an organi
+hotpot_5ae7ba7a5542993210983f12,3582,1668,53.4,10724,True,"The singer is Usher, and his song ""Yeah!"" was stuck behind f",True,"The singer is Usher, and his song ""Yeah!"" was stuck behind f"
+hotpot_5a88658955429938390d3f47,3432,1596,53.5,10673,False,Rostker v. Goldberg held that the practice of requiring only,False,Rostker v. Goldberg held that the practice of requiring only
+hotpot_5a8e0a005542995085b373a1,3448,1642,52.4,10557,True,"Bordan Tkachuk was the CEO of Viglen, which provides IT prod",False,"Bordan Tkachuk was the CEO of Viglen, which provides IT prod"
+hotpot_5ae738f75542991bbc9761c4,3330,1558,53.2,10530,False,"Champ Bailey, the brother of Boss Bailey, was drafted by the",True,The brother of the first round draft pick by the Washington 
+hotpot_5ae73c065542991e8301cc18,3410,1604,53.0,10539,False,The Eminem album that included vocals from a singer who had ,False,The Eminem album that included vocals from a singer who had 
+hotpot_5ac1c6805542994ab5c67e11,4012,1886,53.0,11724,True,"Rankin/Bass Productions, the production company for The Year",False,"The production company for The Year Without a Santa Claus, R"
+hotpot_5ab4e3065542990594ba9cb4,3660,1726,52.8,10640,True,"Both Truth in Science and Discovery embrace the ""Teach the C",True,"Both Truth in Science and Discovery embrace the ""Teach the C"

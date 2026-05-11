@@ -12,6 +12,9 @@ lc_qa_anthropic (CC)        prov-gen        ContextCompress    50    +0.0     +0
 lc_qa_anthropic (MD)        prov-gen        ModelDowngrade     50    +0.0    +14.7    +4.0      1.0000
 lc_qa_hf (CC)               prov-gen        ContextCompress    50   +34.0    +29.0    +2.0      1.0000
 lc_qa_hf (MD)               prov-gen        ModelDowngrade     50    +0.0    +31.1    -6.0      1.0000
+autogen_bridge (HF)         prov-gen        CC+SD              20   +12.4    +11.4    +0.0      1.0000
+--- Negative Controls -------------------------------------------------------
+iterative_refiner_allread   neg-ctrl        StateDrop(0%)      20    +0.0     +0.0    +0.0      1.0000
 --------------------------------------------------------------------------------
 
 Notes:
@@ -35,3 +38,9 @@ Notes:
     29% cost savings using Groq-proxy pricing; accuracy +2pp (noise)
   HF MD: Llama-3.3-70B→Llama-3.1-8B; 34% fire rate; 91.5% per-call savings; 31.1% total cost;
     accuracy -6pp (8B less capable — expected tradeoff; rule fires correctly)
+  autogen_bridge on HF Llama: CC 20/20 (100%) + SD 20/20 (100%); acc 80% identical to baseline;
+    savings match OpenAI autogen_bridge — confirms rule behavior is provider-agnostic
+
+  Negative Controls:
+  iterative_refiner_allread: SD fires 0/319 calls (0%) when all state writes have matching
+    state_reads; acc 20/20=100%; proves SD fires on unread-state precondition, not message count

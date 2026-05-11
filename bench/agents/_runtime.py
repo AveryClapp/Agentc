@@ -97,7 +97,31 @@ def llm_client():
     """Return an OpenAI client if ``OPENAI_API_KEY`` is set and the SDK
     is importable; otherwise ``None``. All four reference agents use the
     same entry point so the harness can centrally decide whether to run
-    for real or return a deterministic stub."""
+    for real or return a deterministic stub.
+
+    ``BENCH_OPENAI_BASE_URL``: if set, redirects to an OpenAI-compatible
+    endpoint (e.g. HF Inference API, Groq). Use with ``HF_TOKEN`` or
+    ``GROQ_API_KEY`` as ``OPENAI_API_KEY`` for those providers."""
+    base_url = os.environ.get("BENCH_OPENAI_BASE_URL")
+    if base_url:
+        # OpenAI-compat provider — use the provider-specific key if set,
+        # fall back to OPENAI_API_KEY. HF uses HF_TOKEN; Groq uses GROQ_API_KEY.
+        api_key = (
+            os.environ.get("HF_TOKEN")
+            or os.environ.get("GROQ_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+        )
+        if not api_key:
+            return None
+        try:
+            from openai import OpenAI  # type: ignore[import-not-found]
+        except ImportError:
+            return None
+        return OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            max_retries=int(os.environ.get("OPENAI_MAX_RETRIES", "3")),
+        )
     if not os.environ.get("OPENAI_API_KEY"):
         return None
     try:

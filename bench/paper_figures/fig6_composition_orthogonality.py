@@ -1,25 +1,16 @@
-"""Figure 6: Composition orthogonality validation.
+"""Figure 6: Composition orthogonality — horizontal bar chart.
 
-Normalized bar chart (% of additive ideal) for two rule pairs:
-  - MD + CC (orthogonal drivers: ModelPrice × InputTokens) → 95.6% of ideal
-  - CC + SD (same driver: InputTokens × InputTokens)       → 65.3% of ideal
-
-Three bars per group: Solo Best, Composed, Additive Ideal (reference).
-Normalizing to % of additive ideal puts both groups on the same axis
-despite different underlying units (mUSD vs input-token %).
-
-Raw numbers:
-  MD+CC: CC_solo=2.82 mUSD, MD_solo=7.51 mUSD,
-         additive_ideal=10.33 mUSD, composed=9.88 mUSD → 95.6%
-  CC+SD: CC_solo=33.1% tok, SD_solo=0.1% tok,
-         additive_ideal=33.2% tok, composed=21.7% tok → 65.3%
+Two horizontal bars normalised to % of additive ideal:
+  - MD + CC (orthogonal drivers): 95.6%
+  - CC + SD (same driver):        65.3%
+Vertical dashed reference line at 100%. Value labels inside bars in white.
+Annotation strings below each bar show the raw numbers.
 """
 
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import numpy as np
+import matplotlib.ticker as mticker
 
 plt.rcParams.update({
     "font.family": "serif",
@@ -35,113 +26,78 @@ plt.rcParams.update({
 
 OUT = Path(__file__).resolve().parent / "fig6_composition_orthogonality.pdf"
 
-DARK  = "#2c3e50"
-MED   = "#7f8c8d"
-LIGHT = "#bcc6cf"
-REF   = "#e8ecef"
-EDGE  = "#1a242f"
-GRID  = "#9a9a9a"
+TEAL   = "#1D9E75"
+AMBER  = "#BA7517"
+EDGE   = "#1a242f"
+GRID   = "#9a9a9a"
 
 
 def main() -> None:
-    # Normalize everything to % of additive ideal.
-    # MD+CC: ideal = 10.33 mUSD
-    mdcc_ideal = 10.33
-    mdcc_solo_best = 7.51 / mdcc_ideal * 100     # MD wins solo
-    mdcc_composed  = 9.88 / mdcc_ideal * 100     # 95.6%
-    mdcc_ideal_pct = 100.0
-
-    # CC+SD: ideal = 33.2% tokens
-    ccsd_ideal = 33.2
-    ccsd_solo_best = 33.1 / ccsd_ideal * 100     # CC wins solo (99.7%)
-    ccsd_composed  = 21.7 / ccsd_ideal * 100     # 65.3%
-    ccsd_ideal_pct = 100.0
-
-    groups = [
-        ("Orthogonal\n(MD + CC)", mdcc_solo_best, mdcc_composed, mdcc_ideal_pct),
-        ("Same driver\n(CC + SD)", ccsd_solo_best, ccsd_composed, ccsd_ideal_pct),
+    bars = [
+        {
+            "label": "Orthogonal drivers\nMD + CC",
+            "value": 95.6,
+            "color": TEAL,
+            "note": "CC: 2.82 mUSD + MD: 7.51 mUSD  →  ideal: 10.33 mUSD  →  composed: 9.88 mUSD",
+        },
+        {
+            "label": "Same driver\nCC + SD",
+            "value": 65.3,
+            "color": AMBER,
+            "note": "CC: 33.1% + SD: 0.1% tok  →  ideal: 33.2%  →  composed: 21.7%",
+        },
     ]
 
-    labels = ["Solo best rule", "Composed", "Additive ideal"]
-    colors = [MED, DARK, REF]
-    hatches = ["", "", "////"]
+    fig, ax = plt.subplots(figsize=(6.0, 2.6))
 
-    x = np.arange(len(groups))
-    width = 0.22
-    offsets = [-width, 0, width]
+    y_positions = [1.0, 0.0]
+    bar_height  = 0.42
 
-    fig, ax = plt.subplots(figsize=(5.5, 3.6))
-
-    for y_grid in (25, 50, 75, 100):
-        ax.axhline(y_grid, color=GRID, alpha=0.3, lw=0.5, zorder=0)
-    ax.axhline(100, color=EDGE, alpha=0.6, lw=0.8, ls="--", zorder=1)
-
-    bar_objs = {lbl: [] for lbl in labels}
-    for grp_idx, (grp_name, solo, composed, ideal) in enumerate(groups):
-        vals = [solo, composed, ideal]
-        for bar_idx, (lbl, col, hatch, val) in enumerate(
-            zip(labels, colors, hatches, vals)
-        ):
-            bx = x[grp_idx] + offsets[bar_idx]
-            b = ax.bar(
-                bx, val, width,
-                color=col, edgecolor=EDGE, linewidth=0.6,
-                hatch=hatch, zorder=2,
-            )
-            bar_objs[lbl].append(b[0])
-            # Value labels on top.
-            ax.annotate(
-                f"{val:.0f}%",
-                xy=(bx + width / 2, val),
-                xytext=(0, 3), textcoords="offset points",
-                ha="center", va="bottom", fontsize=7.5,
-            )
-
-    # "% of ideal" call-out on composed bars.
-    callouts = [
-        (x[0] + offsets[1], mdcc_composed, "95.6%\nof ideal"),
-        (x[1] + offsets[1], ccsd_composed, "65.3%\nof ideal"),
-    ]
-    for (bx, val, txt) in callouts:
-        ax.annotate(
-            txt,
-            xy=(bx + width / 2, val),
-            xytext=(18, -16), textcoords="offset points",
-            ha="left", va="top", fontsize=7.5, color=DARK,
-            style="italic",
-            arrowprops=dict(arrowstyle="-", color=EDGE, lw=0.6),
+    for y, b in zip(y_positions, bars):
+        ax.barh(
+            y, b["value"], bar_height,
+            color=b["color"], edgecolor=EDGE, linewidth=0.6,
+            zorder=2,
+        )
+        # Value label inside bar, right-aligned, white.
+        ax.text(
+            b["value"] - 1.5, y,
+            f'{b["value"]:.1f}%',
+            ha="right", va="center",
+            fontsize=9, color="white", fontweight="bold",
+        )
+        # Raw-number annotation below the bar.
+        ax.text(
+            1.0, y - bar_height / 2 - 0.07,
+            b["note"],
+            ha="left", va="top",
+            fontsize=7, color=EDGE, style="italic",
+            transform=ax.get_yaxis_transform(),
         )
 
-    ax.set_xticks(x)
-    ax.set_xticklabels([g[0] for g in groups])
-    ax.set_ylabel("% of Additive Ideal")
-    ax.set_ylim(0, 115)
-    ax.set_yticks([0, 25, 50, 75, 100])
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-
-    legend_handles = [
-        mpatches.Patch(color=MED,  ec=EDGE, lw=0.6, label="Solo best rule"),
-        mpatches.Patch(color=DARK, ec=EDGE, lw=0.6, label="Composed"),
-        mpatches.Patch(color=REF,  ec=EDGE, lw=0.6, hatch="////", label="Additive ideal"),
-    ]
-    ax.legend(
-        handles=legend_handles,
-        loc="lower right",
-        fontsize=8,
-        frameon=True,
-        framealpha=0.9,
-        edgecolor=EDGE,
-    )
-
-    # Subtitle annotation.
+    # Dashed reference line at 100%.
+    ax.axvline(100, color=EDGE, lw=0.9, ls="--", zorder=1)
     ax.text(
-        0.02, 0.97,
-        "Orthogonal pairs compose near-additively;\nsame-driver pairs compose sub-additively.",
-        transform=ax.transAxes,
+        100.8, max(y_positions) + bar_height / 2 + 0.04,
+        "additive ideal",
         ha="left", va="top",
         fontsize=7.5, color=EDGE, style="italic",
     )
+
+    # Light vertical gridlines.
+    for xg in (25, 50, 75):
+        ax.axvline(xg, color=GRID, alpha=0.35, lw=0.5, zorder=0)
+
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels([b["label"] for b in bars], fontsize=9)
+    ax.set_xlabel("% of additive ideal")
+    ax.set_xlim(0, 114)
+    ax.set_ylim(-0.52, 1.52)
+    ax.xaxis.set_major_formatter(mticker.FormatStrFormatter("%g%%"))
+    ax.xaxis.set_major_locator(mticker.MultipleLocator(25))
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
 
     fig.tight_layout()
     fig.savefig(OUT, format="pdf", dpi=300, bbox_inches="tight", pad_inches=0.05)

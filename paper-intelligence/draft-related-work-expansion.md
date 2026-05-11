@@ -36,11 +36,35 @@ Murakkab~\cite{mahesh2025murakkab} adapts resource allocation across
 declarative compound-AI workflows. Cognify~\cite{li2025cognify}
 hierarchically autotunes Gen-AI workflows offline against an
 evaluator, optimizing structure, operator and model choice, and
-prompts simultaneously. Agentc occupies a different position in this
-design space: it operates above the model server by rewriting
-already-emitted application traces, requires no language constructs
-or workflow declaration, and applies several conservative rewrite
-classes online without a labeled metric.
+prompts simultaneously. The four closest runtime-optimizer neighbors — Agentix, Halo,
+Murakkab, and Cognify — each require an access point that practitioners
+using third-party API endpoints routinely lack. Agentix intercepts
+agentic program calls at the serving scheduler and uses program-level
+context to reprioritize them; this requires co-location with or
+privileged access to the inference server. Halo optimizes batches of
+agent workflow DAGs across shared GPU resources: the optimizer sees
+and controls the execution cluster. Murakkab allocates resources across
+compound-AI workflows that are expressed in a declarative
+resource-annotation format; the application must be authored to
+declare its components and their resource signatures. Cognify runs a
+hierarchical autotuning loop offline against a labeled evaluator; the
+application must be ported into the Cognify framework and a quality
+metric must be available at tuning time.
+
+Agentc operates at a different boundary entirely: the Python SDK call
+site. By patching the SDK at import time, Agentc intercepts every LLM
+call regardless of which framework, library, or vendor agent code
+issued it — no access to the serving stack, no declarative workflow
+format, no offline evaluator, and no ownership of the target source
+code required. This is the last chokepoint before the API boundary
+that is simultaneously universally accessible and semantically
+sufficient: every call carries its full message list, model
+identifier, and call-site fingerprint, providing enough signal to
+evaluate \textsc{ContextCompress} applicability,
+\textsc{ModelDowngrade} routing eligibility, \textsc{StateDrop}
+liveness, and cache-hit lookup. The single-line integration
+(\texttt{import agentc; agentc.init()}) applies to code the developer
+did not write and frameworks they did not choose.
 
 \textbf{Model routing and cascades.}
 FrugalGPT~\cite{chen2023frugalgpt} pioneered cost-aware model

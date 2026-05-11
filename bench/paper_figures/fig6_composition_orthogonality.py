@@ -36,7 +36,7 @@ GRID  = "#9a9a9a"
 
 def main() -> None:
     fig = plt.figure(figsize=(5.5, 3.5))
-    gs = gridspec.GridSpec(2, 1, height_ratios=[2.2, 1.0], hspace=0.08,
+    gs = gridspec.GridSpec(2, 1, height_ratios=[2.2, 1.0], hspace=0.45,
                            figure=fig)
     ax_bars  = fig.add_subplot(gs[0])
     ax_table = fig.add_subplot(gs[1])

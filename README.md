@@ -39,7 +39,7 @@ The runtime, profiler, semantic memoization layer, and JIT optimizer are all imp
 |---|---|---|---|
 | CC vs LLMLingua-2, HotpotQA distractor | 100 | CC: 68%→**100%** (FB=32, BF=0); LLMLingua-2: 68%→53% | CC: 4.7×10⁻¹⁰; LL2: 0.0013 |
 | CC vs LLMLingua-2, Wikipedia natural prose | 39 | CC: 94.9%→**94.9%** (BF=0, FB=0, abstained); LL2: +2.6pp, 53.5% compression, 13.7s overhead | CC: 1.0; LL2: 1.0 |
-| CC+StateDrop composition, multirule_qa | 30 | CC: 33.1% token savings; SD: 0.1%; CC+SD: 21.7% (gate picks CC per call) | all p≥0.48 |
+| CC+StateDrop composition, multirule_qa | 30 | CC: 33.1% token savings; SD: 0.1%; CC+SD: 21.7% (gate picks CC on most calls; fixture-specific ratio) — confirmatory n=20 ablation: all-on=31.3% ≈ CC-only | all p≥0.48 |
 | Planner ablation (V1 vs V2) | 50 | V1-CC+OB: −2pp (greedy wrong pick); V2-CC+OB: +0pp (gate corrects) | V2-CC: 0.0412 |
 | Agent diversity (rag_summarizer + autogen_bridge) | — | CC fires 30–54% of hot calls; SD fires 9–24% | — |
 | Optimizer overhead (1,818 plan decisions) | — | pass-through p50=**76µs**; rewrite p50=**120µs**; p99 tail from first-call load | — |

@@ -160,26 +160,56 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
         }
     };
 
-    let mut rules: Vec<Box<dyn RewriteRule>> = Vec::with_capacity(5);
-    if let Some(cache) = cache {
-        let key_builder: Arc<dyn CacheKeyBuilder> = Arc::new(CanonicalKeyBuilder {
-            provider: provider_hint(),
+    // `AGENTC_ENABLED_RULES`: comma-separated whitelist of rule names.
+    // When set, only the named rules are registered. Unset = all rules.
+    // Example: AGENTC_ENABLED_RULES=ContextCompress,OutputBudget
+    let enabled: Option<std::collections::HashSet<String>> =
+        std::env::var("AGENTC_ENABLED_RULES").ok().map(|v| {
+            v.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
         });
-        rules.push(Box::new(CacheHitRule::new(cache, key_builder)));
+    let rule_enabled = |name: &str| -> bool {
+        enabled.as_ref().map_or(true, |set| set.contains(name))
+    };
+
+    let mut rules: Vec<Box<dyn RewriteRule>> = Vec::with_capacity(5);
+    if rule_enabled("CacheHit") {
+        if let Some(cache) = cache {
+            let key_builder: Arc<dyn CacheKeyBuilder> = Arc::new(CanonicalKeyBuilder {
+                provider: provider_hint(),
+            });
+            rules.push(Box::new(CacheHitRule::new(cache, key_builder)));
+        }
     }
-    rules.push(Box::new(ContextCompressRule::default()));
-    rules.push(Box::new(PromptDedupRule::default()));
-    rules.push(Box::new(ParallelBranchRule::default()));
-    rules.push(Box::new(ModelDowngradeRule::new(
-        default_routes(),
-        budget.clone(),
-    )));
-    rules.push(Box::new(StateDropRule::default()));
-    rules.push(Box::new(OutputBudgetRule::default()));
-    rules.push(Box::new(StructuredTruncationRule::default()));
-    // DeadOutputTruncation is gated on autogen_bridge validation; include it
-    // unconditionally here since the rule's applies() checks the flag itself.
-    rules.push(Box::new(DeadOutputTruncationRule::default()));
+    if rule_enabled("ContextCompress") {
+        rules.push(Box::new(ContextCompressRule::default()));
+    }
+    if rule_enabled("PromptDedup") {
+        rules.push(Box::new(PromptDedupRule::default()));
+    }
+    if rule_enabled("ParallelBranch") {
+        rules.push(Box::new(ParallelBranchRule::default()));
+    }
+    if rule_enabled("ModelDowngrade") {
+        rules.push(Box::new(ModelDowngradeRule::new(
+            default_routes(),
+            budget.clone(),
+        )));
+    }
+    if rule_enabled("StateDrop") {
+        rules.push(Box::new(StateDropRule::default()));
+    }
+    if rule_enabled("OutputBudget") {
+        rules.push(Box::new(OutputBudgetRule::default()));
+    }
+    if rule_enabled("StructuredTruncation") {
+        rules.push(Box::new(StructuredTruncationRule::default()));
+    }
+    if rule_enabled("DeadOutputTruncation") {
+        rules.push(Box::new(DeadOutputTruncationRule::default()));
+    }
 
     let optimizer = Arc::new(Optimizer::with_budget(
         cost_model.clone(),

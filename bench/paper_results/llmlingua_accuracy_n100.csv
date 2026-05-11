@@ -1,0 +1,101 @@
+task_id,tokens_before,tokens_after,reduction_pct,compression_ms,baseline_pass,baseline_answer,llmlingua_pass,llmlingua_answer
+hotpot_5a85b2d95542997b5ce40028,3176,1492,53.0,15235,True,"Eenasul Fateh, also known by his stage name Aladin, is a Ban",True,Eenasul Fateh was known by his stage name Aladin and helped 
+hotpot_5a87ab905542996e4f3088c1,5229,2433,53.5,13260,False,"The Androscoggin Bank Colisée, where the Lewiston Maineiacs ",False,"The Androscoggin Bank Colisée, where the Lewiston Maineiacs "
+hotpot_5a7166395542994082a3e814,3476,1649,52.6,11886,True,"The fight song of the University of Kansas is called ""Kansas",True,"The fight song of the University of Kansas is called ""Kansas"
+hotpot_5ab56e32554299637185c594,4938,2324,52.9,14390,False,"Yes, both Random House Tower and 888 7th Avenue are used for",False,"Yes, both Random House Tower and 888 7th Avenue are used for"
+hotpot_5ae0d4c9554299603e418468,3093,1470,52.5,11550,False,Roger O. Egeberg served as Assistant Secretary for Health an,False,Roger O. Egeberg served as Assistant Secretary for Health an
+hotpot_5adddccd5542997dc7907069,3808,1800,52.7,11150,False,The Front Row media program can also be controlled by the Ap,False,The Front Row media program.
+hotpot_5abf63f15542997ec76fd3ea,3168,1470,53.6,10595,False,The Russian Civil War ended in 1923.,False,The Russian Civil War ended in 1923.
+hotpot_5ab2d3df554299194fa9352c,3238,1477,54.4,10650,True,"The battle in which Giuseppe Arimondi lost his life, the Bat",True,The battle in which Giuseppe Arimondi lost his life secured 
+hotpot_5a760ab65542994ccc918697,4414,2082,52.8,11585,True,Alfred Balk served as the secretary of the Committee on the ,False,Alfred Balk served as the secretary of the Committee on the 
+hotpot_5ab859a955429934fafe6d7b,4053,1901,53.1,11100,True,"The writer of the song ""To Know Him Is to Love Him,"" inspire",True,The writer of the song inspired by words on a tombstone and 
+hotpot_5add61d65542995b365fab21,3625,1716,52.7,10543,False,"A former Soviet statesman, Mikhail Gorbachev, initiated the ",False,A former Soviet statesman initiated the World Summit of Nobe
+hotpot_5a8b20335542996c9b8d5fb3,3685,1730,53.1,10735,False,"The distinction held by Tyrone Curtis ""Muggsy"" Bogues is tha",False,Muggsy Bogues is distinguished as the shortest player in NBA
+hotpot_5a8361b65542992ef85e22a0,3505,1677,52.2,11188,True,Vince Phillips held a junior welterweight title by an organi,True,Vince Phillips held a junior welterweight title by an organi
+hotpot_5ae7ba7a5542993210983f12,3582,1668,53.4,10645,True,"The singer is Usher, and his song ""Yeah!"" was stuck behind f",True,"The singer is Usher, and his song ""Yeah!"" was stuck behind f"
+hotpot_5a88658955429938390d3f47,3432,1596,53.5,10591,False,Rostker v. Goldberg held that the practice of requiring only,False,Rostker v. Goldberg held that the practice of requiring only
+hotpot_5a8e0a005542995085b373a1,3448,1642,52.4,10487,True,"Bordan Tkachuk was the CEO of Viglen, which provides IT prod",False,"Bordan Tkachuk was the CEO of Viglen, which provides IT prod"
+hotpot_5ae738f75542991bbc9761c4,3330,1558,53.2,10537,False,"Champ Bailey, the brother of Boss Bailey, was drafted by the",False,The brother of the first round draft pick by the Washington 
+hotpot_5ae73c065542991e8301cc18,3410,1604,53.0,11185,False,The Eminem album that included vocals from a singer who had ,False,The Eminem album that included vocals from a singer who had 
+hotpot_5ac1c6805542994ab5c67e11,4012,1886,53.0,11692,True,"Rankin/Bass Productions, the production company for The Year",False,"The production company for The Year Without a Santa Claus, R"
+hotpot_5ab4e3065542990594ba9cb4,3660,1726,52.8,10918,True,"Both Truth in Science and Discovery embrace the ""Teach the C",True,"Both Truth in Science and Discovery embrace the ""Teach the C"
+hotpot_5ae748d1554299572ea547b0,4637,2193,52.7,11519,True,Marcus Wayne Garland spent nine seasons with the Baltimore O,True,The American League was established in 1901.
+hotpot_5ac547525542993e66e822a3,3833,1805,52.9,11209,True,"In 2017, 3/4th of the FDA budget (approximately $700 million",False,"In 2017, 3/4th of the Food and Drug Administration's budget,"
+hotpot_5a7625c7554299109176e668,3177,1509,52.5,12257,False,"Chris Hardwick was a guest on ""The Drop-In"" podcast.",False,"Chris Hardwick was a guest on the ""Drop-In At Will Radio"" po"
+hotpot_5a790d8f554299029c4b5eec,3833,1797,53.1,11360,True,George Harrison is the English musician known for both the s,True,George Harrison is the English musician known for both the s
+hotpot_5aba65a055429939ce03dcd2,4840,2241,53.7,12019,True,Georges-Henri Bousquet translated the work of a historian wh,True,Georges-Henri Bousquet translated the work of a historian wh
+hotpot_5a75f79555429976ec32bcca,4334,2020,53.4,12039,True,The 1999 Odisha cyclone had a film made about it in 2007 tit,True,The 1999 Odisha cyclone had a film made about it in 2007 tit
+hotpot_5a8c65a1554299585d9e3680,3908,1838,53.0,11662,True,The ethnic group is French Canadians.,True,The ethnic group is the French Canadians.
+hotpot_5ae82ae555429952e35eaa71,3557,1657,53.4,11427,True,"Martin Patterson ""Pat"" Hingle was a close friend of Clint Ea",False,"Martin Patterson ""Pat"" Hingle was a close friend of Clint Ea"
+hotpot_5a85cead5542991dd0999ea9,4193,1972,53.0,11473,False,"The arcade game named after Frank Thomas, who is the only pl",False,"The arcade game named after Frank Thomas, who is the only pl"
+hotpot_5ab7f97a5542991d322237ef,5261,2438,53.7,13663,True,Opry Mills is a super-regional shopping mall located in Nash,False,"Opry Mills is a regional mall in Nashville, Tennessee, opene"
+hotpot_5ae4563e5542996836b02c7f,3790,1777,53.1,11792,True,"Spirit Halloween LLC was purchased by Spencer Gifts, which h",False,"Spirit Halloween LLC was purchased by Spencer Gifts, which h"
+hotpot_5a83a532554299334474606f,3758,1769,52.9,10784,True,Ian Harland studied at The Dragon School in Oxford and Haile,False,Ian Harland studied at the Dragon School Oxford and Haileybu
+hotpot_5a88e605554299206df2b39c,3470,1629,53.1,10497,True,"The population of Wytheville, Virginia, at the intersection ",False,"The population of Wytheville, Virginia, at the intersection "
+hotpot_5a8ee4315542990e94052ba7,3846,1812,52.9,10497,True,The Treaty of Gandamak officially ended the first phase of t,True,The first phase of the military conflict officially ended wi
+hotpot_5a8cb288554299585d9e3726,3864,1784,53.8,11011,True,"The mass killing that took place on October 1, 2015, was in ",True,"The mass killing that took place on October 1, 2015, in Oreg"
+hotpot_5abd0d635542992ac4f381b8,3841,1817,52.7,11016,True,It took Adele 29 days to sell 2 million copies of her album ,False,It took 42 days for the Best New Artist of 2009 to sell 2 mi
+hotpot_5ae7385d5542992ae0d163da,5069,2369,53.3,11332,True,"Bartlett's Bridge was built by Charles A. Allen, who was a c",True,Bartlett's Bridge was built by the engineer Charles A. Allen
+hotpot_5a8799c55542996e4f308877,3673,1736,52.7,11477,False,"Jens Risom introduced Mid-Century modern design, characteriz",False,Jens Risom introduced Mid-Century modern design characterize
+hotpot_5a8f69b55542997ba9cb324f,3372,1617,52.0,12050,False,The Cold Spring Historic District is located near the villag,False,The Cold Spring Historic District is located near the villag
+hotpot_5a8488f45542992a431d1a47,3809,1772,53.5,11471,True,"The Devils was commissioned by Sir Peter Hall, who was an em",True,The Devils was written by John Whiting and commissioned by S
+hotpot_5abe689a55429976d4830b16,3540,1669,52.9,10961,True,Francesca Schiavone and Olga Morozova have both been finalis,True,Francesca Schiavone and Olga Morozova have both been finalis
+hotpot_5ae0d52e554299603e418469,3472,1628,53.1,11490,True,The actress that played the leading role in the independent ,False,The actress that played the leading role in the independent 
+hotpot_5ab25004554299722f9b4cd7,3984,1869,53.1,11076,True,"No, the Battle of Stones River was fought in the 19th centur",True,"No, the Battle of Stones River was fought during the America"
+hotpot_5ac056385542997d64295a08,2901,1397,51.8,11154,True,"Ambrose Mendy has managed and/or advised Chris Eubank Jr., w",False,"Ambrose Mendy has managed and/or advised Chris Eubank, who w"
+hotpot_5a7252db5542990c210a4104,3298,1542,53.2,11619,True,The oldest child that attended the Trump campaign-Russian me,True,The oldest child that attended the Trump campaign-Russian me
+hotpot_5abd6bf055429933744ab7c8,3520,1646,53.2,11114,False,The college football team that fired their head coach on Nov,False,The college football team that fired their head coach on Nov
+hotpot_5ae1f5a15542997f29b3c1b5,3345,1574,52.9,11063,True,"Gary Anthony Williams, who appeared on ""Charlotte's Shorts"" ",True,"The actor who appeared on Charlotte's Shorts and Weeds, Gary"
+hotpot_5ade908b55429975fa854f13,3404,1589,53.3,11061,True,"After he was contracted by the AMG team, Dario Franchitti co",True,"After being contracted by the AMG team, Dario Franchitti com"
+hotpot_5ab626d555429953192ad279,3784,1777,53.0,11113,False,Anthony Avent played basketball for a high school located in,False,Anthony Avent played basketball for a high school located in
+hotpot_5a7cbf93554299452d57b9f5,3505,1652,52.9,11446,True,"Magdalen College, Oxford.",True,Magdalen College Oxford endows four professorial fellowships
+hotpot_5ae1fa2b5542997f29b3c1df,3596,1690,53.0,11045,True,"Eminem collaborated with Rihanna on the album release ""Numb.",True,"Eminem collaborated with Rihanna on the album release ""Numb."
+hotpot_5ae0d7315542990adbacf678,3328,1549,53.5,11270,True,Toshi Ichiyanagi is the avant-garde Japanese composer who st,True,Toshi Ichiyanagi is the avant-garde Japanese composer who st
+hotpot_5a7a27ce5542996c55b2dd28,4153,1946,53.1,11258,True,"The Western Allied invasion of Germany took place first, occ",True,"The Western Allied invasion of Germany took place first, occ"
+hotpot_5a78bc6b554299148911f979,4224,1976,53.2,11088,False,Woman's Era and Naj are both lifestyle magazines targeting w,False,"Woman's Era is a women's interest magazine, while Naj is a m"
+hotpot_5a82fe5055429966c78a6ad3,4396,2041,53.6,11096,True,"Azusa Pacific University is a private, evangelical Christian",True,"Azusa Pacific University, where Diana Pavlac Glyer is a prof"
+hotpot_5abcf2b4554299700f9d7937,3973,1833,53.9,12027,True,Lorenzo Monaco was influenced by Giotto.,True,Lorenzo Monaco was influenced by Giotto.
+hotpot_5ae69e3f5542996d980e7c61,4060,1925,52.6,11126,True,The notable psychoanalyst associated with the University of ,False,The notable psychoanalyst associated with the University of 
+hotpot_5ade99295542992fa25da7d8,3908,1804,53.8,11037,True,Scholars suggest that linguistic analysis and computer analy,True,"Scholars surmise that ""Titus Andronicus"" may have been co-au"
+hotpot_5a9052765542995651fb513d,3684,1725,53.2,11063,False,Bhabananda Deka is the economist.,False,Bhabananda Deka is the economist.
+hotpot_5ab266b5554299340b5254b4,3948,1848,53.2,11536,True,The term Moneybomb was coined by Trevor Lyman to describe a ,False,The term Moneybomb was coined by Trevor Lyman to describe a 
+hotpot_5ae7eb3c5542994a481bbe20,4834,2261,53.2,12589,True,The Panel with striding lion was one of many that lined the ,True,The Panel with striding lion lined the way north of the Isht
+hotpot_5ae0a54e5542993d6555ebdd,3558,1700,52.2,11850,False,Joseph Benavidez has been compared favorably to Urijah Faber,False,Joseph Benavidez has been compared favorably to former WEC F
+hotpot_5a866e7e554299211dda2b29,4278,2021,52.8,11061,True,Peer.,True,William Lever 1st Viscount Leverhulme was a peer in the Hous
+hotpot_5aba14195542994dbf0198a9,3648,1705,53.3,12549,True,The Animal Wall depicts 15 animals.,True,The Animal Wall depicts 15 animals.
+hotpot_5a8752955542994775f607d1,3709,1744,53.0,10880,True,The team that represented an Arizona university in the confe,True,The team that represented an Arizona university in the Weste
+hotpot_5ac048ea554299294b218f74,3213,1517,52.8,11564,True,"Fredric Rieders testified against Michael Swango, who had ki",True,"Fredric Rieders testified against Michael Swango, who had ki"
+hotpot_5ae1b2b9554299422ee99684,4109,1948,52.6,11070,True,President Franklin Roosevelt appointed Robert Digges Wimberl,False,The National Archives Records Administration (NARA) is respo
+hotpot_5adcfbf45542990d50227d86,3784,1780,53.0,11065,True,"Into Dust is a song by Mazzy Star, which was formed in Santa",True,"Into Dust is a song by the alternative rock band Mazzy Star,"
+hotpot_5ab30d1155429976abd1bc3d,3306,1537,53.5,11141,False,The leading actor of the Christmas movie that Rebecca Forsta,True,The leading actor of the Christmas movie that Rebecca Forsta
+hotpot_5ae363ff5542992f92d822bc,3740,1729,53.8,11405,True,Erwin Lambert was a member of the Schutzstaffel (SS) under H,True,Erwin Lambert was a member of the Schutzstaffel (SS) under H
+hotpot_5ab84d5a55429916710eb028,3229,1517,53.0,11146,True,The horse-collar tackle is most closely associated with Pro ,True,The horse-collar tackle is most closely associated with Roy 
+hotpot_5a74581555429979e2882912,3792,1740,54.1,11541,True,Nissan acquired a controlling interest in Mitsubishi Motors ,True,"Nissan acquired controlling interest in Mitsubishi Motors, w"
+hotpot_5a84574455429933447460e6,3428,1616,52.9,11098,False,Kevin Durant was named NBA Finals Most Valuable Player in 20,True,Andre Iguodala was named NBA Finals Most Valuable Player in 
+hotpot_5abdf1fe55429976d4830a31,3626,1721,52.5,10962,True,"The slogan of the site created by Peter Daou is ""media for t",False,"The website's slogan was ""media for 65.8 million referring v"
+hotpot_5ac51a055542994611c8b390,3400,1580,53.5,11513,True,The name of the Israeli movement of ex-senior security offic,True,"The name of one of the ex-security officials is ""Mossad,"" wh"
+hotpot_5ae0a6ea5542993d6555ebe9,3629,1698,53.2,11140,True,"No, only Shikashika is a type of drink; Waste Land is a docu",True,"No, Waste Land is a documentary, while Shikashika is a shave"
+hotpot_5a7265825542997f827839a3,3994,1925,51.8,11087,True,Crawford Ashley's opponent for the World Boxing Association ,True,The opponent of Crawford Ashley for the World Boxing Associa
+hotpot_5ae135fb55429920d523431f,3866,1838,52.5,11407,False,Scott Workman was credited with a successful show on the sma,False,Scott Workman was credited with a successful show on the sma
+hotpot_5a8f0a01554299458435d539,3744,1741,53.5,11147,True,"Telos was an album by Forevermore, a band formed in Indianap",True,Telos was an album by a band that formed in Indianapolis.
+hotpot_5a77d65055429949eeb29f7b,3946,1849,53.1,11017,False,All Hawaiian hibiscus species except for Hibiscus waimeae ha,False,"All seven species of Hawaiian hibiscus are native to Hawaii,"
+hotpot_5adf17f95542995ec70e8f6c,4160,1922,53.8,10561,False,Chris Hemsworth was born in Australia.,False,Chris Hemsworth was born in Australia.
+hotpot_5ae834e95542997ec272776a,3482,1628,53.2,11229,True,"The song ""Highwayman"" written by Jimmy Webb inspired the nam",True,The song written by Jimmy Webb that inspired the name of a s
+hotpot_5a8aa1685542992d82986f32,4376,2026,53.7,11753,True,"Jing Tian, the starring actress from The Glory of Tang Dynas",True,"The starring actress from The Glory of Tang Dynasty, Jing Ti"
+hotpot_5a876f785542993e715abf42,4066,1902,53.2,12132,False,William Blake Herron held more diverse roles in the movie in,False,William Blake Herron held more diverse roles in the movie in
+hotpot_5ae53de455429908b6326599,3793,1766,53.4,11153,True,"Paradise Creek is a tributary of Brodhead Creek, which is a ",True,"Paradise Creek is a tributary of Brodhead Creek, which is a "
+hotpot_5ae207a65542994d89d5b317,3604,1677,53.5,11712,True,"Oplismenus has over 100 described species, while Lavatera ha",True,Oplismenus has more species than Lavatera.
+hotpot_5adcc3ed5542994d58a2f6c4,3234,1529,52.7,10843,False,"Carlene LeFevre and Rich LeFevre are said to form the ""First",False,"Carlene LeFevre and Rich LeFevre formed the ""First Family of"
+hotpot_5ae2c696554299495565db32,4465,2098,53.0,11587,False,The political office of Keeper of the Great Seal of Scotland,False,The political office held by two successive occupants of Thi
+hotpot_5ae675245542991bbc9760dc,3804,1732,54.5,11288,True,The father of Childericus is Merovech.,True,The father of Childeric I is Merovech.
+hotpot_5a89f68f5542992e4fca84b6,3545,1654,53.3,11126,False,"Both the Governor of Sheerness and Stapleton Cotton, 1st Vis",False,"Both the Governor of Sheerness and Stapleton Cotton, 1st Vis"
+hotpot_5ab8634e5542990e739ec8de,3181,1514,52.4,11011,False,"John C. Bogle argued that no value premium exists, claiming ",False,"John C. Bogle argued that there is no value premium, suggest"
+hotpot_5add4f3a5542997545bbbd2c,4342,2001,53.9,11377,False,The LRA is also known as the Lord's Resistance Movement.,False,The LRA is also known as the United Holy Salvation Army.
+hotpot_5ae26cb15542994d89d5b421,3888,1788,54.0,11878,True,"Charlie McDermott plays Axl Heck on the TV show ""The Middle,",True,Charlie McDermott plays Axl Heck on a TV show that premiered
+hotpot_5ae1389655429901ffe4ae05,3402,1597,53.1,11000,True,Bethpage State Parkway begins at a trumpet interchange with ,True,Bethpage State Parkway begins with an interchange at the Sou
+hotpot_5a7a33205542996a35c1712f,3530,1654,53.1,10907,True,The Province of New York became a royal colony on the northe,False,New Jersey became a royal colony on the northeast coast of N
+hotpot_5ae1b1aa5542997283cd223f,5728,2672,53.4,12883,True,"The 1999 Clippers top draft pick, Lamar Odom, played for the",True,"The 1999 Clippers top draft pick, Lamar Odom, played for the"
+hotpot_5ab81cd955429916710eaff7,3301,1570,52.4,11831,False,A plasma weapon produces thermal energy and may also have a ,False,A plasma weapon produces thermal energy and significant kine
+hotpot_5abd0b6b5542996e802b46b4,4144,1954,52.8,11067,True,"""Finally"" peaked at number five on the US Hot 100.",True,Finally peaked at number five on the US Hot 100.
+hotpot_5ac3af895542995ef918c1f0,3112,1473,52.7,11366,False,Janne Kyttanen has had work exhibited at the Stedelijk Museu,False,Janne Kyttanen has had work exhibited at the Stedelijk Museu
+hotpot_5ab1f13e554299449642c81c,3216,1498,53.4,10962,True,The documentary first aired on PBS stations nationwide.,True,The documentary aired on PBS stations.

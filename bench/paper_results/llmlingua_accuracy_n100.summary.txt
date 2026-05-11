@@ -1,0 +1,17 @@
+LLMLingua-2 vs Baseline — n=100 HotpotQA tasks, gpt-4o-mini-2024-07-18
+================================================================
+
+Method            Accuracy    SE      n_pass
+----------------------------------------------
+Baseline          68.0%     ±0.047   68/100
+LLMLingua-2       53.0%     ±0.050   53/100
+
+Accuracy delta:   -15.0 pp  (SE=6.83 pp)
+
+McNemar test (continuity-corrected):
+  BB=51  BF=17  FB=2  FF=30
+  chi2=10.316  p=0.0013
+  Significant at p<0.05
+
+Token reduction:  53.1% avg
+Compression time: 11400 ms avg/task

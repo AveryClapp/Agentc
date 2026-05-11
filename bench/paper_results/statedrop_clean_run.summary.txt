@@ -1,0 +1,9 @@
+StateDrop isolation — iterative_refiner, n=50, current binary
+=======================================================================
+
+config          acc%    Δpp     SE   McNemar p   BF   FB
+---------------------------------------------------------
+baseline        98.0%   0.0   2.0    -
+StateDrop-only  98.0%  +0.0   2.0   1.0000      0    0
+
+Not significant (p>=0.05)

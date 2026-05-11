@@ -4,3 +4,7 @@ multirule_qa,built-in,ContextCompress (SD+0),20,31.4,31.3,-5.0,1.0,multi-rule pr
 rag_summarizer,built-in,OutputBudget,30,-0.3,-1.5,0.0,1.0,"summarization agent; OB fires, output already short"
 autogen_bridge,built-in,"SD+OB, CC+OB",30,12.4,11.4,0.0,1.0,multi-step agent; SD/CC drop dead state + distractors
 support_qa,cold-agent,OutputBudget,39,0.0,-0.1,0.0,1.0,never seen Agentc; CC abstains (role-floor); OB fires
+long_context_qa_anthropic_cc,provider-generalization,ContextCompress,50,0.0,0.0,0.0,1.0,Anthropic claude-haiku-4-5-20251001; CC fires 19/179 calls but saves 0 tokens — single-message format (Anthropic no-consecutive-user-msg constraint); 37/50=74% EM baseline and CC-only identical
+long_context_qa_anthropic_md,provider-generalization,ModelDowngrade,50,0.0,14.7,4.0,1.0,Anthropic sonnet-4-5→haiku-4-5-20251001; MD fire rate=20% (10/50); per-fired-call savings=73%; total cost savings=14.7%; acc 52% vs 48% (sonnet verbose on EM — fixture artifact)
+long_context_qa_hf_cc,provider-generalization,ContextCompress,50,34.0,29.0,2.0,1.0,HF meta-llama/Llama-3.3-70B-Instruct; CC fire rate=98% (49/50); ~34% input-token savings (same fixture+algorithm as OpenAI baseline); acc 60% vs 58% baseline (+2pp)
+long_context_qa_hf_md,provider-generalization,ModelDowngrade,50,0.0,31.1,-6.0,1.0,HF Llama-3.3-70B→Llama-3.1-8B; MD fire rate=34% (17/50); per-fired-call savings=91.5%; total cost savings=31.1%; acc 52% vs 58% baseline (-6pp — 8B less capable)

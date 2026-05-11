@@ -34,8 +34,8 @@ use crate::rules::{
 };
 use crate::schema::{ensure_audit_schema, ensure_cost_model_schema};
 
-/// Default GPT-4o-mini downgrade route. Spec § Rule specifications >
-/// ModelDowngrade. The price ratio is `gpt-4o-mini / gpt-4o ≈ 0.067`.
+/// Default model-downgrade routes. Spec § Rule specifications > ModelDowngrade.
+/// Price ratios and max_output_tokens as of 2026-05-11.
 fn default_routes() -> Vec<ModelDowngradeRoute> {
     // ``max_output_tokens`` is the destination model's safe output ceiling;
     // ModelDowngrade refuses to route when ``output_token_p95`` exceeds it.
@@ -44,16 +44,54 @@ fn default_routes() -> Vec<ModelDowngradeRoute> {
     // summarizers routinely emit 200–500 tokens). 512 keeps the rule from
     // touching long-form generation while admitting normal agent outputs.
     vec![
+        // OpenAI
         ModelDowngradeRoute {
             from: "gpt-4o".to_string(),
             to: "gpt-4o-mini".to_string(),
-            price_ratio: 0.07,
+            price_ratio: 0.07,   // 0.15/2.50 input; 0.60/10.00 output ≈ 0.06–0.07
             max_output_tokens: 512,
         },
         ModelDowngradeRoute {
             from: "gpt-4-turbo".to_string(),
             to: "gpt-4o-mini".to_string(),
             price_ratio: 0.05,
+            max_output_tokens: 512,
+        },
+        // Anthropic: sonnet-4-5 ($3/$15) → haiku-4-5 ($0.80/$4)
+        // price_ratio = 0.80/3.00 ≈ 0.27 input; 4.00/15.00 ≈ 0.27 output
+        ModelDowngradeRoute {
+            from: "claude-sonnet-4-5".to_string(),
+            to: "claude-haiku-4-5-20251001".to_string(),
+            price_ratio: 0.27,
+            max_output_tokens: 512,
+        },
+        // Legacy Anthropic routes (EOL models kept for historical runs)
+        ModelDowngradeRoute {
+            from: "claude-3-5-sonnet-20241022".to_string(),
+            to: "claude-3-5-haiku-20241022".to_string(),
+            price_ratio: 0.33,
+            max_output_tokens: 512,
+        },
+        // Open-source (Groq): Llama 70B → 8B
+        // price_ratio = 0.05/0.59 ≈ 0.08 (Groq rates)
+        ModelDowngradeRoute {
+            from: "llama-3.1-70b-versatile".to_string(),
+            to: "llama-3.1-8b-instant".to_string(),
+            price_ratio: 0.08,
+            max_output_tokens: 512,
+        },
+        // HF Inference API: Llama-3.3-70B → Llama-3.1-8B (no "Meta-" prefix)
+        ModelDowngradeRoute {
+            from: "meta-llama/Llama-3.3-70B-Instruct".to_string(),
+            to: "meta-llama/Llama-3.1-8B-Instruct".to_string(),
+            price_ratio: 0.08,
+            max_output_tokens: 512,
+        },
+        // HF fallback: Llama-3.1-70B → 8B
+        ModelDowngradeRoute {
+            from: "meta-llama/Llama-3.1-70B-Instruct".to_string(),
+            to: "meta-llama/Llama-3.1-8B-Instruct".to_string(),
+            price_ratio: 0.08,
             max_output_tokens: 512,
         },
     ]

@@ -109,6 +109,35 @@ def llm_client():
     return OpenAI(max_retries=int(os.environ.get("OPENAI_MAX_RETRIES", "8")))
 
 
+def anthropic_client():
+    """Return an Anthropic client if ``ANTHROPIC_API_KEY`` is set; otherwise None."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
+    try:
+        import anthropic  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+    return anthropic.Anthropic(max_retries=int(os.environ.get("ANTHROPIC_MAX_RETRIES", "8")))
+
+
+def openai_compat_client(base_url: str, api_key: str):
+    """Return an OpenAI client pointed at an OpenAI-compatible endpoint.
+
+    Used for Groq (api.groq.com/openai/v1), HF Inference API, or any other
+    provider that speaks the OpenAI chat/completions wire format. The existing
+    OpenAI SDK patch intercepts calls through this client automatically.
+    """
+    try:
+        from openai import OpenAI  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+    return OpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        max_retries=int(os.environ.get("OPENAI_MAX_RETRIES", "3")),
+    )
+
+
 def call_llm(
     prompt: str,
     model: str = "gpt-4o-mini-2024-07-18",

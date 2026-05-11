@@ -1,12 +1,17 @@
-Unified multi-agent evaluation — Experiments 1–3
+Unified multi-agent evaluation — Experiments 1–3 + Provider Generalization
 ================================================================================
-Agent                  Type         Rules               n   TokΔ%   CostΔ%  AccΔpp   McNemar p
+Agent                       Type            Rules               n   TokΔ%   CostΔ%  AccΔpp   McNemar p
 --------------------------------------------------------------------------------
-iterative_refiner      built-in     StateDrop          50    +9.6     +6.0    -2.0      1.0000
-multirule_qa           built-in     CC (SD+0)          20   +31.4    +31.3    -5.0      1.0000
-rag_summarizer         built-in     OutputBudget       30    -0.3     -1.5    +0.0      1.0000
-autogen_bridge         built-in     SD+OB, CC+OB       30   +12.4    +11.4    +0.0      1.0000
-support_qa             cold-agent   OutputBudget       39    +0.0     -0.1    +0.0      1.0000
+iterative_refiner           built-in        StateDrop          50    +9.6     +6.0    -2.0      1.0000
+multirule_qa                built-in        CC (SD+0)          20   +31.4    +31.3    -5.0      1.0000
+rag_summarizer              built-in        OutputBudget       30    -0.3     -1.5    +0.0      1.0000
+autogen_bridge              built-in        SD+OB, CC+OB       30   +12.4    +11.4    +0.0      1.0000
+support_qa                  cold-agent      OutputBudget       39    +0.0     -0.1    +0.0      1.0000
+--- Provider Generalization -------------------------------------------------------
+lc_qa_anthropic (CC)        prov-gen        ContextCompress    50    +0.0     +0.0    +0.0      1.0000
+lc_qa_anthropic (MD)        prov-gen        ModelDowngrade     50    +0.0    +14.7    +4.0      1.0000
+lc_qa_hf (CC)               prov-gen        ContextCompress    50   +34.0    +29.0    +2.0      1.0000
+lc_qa_hf (MD)               prov-gen        ModelDowngrade     50    +0.0    +31.1    -6.0      1.0000
 --------------------------------------------------------------------------------
 
 Notes:
@@ -20,3 +25,13 @@ Notes:
     ablation clean: CacheHit-only=0.01%, ParallelBranch-only=0.00%
   rag_summarizer, autogen_bridge: new Exp 1 generalization agents
   support_qa: Exp 2 cold-agent generalization probe
+
+  Provider Generalization (Exp 4):
+  Anthropic CC: 0% savings expected and confirmed — single-message format (no-consecutive-user-msg
+    constraint) means CC has nothing to drop; 37/50=74% EM, identical baseline and CC-only
+  Anthropic MD: sonnet-4-5→haiku-4-5-20251001; 20% fire rate; 73% per-call savings; 14.7% total;
+    accuracy +4pp artifact (sonnet more verbose → more EM failures; rule behavior correct)
+  HF CC: Llama-3.3-70B; 98% fire rate (49/50); ~34% input-token savings (same fixture+algorithm);
+    29% cost savings using Groq-proxy pricing; accuracy +2pp (noise)
+  HF MD: Llama-3.3-70B→Llama-3.1-8B; 34% fire rate; 91.5% per-call savings; 31.1% total cost;
+    accuracy -6pp (8B less capable — expected tradeoff; rule fires correctly)

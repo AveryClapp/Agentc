@@ -25,6 +25,7 @@ from agentc._span import (
     _enqueue_span,
     _write_root_span,
 )
+import time as _time
 
 logger = logging.getLogger("agentc")
 
@@ -174,6 +175,76 @@ def _emit_span(
         _enqueue_span(span_dict)
 
 
+# --- Optimizer plumbing ---
+
+
+def _plan_anthropic_call(
+    kwargs: dict[str, Any],
+    parent: SpanContext | None,
+) -> tuple[Any, str | None]:
+    """Build a Call dict and ask the optimizer for a Plan (Anthropic).
+
+    Returns ``(plan, call_site_id)`` on success, ``(None, None)`` if
+    optimization should be skipped. Mirrors ``_plan_openai_call`` in the
+    OpenAI patch.
+    """
+    try:
+        from agentc._intercept import is_opted_out
+        from agentc._optimizer import plan_call
+        from agentc._patches._optimizer_glue import (
+            build_call_dict_anthropic,
+            derive_call_site_id,
+        )
+    except BaseException:
+        logger.debug("optimizer modules unavailable (anthropic); skipping", exc_info=True)
+        return None, None
+
+    if is_opted_out(kwargs.get("extra_headers")):
+        return None, None
+
+    try:
+        call_site_id = derive_call_site_id()
+        trace_id_hex = parent.trace_id if parent is not None else _generate_trace_id()
+        span_id_hex = _generate_span_id()
+        call = build_call_dict_anthropic(
+            kwargs,
+            call_site_id=call_site_id,
+            trace_id_hex=trace_id_hex,
+            span_id_hex=span_id_hex,
+        )
+        plan = plan_call(call)
+    except BaseException:
+        logger.debug("optimizer planning failed (anthropic); falling through", exc_info=True)
+        return None, None
+
+    return plan, call_site_id
+
+
+def _observe_anthropic_outcome(
+    *,
+    plan: Any,
+    response: Any,
+    call_site_id: str,
+    kwargs: dict[str, Any],
+    elapsed_s: float,
+) -> None:
+    """Feed an Anthropic outcome back into the cost model. Best-effort."""
+    try:
+        from agentc._optimizer import observe_outcome
+        from agentc._patches._optimizer_glue import build_outcome_anthropic
+
+        model = str(getattr(response, "model", None) or kwargs.get("model", "") or "")
+        outcome = build_outcome_anthropic(
+            response,
+            elapsed_s=elapsed_s,
+            model=model,
+            call_site_id=call_site_id,
+        )
+        observe_outcome(plan, outcome)
+    except BaseException:
+        logger.debug("optimizer observe failed (anthropic); skipping", exc_info=True)
+
+
 # --- Sync wrappers ---
 
 
@@ -184,11 +255,29 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
 
     parent = get_current_span()
     start_time = _now_us()
+    t0 = _time.perf_counter()
     req_attrs = _extract_request_attrs(kwargs)
     input_msgs = _extract_input_messages(kwargs)
 
+    plan, call_site_id = _plan_anthropic_call(kwargs, parent)
+
     try:
-        response = wrapped(*args, **kwargs)
+        if plan is not None:
+            from agentc._patches._optimizer_glue import (
+                apply_call_mutations_anthropic,
+                dispatch_sync,
+            )
+
+            def _run_original() -> Any:
+                return wrapped(*args, **kwargs)
+
+            def _run_mutated(mutated_call: dict[str, Any]) -> Any:
+                new_kwargs = apply_call_mutations_anthropic(kwargs, mutated_call)
+                return wrapped(*args, **new_kwargs)
+
+            response = dispatch_sync(plan, run_original=_run_original, run_mutated=_run_mutated)
+        else:
+            response = wrapped(*args, **kwargs)
     except BaseException as exc:
         end_time = _now_us()
         req_attrs["error.type"] = type(exc).__name__
@@ -209,6 +298,17 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
         raise
 
     end_time = _now_us()
+    elapsed_s = _time.perf_counter() - t0
+
+    if plan is not None and call_site_id is not None:
+        _observe_anthropic_outcome(
+            plan=plan,
+            response=response,
+            call_site_id=call_site_id,
+            kwargs=kwargs,
+            elapsed_s=elapsed_s,
+        )
+
     resp_attrs = _extract_response_attrs(response)
     req_attrs.update(resp_attrs)
     output_msgs = _extract_output_messages(response)

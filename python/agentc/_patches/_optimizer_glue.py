@@ -58,6 +58,7 @@ def derive_call_site_id() -> str:
 # bench agents touch. Unknown models fall back to (0, 0) — the optimizer
 # can still rank rules but won't see meaningful baseline cost.
 _MODEL_PRICES: dict[str, tuple[float, float]] = {
+    # OpenAI — pricing as of 2026-05-11
     "gpt-4o": (2.50, 10.00),
     "gpt-4o-2024-08-06": (2.50, 10.00),
     "gpt-4o-2024-05-13": (5.00, 15.00),
@@ -67,9 +68,32 @@ _MODEL_PRICES: dict[str, tuple[float, float]] = {
     "gpt-4-turbo-2024-04-09": (10.00, 30.00),
     "gpt-4": (30.00, 60.00),
     "gpt-3.5-turbo": (0.50, 1.50),
+    # Anthropic — pricing as of 2026-05-11 (api.anthropic.com/v1)
+    # claude-3.x series (EOL models kept for historical cost accounting)
     "claude-3-5-sonnet-20241022": (3.00, 15.00),
     "claude-3-5-haiku-20241022": (1.00, 5.00),
     "claude-3-opus-20240229": (15.00, 75.00),
+    "claude-3-haiku-20240307": (0.25, 1.25),
+    # claude-4.x series — pricing estimated from Anthropic pricing page
+    "claude-haiku-4-5-20251001": (0.80, 4.00),
+    "claude-haiku-4-5": (0.80, 4.00),
+    "claude-sonnet-4-5": (3.00, 15.00),
+    "claude-sonnet-4-6": (3.00, 15.00),
+    "claude-opus-4-7": (15.00, 75.00),
+    # Groq (api.groq.com/openai/v1) — pricing as of 2026-05-11
+    "llama-3.1-70b-versatile": (0.59, 0.79),
+    "llama-3.1-8b-instant": (0.05, 0.08),
+    "llama3-70b-8192": (0.59, 0.79),
+    "llama3-8b-8192": (0.05, 0.08),
+    # Hugging Face Inference API (proxy pricing — serverless, no published $/tok;
+    # use Groq rates as a conservative stand-in for Llama variants)
+    # Correct HF names do NOT include "Meta-" prefix
+    "meta-llama/Llama-3.3-70B-Instruct": (0.59, 0.79),
+    "meta-llama/Llama-3.1-70B-Instruct": (0.59, 0.79),
+    "meta-llama/Llama-3.1-8B-Instruct": (0.05, 0.08),
+    # Legacy names kept for historical cost accounting
+    "meta-llama/Meta-Llama-3.1-70B-Instruct": (0.59, 0.79),
+    "meta-llama/Meta-Llama-3.1-8B-Instruct": (0.05, 0.08),
 }
 
 
@@ -280,6 +304,183 @@ def build_outcome_openai(
             output_is_structured = True
         except (ValueError, TypeError):
             output_is_structured = False
+
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "latency_ms": elapsed_s * 1000.0,
+        "cost_usd": estimate_cost_usd(model, input_tokens, output_tokens),
+        "output_is_structured": output_is_structured,
+        "output_is_short": output_tokens <= 128,
+        "call_site_id": call_site_id,
+    }
+
+
+def build_call_dict_anthropic(
+    kwargs: dict[str, Any],
+    *,
+    call_site_id: str,
+    trace_id_hex: str,
+    span_id_hex: str,
+) -> dict[str, Any]:
+    """Translate Anthropic ``messages.create`` kwargs into a Call dict.
+
+    Anthropic carries ``system`` as a top-level string alongside ``messages``.
+    We lift it into the messages list as a leading ``{"role": "system", ...}``
+    so the optimizer sees the same unified format as OpenAI calls.
+    """
+    from agentc._attention import compute_attention_scores
+    from agentc._provenance import as_json, consume_state_reads, tag_of
+
+    messages: list[dict[str, str]] = []
+    raw_contents: list[Any] = []
+
+    # Anthropic system param → leading system message
+    system_str = kwargs.get("system")
+    if system_str:
+        messages.append({"role": "system", "content": str(system_str)})
+        raw_contents.append(system_str)
+
+    for msg in kwargs.get("messages", []) or []:
+        if isinstance(msg, dict):
+            raw = msg.get("content", "")
+            # Anthropic content can be a list of blocks — flatten to text
+            if isinstance(raw, list):
+                raw = " ".join(
+                    b.get("text", "") if isinstance(b, dict) else str(b)
+                    for b in raw
+                )
+            messages.append({"role": str(msg.get("role", "user")), "content": str(raw)})
+        elif hasattr(msg, "model_dump"):
+            d = msg.model_dump()
+            raw = d.get("content", "")
+            if isinstance(raw, list):
+                raw = " ".join(
+                    b.get("text", "") if isinstance(b, dict) else str(b)
+                    for b in raw
+                )
+            messages.append({"role": str(d.get("role", "user")), "content": str(raw)})
+        else:
+            raw = getattr(msg, "content", "")
+            messages.append({"role": str(getattr(msg, "role", "user")), "content": str(raw)})
+        raw_contents.append(raw)
+
+    input_deps = [as_json(tag_of(content)) for content in raw_contents]
+
+    parameters: dict[str, Any] = {}
+    if "temperature" in kwargs and kwargs["temperature"] is not None:
+        parameters["temperature"] = float(kwargs["temperature"])
+    if "top_p" in kwargs and kwargs["top_p"] is not None:
+        parameters["top_p"] = float(kwargs["top_p"])
+    if "max_tokens" in kwargs and kwargs["max_tokens"] is not None:
+        parameters["max_output_tokens"] = int(kwargs["max_tokens"])
+
+    extra_obj: dict[str, Any] = {}
+    extra_obj["message_deps"] = input_deps
+    explicit_reads = consume_state_reads()
+    extra_obj["window_state_reads"] = explicit_reads
+
+    try:
+        from agentc._trace_optimizer import get_trace_optimizer
+
+        trace_opt = get_trace_optimizer()
+        if trace_opt is not None:
+            recs = trace_opt.get_recommendations(trace_id_hex)
+            if recs.inferred_state_reads:
+                merged = list(set(explicit_reads) | set(recs.inferred_state_reads))
+                extra_obj["window_state_reads"] = merged
+    except BaseException:
+        log.debug("trace_optimizer recommendations failed (anthropic); skipping", exc_info=True)
+
+    try:
+        attn_scores, follow_on = compute_attention_scores(messages, trace_id_hex)
+    except BaseException:
+        log.debug("compute_attention_scores raised (anthropic, suppressed)", exc_info=True)
+        attn_scores, follow_on = [], []
+    if attn_scores:
+        extra_obj["attention_scores"] = attn_scores
+        extra_obj["follow_on_tokens"] = follow_on
+        extra_obj["dead_attention_epsilon"] = 0.10
+
+    if extra_obj:
+        parameters["extra"] = extra_obj
+
+    return {
+        "call_site_id": call_site_id,
+        "trace_id": trace_id_hex,
+        "span_id": span_id_hex,
+        "model": str(kwargs.get("model", "")),
+        "messages": messages,
+        "parameters": parameters,
+        "tools": [],
+        "input_deps": input_deps,
+        "occurrence_ix": 0,
+    }
+
+
+def apply_call_mutations_anthropic(
+    kwargs: dict[str, Any],
+    mutated_call: dict[str, Any],
+) -> dict[str, Any]:
+    """Thread a Rewritten plan's mutated Call back into Anthropic kwargs.
+
+    The optimizer's unified message list may include a leading system message.
+    We split it back out to Anthropic's ``system`` + ``messages`` shape.
+    """
+    new_kwargs = dict(kwargs)
+    if "model" in mutated_call:
+        new_kwargs["model"] = mutated_call["model"]
+
+    msgs = mutated_call.get("messages")
+    if msgs is not None:
+        anthro_msgs = []
+        system_text = None
+        for m in msgs:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if role == "system":
+                system_text = content
+            else:
+                anthro_msgs.append({"role": role, "content": content})
+        if system_text is not None:
+            new_kwargs["system"] = system_text
+        new_kwargs["messages"] = anthro_msgs
+
+    params = mutated_call.get("parameters") or {}
+    if "max_output_tokens" in params:
+        new_kwargs["max_tokens"] = int(params["max_output_tokens"])
+    return new_kwargs
+
+
+def build_outcome_anthropic(
+    response: Any,
+    *,
+    elapsed_s: float,
+    model: str,
+    call_site_id: str,
+) -> dict[str, Any]:
+    """Build an Outcome dict from an Anthropic Message response."""
+    usage = getattr(response, "usage", None)
+    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+
+    output_text = ""
+    content = getattr(response, "content", None) or []
+    for block in content:
+        if hasattr(block, "text"):
+            output_text = block.text
+            break
+        if isinstance(block, dict) and block.get("type") == "text":
+            output_text = block.get("text", "")
+            break
+
+    output_is_structured = False
+    if output_text:
+        try:
+            json.loads(output_text)
+            output_is_structured = True
+        except (ValueError, TypeError):
+            pass
 
     return {
         "input_tokens": input_tokens,

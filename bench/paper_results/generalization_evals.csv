@@ -1,0 +1,4 @@
+agent,n,baseline_acc_pct,optimized_acc_pct,acc_delta_pp,cost_delta_pct,input_tok_delta_pct,baseline_cost_usd,optimized_cost_usd,n_BB,n_BF,n_FB,n_FF,mcnemar_p,stub_mode
+rag_summarizer,30,100.0,100.0,0.0,-1.5,-0.3,0.0064,0.0065,0,1,0,29,1.0,0
+autogen_bridge,30,100.0,100.0,0.0,11.4,12.4,0.0408,0.0361,18,1,1,10,1.0,0
+support_qa,39,100.0,100.0,0.0,-0.1,0.0,0.0276,0.0276,38,0,0,1,1.0,0

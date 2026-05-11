@@ -193,10 +193,14 @@ fn is_explicit_unsafe(a: &str, b: &str) -> bool {
 /// Merge mutations from `proposed` into `current` by field.
 ///
 /// Merges model, max_output_tokens (takes tighter cap), and messages
-/// (if proposed drops messages, count changes). Content-only mutations
-/// (same count, different content) are intentionally not merged here —
-/// call sites that produce content-only rewrites must be solo or use
-/// a different composition strategy.
+/// only when the proposed call has strictly fewer messages than the
+/// current (a drop). Expansions — proposed carrying the original message
+/// list after a prior rule already reduced it — are intentionally
+/// ignored so that a parameter-only rule (e.g. OutputBudget) can
+/// compose without undoing an earlier message-drop rule (e.g. StateDrop
+/// or ContextCompress). Content-only mutations (same count, different
+/// content) are likewise not merged — those must run solo or via a
+/// different composition strategy.
 fn apply_rewrite(current: &Call, proposed: &Call) -> Call {
     let mut result = current.clone();
     if proposed.model != current.model {
@@ -207,7 +211,7 @@ fn apply_rewrite(current: &Call, proposed: &Call) -> Call {
         (None, Some(b)) => result.parameters.max_output_tokens = Some(b),
         _ => {}
     }
-    if proposed.messages.len() != current.messages.len() {
+    if proposed.messages.len() < current.messages.len() {
         result.messages = proposed.messages.clone();
     }
     result
@@ -354,5 +358,61 @@ mod tests {
         assert_eq!(result.rules_applied.len(), 3);
         assert!(result.net_savings_usd > 0.0);
         assert!(matches!(result.plan, Plan::Composed { .. }));
+    }
+
+    // Regression: a parameter-only rule (e.g. OutputBudget) must not undo
+    // an earlier message-drop rule's reduction.  Before the fix, apply_rewrite
+    // used `!=` which caused OB (carrying the original N-message call) to
+    // overwrite SD's (N-1)-message result.
+    #[test]
+    fn parameter_only_rule_does_not_undo_prior_message_drop() {
+        let original = make_call(); // 2 messages
+
+        // A "StateDrop-like" rule proposes 1 message (drops one).
+        let mut sd_rewritten = original.clone();
+        sd_rewritten.messages = vec![Message { role: "system".into(), content: "sys".into() }];
+        let sd_prop = (
+            "StateDrop".to_string(),
+            Proposal {
+                rewritten: Plan::Rewritten {
+                    rule: "StateDrop".into(),
+                    call: sd_rewritten,
+                    projected_savings_usd: 0.5,
+                },
+                projected_savings_usd: 0.5,
+                cost_driver: CostDriver::InputTokens,
+                safety_check: Box::new(|_| true),
+            },
+        );
+
+        // An "OutputBudget-like" rule only changes parameters, but its
+        // proposed call still carries the original 2 messages.
+        let mut ob_rewritten = original.clone();
+        ob_rewritten.parameters.max_output_tokens = Some(64);
+        let ob_prop = (
+            "OutputBudget".to_string(),
+            Proposal {
+                rewritten: Plan::Rewritten {
+                    rule: "OutputBudget".into(),
+                    call: ob_rewritten,
+                    projected_savings_usd: 0.3,
+                },
+                projected_savings_usd: 0.3,
+                cost_driver: CostDriver::OutputTokens,
+                safety_check: Box::new(|_| true),
+            },
+        );
+
+        let result = compose_proposals(vec![sd_prop, ob_prop], &original);
+        match &result.plan {
+            Plan::Composed { call, rules, .. } => {
+                // SD ran first (sort_key 0 < 4). Its 1-message result must survive.
+                assert_eq!(call.messages.len(), 1, "OB must not restore SD-dropped messages");
+                // OB's parameter cap must be applied.
+                assert_eq!(call.parameters.max_output_tokens, Some(64));
+                assert_eq!(rules.len(), 2);
+            }
+            other => panic!("expected Composed, got {:?}", other),
+        }
     }
 }

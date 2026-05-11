@@ -1,0 +1,8 @@
+agent,rule,plan_kind,n_fired,n_total,fire_rate_pct
+rag_summarizer,OutputBudget,rewritten,87,90,96.7
+rag_summarizer,none,pass_through,3,90,3.3
+autogen_bridge,none,pass_through,26,60,43.3
+autogen_bridge,ContextCompress,composed,19,60,31.7
+autogen_bridge,StateDrop,composed,15,60,25.0
+support_qa,OutputBudget,rewritten,72,78,92.3
+support_qa,none,pass_through,6,78,7.7

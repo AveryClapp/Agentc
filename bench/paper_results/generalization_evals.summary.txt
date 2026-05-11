@@ -1,0 +1,23 @@
+Generalization evaluation — real agents (Exp 1) + cold agent (Exp 2)
+======================================================================
+Agent                   n   Base%    Opt%    AccΔ   CostΔ%    TokΔ%   McNemar p
+----------------------------------------------------------------------
+rag_summarizer         30   100.0   100.0    +0.0     -1.5     -0.3      1.0000
+autogen_bridge         30   100.0   100.0    +0.0    +11.4    +12.4      1.0000
+support_qa             39   100.0   100.0    +0.0     -0.1     +0.0      1.0000
+----------------------------------------------------------------------
+
+Rule activation rates (optimized runs):
+
+  rag_summarizer:
+    OutputBudget           rewritten        n=  87  rate= 96.7%
+    none                   pass_through     n=   3  rate=  3.3%
+
+  autogen_bridge:
+    none                   pass_through     n=  26  rate= 43.3%
+    ContextCompress        composed         n=  19  rate= 31.7%
+    StateDrop              composed         n=  15  rate= 25.0%
+
+  support_qa:
+    OutputBudget           rewritten        n=  72  rate= 92.3%
+    none                   pass_through     n=   6  rate=  7.7%

@@ -174,6 +174,16 @@ finish.
 > for ModelDowngrade composition is the §\ref{sec:eval-md} matrix
 > showing a 35.3\% saving on its own purpose-built routing workload.
 
+## 10. §2 or §7 — Novelty paragraph: SDK boundary distinction from Agentix/Halo/Murakkab/Cognify
+
+**Drop into the end of §2 (Motivation / Design Space) or as the concluding paragraph of §7 Related Work**, after the existing compound-AI runtimes paragraph:
+
+> The four closest runtime-optimizer neighbors — Agentix, Halo, Murakkab, and Cognify — each require an access point that practitioners using third-party API endpoints routinely lack. Agentix~\cite{luo2026agentix} intercepts agentic program calls at the serving scheduler and uses program-level context to reprioritize them; this requires co-location with or privileged access to the inference server. Halo~\cite{abdulhaque2025halo} optimizes batches of agent workflow DAGs across shared GPU resources: the optimizer sees and controls the execution cluster. Murakkab~\cite{mahesh2025murakkab} allocates resources across compound-AI workflows that are expressed in a declarative resource-annotation format; the application must be authored to declare its components and their resource signatures. Cognify~\cite{li2025cognify} runs a hierarchical autotuning loop offline against a labeled evaluator; the application must be ported into the Cognify framework and a quality metric must be available at tuning time.
+>
+> Agentc operates at a different boundary entirely: the Python SDK call site. By patching the SDK at import time, Agentc intercepts every LLM call regardless of which framework, library, or vendor agent code issued it — no access to the serving stack, no declarative workflow format, no offline evaluator, and no ownership of the target source code required. This is the last chokepoint before the API boundary that is simultaneously universally accessible and semantically sufficient: every call carries its full message list, model identifier, and call-site fingerprint, providing enough signal to evaluate \textsc{ContextCompress} applicability, \textsc{ModelDowngrade} routing eligibility, \textsc{StateDrop} liveness, and cache-hit lookup. The single-line integration (\texttt{import agentc; agentc.init()}) applies to code the developer did not write and frameworks they did not choose.
+
+**Why this beats the current one-liner**: The current draft says "requires no language constructs or workflow declaration, and applies several conservative rewrite classes online without a labeled metric." That is accurate but passive. This version names each system, states the access each requires, and then makes the SDK-boundary claim actively — giving a reviewer a concrete reason why Agentc is not subsumed.
+
 ## 9. (Optional) Title softening
 
 Current: ``Agentc: Just-in-Time Optimization for Multi-Step LLM Agent Workloads''

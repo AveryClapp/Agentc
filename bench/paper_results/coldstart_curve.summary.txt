@@ -1,0 +1,28 @@
+Cold-start curve — ContextCompress call site, hot_threshold=3
+ obs        plan_kind   proj_savings_usd  fired
+--------------------------------------------------
+   0     pass_through           0.000000     no
+   1     pass_through           0.000000     no
+   2     pass_through           0.000000     no
+   3        rewritten           0.004839    YES
+   4        rewritten           0.004839    YES
+   5        rewritten           0.004839    YES
+   6        rewritten           0.004839    YES
+   7        rewritten           0.004839    YES
+   8        rewritten           0.004839    YES
+   9        rewritten           0.004839    YES
+  10        rewritten           0.004839    YES
+  11        rewritten           0.004839    YES
+  12        rewritten           0.004839    YES
+  13        rewritten           0.004839    YES
+  14        rewritten           0.004839    YES
+  15        rewritten           0.004839    YES
+  16        rewritten           0.004839    YES
+  17        rewritten           0.004839    YES
+  18        rewritten           0.004839    YES
+  19        rewritten           0.004839    YES
+  20        rewritten           0.004839    YES
+--------------------------------------------------
+First fire at obs=3  (hot_threshold=3)
+Savings stable (±5% of max) by obs=5
+Max projected savings: $0.0048 USD

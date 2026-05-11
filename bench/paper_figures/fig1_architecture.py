@@ -57,12 +57,13 @@ def main() -> None:
         fillcolor="#f0f0f0",
     )
 
-    # Executor: HTML table with title + four plan types.
+    # Executor: HTML table with title + five plan types (V2 adds Plan::Composed).
     exec_label = (
         '<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="3" CELLPADDING="2">'
         '<TR><TD ALIGN="CENTER"><B>Executor</B></TD></TR>'
         '<TR><TD ALIGN="CENTER">Plan::Cached | Plan::Rewritten</TD></TR>'
         '<TR><TD ALIGN="CENTER">Plan::Parallel | Plan::PassThrough</TD></TR>'
+        '<TR><TD ALIGN="CENTER"><I>Plan::Composed</I></TD></TR>'
         "</TABLE>>"
     )
     g.node("exec", label=exec_label)

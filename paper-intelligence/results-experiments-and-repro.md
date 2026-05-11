@@ -1,7 +1,7 @@
 ---
 title: Results, Experiments, and Repro
 status: active
-last-updated: 2026-05-09
+last-updated: 2026-05-11
 owner: paper-intelligence
 ---
 
@@ -30,7 +30,9 @@ Supersedes:
 
 ## Evidence Verdict
 
-The current evidence is real but narrow. `RES-001` and `RES-002` are the cleanest headline savings results. `RES-004` supports `StateDrop` only with partial-matrix caveats. `RES-005` is best read as an activation-boundary diagnostic: real HotpotQA does not trigger much compression, and that is useful because it shows the rule declines near its gate. `RES-006` is a diagnostic oracle/compression-headroom result, not proof that the automated optimizer reaches oracle-level compression.
+The evidence base is substantially stronger after the V2 experimental campaign (2026-05-10/11). The core headline pair (`RES-001`, `RES-002`) remains the cleanest per-rule savings story. V2 adds three validated contributions: the LLMLingua-2 comparison with exact paired statistics (`RES-007`), a natural-prose generalization that confirms ContextCompress correctly abstains when the structural precondition is absent (`RES-008`), and a planner ablation showing the CompositionPlanner avoids a concrete V1 greedy error (`RES-010`). Overhead is now measured across 1,818 plan decisions (`RES-013`).
+
+`RES-004` (StateDrop n=50) has **contaminated cost columns** — use only the per-task accuracy data from that run; headline StateDrop savings come from `RES-003`. `RES-006` remains a diagnostic only.
 
 Do not present `CacheHit` or `ParallelBranch` as empirically validated paper contributions until new `RES` entries exist.
 
@@ -44,15 +46,28 @@ Do not present `CacheHit` or `ParallelBranch` as empirically validated paper con
 | `RES-004` | partial | `StateDrop` | `iterative_refiner` | 50 | `gpt-4o-mini` | `ART-013` | all-on: 6.000% cost savings, 9.630% input-token savings, 0.000 pp accuracy; StateDrop-off drops to 1.823% cost / 1.569% input-token | promising StateDrop evidence | Partial 10/11 matrix; metric is lenient. |
 | `RES-005` | partial | `ContextCompress` | real HotpotQA | 300 | `gpt-4o-mini` | `ART-014` | all-on: 0.170% cost savings, 0.195% input-token savings, +1.333 pp accuracy; ContextCompress-off: 0.005% cost, 0.000% input-token | activation-boundary diagnostic | Partial 7/11 matrix; not headline savings. |
 | `RES-006` | diagnostic | oracle compression | `hotpot_oracle` | 300 | `gpt-4o-mini` | `ART-015` | baseline passed 193/300; oracle/optimized passed 196/300; CSV costs almost identical | headroom diagnostic only | CSV alone does not encode the larger oracle-ceiling story. |
+| `RES-007` | headline-ready | `ContextCompress` vs LLMLingua-2 | HotpotQA distractor | 100 | `gpt-4o-mini` | `bench/paper_results/agentc_hotpot_n100.csv`, `llmlingua_accuracy_n100.csv` | CC: 68%→100% (BB=68 BF=0 FB=32 FF=0, McNemar exact p=4.7×10⁻¹⁰); LLMLingua-2: 68%→53% (BB=51 BF=17 FB=2 FF=30, p=0.0013); LLMLingua-2 53.1% token reduction, 11,400ms avg overhead | dual-regime LLMLingua comparison; CC favorable-fixture half | Fixture designed with injected distractors — favorable for IDF. Must be paired with RES-008. |
+| `RES-008` | canonical | `ContextCompress` abstention | Wikipedia QA (natural prose) | 39 | `gpt-4o-mini` | `bench/paper_results/wikipedia_qa_comparison.csv` | CC: 94.9%→94.9% (BB=37 BF=0 FB=0 FF=2, p=1.0, abstained entirely); LLMLingua-2: 94.9%→97.4% (BB=37 BF=0 FB=1 FF=1, p=1.0, 53.5% reduction, 13,678ms overhead) | dual-regime natural-prose half; confirms CC abstains when structural precondition absent | n=39 (SE ≈ 3.5pp); model already at 94.9% baseline leaving minimal headroom. |
+| `RES-009` | canonical | `ContextCompress` + `StateDrop` composition | `multirule_qa` (n=30) | 30 | `gpt-4o-mini` | `bench/paper_results/cc_sd_composition.csv` | baseline 43.3% acc, 379,880 input tokens; CC-only: +6.7pp, 33.1% token savings; SD-only: +3.3pp, 0.1% savings; CC+SD: +6.7pp, 21.7% savings (65.3% of additive ideal) | V2 orthogonality gate validation; multi-rule activation evidence | No accuracy delta is significant (SE ≈ 9pp). Sub-additivity is gate behavior, not a failure. |
+| `RES-010` | headline-ready | CompositionPlanner ablation (V1 vs V2) | `composition_qa` | 50 | `gpt-4o-mini` | `bench/paper_results/planner_ablation.csv` | baseline 32%; V2-CC: +12pp (p=0.0412*); V1-CC+OB: −2pp (p=1.0, BF=1 — greedy wrong pick); V2-CC+OB: +0pp (p=1.0 — gate corrects) | V2 correctness claim: orthogonality gate avoids greedy composition error | V2-CC+PD dropped (model drift at temp=0 makes shared-baseline impossible). Borderline p=0.0412 at n=50. |
+| `RES-011` | canonical | Agent diversity / rule activation rates | `rag_summarizer` + `autogen_bridge` | 63 + 83 optimizer calls | `gpt-4o-mini` | `bench/paper_results/agent_diversity.csv` | rag_summarizer: CC 54.0%, SD 9.5%, 1 composed (1.6%); autogen_bridge: CC 30.1%, SD 24.1% | Multi-rule activation on real-agent traces; GAP-011 closed | Activation rates, not accuracy; both agents require explicit state instrumentation for SD. |
+| `RES-012` | canonical | `StateDrop` isolation, paired | `iterative_refiner` | 50 | `gpt-4o-mini` | `bench/paper_results/iterative_refiner-statedrop-n50-paired.per_task.csv` | baseline 100%; SD-only 98% (−2pp, p=1.0, BF=1 FB=0); all 11 configs fail to reject McNemar at α=0.05 | Paired accuracy evidence for StateDrop | **Cost columns in the aggregate CSV are contaminated** (cross-process DB writes); use RES-003 for savings numbers. Per-task accuracy is from stdout and is clean. |
+| `RES-013` | headline-ready | Optimizer overhead | plan_audit (1,818 decisions) | 1,818 | n/a | `bench/paper_results/optimizer_overhead.txt`, `bench/paper_results/overhead_scaling.csv` | pass-through p50=76µs, p95=13ms, p99=21ms (bimodal: first-call load); rewrite p50=120µs, p99=1.2ms; overhead scales sub-linearly 4KB→64KB (p50: 0.33ms→0.71ms) | Overhead claim: three orders of magnitude below LLM round-trip latency | p99 tail from SQLite cold-start loads; steady-state is sub-millisecond. |
+| `RES-014` | canonical | Cold-start curve | `ContextCompress` single call site | 20 obs | `gpt-4o-mini` | `bench/paper_results/coldstart_curve.csv` | PassThrough at obs 0–2; first fire at obs=3 (hot_threshold=3); savings stable by obs=5; max projected savings $0.0048 | Hot-threshold gate verification | Synthetic single-site measurement; not a real-trace result. |
 
 ## Interpretation Rules
 
-- Use `RES-001` and `RES-002` as the cleanest current savings evidence.
-- Use `RES-004` only with the word `partial`.
+- Use `RES-001` and `RES-002` as the cleanest per-rule savings evidence.
+- Use `RES-007` and `RES-008` together as the dual-regime LLMLingua comparison — never cite `RES-007` alone.
+- Use `RES-009` to show multi-rule activation and sub-additive savings under the orthogonality gate; do not claim statistical significance (SE ≈ 9pp, no McNemar test rejects).
+- Use `RES-010` for the V2 CompositionPlanner correctness claim (V1-CC+OB −2pp vs V2-CC+OB +0pp is the adversarial case).
+- Use `RES-012` accuracy data only; **never cite its cost savings columns** (contaminated). Use `RES-003` for StateDrop cost/token savings numbers.
+- Use `RES-004` only with the word `partial`; its cost columns predate the contamination bug and are usable, but the matrix is 10/11.
 - Use `RES-005` as a positive gating/boundary result, not as a failed compression result.
 - Use `RES-006` only if trace-query evidence is found or reproduced.
 - Separate cost savings from input-token savings; pricing and provider cache behavior can make them diverge.
 - Do not use "behavior-preserving" unless the metric, tolerance, and uncertainty treatment are explicit.
+- McNemar exact p-values (statsmodels `exact=True`) are preferred over the continuity-corrected chi-squared approximation. `RES-007` CC p-value is 4.7×10⁻¹⁰ exact (not the earlier "p<0.0001" estimate).
 
 ## Artifact Inventory
 
@@ -114,17 +129,18 @@ Do not present `CacheHit` or `ParallelBranch` as empirically validated paper con
 
 ## Experiment Queue
 
-| ID | Gap closed | Experiment | Paper value | Current command status | Stop condition |
+| ID | Status | Gap closed | Experiment | Result | Remaining work |
 |---|---|---|---|---|---|
-| `EXP-001` | `GAP-002` | Finish missing `StateDrop` n=50 config row. | high if StateDrop table needs full matrix | derive from `bench.optimizer_ablation bench.agents.iterative_refiner` | Stop if StateDrop is not a headline claim. |
-| `EXP-002` | `GAP-003` | Finish remaining real HotpotQA configs. | medium-to-high for pushback | derive from `bench.optimizer_ablation bench.agents.hotpot_qa` | Stop if partial matrix is enough for activation-boundary story. |
-| `EXP-003` | `GAP-004` | Add paired accuracy/McNemar analysis. | high | needs per-task outputs | Stop if paired outputs unavailable. |
-| `EXP-004` | `GAP-005` | Stronger `StateDrop` quality metric. | medium | needs evaluator or judge | Stop if venue does not need stronger StateDrop. |
-| `EXP-005` | `GAP-004` | Repeat ModelDowngrade robustness pass. | medium | API rerun likely | Stop if target is workshop/positioning. |
-| `EXP-006` | `GAP-011` | End-to-end multi-rule workload where several rewrites can fire. | very high | needs workload design | Stop only if near-term lane is not systems/MLSys/ATC. |
-| `EXP-007` | `GAP-015` | Measure interception/planner overhead and latency tails. | very high for systems venues | needs local harness | Stop after credible overhead bounds. |
-| `EXP-008` | `GAP-012` | Baseline feasibility matrix for RouteLLM/FrugalGPT/LLMLingua-style alternatives. | high | analysis first, experiments second | Stop when runnable vs cite-only is classified. |
-| `EXP-009` | `GAP-014` | Repeated-run or paired-bootstrap reliability pass. | high | analysis if row data exists; API rerun otherwise | Stop when headline uncertainty is reportable. |
+| `EXP-001` | ✅ done | `GAP-002` | StateDrop n=50 full paired ablation. | `RES-012`: 11/11 configs, all McNemar fail to reject. Cost data contaminated; accuracy clean. | None. Use RES-003 for cost numbers. |
+| `EXP-002` | ✅ done | `GAP-011` | End-to-end multi-rule workload (CC+SD). | `RES-009` + `RES-011`: CC fires 30–54%, SD 9–24%; CC+SD 21.7% token savings; both activate on same trace. | None. Report sub-additivity as gate behavior, not failure. |
+| `EXP-003` | ✅ done | `GAP-004` + V2 planner | CompositionPlanner ablation (V1 vs V2). | `RES-010`: V1-CC+OB −2pp (wrong pick), V2-CC+OB +0pp (corrected). V2-CC+PD dropped (model drift). | None. Four valid rows sufficient. |
+| `EXP-004` | ✅ done | design verification | Cold-start curve. | `RES-014`: first fire at obs=3, stable by obs=5. | None. |
+| `EXP-005` | ✅ done | `GAP-002` | StateDrop isolation (paired). | `RES-012`: SD-only 98% vs baseline 100%, p=1.0. | None. |
+| `EXP-006` | ✅ done | `GAP-014` | Paired McNemar / bootstrap CI across experiments. | Done for `RES-007`, `RES-008`, `RES-009`, `RES-010`, `RES-012`. Exact statsmodels tests used. | Apply exact p-values in paper draft (draft-paper-edits.md §11 has updated numbers). |
+| `EXP-007` | ✅ done | `GAP-015` | Optimizer overhead measurement. | `RES-013`: p50=76µs pass-through, 120µs rewrite, p99=21ms tail. 1,818 plan decisions. | None. Paper-ready paragraph in `bench/paper_results/optimizer_overhead.txt`. |
+| `EXP-008` | ✅ done | `GAP-012` (compression only) | LLMLingua-2 direct baseline. | `RES-007` + `RES-008`: dual-regime comparison complete. | Routing (RouteLLM/FrugalGPT) and caching (vCache) baselines remain cite-only for now. |
+| `EXP-009` | open | `GAP-005` | Stronger StateDrop quality metric. | — | Low priority unless venue requires it. Current metric (substring match) is lenient but consistent. |
+| `EXP-010` | open | ModelDowngrade composition | MD+CC composition at adequate n. | MD+CC n=20 too underpowered (SE ≈ 11pp). Needs n≥100 on gpt-4o base without rate-limit issues. | Blocked by Tier-1 30K TPM ceiling on gpt-4o. Future work. |
 
 ## Statistical Needs
 

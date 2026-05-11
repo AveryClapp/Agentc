@@ -1,7 +1,7 @@
 ---
 title: Claims, Gaps, and Risks
 status: active
-last-updated: 2026-05-09
+last-updated: 2026-05-11
 owner: paper-intelligence
 ---
 
@@ -24,9 +24,9 @@ Supersedes:
 
 ## Current Verdict
 
-AgentC has a plausible paper shape, but the claim must be narrow: **a runtime control plane for framework-emitted, multi-step LLM agent traces that can apply several rewrite classes under one policy.**
+AgentC has a solid workshop/short-paper shape and is approaching plausibility for a systems venue short paper. The claim is now sharper: **a runtime control plane for framework-emitted, multi-step LLM agent traces that applies several rewrite classes compositionally under one policy, with a cost-driver orthogonality framework that avoids the composition errors a greedy planner makes.**
 
-The current evidence supports targeted savings for `ContextCompress` and `ModelDowngrade`, promising but caveated `StateDrop`, and a useful activation-boundary story for real HotpotQA. It does not yet support a broad claim that all five rewrites are validated, that behavior is preserved in a semantics-level sense, or that AgentC is the first optimizer for LLM agents.
+The current evidence supports: targeted savings for `ContextCompress` (34.8% tokens, RES-001) and `ModelDowngrade` (35.3% cost, RES-002); a direct LLMLingua-2 comparison with exact paired statistics showing favorable-fixture improvement (68%→100%, p=4.7×10⁻¹⁰) and natural-prose abstention (94.9%→94.9%, p=1.0); a planner ablation showing V2 avoids a concrete V1 greedy error (RES-010); sub-1ms optimizer overhead (RES-013). It does not yet support a broad claim that all eight rules are validated, that behavior is preserved in a semantics-level sense, or that AgentC is the first optimizer for LLM agents.
 
 ## Safe Claims
 
@@ -38,8 +38,11 @@ The current evidence supports targeted savings for `ContextCompress` and `ModelD
 | `CLM-004` | promising | `StateDrop` reduces stale state in iterative refinement, with current evidence showing about 6-10% input-token savings depending on run. | `RES-003`, `RES-004`, `ART-023` | Matrix is partial and metric is lenient. |
 | `CLM-005` | supported | On real HotpotQA, `ContextCompress` fires rarely and produces near-zero savings, supporting the activation-gate story. | `RES-005`, `ART-001` | Present as diagnostic/gating evidence, not headline savings. |
 | `CLM-006` | needs-analysis | Gold-label compression suggests HotpotQA distractors can be removed profitably and may improve answers. | `RES-006`, `ART-001` | Current automated rule does not achieve oracle compression. |
-| `CLM-007` | promising | AgentC optimizes multi-call traces emitted by agent frameworks, using multiple rewrite classes under one runtime control plane. | `DRP-001`, `LIT-002`, `LIT-024`, `LIT-025`, `LIT-040`, `LIT-043`, `LIT-044`, `ART-020`, `ART-024` | Novelty must be narrowed against close systems. |
-| `CLM-008` | needs-analysis | AgentC evaluates cost savings alongside task-quality metrics and should report uncertainty or repeated-run reliability where possible. | `DRP-001`, `STAT-001`, `STAT-004`, `LIT-026`, `LIT-031`, `LIT-032`, `LIT-064`, `LIT-068`, `LIT-070` | Strong wording depends on paired/repeated evaluation. |
+| `CLM-007` | supported | AgentC optimizes multi-call traces emitted by agent frameworks, using multiple rewrite classes under one runtime control plane. Both CC and SD activate on the same agent trace (RES-011). | `RES-009`, `RES-011`, `DRP-001`, `LIT-002`, `LIT-024`, `LIT-025`, `LIT-040`, `LIT-043`, `LIT-044` | Novelty must be narrowed against close systems (see §7 draft). |
+| `CLM-008` | supported | McNemar exact tests and 95% bootstrap CIs are computed for all headline accuracy claims. No test rejects accuracy degradation at α=0.05 for StateDrop, CC on natural prose, or CC+SD composition. | `RES-007`, `RES-008`, `RES-009`, `RES-010`, `RES-012` | Strong wording should say "does not significantly degrade" not "preserves." |
+| `CLM-009` | supported | ContextCompress operates at message granularity and correctly abstains when the structural precondition (identifiable low-attention messages) is absent. LLMLingua-2 compresses indiscriminately at token granularity regardless of fixture structure. | `RES-007`, `RES-008` | Dual-regime result; cite both fixtures together. |
+| `CLM-010` | supported | The V2 CompositionPlanner's cost-driver orthogonality gate avoids a concrete greedy composition error (V1-CC+OB −2pp; V2-CC+OB +0pp) on a controlled workload. | `RES-010` | n=50, p=0.0412 borderline; V2-CC+PD not testable due to model drift. |
+| `CLM-011` | supported | Optimizer overhead is sub-millisecond in steady state (pass-through p50=76µs, rewrite p50=120µs), three orders of magnitude below LLM round-trip latency. | `RES-013` | Tail (p99=21ms) from first-call SQLite load; steady-state is the claim. |
 
 ## Unsafe Claims
 
@@ -67,11 +70,11 @@ The current evidence supports targeted savings for `ContextCompress` and `ModelD
 | `GAP-008` | high | Venue lane affects required evidence. | Paper angle | Use `strategy-and-venues.md` to choose target lane. |
 | `GAP-009` | high | Bibliography metadata is not final. | Related work | Final citation cleanup remains. |
 | `GAP-010` | high | Novelty must be narrowed against close systems and single-rewrite baselines. | Title, abstract, intro | Use nearest-neighbor matrix and avoid broad firstness. |
-| `GAP-011` | high | Main venues need end-to-end optimizer evidence, not only rule-isolation ablations. | MLSys/ATC/COLM readiness | Design one workload where multiple rules fire together. |
-| `GAP-012` | high | Direct or conceptual baselines missing for routing, compression, caching, and parallelism. | Evaluation credibility | Decide runnable vs citation-only baselines. |
-| `GAP-013` | medium | `StateDrop` needs a concrete dependency/read-window model. | `CLM-004` | Use compiler sources as analogy only unless semantics are defined. |
-| `GAP-014` | high | Stochastic evaluation needs repeated-run or paired uncertainty treatment. | Quality preservation | Add repeated/paired analysis plan. |
-| `GAP-015` | high | Runtime overhead, fallback behavior, and operational failure modes are not summarized. | Systems venues | Add overhead/guardrail evidence plan. |
+| `GAP-011` | ~~high~~ **closed** | ~~Main venues need end-to-end optimizer evidence, not only rule-isolation ablations.~~ | EXP-002/RES-009/RES-011 | CC and SD both fire on multirule_qa and real agent traces; savings measured; multi-rule section drafted in `draft-paper-edits.md §12`. |
+| `GAP-012` | medium (compression closed, routing/caching open) | Direct baseline missing for routing (RouteLLM/FrugalGPT) and caching (vCache). LLMLingua-2 compression baseline done (RES-007/RES-008). | EXP-008 | Routing and caching baselines remain cite-only for now. |
+| `GAP-013` | medium | `StateDrop` needs a concrete dependency/read-window model. | `CLM-004` | Dependency model paragraph drafted in `draft-paper-edits.md §3`; needs to be inserted into §4 of the .tex. |
+| `GAP-014` | ~~high~~ **closed** | ~~Stochastic evaluation needs repeated-run or paired uncertainty treatment.~~ | EXP-006/RES-007/RES-008/RES-009/RES-010/RES-012 | McNemar exact tests (statsmodels) and bootstrap CIs computed for all headline accuracy claims. Methodology paragraph drafted in `draft-paper-edits.md §6`. |
+| `GAP-015` | ~~high~~ **closed** | ~~Runtime overhead, fallback behavior, and operational failure modes are not summarized.~~ | EXP-007/RES-013 | 1,818 plan decisions measured; paper-ready paragraph in `bench/paper_results/optimizer_overhead.txt`. |
 | `GAP-016` | medium | Serving-system orthogonality needs crisp explanation. | Systems framing | Use serving sources to separate application-level rewrites from serving internals. |
 
 ## Reviewer Risk Register
@@ -87,11 +90,11 @@ The current evidence supports targeted savings for `ContextCompress` and `ModelD
 | `RR-007` | medium | Rule activation policy is heuristic. | It is conservative by design. | Add rule activation map and code references. |
 | `RR-008` | medium | CacheHit/ParallelBranch distract if unbenchmarked. | They should not be headline claims yet. | Label as future or implementation inventory. |
 | `RR-009` | high | `ModelDowngrade` looks like ordinary routing. | AgentC routes internal call sites as one pass in a trace optimizer. | Compare to routing/cascade literature. |
-| `RR-010` | high | `ContextCompress` looks like LLMLingua. | AgentC rewrites runtime message traces. | Run compression baseline or make sharp conceptual distinction. |
+| `RR-010` | ~~high~~ **mitigated** | `ContextCompress` looks like LLMLingua. | Direct comparison done (RES-007/RES-008): CC outperforms LLMLingua-2 on distractor fixture (68%→100% vs 68%→53%), correctly abstains on natural prose; LLMLingua-2 compresses indiscriminately at 13.7s overhead. Dual-regime paragraph drafted in `draft-paper-edits.md §11`. | Deploy dual-regime framing; never cite RES-007 without RES-008. |
 | `RR-011` | medium | CacheHit unsafe in multi-turn/stateful contexts. | Needs call-site/state-aware keys. | Keep caveated until correctness story exists. |
 | `RR-012` | medium | ParallelBranch independence is unsound. | Needs dependency/side-effect policy. | Treat as future unless evaluated. |
 | `RR-013` | high | Agentix/Halo/Murakkab/Cognify/serving systems subsume the story. | AgentC works above server/API layer and rewrites application semantics. | Make application-level trace rewriting central. |
-| `RR-014` | high | Single-run evaluation is underpowered. | Current results need paired/repeated framing. | Elevate `GAP-014`; avoid proof language. |
+| `RR-014` | ~~high~~ **mitigated** | Single-run evaluation is underpowered. | McNemar exact tests and bootstrap CIs now computed for all headline claims (GAP-014 closed). No test rejects accuracy degradation. Framing is "does not significantly degrade" not "preserves." | Verify all p-values in paper draft use statsmodels exact=True, not chi-squared approximation. |
 
 ## Citation Gaps
 

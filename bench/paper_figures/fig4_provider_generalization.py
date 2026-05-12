@@ -76,7 +76,7 @@ def _shared_style(ax):
         ax.axhline(y, color=GRID, alpha=0.3, lw=0.5, zorder=0)
     ax.set_xticks([])
     ax.set_xlim(-0.55, 2.55)
-    ax.set_ylim(0, 44)
+    ax.set_ylim(0, 48)
     ax.set_yticks([0, 10, 20, 30, 40])
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -101,17 +101,19 @@ def main() -> None:
     # Anthropic: "correct abstain" callout replaces a fire-rate label.
     _fire_label(ax_cc, b2, "—")
 
-    # "correct abstain" callout: text anchored to axes fraction, arrow to stub.
+    _shared_style(ax_cc)
+
+    # "correct abstain" callout: float above the bar tops (both bars 0/1 end
+    # below y=35%) directly in bar 2's column. Text is shifted 0.45 units left
+    # of bar 2 center so the wider second line stays within xlim; the resulting
+    # arrow is ~7° from vertical so still reads as pointing straight down.
     ax_cc.annotate(
         "correct abstain\n(single-msg format)",
-        xy=(X[2], 0.75), xycoords="data",
-        xytext=(0.97, 0.30), textcoords="axes fraction",
-        ha="right", va="bottom", fontsize=6, color=EDGE, style="italic",
+        xy=(X[2], 0.75),
+        xytext=(1.55, 38.5),
+        ha="center", va="bottom", fontsize=6, color=EDGE, style="italic",
         arrowprops=dict(arrowstyle="-", color=EDGE, lw=0.5),
-        annotation_clip=False,
     )
-
-    _shared_style(ax_cc)
     ax_cc.set_title("(a) ContextCompress", fontsize=8, pad=3)
     ax_cc.set_ylabel("Cost Savings (%)", fontsize=8)
 

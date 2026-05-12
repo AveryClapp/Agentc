@@ -87,7 +87,7 @@ def main() -> None:
     md_x = x[md_idx] + width / 2
     ax.annotate(
         "price-ratio rule",
-        xy=(md_x, 0.3), xytext=(md_x + 0.05, 11.0),
+        xy=(md_x + 0.17, 0.3), xytext=(md_x + 0.05, 11.0),
         ha="left", va="center", fontsize=8, color=EDGE,
         style="italic",
         arrowprops=dict(arrowstyle="-", color=EDGE, lw=0.6),

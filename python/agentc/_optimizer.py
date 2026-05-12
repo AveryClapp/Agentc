@@ -41,9 +41,12 @@ class Plan:
     rules: list[str] = field(default_factory=list)
     projected_savings_usd: float = 0.0
     raw_json: str = "{\"kind\":\"pass_through\"}"
-    # Thread-through fields for TraceOptimizer.record() in observe_outcome.
+    # Thread-through fields for TraceOptimizer.record() and cache auto-seeding.
     trace_id: Optional[str] = None
     messages: list[dict[str, Any]] = field(default_factory=list)
+    # Raw parameters dict from the call, used to compute the canonical
+    # parameters_hash for cache auto-seeding in _observe_openai_outcome.
+    parameters: dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_pass_through(self) -> bool:
@@ -76,6 +79,7 @@ def plan_call(call: dict[str, Any]) -> Plan:
     plan = _plan_from_dict(data, plan_json)
     plan.trace_id = call.get("trace_id")
     plan.messages = list(call.get("messages") or [])
+    plan.parameters = dict(call.get("parameters") or {})
     return plan
 
 

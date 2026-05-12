@@ -294,6 +294,45 @@ def _observe_openai_outcome(
     except BaseException:
         logger.debug("trace_optimizer record failed; skipping", exc_info=True)
 
+    # Auto-seed the memoization cache on pass-through calls so CacheHitRule
+    # can serve identical subsequent calls without hitting the model.
+    # Only seeds when the plan was pass-through (not already a cache hit or
+    # rewritten) to avoid redundant writes.
+    if getattr(plan, "kind", None) == "pass_through":
+        try:
+            import pickle
+
+            from agentc._canonicalize import parameters_hash as _ph_params
+            from agentc._canonicalize import prompt_hash as _ph_prompt
+            from agentc._patches._optimizer_glue import estimate_cost_usd
+            from agentc._writer import CacheInsertMsg, enqueue_cache_insert
+
+            model_str = str(getattr(response, "model", None) or kwargs.get("model", "") or "")
+            usage = getattr(response, "usage", None)
+            input_toks = int(getattr(usage, "prompt_tokens", 0) or 0)
+            output_toks = int(getattr(usage, "completion_tokens", 0) or 0)
+
+            p_hash = _ph_prompt(list(getattr(plan, "messages", [])), "openai")
+            param_hash = _ph_params(dict(getattr(plan, "parameters", {})))
+            output_bytes = pickle.dumps(response, protocol=pickle.HIGHEST_PROTOCOL)
+
+            enqueue_cache_insert(
+                CacheInsertMsg(
+                    prompt_hash=p_hash,
+                    model=model_str,
+                    parameters_hash=param_hash,
+                    call_site_id=call_site_id,
+                    output_bytes=output_bytes,
+                    input_tokens=input_toks,
+                    output_tokens=output_toks,
+                    recorded_cost_usd=float(estimate_cost_usd(model_str, input_toks, output_toks)),
+                    ttl_seconds=3600,
+                    embedding=None,
+                )
+            )
+        except BaseException:
+            logger.debug("cache auto-seed failed; skipping", exc_info=True)
+
 
 # --- Sync wrapper ---
 
@@ -330,7 +369,45 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
                 new_kwargs = apply_call_mutations_openai(kwargs, mutated_call)
                 return wrapped(*args, **new_kwargs)
 
-            response = dispatch_sync(plan, run_original=_run_original, run_mutated=_run_mutated)
+            def _decode_cached_openai(value: Any) -> Any:
+                import pickle
+                content_id = value.get("output_content_id") if isinstance(value, dict) else None
+                if not content_id:
+                    return None
+                try:
+                    from agentc._native import output_content_load
+                    raw = output_content_load(content_id)
+                    # output_content_load only reads the per-process DB. For
+                    # cross-run cache hits the content lives in traces.db
+                    # (merged from a prior session). Fall back to a direct
+                    # read of the canonical DB in that case.
+                    if raw is None:
+                        import os as _os
+                        import sqlite3 as _sqlite3
+                        from pathlib import Path as _Path
+                        _sp = _os.environ.get("AGENTC_STORAGE_PATH", str(_Path.home() / ".agentc"))
+                        traces_db = _Path(_sp) / "traces.db"
+                        if traces_db.exists():
+                            with _sqlite3.connect(str(traces_db)) as _conn:
+                                row = _conn.execute(
+                                    "SELECT content_text FROM output_content WHERE content_id = ?",
+                                    (content_id,),
+                                ).fetchone()
+                                if row:
+                                    raw = row[0]
+                    if raw is None:
+                        return None
+                    return pickle.loads(raw)
+                except BaseException:
+                    logger.debug("decode_cached_openai failed; will fall back", exc_info=True)
+                    return None
+
+            response = dispatch_sync(
+                plan,
+                run_original=_run_original,
+                run_mutated=_run_mutated,
+                decode_cached=_decode_cached_openai,
+            )
         else:
             response = wrapped(*args, **kwargs)
     except BaseException as exc:

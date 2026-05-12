@@ -28,7 +28,7 @@ pub struct Parameters {
     pub top_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stop: Vec<String>,
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub extra: serde_json::Value,

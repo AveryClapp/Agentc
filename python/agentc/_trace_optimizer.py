@@ -32,6 +32,10 @@ from typing import Any, Optional
 
 DEFAULT_WINDOW = 16
 MIN_TOKEN_LEN = 3
+# Dead-output detection uses longer tokens to avoid false negatives from
+# common English stopwords ("the", "and", "for") that appear in any two
+# English texts and would otherwise always register as "alive".
+MIN_TOKEN_LEN_DEAD = 6
 MIN_PREFIX_BYTES = 2 * 1024
 
 
@@ -119,6 +123,13 @@ def _pass_state_read_propagation(
                 recs.inferred_state_reads.append(key)
 
 
+def _tokenize_dead(text: str) -> set[str]:
+    """Tokenizer for dead-output detection: uses MIN_TOKEN_LEN_DEAD (6) to
+    filter stopwords ("the", "and", "for") that appear in any English text
+    and would otherwise produce spurious overlap between unrelated documents."""
+    return {w.lower() for w in re.split(r"\W+", text) if len(w) >= MIN_TOKEN_LEN_DEAD}
+
+
 def _pass_dead_output_detection(
     window: list[CallRecord], recs: TraceRecommendations
 ) -> None:
@@ -129,14 +140,14 @@ def _pass_dead_output_detection(
     prev = window[-2]
     if not prev.output_content:
         return
-    prev_tokens = _tokenize(prev.output_content)
+    prev_tokens = _tokenize_dead(prev.output_content)
     if len(prev_tokens) < 3:
         return
     prev_idx = len(window) - 2
     for record in window[prev_idx + 1 :]:
         input_tokens: set[str] = set()
         for msg in record.messages:
-            input_tokens |= _tokenize(msg.get("content", ""))
+            input_tokens |= _tokenize_dead(msg.get("content", ""))
         if prev_tokens & input_tokens:
             return
     recs.output_is_dead_branch = True

@@ -115,7 +115,7 @@ def main() -> None:
         arrowprops=dict(arrowstyle="-", color=EDGE, lw=0.5),
     )
     ax_cc.set_title("(a) ContextCompress", fontsize=8, pad=3)
-    ax_cc.set_ylabel("Cost Savings (%)", fontsize=8)
+    ax_cc.set_ylabel("Input-Token Savings (%)", fontsize=8)
 
     # ── (b) ModelDowngrade ───────────────────────────────────────────────────
     b3 = _bar(ax_md, 0, 35.3, C_OPENAI)
@@ -134,6 +134,8 @@ def main() -> None:
     ax_md.set_title("(b) ModelDowngrade", fontsize=8, pad=3)
     ax_md.spines["left"].set_visible(False)
     ax_md.tick_params(left=False)
+    ax_md.yaxis.set_label_position("right")
+    ax_md.set_ylabel("Cost Savings (%)", fontsize=8)
 
     # ── shared legend ─────────────────────────────────────────────────────────
     handles = [

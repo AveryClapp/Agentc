@@ -67,8 +67,13 @@ def load_tasks(
     else the hand-authored synthetic fallback.
 
     Fixture JSON shape: ``[{"task_id": "...", "prompt": "...", "expected": ...}, ...]``
+
+    ``BENCH_FIXTURE_OVERRIDE``: if set, loads from that path instead of the
+    default fixture directory. Used by density sweep and other scripts that
+    build temporary fixtures at runtime.
     """
-    path = FIXTURES_ROOT / f"{agent_key}.json"
+    override = os.environ.get("BENCH_FIXTURE_OVERRIDE")
+    path = Path(override) if override else FIXTURES_ROOT / f"{agent_key}.json"
     if path.is_file():
         data = json.loads(path.read_text())
         return [

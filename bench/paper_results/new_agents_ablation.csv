@@ -4,7 +4,7 @@ bench.agents.research_planner,CacheHit-off,30.171,33.930,6.000,0.072073,0.050328
 bench.agents.research_planner,ContextCompress-off,2.070,1.960,-0.000,0.014047,0.013756,20,10
 bench.agents.research_planner,ParallelBranch-off,NA,NA,NA,NA,NA,NA,NA
 bench.agents.research_planner,ModelDowngrade-off,30.106,33.904,1.000,0.072073,0.050375,100,55
-bench.agents.research_planner,StateDrop-off,28.247,31.871,5.000,0.072073,0.051715,100,59
+bench.agents.research_planner,StateDrop-off,21.250,25.130,0.000,0.014019,0.011040,20,10
 bench.agents.research_planner,StructuredTruncation-off,30.213,33.895,1.000,0.072073,0.050298,100,55
 bench.agents.research_planner,OutputBudget-off,30.244,33.865,2.000,0.072073,0.050276,100,56
 bench.agents.research_planner,PromptDedup-off,30.028,33.845,5.000,0.072073,0.050431,100,59

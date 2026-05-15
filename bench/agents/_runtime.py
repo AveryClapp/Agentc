@@ -213,12 +213,15 @@ def run_all(
     ``BENCH_MAX_TASKS`` env var caps the iteration count — useful for
     smoke tests where a full fixture would burn budget."""
     tasks = load_tasks(agent_key, synthetic_fallback)
+    offset = int(os.environ.get("BENCH_TASK_OFFSET", "0"))
     cap = os.environ.get("BENCH_MAX_TASKS")
     if cap:
         try:
-            tasks = tasks[: int(cap)]
+            tasks = tasks[offset : offset + int(cap)]
         except ValueError:
-            pass
+            tasks = tasks[offset:]
+    else:
+        tasks = tasks[offset:]
     results: list[AgentResult] = []
     for t in tasks:
         answer = run_one(t)

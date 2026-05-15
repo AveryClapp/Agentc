@@ -1,0 +1,12 @@
+MD+CC orthogonality rerun — long_context_qa, n=20, gpt-4o base
+------------------------------------------------------------
+config       cost_saved_mUSD  tok_saved_pct
+------------------------------------------------------------
+CC-only              59.4675          29.64%
+MD-only              -0.1000           0.00%
+CC+MD                59.3975          29.64%
+------------------------------------------------------------
+Additive ideal: CC(59.4675) + MD(-0.1000) = 59.3675 mUSD
+CC+MD actual: 59.3975 mUSD = 100.1% of additive ideal
+
+ORTHOGONALITY EFFICIENCY: 100.1%  (target: ~95.6%)

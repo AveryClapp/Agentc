@@ -1,0 +1,13 @@
+CC+StateDrop sub-additivity rerun — multirule_qa, n=30, gpt-4o-mini base
+------------------------------------------------------------
+config        tok_saved_pct
+------------------------------------------------------------
+baseline               0.0%
+CC-only              33.15%
+SD-only               0.06%
+CC+SD                33.15%
+------------------------------------------------------------
+Additivity: CC(33.15%) + SD(0.06%) = 33.21% additive ideal
+CC+SD actual: 33.15% = 99.8% of additive ideal
+
+SUB-ADDITIVITY EFFICIENCY: 99.8%  (target: ~65.3%)

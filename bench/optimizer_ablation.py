@@ -129,6 +129,7 @@ def _run_config(
     config: str,
     rules_off: list[str],
     storage_root: Path,
+    extra_env: Optional[dict[str, str]] = None,
 ) -> AblationRow:
     sub_root = storage_root / config
     if sub_root.exists():
@@ -141,6 +142,7 @@ def _run_config(
         agent_module=agent_module,
         storage_root=sub_root,
         rules_disabled=rules_off,
+        extra_env=extra_env,
     )
     print(f"\n=== {config} ({agent_module}) ===")
     print(render_result(result))
@@ -176,6 +178,7 @@ def sweep_agent(
             config="all-on",
             rules_off=[],
             storage_root=storage_root,
+            extra_env=extra_env,
         )
     )
     for rule in RULES:
@@ -185,6 +188,7 @@ def sweep_agent(
                 config=f"{rule}-off",
                 rules_off=[rule],
                 storage_root=storage_root,
+                extra_env=extra_env,
             )
         )
     for rule in RULES:
@@ -195,6 +199,7 @@ def sweep_agent(
                 config=f"{rule}-only",
                 rules_off=others,
                 storage_root=storage_root,
+                extra_env=extra_env,
             )
         )
     return rows

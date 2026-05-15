@@ -94,6 +94,10 @@ _MODEL_PRICES: dict[str, tuple[float, float]] = {
     # Legacy names kept for historical cost accounting
     "meta-llama/Meta-Llama-3.1-70B-Instruct": (0.59, 0.79),
     "meta-llama/Meta-Llama-3.1-8B-Instruct": (0.05, 0.08),
+    # Together AI (api.together.xyz/v1) — pricing as of 2026-05-15
+    "meta-llama/Llama-3.3-70B-Instruct-Turbo": (0.88, 0.88),
+    "meta-llama/Llama-3.1-70B-Instruct-Turbo": (0.88, 0.88),
+    "meta-llama/Llama-3.1-8B-Instruct-Turbo": (0.18, 0.18),
 }
 
 

@@ -1,0 +1,7 @@
+config,compose_mode,rules,n_pass,n_total,acc_pct,acc_delta_pp,se_pp,mcnemar_p,BF,FB,savings_total_usd,n_plans_fired
+baseline,N/A,none,16,50,32.0,0.0,6.6,1.0,0,0,0.0,0
+V2-CC,1,ContextCompress,22,50,44.0,12.0,7.0,0.0412,0,6,0.01084,57
+V1-CC+OB,0,"ContextCompress,OutputBudget",15,50,30.0,-2.0,6.5,1.0,1,0,0.015255,56
+V2-CC+OB,1,"ContextCompress,OutputBudget",16,50,32.0,0.0,6.6,1.0,0,0,0.02574,59
+V1-CC+PD,0,"ContextCompress,PromptDedup",22,50,44.0,12.0,7.0,0.0412,0,6,0.011009,61
+V2-CC+PD,1,"ContextCompress,PromptDedup",20,20,100.0,68.0,0.0,NaN,0,0,0.002189,13

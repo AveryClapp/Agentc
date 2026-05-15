@@ -51,16 +51,21 @@ COMBINE_SYSTEM = (
 )
 
 
+def _model() -> str:
+    import os
+    return os.environ.get("BENCH_BASELINE_MODEL", "gpt-4o-mini-2024-07-18")
+
+
 def _summarize_chunk(chunk: str) -> str:
     with agentc.span("rag.chunk_summary"):
-        return call_llm(chunk, model="gpt-4o-mini-2024-07-18", system=CHUNK_SYSTEM)
+        return call_llm(chunk, model=_model(), system=CHUNK_SYSTEM)
 
 
 def _combine(partials: list[str]) -> str:
     with agentc.span("rag.combine"):
         return call_llm(
             "\n".join(f"- {p}" for p in partials),
-            model="gpt-4o-mini-2024-07-18",
+            model=_model(),
             system=COMBINE_SYSTEM,
         )
 

@@ -1,0 +1,5 @@
+config,n_pass,n_total,acc_pct,acc_delta_pp,se_pp,mcnemar_p,BF,FB,input_tokens,output_tokens,input_token_savings_pct
+baseline,14,30,46.7,0.0,9.1,1.0,0,0,379891,322,0.0
+CC-only,14,30,46.7,0.0,9.1,1.0000,1,1,253943,288,33.15
+SD-only,14,30,46.7,0.0,9.1,1.0000,0,0,379671,323,0.06
+CC+SD,14,30,46.7,0.0,9.1,1.0000,1,1,253943,288,33.15

@@ -1,0 +1,3 @@
+agent_module,planner_mode,config,cost_savings_pct,input_token_savings_pct,accuracy_delta_pp,baseline_cost_usd,optimized_cost_usd,n_tasks,n_passed_optimized
+bench.agents.autogen_bridge,first-match,all-on,0.000,22.859,1.000,0.000000,0.000000,20,16
+bench.agents.autogen_bridge,composition,all-on,0.000,18.470,0.000,0.000000,0.000000,20,15

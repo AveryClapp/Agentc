@@ -1,0 +1,5 @@
+config,n_pass,n_total,acc_pct,acc_delta_pp,se_pp,mcnemar_p,BF,FB,baseline_cost_mUSD,optimized_cost_mUSD,cost_savings_mUSD,input_tokens_baseline,input_tokens_optimized,input_token_savings_pct,cc_fire_count,md_fire_count,gpt4o_calls,gpt4o_mini_calls,md_fire_rate_pct
+baseline,16,20,80.0,0.0,8.9,1.0,0,0,199.1050,199.1050,0.0,79366,79366,0.0,0,0,0,0,0.0
+CC-only,14,20,70.0,-10.0,10.2,0.5000,2,0,199.1050,149.4950,49.6100,79366,59546,24.97,40,0,20,0,0.0
+MD-only,14,20,70.0,-10.0,10.2,0.5000,2,0,199.1050,170.8873,28.2177,79366,79366,0.00,0,8,17,3,15.0
+CC+MD,12,20,60.0,-20.0,11.0,0.1250,4,0,199.1050,124.9816,74.1234,79366,67595,14.83,28,11,15,5,25.0

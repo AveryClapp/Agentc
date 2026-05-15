@@ -1,0 +1,14 @@
+MD+CC orthogonality warmup rerun -- long_context_qa, W=30 warmup, N=20 measure, gpt-4o base, compose=1
+----------------------------------------------------------------------
+config       cost_saved_mUSD  tok_saved_pct  md_fire_rate
+----------------------------------------------------------------------
+CC-only              49.6100         24.97%           N/A
+MD-only              28.2177          0.00%         0.00%
+CC+MD                74.1234         14.83%   see_md_cols
+----------------------------------------------------------------------
+Additive ideal: CC(49.6100) + MD(28.2177) = 77.8277 mUSD
+CC+MD actual: 74.1234 mUSD = 95.2% of additive ideal
+
+ORTHOGONALITY EFFICIENCY: 95.2%  (target: >=95.6%)
+
+Total cumulative cost: $1.3111 USD

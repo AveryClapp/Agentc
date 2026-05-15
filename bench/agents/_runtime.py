@@ -111,11 +111,14 @@ def llm_client():
     if base_url:
         # OpenAI-compat provider — use the provider-specific key if set,
         # fall back to OPENAI_API_KEY. HF uses HF_TOKEN; Groq uses GROQ_API_KEY.
-        api_key = (
-            os.environ.get("HF_TOKEN")
-            or os.environ.get("GROQ_API_KEY")
-            or os.environ.get("OPENAI_API_KEY")
-        )
+        if "together" in base_url:
+            api_key = os.environ.get("TOGETHER_API_KEY") or os.environ.get("OPENAI_API_KEY")
+        elif "huggingface" in base_url or "hf.co" in base_url:
+            api_key = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY")
+        elif "groq" in base_url:
+            api_key = os.environ.get("GROQ_API_KEY") or os.environ.get("OPENAI_API_KEY")
+        else:
+            api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             return None
         try:

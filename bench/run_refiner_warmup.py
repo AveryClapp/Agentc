@@ -173,7 +173,7 @@ def _query_sd_stats(storage_dir: Path) -> tuple[int, int]:
             "SELECT COUNT(*) FROM plan_audit WHERE rule='StateDrop' AND plan_kind='rewritten'"
         ).fetchone()
         total_row = conn.execute(
-            "SELECT COUNT(*) FROM plan_audit WHERE call_site_id LIKE '%refiner%'"
+            "SELECT COUNT(*) FROM plan_audit WHERE call_site_id LIKE '%refine%'"
         ).fetchone()
         fires = int(fire_row[0]) if fire_row else 0
         total = int(total_row[0]) if total_row else 0

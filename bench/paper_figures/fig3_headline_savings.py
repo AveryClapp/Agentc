@@ -35,12 +35,12 @@ GRID = "#9a9a9a"
 
 def main() -> None:
     rules = [
-        "ContextCompress\n(n=100)",
+        "ContextCompress\n(n=300)",
         "ModelDowngrade\n(n=127)",
-        "StateDrop\n(n=50)",
+        "StateDrop\n(n=50, within-run)",
     ]
-    cost = [34.5, 35.3, 6.0]
-    input_tok = [34.9, 0.0, 9.6]
+    cost = [33.9, 11.2, 6.1]
+    input_tok = [34.0, 0.0, 10.8]
 
     # Render the structural-zero bar as a thin visible sliver instead of
     # a height-zero bar that disappears entirely.
@@ -97,7 +97,7 @@ def main() -> None:
     sd_x = x[2]
     ax.annotate(
         "output-dominated",
-        xy=(sd_x, 9.6), xytext=(sd_x, 18.0),
+        xy=(sd_x, 10.8), xytext=(sd_x, 18.0),
         ha="center", va="center", fontsize=8, color=EDGE,
         style="italic",
         arrowprops=dict(arrowstyle="-", color=EDGE, lw=0.6),

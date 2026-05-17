@@ -1,0 +1,12 @@
+config,n_pass,n_total,acc_pct,acc_delta_pp,se_pp,mcnemar_p,BF,FB,cost_savings_mUSD,input_token_savings_pct,sd_fire_count
+all-on,47,50,94.0,-4.0,3.4,0.5000,2,0,6.4650,12.00,179
+CacheHit-off,46,50,92.0,-6.0,3.8,0.2500,3,0,6.3491,12.12,178
+ContextCompress-off,49,50,98.0,0.0,2.0,1.0000,0,0,6.1975,11.84,187
+ParallelBranch-off,49,50,98.0,0.0,2.0,1.0000,1,1,6.3718,11.60,177
+ModelDowngrade-off,47,50,94.0,-4.0,3.4,0.5000,2,0,6.9190,12.66,180
+StateDrop-off,47,50,94.0,-4.0,3.4,0.5000,2,0,1.8062,2.10,0
+CacheHit-only,49,50,98.0,0.0,2.0,1.0000,0,0,2.3738,2.48,0
+ContextCompress-only,49,50,98.0,0.0,2.0,1.0000,1,1,1.9634,2.13,0
+ParallelBranch-only,49,50,98.0,0.0,2.0,1.0000,0,0,0.7473,0.74,0
+ModelDowngrade-only,49,50,98.0,0.0,2.0,1.0000,0,0,0.8013,0.89,0
+StateDrop-only,49,50,98.0,0.0,2.0,1.0000,0,0,5.1519,10.83,183

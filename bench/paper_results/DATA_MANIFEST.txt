@@ -1,0 +1,109 @@
+Data Manifest -- generated 2026-05-17
+Warmup-corrected harness: per-config isolated state; W warmup tasks populate
+cost_model.db, then traces/audit reset; N measurement tasks run against warm model.
+
+============================================================
+VERIFIED (reproducible, warmup-corrected, used in paper)
+============================================================
+
+Table 5 (sec 6.1 -- ContextCompress, n=300, long_context_qa)
+  Source:  bench/paper_results/long_context_qa_warmup_n300.csv
+  Canonical: bench/paper_results/long_context_qa-contextcompress-n300-warmup.csv
+  Key result: all-on cost savings 33.9% (53.6 mUSD), input-token savings 34.0%
+               CC fires 261/300; SE=2.8pp; all McNemar p>=0.39
+  Run script: bench/run_lcqa_warmup_n300.py
+
+Table 6 (sec 6.2 -- ModelDowngrade, n=127, gaia_router)
+  Source:  bench/paper_results/gaia_router_warmup_n127.csv
+  Canonical: bench/paper_results/gaia_router-modeldowngrade-n127-warmup.csv
+  Key result: MD-only cost savings 11.2% (11.23 mUSD); BF=7/FB=2/p=0.1797
+               (n.s. -- MD safe on gaia_router); MD fire rate 25.6% (65/254 calls)
+  Run script: bench/run_gaia_warmup_n127.py
+
+Table 7 (sec 6.3 -- StateDrop, n=50, iterative_refiner)
+  Source:  bench/paper_results/iterative_refiner_warmup_n50.csv
+  Canonical: bench/paper_results/iterative_refiner-statedrop-n50-warmup.csv
+  Key result: SD-only cost savings 6.1% (5.15 mUSD), input-token savings 10.8%
+               SD fires 183/call sites; all-on 12.0% input-token savings
+  Run script: bench/run_iterative_refiner_warmup_n50.py
+
+Table 13 (sec 6.4 -- CC+SD composition, n=30, multirule_qa)
+  Source:  bench/paper_results/cc_sd_subadditivity_warmup.csv
+  Canonical: bench/paper_results/multirule_qa-ccsd-n30-warmup.csv
+  Key result: CC-only 32.54% tok, SD-only 0.06% tok, CC+SD 32.78% tok
+               additive ideal 32.60%; efficiency 100.5% (super-additive, CC+SD compose)
+  Run script: bench/run_cc_sd_subadditivity_warmup.py (implied)
+
+Table 14 (sec 6.5 -- Planner ablation, n=50, composition_qa)
+  Source:  bench/paper_results/planner_ablation_rerun.csv
+  Canonical: bench/paper_results/composition_qa-planner-ablation-n50-warmup.csv
+  Key result: baseline 32%, V2-CC +18pp p=0.0039, V1-CC+OB +14pp p=0.0156,
+               V2-CC+OB +14pp p=0.0156
+  Run script: bench/run_planner_ablation_rerun.py (implied)
+
+Composition orthogonality (sec 6.4 -- MD+CC, md_cc_orthogonality)
+  Source:  bench/paper_results/md_cc_orthogonality_warmup.csv
+  Key result: CC-only 49.61 mUSD, MD-only 28.22 mUSD, CC+MD 74.12 mUSD
+               additive ideal 77.83 mUSD; efficiency 95.2%
+  Run script: bench/run_md_cc_orthogonality_warmup.py (implied)
+
+Generalization (sec 7 -- autogen_bridge, n=200, Together AI LLaMA 3.3 70B)
+  Source:  bench/paper_results/autogen_bridge_warmup_n200.csv
+  Canonical: bench/paper_results/autogen_bridge-n200-warmup.csv
+  Key result: CacheHit fires 396/400 (98%); CC dominates; tok saved 38.5%
+               MD fires=0 across all configs (LLaMA price-ratio inert on test tasks)
+               ModelDowngrade-off p=0.031 is LLaMA temperature variance artifact
+  Run script: bench/run_autogen_warmup_n200.py
+
+StateDrop precondition validation (sec 6.3 appendix)
+  Source:  bench/paper_results/sd_precondition_warmup.csv
+  Script:  bench/run_sd_precondition_warmup.py
+  Status:  IN PROGRESS (run started 2026-05-17 02:20)
+  Expected: allread=0 SD fires (all state in window_state_reads);
+            standard=~60% fire rate (unread state eligible)
+
+============================================================
+UNRECOVERABLE (no artifacts, cannot reproduce without re-run)
+============================================================
+
+Table 14 -- CC+PD (ContextCompress + PlannerDispatch) row
+  Original bench: planner_ablation_contaminated_original.csv (contaminated)
+  Rerun:  planner_ablation_rerun.csv does NOT include CC+PD config
+  Status: MISSING from paper table. Editorial note required.
+           V2-CC alone shows +18pp p=0.0039; CC+PD delta unrecoverable.
+
+============================================================
+DROPPED (data exists but not usable for paper claims)
+============================================================
+
+rag_summarizer generalization (sec 7)
+  Source:  bench/paper_results/rag_summarizer_warmup_n200.csv
+  Baseline acc: 0.5% (1/200) -- LLaMA 3.3 70B format mismatch with scorer
+  Status: DROPPED. Replace with honest paragraph: "rag_summarizer scored 0.5%
+          baseline accuracy under LLaMA; format mismatch with scorer prevented
+          valid measurement. Generalization claim rests on autogen_bridge (n=200)."
+  All rules fire normally; only scoring is broken.
+
+============================================================
+FIGURES (regenerated with corrected numbers 2026-05-17)
+============================================================
+
+fig3_headline_savings.pdf
+  Script: bench/paper_figures/fig3_headline_savings.py
+  Changes: CC n=100->n=300 (33.9%/34.0%); MD 35.3%->11.2% cost/~0% tok;
+           SD label added "(within-run)"; SD tok 9.6%->10.8%
+
+fig6_composition_orthogonality.pdf
+  Script: bench/paper_figures/fig6_composition_orthogonality.py
+  Changes: MD+CC 95.6%->95.2%; CC+SD 65.3%->100.5% (additive, not sub-additive);
+           table rows corrected: MD+CC (49.61/74.12/77.83 mUSD), CC+SD (32.54/32.78/32.60% tok)
+
+============================================================
+PENDING EDITORIAL (decisions for authors, not data gaps)
+============================================================
+
+1. Table 14 CC+PD row: replace with "--" or footnote "data unrecoverable, see sec X"
+2. rag_summarizer: 1-2 sentence honest paragraph replacing any accuracy table
+3. MD gaia_router result (p=0.18): frame as "safe" not "significant"
+4. autogen MD-off p=0.031: call out as LLaMA temperature artifact (not MD accuracy effect)
+5. CC+SD 100.5% efficiency: update prose from "sub-additive" to "additive composition"

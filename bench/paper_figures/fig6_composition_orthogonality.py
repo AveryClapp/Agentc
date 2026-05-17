@@ -1,8 +1,8 @@
 """Figure 6: Composition orthogonality — horizontal bar chart with summary table.
 
 Two horizontal bars normalised to % of additive ideal:
-  - MD + CC (orthogonal drivers): 95.6%  — teal
-  - CC + SD (same driver):        65.3%  — amber
+  - MD + CC (orthogonal drivers): 95.2%  — teal
+  - CC + SD (additive, same driver): 100.5%  — amber
 Vertical dashed reference line at 100%.
 Value labels inside bars in white.
 Summary table of raw numbers below the bars.
@@ -43,8 +43,8 @@ def main() -> None:
 
     # ── Horizontal bars ──────────────────────────────────────────────────
     bars = [
-        {"label": "Orthogonal drivers\nMD + CC", "value": 95.6, "color": TEAL},
-        {"label": "Same driver\nCC + SD",         "value": 65.3, "color": AMBER},
+        {"label": "Orthogonal drivers\nMD + CC", "value": 95.2, "color": TEAL},
+        {"label": "Additive (same driver)\nCC + SD", "value": 100.5, "color": AMBER},
     ]
 
     y_pos      = [1.0, 0.0]
@@ -84,8 +84,8 @@ def main() -> None:
 
     col_labels = ["Pair", "Best solo", "Composed", "Ideal", "Efficiency"]
     row_data = [
-        ["MD + CC", "7.51 mUSD", "9.88 mUSD", "10.33 mUSD", "95.6%"],
-        ["CC + SD", "33.1% tok",  "21.7% tok",  "33.2% tok",  "65.3%"],
+        ["MD + CC", "49.61 mUSD", "74.12 mUSD", "77.83 mUSD", "95.2%"],
+        ["CC + SD", "32.54% tok",  "32.78% tok",  "32.60% tok",  "100.5%"],
     ]
 
     # Column widths as fractions of axes width.

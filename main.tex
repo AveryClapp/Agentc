@@ -641,7 +641,7 @@ per-configuration isolated optimizer state with separate \texttt{traces.db},
 cost model effects: ModelDowngrade's shadow-sampler accuracy guard reads the empirical
 accuracy distribution from the cost model; on a cold-start run it effectively has no
 data, so the guard defaults to permissive, causing over-downgrading and inflating MD
-savings from the validated 11.4\% to a spurious 35.3\%. Fix: per-configuration warmup
+savings from the validated 11.4\%~(Section~\ref{sec:eval-md}) to a spurious 35.3\%. Fix: per-configuration warmup
 ($W$ tasks) that populates the cost model before measurement begins. Third, cross-run
 baseline variance: a 37.8\% swing in baseline cost between two runs on identical
 prompts (fresh cold-start run at \$136.19\,mUSD vs.\ warm shared-baseline at
@@ -746,7 +746,7 @@ the remainder of this section details each.
 
 \begin{table*}[t]
 \caption{Agentc across seven agent workloads spanning three distinct cost drivers,
-four real agents, one unseen cold agent, and three model providers.
+three real agents, one unseen cold agent, and three model providers.
 All real-agent accuracy deltas are not statistically significant.
 Purpose-built workloads validate rule isolation;
 real and unseen agents validate generalization. Rule specialization by workload class
@@ -834,7 +834,10 @@ configurations without it show 0.0\% cost and input-token change. This consisten
 tracking supports attribution of savings to input-token reduction. All 11
 configurations pass McNemar exact test with $p \geq 0.39$, SE $\pm$2.8\,pp at
 $n$=300, baseline pass rate 58.3\%; no configuration shows a statistically significant
-accuracy change.
+accuracy change. CacheHit-off (36.9\%) and StateDrop-off (36.8\%) exceed all-on
+(33.9\%) because the removed rule occasionally serves or rewrites a call before CC
+evaluates it, slightly reducing CC's aggregate fire opportunity; the 0\% savings on
+ContextCompress-off remains the definitive precondition check.
 
 \begin{table}[t]
 \caption{ContextCompress isolation matrix ($n$=300, \texttt{long\_context\_qa},
@@ -897,6 +900,11 @@ ModelDowngrade-only is $-$3.9\,pp; McNemar exact $p$=0.18, BF=7/FB=2,
 $n_{\mathrm{discordant}}$=9. The effect is directionally negative but not
 statistically significant at $n$=127; we do not claim ModelDowngrade does not degrade
 accuracy, only that the effect is not confirmed at this sample size.
+
+On this routing fixture, only ModelDowngrade fires; all other rule-only
+configurations (CacheHit-only, CC-only, SD-only, PB-only) show near-zero input-token
+savings, with negative cost values (e.g., CC-only $-$3.4\%, SD-only $-$6.7\%)
+reflecting output-token sampling variance around zero, not rule-driven effects.
 
 The corrected cost savings reflect ModelDowngrade operating with its shadow-sampler
 accuracy guard active. A warm cost model provides the accuracy guard with a reliable
@@ -968,9 +976,8 @@ a \texttt{state\_write}-tagged message, while only the most recent revision is r
 into the current call window. Older revisions accumulate as state-tagged messages
 whose keys are absent from \texttt{window\_state\_reads}, making them eligible for
 removal by StateDrop. The fixture contains 50 tasks, producing 500 LLM calls in
-total. Model: \texttt{gpt-4o-mini}. Ten of eleven ablation configurations completed;
-the StateDrop-only configuration at temperature 1 is estimated using a temperature-0
-controlled trial.
+total. Model: \texttt{gpt-4o-mini}. All eleven ablation configurations completed under
+the warmup-corrected harness (temperature=0 hardcoded in agent).
 
 \textbf{Results.} The valid comparison for StateDrop is within-run isolation, not
 cross-run absolute savings. Within a controlled run, StateDrop-off configurations
@@ -980,14 +987,11 @@ other active rules), while StateDrop-only recovers to approximately 6.1\% cost a
 within a run. Input-token attribution confirms the mechanism: SD fires 177 to 187
 calls per SD-enabled configuration and 0 calls on SD-off configurations.
 
-\textbf{Accuracy.} StateDrop in isolation is accuracy-neutral: SD-only achieves
-0.0\,pp accuracy delta (McNemar $p$=1.0, SE $\pm$2.0\,pp, $n$=50, baseline pass rate
-98\%). Non-zero accuracy deltas observed in multi-rule configurations (all-on:
-$-$4.0\,pp; CacheHit-off: $-$6.0\,pp) are attributable to other rules active in
-those configurations, not to StateDrop; all are not statistically significant
-(McNemar $p \geq 0.25$ throughout). The StateDrop-off isolation confirms the
-mechanism: SD-off shows $-$4.0\,pp, identical to configurations where SD is absent,
-while SD-only shows 0.0\,pp.
+\textbf{Accuracy.} StateDrop in isolation is accuracy-neutral (SD-only 0.0\,pp,
+McNemar $p$=1.0). Multi-rule configurations show small deltas (e.g., all-on
+$-$4.0\,pp) that are not statistically significant (all McNemar $p \geq 0.25$,
+SE~$\pm$2.0\,pp, $n$=50, baseline 98\%); at this $n$ a $-$4.0\,pp delta is a
+one-task swing.
 
 A cross-run comparison of baseline costs reveals a 37.8\% cost difference between a
 fresh cold-start run (\$136.19\,mUSD) and the warm shared-baseline run
@@ -1617,9 +1621,8 @@ prefix caching active by default. Agentc savings are measured on top of any
 prefix-cache effects, but the individual contributions of each system are not isolated.
 
 \textbf{Rate limits and experiment scale.} OpenAI Tier-1 rate limits constrained
-ablation coverage in Section~\ref{sec:eval-hotpot} and prevented completion of one
-StateDrop configuration at temperature 1. All results were produced for under \$25 of
-API spend across OpenAI, Anthropic, and Together AI.
+ablation coverage in Section~\ref{sec:eval-hotpot}. All results were produced for
+under \$25 of API spend across OpenAI, Anthropic, and Together AI.
 
 \textbf{Multi-rule ModelDowngrade composition.} The real-agent evaluation in
 Section~\ref{sec:eval-realagent} excludes ModelDowngrade because no downgrade route
@@ -1685,22 +1688,26 @@ Table & Source & Regeneration \\
 
 \ref{tab:cc-matrix} &
 \texttt{long\_\allowbreak context\_\allowbreak qa-\allowbreak contextcompress-\allowbreak n300-\allowbreak warmup.csv} &
-\texttt{BENCH\_\allowbreak MAX\_\allowbreak TASKS=300 python -m bench.optimizer\_\allowbreak ablation bench.agents.long\_\allowbreak context\_\allowbreak qa} \\
+\texttt{python bench/run\_\allowbreak lcqa\_\allowbreak warmup\_\allowbreak n300.py} \\
 
 \addlinespace
 \ref{tab:md-matrix} &
 \texttt{gaia\_\allowbreak router-\allowbreak modeldowngrade-\allowbreak n127-\allowbreak warmup.csv} &
-\texttt{BENCH\_\allowbreak BASELINE\_\allowbreak MODEL=gpt-4o BENCH\_\allowbreak MAX\_\allowbreak TASKS=127 python -m bench.optimizer\_\allowbreak ablation bench.agents.gaia\_\allowbreak router} \\
+\texttt{python bench/run\_\allowbreak gaia\_\allowbreak warmup.py} \\
 
 \addlinespace
 \ref{tab:sd-matrix} &
 \texttt{iterative\_\allowbreak refiner-\allowbreak statedrop-\allowbreak n50-\allowbreak warmup.csv} &
-\texttt{BENCH\_\allowbreak MAX\_\allowbreak TASKS=50 python -m bench.optimizer\_\allowbreak ablation bench.agents.iterative\_\allowbreak refiner} \\
+\texttt{python bench/run\_\allowbreak refiner\_\allowbreak warmup.py} \\
 
 \addlinespace
 \ref{tab:hotpot-matrix} &
 \texttt{hotpot\_\allowbreak real-\allowbreak contextcompress-\allowbreak n300-\allowbreak partial7of11.csv} &
-\texttt{BENCH\_\allowbreak MAX\_\allowbreak TASKS=300 python -m bench.optimizer\_\allowbreak ablation bench.agents.hotpot\_\allowbreak qa} \\
+\textbf{[FLAG]} No dedicated warmup runner exists for \texttt{hotpot\_qa}; the
+original command used shared optimizer state. A correct re-run would require adapting
+\texttt{run\_\allowbreak lcqa\_\allowbreak warmup\_\allowbreak n300.py} with
+\texttt{AGENT=bench.agents.hotpot\_qa} and a real HotpotQA fixture, but no such
+script exists in \texttt{bench/}. \\
 
 \addlinespace
 \ref{tab:oracle} &
@@ -1716,12 +1723,12 @@ Run oracle agent; query \texttt{traces.db} as above \\
 \addlinespace
 \ref{tab:planner-ablation} &
 \texttt{composition\_\allowbreak qa-\allowbreak planner-\allowbreak ablation-\allowbreak n50-\allowbreak warmup.csv} &
-\texttt{BENCH\_\allowbreak MAX\_\allowbreak TASKS=50 python -m bench.optimizer\_\allowbreak ablation bench.agents.composition\_\allowbreak qa} \\
+\texttt{python bench/run\_\allowbreak planner\_\allowbreak ablation\_\allowbreak rerun.py} \\
 
 \addlinespace
 \ref{tab:ccsd-composition} &
 \texttt{multirule\_\allowbreak qa-\allowbreak ccsd-\allowbreak n30-\allowbreak warmup.csv} &
-\texttt{BENCH\_\allowbreak MAX\_\allowbreak TASKS=30 python -m bench.optimizer\_\allowbreak ablation bench.agents.multirule\_\allowbreak qa} \\
+\texttt{python bench/run\_\allowbreak cc\_\allowbreak sd\_\allowbreak subadditivity\_\allowbreak warmup.py} \\
 
 \addlinespace
 \ref{tab:summary} (autogen\_bridge row) &

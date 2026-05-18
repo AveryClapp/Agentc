@@ -1050,34 +1050,43 @@ The precondition is the mechanism.
 \label{sec:eval-hotpot}
 
 \textbf{Setup.} We evaluate ContextCompress on the HotpotQA-distractor split ($n$=300,
-\texttt{gpt-4o-mini}). Prompts are not length-expanded; median size is 8,269 bytes.
-Only a subset exceeds the 8,192-byte activation threshold. Seven of eleven
-configurations complete due to rate limits.
+\texttt{gpt-4o-mini}). Prompts are not length-expanded; median size is 6,940 bytes.
+82 of 500 tasks exceed the 8,192-byte activation threshold (the first 300 are
+evaluated). All 11 configurations completed under the warmup-corrected harness.
 
-\textbf{Results.} ContextCompress fires on 1 of 300 calls, producing negligible
-aggregate savings. For prompts near the activation threshold, the rule correctly
-avoids execution when projected savings do not exceed overhead. On fully activated
-workloads (Section~\ref{sec:eval-cc}), the rule produces substantial reductions,
-indicating that performance depends primarily on activation frequency. The correct
-abstention behavior on near-boundary natural prompts is also documented in
+\textbf{Results.} ContextCompress fires 0--1 of 300 calls depending on configuration
+(1 in CC-active configs, 0 in CC-inactive configs), producing negligible aggregate
+savings. For prompts near the activation threshold, the rule correctly avoids
+execution when projected savings do not exceed overhead. On fully activated workloads
+(Section~\ref{sec:eval-cc}), the rule produces substantial reductions, indicating that
+performance depends primarily on activation frequency. The correct abstention behavior
+on near-boundary natural prompts is also documented in
 Section~\ref{sec:eval-llmlingua}.
 
 \begin{table}[t]
-\caption{ContextCompress on HotpotQA-distractor ($n$=300). Rule fires 1 of 300 calls;
-median prompt 8,269 bytes sits at the activation boundary.}
+\caption{ContextCompress on HotpotQA-distractor ($n$=300, \texttt{gpt-4o-mini},
+warmup-corrected, all 11 configs). Median prompt 6,940 bytes; 82 of 500 tasks exceed
+the 8,192-byte activation gate (first 300 evaluated). CC fires 0--1 of 300 per
+config, confirming correct abstention near the activation boundary. Baseline 57.3\%,
+SE~$\pm$2.9\,pp. All McNemar $p \geq 0.18$ (ns).}
 \label{tab:hotpot-matrix}
 \small
-\begin{tabular}{lrrr}
+\begin{tabular}{lrrrr}
 \toprule
-Configuration & Cost $\Delta$ & Input-tok $\Delta$ & Acc $\Delta$ \\
+Configuration & Input-tok $\Delta$ & Acc $\Delta$ & McNemar $p$ & CC/300 \\
 \midrule
-all-on              & 0.17\% & 0.20\% & $+$1.3 pp \\
-CacheHit-off        & 0.19\% & 0.20\% & $+$0.3 pp \\
-ContextCompress-off & 0.005\% & 0.00\% & $+$0.3 pp \\
-ParallelBranch-off  & 0.19\% & 0.20\% & $+$0.7 pp \\
-ModelDowngrade-off  & 0.19\% & 0.20\% & $+$0.7 pp \\
-StateDrop-off       & 0.19\% & 0.20\% & $+$1.3 pp \\
-CacheHit-only       & 0.0\%  & 0.0\%  & 0 pp \\
+\textbf{all-on}              & $+$0.19\% & $-$1.7\,pp & 0.27 & 1 \\
+CacheHit-off                 & $+$0.19\% & $-$1.0\,pp & 0.61 & 1 \\
+\textbf{ContextCompress-off} & $\phantom{+}$0.00\% & $+$0.7\,pp & 0.79 & 0 \\
+ParallelBranch-off           & $+$0.19\% & $-$1.7\,pp & 0.30 & 1 \\
+ModelDowngrade-off           & $+$0.19\% & $-$2.0\,pp & 0.21 & 1 \\
+StateDrop-off                & $\phantom{+}$0.00\% & $-$1.3\,pp & 0.45 & 0 \\
+\midrule
+CacheHit-only                & $\phantom{+}$0.00\% & $-$0.3\,pp & 1.00 & 0 \\
+\textbf{ContextCompress-only}& $+$0.19\% & $-$2.0\,pp & 0.18 & 1 \\
+ParallelBranch-only          & $\phantom{+}$0.00\% & $-$1.0\,pp & 0.63 & 0 \\
+ModelDowngrade-only          & $\phantom{+}$0.00\% & $-$1.0\,pp & 0.58 & 0 \\
+StateDrop-only               & $\phantom{+}$0.00\% & $-$1.3\,pp & 0.45 & 0 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1620,9 +1629,8 @@ result is reported here.
 prefix caching active by default. Agentc savings are measured on top of any
 prefix-cache effects, but the individual contributions of each system are not isolated.
 
-\textbf{Rate limits and experiment scale.} OpenAI Tier-1 rate limits constrained
-ablation coverage in Section~\ref{sec:eval-hotpot}. All results were produced for
-under \$25 of API spend across OpenAI, Anthropic, and Together AI.
+\textbf{Rate limits and experiment scale.} All results were produced for under \$25 of
+API spend across OpenAI, Anthropic, and Together AI.
 
 \textbf{Multi-rule ModelDowngrade composition.} The real-agent evaluation in
 Section~\ref{sec:eval-realagent} excludes ModelDowngrade because no downgrade route
@@ -1702,12 +1710,8 @@ Table & Source & Regeneration \\
 
 \addlinespace
 \ref{tab:hotpot-matrix} &
-\texttt{hotpot\_\allowbreak real-\allowbreak contextcompress-\allowbreak n300-\allowbreak partial7of11.csv} &
-\textbf{[FLAG]} No dedicated warmup runner exists for \texttt{hotpot\_qa}; the
-original command used shared optimizer state. A correct re-run would require adapting
-\texttt{run\_\allowbreak lcqa\_\allowbreak warmup\_\allowbreak n300.py} with
-\texttt{AGENT=bench.agents.hotpot\_qa} and a real HotpotQA fixture, but no such
-script exists in \texttt{bench/}. \\
+\texttt{hotpot\_\allowbreak real-\allowbreak contextcompress-\allowbreak n300-\allowbreak warmup.csv} &
+\texttt{python bench/run\_\allowbreak hotpot\_\allowbreak warmup\_\allowbreak n300.py} \\
 
 \addlinespace
 \ref{tab:oracle} &

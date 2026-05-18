@@ -39,7 +39,7 @@ def main() -> None:
         "ModelDowngrade\n(n=127)",
         "StateDrop\n(n=50, within-run)",
     ]
-    cost = [33.9, 11.2, 6.1]
+    cost = [33.9, 11.4, 6.1]
     input_tok = [34.0, 0.0, 10.8]
 
     # Render the structural-zero bar as a thin visible sliver instead of

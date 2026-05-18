@@ -807,7 +807,7 @@ round-trip latency.}
 ContextCompress, $n$=127 for ModelDowngrade, $n$=50 within-run for StateDrop).
 Cost and input-token columns track each other for ContextCompress (33.9\%/34.0\%)
 and StateDrop (within-run, output-dominated), confirming deterministic attribution.
-ModelDowngrade savings are structural: price per token, not token count (11.2\,mUSD
+ModelDowngrade savings are structural: price per token, not token count (11.23\,mUSD
 cost savings, 0\% input-token savings). StateDrop bar shows within-run contribution;
 cross-run cost is confounded by baseline variance (Section~\ref{sec:eval-sd}).}
 \label{fig:headline}
@@ -1725,14 +1725,14 @@ Run oracle agent; query \texttt{traces.db} as above \\
 \texttt{python -m bench.llmlingua\_\allowbreak baseline} \\
 
 \addlinespace
-\ref{tab:planner-ablation} &
-\texttt{composition\_\allowbreak qa-\allowbreak planner-\allowbreak ablation-\allowbreak n50-\allowbreak warmup.csv} &
-\texttt{python bench/run\_\allowbreak planner\_\allowbreak ablation\_\allowbreak rerun.py} \\
-
-\addlinespace
 \ref{tab:ccsd-composition} &
 \texttt{multirule\_\allowbreak qa-\allowbreak ccsd-\allowbreak n30-\allowbreak warmup.csv} &
 \texttt{python bench/run\_\allowbreak cc\_\allowbreak sd\_\allowbreak subadditivity\_\allowbreak warmup.py} \\
+
+\addlinespace
+\ref{tab:planner-ablation} &
+\texttt{composition\_\allowbreak qa-\allowbreak planner-\allowbreak ablation-\allowbreak n50-\allowbreak warmup.csv} &
+\texttt{python bench/run\_\allowbreak planner\_\allowbreak ablation\_\allowbreak rerun.py} \\
 
 \addlinespace
 \ref{tab:summary} (autogen\_bridge row) &

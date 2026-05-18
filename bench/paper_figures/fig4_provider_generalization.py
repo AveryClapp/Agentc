@@ -118,11 +118,11 @@ def main() -> None:
     ax_cc.set_ylabel("Input-Token Savings (%)", fontsize=8)
 
     # ── (b) ModelDowngrade ───────────────────────────────────────────────────
-    b3 = _bar(ax_md, 0, 35.3, C_OPENAI)
+    b3 = _bar(ax_md, 0, 11.4, C_OPENAI)
     b4 = _bar(ax_md, 1, 31.1, C_HF)
     b5 = _bar(ax_md, 2, 14.7, C_ANTHROPIC)
 
-    _val_label(ax_md, b3, 35.3)
+    _val_label(ax_md, b3, 11.4)
     _val_label(ax_md, b4, 31.1)
     _val_label(ax_md, b5, 14.7)
 

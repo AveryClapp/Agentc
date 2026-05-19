@@ -635,7 +635,7 @@ three failure modes encountered during development, each of which invalidated an
 earlier result set. First, cross-configuration optimizer-state contamination: when
 multiple ablation configurations shared a single \texttt{traces.db}, the cost model
 trained on one configuration's call history influenced another's rewrite decisions,
-inflating CC and SD savings by conflating learning signals across configurations. Fix:
+inflating CC savings by conflating learning signals across configurations. Fix:
 per-configuration isolated optimizer state with separate \texttt{traces.db},
 \texttt{optimizer\_audit.db}, and \texttt{cost\_model.db} per run. Second, cold-start
 cost model effects: ModelDowngrade's shadow-sampler accuracy guard reads the empirical
@@ -1601,7 +1601,7 @@ figure is the valid estimate for deployment conditions after warmup.
 
 The three documented failure modes (cross-config optimizer-state contamination,
 cold-start cost model effects, cross-run baseline variance) that motivated the
-shared-baseline ablation methodology are each observable in this evaluation: CC and SD
+shared-baseline ablation methodology are each observable in this evaluation: CC
 savings collapsed when configurations shared optimizer state; MD savings fell from a
 spurious 35.3\% to the verified 11.4\% once warmup was introduced; and the 37.8\%
 cross-run baseline swing on iterative\_refiner made within-run input-token isolation

@@ -89,14 +89,14 @@ def main() -> None:
     fig.subplots_adjust(left=0.15, right=0.97, top=0.91, bottom=0.20, wspace=0.08)
 
     # ── (a) ContextCompress ──────────────────────────────────────────────────
-    b0 = _bar(ax_cc, 0, 34.9, C_OPENAI)
+    b0 = _bar(ax_cc, 0, 34.0, C_OPENAI)
     b1 = _bar(ax_cc, 1, 34.0, C_HF)
     b2 = _bar(ax_cc, 2, 0.75, C_ANTHROPIC, hatch="////")
 
-    _val_label(ax_cc, b0, 34.9)
+    _val_label(ax_cc, b0, 34.0)
     _val_label(ax_cc, b1, 34.0)
 
-    _fire_label(ax_cc, b0, "91% fire")
+    _fire_label(ax_cc, b0, "87-95% fire")
     _fire_label(ax_cc, b1, "98% fire")
     # Anthropic: "correct abstain" callout replaces a fire-rate label.
     _fire_label(ax_cc, b2, "—")

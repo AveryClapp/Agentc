@@ -183,10 +183,10 @@ def _query_fire_stats(storage_dir: Path) -> tuple[int, int, int]:
     conn = sqlite3.connect(str(db))
     try:
         cc = conn.execute(
-            "SELECT COUNT(*) FROM plan_audit WHERE rule='ContextCompress' AND plan_kind='rewritten'"
+            "SELECT COUNT(*) FROM plan_audit WHERE rule='ContextCompress' AND plan_kind IN ('rewritten','composed')"
         ).fetchone()
         sd = conn.execute(
-            "SELECT COUNT(*) FROM plan_audit WHERE rule='StateDrop' AND plan_kind='rewritten'"
+            "SELECT COUNT(*) FROM plan_audit WHERE rule='StateDrop' AND plan_kind IN ('rewritten','composed')"
         ).fetchone()
         total = conn.execute("SELECT COUNT(*) FROM plan_audit").fetchone()
         return (

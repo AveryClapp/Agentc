@@ -238,7 +238,7 @@ def _query_rule_fires(storage_dir: Path, rule: str) -> int:
     conn = sqlite3.connect(str(db))
     try:
         row = conn.execute(
-            "SELECT COUNT(*) FROM plan_audit WHERE rule=? AND plan_kind='rewritten'",
+            "SELECT COUNT(*) FROM plan_audit WHERE rule=? AND plan_kind IN ('rewritten','composed')",
             (rule,),
         ).fetchone()
         return int(row[0]) if row else 0

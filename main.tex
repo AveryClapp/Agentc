@@ -804,9 +804,13 @@ long\_context\_qa   & purpose-built QA      & ContextCompress      & 33.9\% & 34
 gaia\_router        & purpose-built routing & ModelDowngrade       & 11.4\%$^\dagger$ &  0.0\% & $-$3.9\,pp (ns, $p$=0.18) & --- \\
 iterative\_refiner  & purpose-built state   & StateDrop            & $\sim$4--6\,pp (within-run)$^\ddagger$ & see \S\ref{sec:eval-sd} & $<$1\,pp SD-neutral & --- \\
 \midrule
-%% DROPIN [3b]: update Acc $\Delta$ + McNemar p to the n=300 all-on result (cost stays --- ; Together unpriced).
-%%   src: python -m bench.paired_analysis bench/paper_results/autogen_bridge-n300-warmup.per_task.csv
-%%   currently n=200: -3.0pp, p=0.07. Add bootstrap CI from that tool's output.
+%% DROPIN [3b] RESULT (n=300, FAVORABLE): Acc $\Delta$ = $-$0.7\,pp, McNemar p=0.77,
+%%   95\% bootstrap CI [$-$3.0, $+$1.7]\,pp (baseline 229/300, opt 227/300). Supersedes n=200
+%%   ($-$3.0pp, p=0.07). -> set Acc $\Delta$ to "$-$0.7\,pp (ns, $p$=0.77)" and McNemar col to 0.77.
+%% WARNING (Tok column): 38.5\% did NOT reproduce on current code. This n=300 run gives 13.05\%
+%%   (CC fired 172x + StateDrop 231x, both COMPOSED); the stored n=200 got 38.5\% (CC 396x SOLO, SD 0).
+%%   StateDrop now fires on autogen and composes with CC, lowering aggregate CC savings.
+%%   DECISION NEEDED before submission: re-verify 38.5\% or report the reproducible 13.05\% at n=300.
 autogen\_bridge     & real agent (Llama\,3.3-70B)  & CC             & ---$^\S$ & 38.5\% & $-$3.0\,pp (ns, $p$=0.07) & 0.07 \\
 %% DROPIN [3a]: replace the whole research_planner row (Cost/Tok/Acc $\Delta$/McNemar) with the all-on
 %%   row from bench/paper_results/research_planner_warmup_n150.csv (acc_delta_pp, mcnemar_p columns);

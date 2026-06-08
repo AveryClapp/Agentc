@@ -1925,6 +1925,26 @@ Run oracle agent; query \texttt{traces.db} as above \\
 Run 1: \texttt{python -m bench.cachehit\_\allowbreak eval --run 1 \&\& agentc shutdown};
 Run 2: \texttt{python -m bench.cachehit\_\allowbreak eval --run 2} \\
 
+\addlinespace
+\ref{tab:summary} (research\_planner) &
+\texttt{research\_\allowbreak planner\_\allowbreak warmup\_\allowbreak n150.csv} &
+\texttt{python -m bench.run\_\allowbreak research\_\allowbreak planner\_\allowbreak warmup} \\
+
+\addlinespace
+\ref{tab:summary} (autogen rows) &
+\texttt{autogen\_\allowbreak bridge\_\allowbreak warmup\_\allowbreak n300.csv} &
+\texttt{AB\_\allowbreak CONFIGS=...\ python -m bench.run\_\allowbreak autogen\_\allowbreak warmup\_\allowbreak n300} \\
+
+\addlinespace
+\ref{tab:guard} (SD generalization) &
+\texttt{analyst\_\allowbreak qa\_\allowbreak sd\_\allowbreak gen.csv} &
+\texttt{python -m bench.build\_\allowbreak squad\_\allowbreak fixture}; \texttt{python -m bench.run\_\allowbreak analyst\_\allowbreak sd\_\allowbreak generalization} \\
+
+\addlinespace
+\ref{tab:guard} (guard on/off) &
+\texttt{analyst\_\allowbreak qa\_\allowbreak sd\_\allowbreak gen.csv}, \texttt{lcqa\_\allowbreak cc\_\allowbreak guard.csv} &
+\texttt{AGENTC\_\allowbreak OPTIMIZE\_\allowbreak SHADOW=1.0 ... python -m bench.run\_\allowbreak guard\_\allowbreak eval} \\
+
 \bottomrule
 \end{tabularx}
 \end{table}

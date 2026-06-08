@@ -23,6 +23,18 @@
 
 \begin{document}
 
+%% ============================================================
+%% DROPIN-INDEX (MLSys revision) -- delete before submission.
+%% Pending values to drop in once experiments finish; search '%% DROPIN':
+%%  [3a] research_planner accuracy  -> tab:summary row + Limitations sentence
+%%       src: bench/paper_results/research_planner-n150-warmup.csv  (+ .per_task.csv for McNemar/CI)
+%%  [3b] autogen_bridge n=300 acc+CI -> tab:summary row + Sec eval-realagent text
+%%       src: bench/paper_results/autogen_bridge-n300-warmup.per_task.csv
+%%  [T4] throughput-under-concurrency figure -> fig:throughput (commented, near fig:overhead)
+%%       src: bench/paper_results/concurrency_bench_summary.csv
+%%  [T2] naive-baseline attribution (random/recency/bm25 vs IDF) -- NOT YET RUN
+%% ============================================================
+
 \title{Agentc: Just-in-Time Optimization for Multi-Step LLM Agent Workloads}
 
 \author{Avery Clapp}
@@ -676,6 +688,29 @@ HotpotQA is composition, not source data. To reduce concern about regime-specifi
 behavior, each workload is additionally evaluated on a real-world corpus near the
 activation boundary, as described in Section~\ref{sec:eval-hotpot}.
 
+Three distinct HotpotQA-derived fixtures appear in this paper; Table~\ref{tab:fixtures}
+disambiguates them, since they differ in size and construction and back different
+claims. The 100\% distractor result (Section~\ref{sec:eval-llmlingua}) is on the
+constructed \texttt{hotpot\_distractor} fixture, while \texttt{hotpot\_real} is the
+abstention control near the activation boundary.
+
+\begin{table}[t]
+\caption{The three HotpotQA-derived fixtures are distinct in size, construction, and
+the claim each supports. They must not be conflated: the headline distractor result is
+on \texttt{hotpot\_distractor}; \texttt{hotpot\_real} is the abstention control.}
+\label{tab:fixtures}
+\footnotesize
+\begin{tabularx}{\columnwidth}{@{} l r l X @{}}
+\toprule
+Fixture & $n$ & Size & Role \\
+\midrule
+\texttt{long\_context\_qa}  & 300 & 13--18\,KB & CC isolation matrix (\S\ref{sec:eval-cc}); 20 expanded paragraphs \\
+\texttt{hotpot\_distractor} & 100 & $>$8\,KB   & LLMLingua-2 head-to-head (\S\ref{sec:eval-llmlingua}); 2 supporting + 8 distractors \\
+\texttt{hotpot\_real}       & 300 & 6.9\,KB    & Abstention boundary (\S\ref{sec:eval-hotpot}); unmodified split \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \subsection{Shared-Baseline Ablation}
 
 Each agent is executed once with optimization disabled to collect a baseline
@@ -769,7 +804,13 @@ long\_context\_qa   & purpose-built QA      & ContextCompress      & 33.9\% & 34
 gaia\_router        & purpose-built routing & ModelDowngrade       & 11.4\%$^\dagger$ &  0.0\% & $-$3.9\,pp (ns, $p$=0.18) & --- \\
 iterative\_refiner  & purpose-built state   & StateDrop            & $\sim$4--6\,pp (within-run)$^\ddagger$ & see \S\ref{sec:eval-sd} & $<$1\,pp SD-neutral & --- \\
 \midrule
+%% DROPIN [3b]: update Acc $\Delta$ + McNemar p to the n=300 all-on result (cost stays --- ; Together unpriced).
+%%   src: python -m bench.paired_analysis bench/paper_results/autogen_bridge-n300-warmup.per_task.csv
+%%   currently n=200: -3.0pp, p=0.07. Add bootstrap CI from that tool's output.
 autogen\_bridge     & real agent (Llama\,3.3-70B)  & CC             & ---$^\S$ & 38.5\% & $-$3.0\,pp (ns, $p$=0.07) & 0.07 \\
+%% DROPIN [3a]: replace the whole research_planner row (Cost/Tok/Acc $\Delta$/McNemar) with the all-on
+%%   row from bench/paper_results/research_planner_warmup_n150.csv (acc_delta_pp, mcnemar_p columns);
+%%   bootstrap CI via paired_analysis on research_planner-n150-warmup.per_task.csv.
 research\_planner   & real agent            & CC~+~StateDrop       & 25.8\% & 33.0\% & --- & --- \\
 debug\_agent        & real agent            & StateDrop            &  8.3\% & 16.8\% & --- & --- \\
 \midrule
@@ -806,6 +847,19 @@ overhead remains three orders of magnitude below typical LLM
 round-trip latency.}
 \label{fig:overhead}
 \end{figure}
+
+%% DROPIN [T4]: end-to-end throughput/latency under concurrency. Uncomment once
+%% figures/fig8_throughput.pdf exists (generated post-experiment from
+%% bench/paper_results/concurrency_bench_summary.csv via run_concurrency_bench).
+%% This is the systems-venue metric R3 asked for (QPS scaling + p99, optimized vs baseline).
+%% \begin{figure}[t]
+%% \centering
+%% \includegraphics[width=\columnwidth]{figures/fig8_throughput.pdf}
+%% \caption{End-to-end throughput scales with concurrency for both baseline and
+%% optimized runs, confirming the optimizer is not a serialization point
+%% (Section~\ref{sec:decoupling}). QPS at 1/8/32$\times$ concurrency with p99 latency overlay.}
+%% \label{fig:throughput}
+%% \end{figure}
 
 \begin{figure}[t]
 \centering
@@ -1579,6 +1633,9 @@ system's scope.
 Llama-3.3-70B under the warmup-corrected harness. The accuracy delta (all-on:
 $-$3.0\,pp, $p$=0.07) is not statistically significant; the evaluation demonstrates
 rule activation and input-token savings, not a powered accuracy-effect measurement.
+%% DROPIN [3a]: research_planner NOW has accuracy (n=150 warmup ablation). Revise this sentence:
+%%   move research_planner out of the 'no accuracy tracking' set, report its Acc delta + McNemar p,
+%%   and leave only debug_agent as cost/token-only.
 research\_planner and debug\_agent are evaluated without accuracy tracking (no
 per-task scoring fixture); their results are cost and token savings only.
 

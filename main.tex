@@ -26,8 +26,10 @@
 %% ============================================================
 %% DROPIN-INDEX (MLSys revision) -- delete before submission.
 %% Pending values to drop in once experiments finish; search '%% DROPIN':
-%%  [3a] research_planner accuracy  -> tab:summary row + Limitations sentence
-%%       src: bench/paper_results/research_planner-n150-warmup.csv  (+ .per_task.csv for McNemar/CI)
+%%  [3a] DONE: research_planner per-agent result applied (CC-only +4pp/37.7%; SD -7pp harmful)
+%%       -> tab:summary row + Limitations + guard section (sec:eval-guard).
+%%  [GUARD] DONE: shadow-divergence accuracy guard built + validated (Path A) -> sec:eval-guard,
+%%       contribution bullet 4, limitation. analyst SD -42.7->-1.3 (guard on); CC 37.7->11 (conservative).
 %%  [3b] DONE: autogen n=300 frontier applied (CC-only 38.8%/-3.3pp/p=0.02; composed 13.1%/-0.7pp/p=0.77)
 %%       -> tab:summary (2 rows), Sec eval-realagent rewrite, abstract/intro/conclusion qualified.
 %%  [T4] throughput-under-concurrency figure -> fig:throughput (commented, near fig:overhead)
@@ -164,6 +166,15 @@ vectors. The methodology is grounded in three documented failure modes of naive
 optimizer-runtime evaluation: cross-configuration optimizer-state contamination,
 cold-start cost model effects, and cross-run baseline variance. These failure modes
 and their fixes are detailed in Section~\ref{sec:methodology}.
+
+\item \textbf{An automatic, label-free accuracy guard} that shadow-samples rewritten
+calls, measures output divergence against the unrewritten call, and auto-disables a
+rule once it drifts beyond budget. It converts a catastrophic StateDrop misfire
+($-$42.7\,pp on an unseen agent) into a non-significant delta ($-$1.3\,pp) with no
+ground-truth labels. We also characterize its limit: because divergence measures change
+rather than degradation, it conservatively suppresses benign output-altering savings
+(a tunable safety/savings tradeoff), which is the fundamental ceiling of label-free
+runtime gating (Section~\ref{sec:eval-guard}).
 \end{itemize}
 
 \section{Background}
@@ -812,10 +823,7 @@ iterative\_refiner  & purpose-built state   & StateDrop            & $\sim$4--6\
 \midrule
 autogen (CC-only)   & real agent (Llama\,3.3-70B)  & CC            & ---$^\S$ & 38.8\% & $-$3.3\,pp ($p$=0.02) & 0.02 \\
 autogen (composed)  & real agent (Llama\,3.3-70B)  & CC~+~StateDrop & ---$^\S$ & 13.1\% & $-$0.7\,pp (ns, $p$=0.77) & 0.77 \\
-%% DROPIN [3a]: replace the whole research_planner row (Cost/Tok/Acc $\Delta$/McNemar) with the all-on
-%%   row from bench/paper_results/research_planner_warmup_n150.csv (acc_delta_pp, mcnemar_p columns);
-%%   bootstrap CI via paired_analysis on research_planner-n150-warmup.per_task.csv.
-research\_planner   & real agent            & CC~+~StateDrop       & 25.8\% & 33.0\% & --- & --- \\
+research\_planner (CC)  & real agent        & CC            & 41.7\% & 37.7\% & $+$4.0\,pp (ns) & 0.22 \\
 debug\_agent        & real agent            & StateDrop            &  8.3\% & 16.8\% & --- & --- \\
 \midrule
 support\_qa         & unseen cold agent     & correct abstain      & $\sim$0\% & $\sim$0\% & 0.0\,pp & 1.000 \\
@@ -1436,6 +1444,67 @@ accuracy-degrading compression into a safe one, trading roughly two thirds of th
 savings for accuracy neutrality. The composed configuration is the deployable operating
 point; the aggressive point is available when accuracy headroom permits.
 
+\subsection{StateDrop Generalization and the Automatic Accuracy Guard}
+\label{sec:eval-guard}
+
+\textbf{The failure mode generalizes.} StateDrop's read-window heuristic assumes that an
+agent forwarding state into a prompt also \texttt{state\_read}s it; when that assumption
+is violated, StateDrop drops content the model still uses. On \texttt{research\_planner}
+the StateDrop-only configuration degrades accuracy by $-$7\,pp (McNemar $p$=0.065,
+$n$=100). To test whether this is fixture-specific, we built a second agent in a
+different domain: \texttt{analyst\_qa}, a SQuAD reading-comprehension pipeline
+(extract\,$\rightarrow$\,classify\,$\rightarrow$\,answer) that forwards the extracted
+context into the answer step without re-reading it. StateDrop there degrades accuracy by
+$-$42.7\,pp (49.3\% vs.\ 92.7\% baseline, McNemar $p<10^{-10}$, 95\% CI $[-50.7,-34.7]$,
+$n$=150), while the StateDrop-off control is unchanged ($-$0.7\,pp, $p$=1.0). The
+degradation is severe precisely because SQuAD answers are fully context-dependent. The
+failure mode is a reproducible property of the read-window heuristic, not a quirk of one
+fixture.
+
+\textbf{An automatic, label-free accuracy guard.} Agentc shadow-samples a fraction of
+rewritten calls: it runs the unrewritten call alongside the optimized one, measures
+output divergence (1\,$-$\,Jaccard on output tokens) between them, and folds the
+divergence into a per-(call-site, rule) budget. When a rule's divergence exceeds its
+budget for five consecutive samples, the planner auto-disables it for that call site.
+The mechanism is rule-agnostic and requires no ground-truth labels.
+
+\textbf{The guard prevents catastrophic misfires.} Re-running \texttt{analyst\_qa} with
+the guard active, StateDrop is auto-disabled after roughly ten fires and accuracy
+recovers from 49.3\% to 91.3\% ($-$1.3\,pp, McNemar $p$=0.50): the guard converts a
+$-$42.7\,pp catastrophe into a non-significant delta, capping damage from 65 broken
+tasks to 2 (Table~\ref{tab:guard}).
+
+\textbf{The guard is conservative, by construction.} Because divergence is measured
+against the unrewritten output, the guard detects \textit{change}, not
+\textit{degradation}: it cannot distinguish a harmful drop from a beneficial one. On
+\texttt{research\_planner}, where ContextCompress is beneficial (removing distractors,
+$+$4\,pp, 37.7\% token savings), the guard disables it after 37 fires, cutting savings
+to 11.0\% ($-$1.0\,pp). The guard therefore provides a safety floor at a savings cost,
+governed by the divergence threshold. This is the fundamental limit of label-free
+runtime accuracy gating: it can bound degradation but cannot preserve every benign
+optimization.
+
+\begin{table}[t]
+\caption{The shadow-divergence accuracy guard auto-disables a rule after five
+consecutive over-budget divergence samples. It prevents catastrophic degradation
+(StateDrop on \texttt{analyst\_qa}) but conservatively suppresses benign
+output-altering savings (ContextCompress on \texttt{research\_planner}); the threshold
+tunes the safety/savings tradeoff.}
+\label{tab:guard}
+\small
+\begin{tabular}{llrr}
+\toprule
+Agent / rule & Guard & Acc $\Delta$ & Token savings \\
+\midrule
+analyst\_qa / StateDrop      & off          & $-$42.7\,pp          & --- \\
+analyst\_qa / StateDrop      & \textbf{on}  & \textbf{$-$1.3\,pp (ns)} & --- \\
+\midrule
+research\_planner / CC       & off          & $+$4.0\,pp (ns)      & 37.7\% \\
+research\_planner / CC       & \textbf{on}  & $-$1.0\,pp (ns)      & \textbf{11.0\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{CacheHit Validation}
 \label{sec:eval-cachehit}
 
@@ -1645,11 +1714,18 @@ accuracy-neutral ($-$0.7\,pp, $p$=0.77), while ContextCompress alone significant
 degrades accuracy ($-$3.3\,pp, $p$=0.02) at higher savings; we report both as a
 savings/accuracy frontier rather than a single number, and treat the composed
 configuration as the deployable point (Section~\ref{sec:eval-realagent}).
-%% DROPIN [3a]: research_planner NOW has accuracy (n=150 warmup ablation). Revise this sentence:
-%%   move research_planner out of the 'no accuracy tracking' set, report its Acc delta + McNemar p,
-%%   and leave only debug_agent as cost/token-only.
-research\_planner and debug\_agent are evaluated without accuracy tracking (no
-per-task scoring fixture); their results are cost and token savings only.
+debug\_agent is evaluated without accuracy tracking (no per-task scoring fixture); its
+results are cost and token savings only. research\_planner is evaluated with EM accuracy
+($n$=100): ContextCompress is beneficial there ($+$4\,pp, 37.7\% savings) while StateDrop
+degrades accuracy ($-$7\,pp) by dropping forwarded-but-unread state, the failure mode the
+accuracy guard targets (Section~\ref{sec:eval-guard}).
+
+\textbf{The accuracy guard is conservative.} The shadow-divergence guard measures change
+from the unrewritten output, so it bounds degradation but cannot distinguish beneficial
+from harmful change. At strict thresholds it disables benign output-altering rules
+(ContextCompress on \texttt{research\_planner}, 37.7\%\,$\rightarrow$\,11.0\%). The
+divergence threshold tunes the safety/savings tradeoff; label-free runtime gating cannot
+preserve every benign optimization.
 
 \textbf{ContextCompress requires multi-message prompt structure.} Providers or agents
 that concatenate context into a single message, as the Anthropic API convention does

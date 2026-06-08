@@ -183,6 +183,17 @@ impl Optimizer {
         &self.budget
     }
 
+    /// Per-rule tolerated divergence, looked up by rule name. The FFI
+    /// `optimize_record_divergence` path uses this to gate a shadow sample
+    /// against the firing rule's own budget. Returns `None` for an unknown
+    /// rule name so the caller can fall back to a conservative default.
+    pub fn accuracy_budget_for(&self, rule_name: &str) -> Option<f32> {
+        self.rules
+            .iter()
+            .find(|r| r.name() == rule_name)
+            .map(|r| r.accuracy_budget())
+    }
+
     /// Add a rule post-construction (primarily for tests that want to
     /// inject a mock rule into an otherwise stock optimizer).
     pub fn push_rule(&mut self, rule: Box<dyn RewriteRule>) {

@@ -101,6 +101,21 @@ def observe_outcome(plan: Plan, outcome: dict[str, Any]) -> None:
         log.debug("observe_outcome: native call raised; dropping", exc_info=True)
 
 
+def record_divergence(call_site_id: str, rule: str, divergence: float) -> None:
+    """Fold one shadow-mode divergence sample into the Rust accuracy budget.
+
+    Called from the dispatch layer on sampled rewritten calls. Fail-open:
+    a native hiccup must never surface to the user, whose call already
+    returned.
+    """
+    if not call_site_id or not rule:
+        return
+    try:
+        _native.optimize_record_divergence(call_site_id, rule, float(divergence))
+    except BaseException:
+        log.debug("record_divergence: native call raised; dropping", exc_info=True)
+
+
 def _plan_from_dict(data: dict[str, Any], raw_json: str) -> Plan:
     kind = data.get("kind", "pass_through")
     if kind == "pass_through":

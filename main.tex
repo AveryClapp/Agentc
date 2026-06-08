@@ -119,8 +119,11 @@ signal when cost measurements alone are ambiguous.
 This paper makes three contributions:
 
 \begin{itemize}
-\item \textbf{A JIT optimization runtime} with nine rule families, three empirically
-validated and four characterized in composition experiments, featuring a two-stage
+\item \textbf{A JIT optimization runtime} comprising nine rewrite rules, of which
+three are validated in isolation (ContextCompress, ModelDowngrade, StateDrop) and two
+in composition experiments, with the remaining four implemented but not benchmarked
+end to end; we claim empirical savings only for the three rules validated in isolation.
+It features a two-stage
 applicability/proposal rule design, an IDF-weighted online attention proxy for
 extractive context compression, and a CompositionPlanner grounded in cost-driver
 orthogonality that combines compatible rules on the same call, validated near-additive
@@ -511,7 +514,11 @@ trace). In this context, \texttt{propose()} removes messages of type
 \texttt{DepSource::State\{key\}} where \texttt{key} is not found in
 \texttt{window\_state\_reads}, subject to a 50\% retention floor and system message
 preservation. In iterative refinement workloads, earlier outputs accumulate as state
-but are not re-consumed in later steps, making them safe to drop.
+but are not re-consumed in later steps, making them safe to drop. Unlike ContextCompress
+and ModelDowngrade, which require only \texttt{agentc.init()}, StateDrop depends on
+\texttt{agentc.state\_write}/\texttt{state\_read} annotations to populate these fields;
+removing this instrumentation requirement (StateReadWindowPropagation) is future work
+(Section~\ref{sec:futurework}).
 
 StateDrop's correctness rests on a runtime read-window model, not sound program
 slicing. A \texttt{State}-tagged message with key $k$ is removable iff $k$ is absent

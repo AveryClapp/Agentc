@@ -1136,7 +1136,9 @@ messages are identifiable at message granularity as low-attention units. The sec
 a natural Wikipedia prose workload ($n$=39): each task contains 18 paragraphs from the
 same Wikipedia article, all topically related to the subject, with no injected
 distractors. LLMLingua-2 uses the \texttt{xlm-roberta-large} compression model
-(300\,MB); Agentc uses its 28\,MB IDF proxy with zero auxiliary inference. All
+(300\,MB) run on CPU (no CUDA device was available in our setup); GPU inference would
+reduce its absolute overhead but remains orders of magnitude above a dependency-free
+IDF pass. Agentc uses its 28\,MB IDF proxy with zero auxiliary inference. All
 McNemar tests use the exact binomial formulation.
 
 \textbf{Results: distractor fixture.} Table~\ref{tab:llmlingua-distractor} shows

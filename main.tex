@@ -171,10 +171,11 @@ and their fixes are detailed in Section~\ref{sec:methodology}.
 calls, measures output divergence against the unrewritten call, and auto-disables a
 rule once it drifts beyond budget. It converts a catastrophic StateDrop misfire
 ($-$42.7\,pp on an unseen agent) into a non-significant delta ($-$1.3\,pp) with no
-ground-truth labels. We also characterize its limit: because divergence measures change
-rather than degradation, it conservatively suppresses benign output-altering savings
-(a tunable safety/savings tradeoff), which is the fundamental ceiling of label-free
-runtime gating (Section~\ref{sec:eval-guard}).
+ground-truth labels, while \textit{preserving} benign answer-preserving compression
+(ContextCompress on long-context QA stays enabled at 37.6\% savings under the guard).
+We also characterize its ceiling: a lexical divergence signal conservatively suppresses
+output-\textit{changing}-but-benign rules, the fundamental limit of label-free runtime
+gating (Section~\ref{sec:eval-guard}).
 \end{itemize}
 
 \section{Background}
@@ -1474,33 +1475,47 @@ recovers from 49.3\% to 91.3\% ($-$1.3\,pp, McNemar $p$=0.50): the guard convert
 $-$42.7\,pp catastrophe into a non-significant delta, capping damage from 65 broken
 tasks to 2 (Table~\ref{tab:guard}).
 
-\textbf{The guard is conservative, by construction.} Because divergence is measured
-against the unrewritten output, the guard detects \textit{change}, not
-\textit{degradation}: it cannot distinguish a harmful drop from a beneficial one. On
-\texttt{research\_planner}, where ContextCompress is beneficial (removing distractors,
-$+$4\,pp, 37.7\% token savings), the guard disables it after 37 fires, cutting savings
-to 11.0\% ($-$1.0\,pp). The guard therefore provides a safety floor at a savings cost,
-governed by the divergence threshold. This is the fundamental limit of label-free
-runtime accuracy gating: it can bound degradation but cannot preserve every benign
-optimization.
+\textbf{The guard is divergence-selective, and preserves stable savings.} Because the
+guard keys on output divergence, it keeps a rule whose optimized output agrees with the
+unrewritten output and disables one whose output drifts. ContextCompress on
+\texttt{long\_context\_qa} is the agreement case: it removes distractor paragraphs while
+preserving the answer-bearing supporting context, so the compressed and original answers
+match. With the guard active, ContextCompress is never disabled (fires 289 of 300 calls),
+preserving 37.6\% input-token savings at no accuracy cost ($+$0.7\,pp, McNemar $p$=0.83,
+95\% CI $[-2.3,+3.7]$, $n$=300). The guard therefore does not simply switch the optimizer
+off; it leaves benign, answer-preserving compression intact (Table~\ref{tab:guard}).
+
+\textbf{Its limit is lexical, not semantic.} Divergence is measured against the
+unrewritten output, so the guard detects \textit{change}, not \textit{degradation}, using
+a lexical (1\,$-$\,Jaccard) signal. When a rule changes the answer text without making it
+worse, the guard cannot tell. On \texttt{research\_planner}, where ContextCompress is
+beneficial but \textit{output-changing} ($+$4\,pp, 37.7\% savings), the guard disables it
+after 37 fires, cutting savings to 11.0\% ($-$1.0\,pp). This is the fundamental ceiling of
+label-free runtime gating: it bounds degradation and preserves stable savings, but a
+lexical divergence signal conservatively suppresses output-altering-but-benign rules; a
+semantic divergence meter would tighten this. The divergence threshold tunes the
+safety/savings tradeoff.
 
 \begin{table}[t]
-\caption{The shadow-divergence accuracy guard auto-disables a rule after five
-consecutive over-budget divergence samples. It prevents catastrophic degradation
-(StateDrop on \texttt{analyst\_qa}) but conservatively suppresses benign
-output-altering savings (ContextCompress on \texttt{research\_planner}); the threshold
-tunes the safety/savings tradeoff.}
+\caption{The shadow-divergence accuracy guard is divergence-selective: it keeps a rule
+whose output agrees with the unrewritten reference (ContextCompress on
+\texttt{long\_context\_qa}) and disables one whose output drifts, whether catastrophically
+(StateDrop on \texttt{analyst\_qa}) or benignly but lexically (ContextCompress on
+\texttt{research\_planner}). All accuracy deltas with the guard on are not significant.}
 \label{tab:guard}
 \small
 \begin{tabular}{llrr}
 \toprule
 Agent / rule & Guard & Acc $\Delta$ & Token savings \\
 \midrule
+long\_context\_qa / CC       & off          & $+$0.3\,pp (ns)      & 34.0\% \\
+long\_context\_qa / CC       & \textbf{on}  & \textbf{$+$0.7\,pp (ns)} & \textbf{37.6\% (kept)} \\
+\midrule
 analyst\_qa / StateDrop      & off          & $-$42.7\,pp          & --- \\
-analyst\_qa / StateDrop      & \textbf{on}  & \textbf{$-$1.3\,pp (ns)} & --- \\
+analyst\_qa / StateDrop      & \textbf{on}  & \textbf{$-$1.3\,pp (ns)} & disabled \\
 \midrule
 research\_planner / CC       & off          & $+$4.0\,pp (ns)      & 37.7\% \\
-research\_planner / CC       & \textbf{on}  & $-$1.0\,pp (ns)      & \textbf{11.0\%} \\
+research\_planner / CC       & \textbf{on}  & $-$1.0\,pp (ns)      & 11.0\% (disabled) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1720,12 +1735,15 @@ results are cost and token savings only. research\_planner is evaluated with EM 
 degrades accuracy ($-$7\,pp) by dropping forwarded-but-unread state, the failure mode the
 accuracy guard targets (Section~\ref{sec:eval-guard}).
 
-\textbf{The accuracy guard is conservative.} The shadow-divergence guard measures change
-from the unrewritten output, so it bounds degradation but cannot distinguish beneficial
-from harmful change. At strict thresholds it disables benign output-altering rules
-(ContextCompress on \texttt{research\_planner}, 37.7\%\,$\rightarrow$\,11.0\%). The
-divergence threshold tunes the safety/savings tradeoff; label-free runtime gating cannot
-preserve every benign optimization.
+\textbf{The accuracy guard uses a lexical divergence signal.} The shadow-divergence guard
+keys on change from the unrewritten output, measured lexically (1\,$-$\,Jaccard). It
+preserves stable answer-preserving rules (ContextCompress on \texttt{long\_context\_qa}
+stays enabled, 37.6\% savings) and bounds catastrophic degradation (StateDrop), but it
+cannot tell a benign answer-text change from a harmful one, so it conservatively disables
+output-\textit{changing}-but-benign rules (ContextCompress on \texttt{research\_planner},
+37.7\%\,$\rightarrow$\,11.0\%). A semantic divergence meter would tighten this; the
+threshold tunes the safety/savings tradeoff. Label-free runtime gating cannot preserve
+every benign optimization.
 
 \textbf{ContextCompress requires multi-message prompt structure.} Providers or agents
 that concatenate context into a single message, as the Anthropic API convention does

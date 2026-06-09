@@ -134,11 +134,14 @@ def _reset_between_phases(opt_dir: Path) -> None:
 
 
 def _guard_disables(opt_dir: Path) -> tuple[int, str, str]:
-    """Query <opt_dir>/cost_model.db for auto-disable events since last call.
+    """Query <opt_dir>/cost_model.db for shadow-guard auto-disable events
+    since last call.
 
     `agentc record --storage-path opt_dir` points AGENTC_STORAGE_PATH at
     opt_dir, so the optimizer's cost_model.db (and its optimizer_disabled
-    table) lives there, not under ~/.agentc.
+    table) lives there, not under ~/.agentc. Only reason='shadow_divergence'
+    rows are counted -- the 'ablation' wildcard rows seeded by _disable()
+    for this config's rules-off list are pre-existing and not guard events.
 
     Returns (count, pipe-separated rules, pipe-separated call_sites).
     The table uses (call_site_id, rule) as PK so each row is one disabled slot.
@@ -149,7 +152,7 @@ def _guard_disables(opt_dir: Path) -> tuple[int, str, str]:
     try:
         conn = sqlite3.connect(str(db))
         rows = conn.execute(
-            "SELECT rule, call_site_id FROM optimizer_disabled"
+            "SELECT rule, call_site_id FROM optimizer_disabled WHERE reason = 'shadow_divergence'"
         ).fetchall()
         conn.close()
     except Exception:
@@ -162,14 +165,17 @@ def _guard_disables(opt_dir: Path) -> tuple[int, str, str]:
 
 
 def _clear_guard_disables(opt_dir: Path) -> None:
-    """Delete all rows from <opt_dir>/cost_model.db's optimizer_disabled
-    table so we start fresh per config (see _guard_disables for path)."""
+    """Delete shadow-guard auto-disable rows from <opt_dir>/cost_model.db's
+    optimizer_disabled table so we start fresh per config (see
+    _guard_disables for path). Only rows with reason='shadow_divergence'
+    are cleared -- the 'ablation' wildcard rows written by _disable() for
+    this config's rules-off list must survive."""
     db = opt_dir / "cost_model.db"
     if not db.is_file():
         return
     try:
         conn = sqlite3.connect(str(db))
-        conn.execute("DELETE FROM optimizer_disabled")
+        conn.execute("DELETE FROM optimizer_disabled WHERE reason = 'shadow_divergence'")
         conn.commit()
         conn.close()
     except Exception:

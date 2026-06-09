@@ -11,8 +11,9 @@
 //! 6. If plan evaluation's wall clock exceeds `max_overhead_ms`, the
 //!    overhead kill switch returns [`Plan::PassThrough`].
 //!
-//! Rules never compose in a single plan (see Design Decisions §
-//! "First-match wins, no rule composition").
+//! With `AGENTC_COMPOSE=1` (default), the V2 `CompositionPlanner` (see
+//! `composition.rs`) may combine orthogonal rules into a single
+//! [`Plan::Composed`]; with `AGENTC_COMPOSE=0`, V1 first-match-wins applies.
 
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};

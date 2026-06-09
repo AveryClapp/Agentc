@@ -23,6 +23,19 @@
 
 \begin{document}
 
+%% ============================================================
+%% DROPIN-INDEX (MLSys revision) -- delete before submission.
+%% Pending values to drop in once experiments finish; search '%% DROPIN':
+%%  [3a] DONE: research_planner per-agent result applied (CC-only +4pp/37.7%; SD -7pp harmful)
+%%       -> tab:summary row + Limitations + guard section (sec:eval-guard).
+%%  [GUARD] DONE: shadow-divergence accuracy guard built + validated (Path A) -> sec:eval-guard,
+%%       contribution bullet 4, limitation. analyst SD -42.7->-1.3 (guard on); CC 37.7->11 (conservative).
+%%  [3b] DONE: autogen n=300 clean shared-baseline (CC-only 23.5%/-1.3pp/p=0.29 ns; composed 14.0%/-1.0pp/p=0.55 ns) -- both neutral, no safety frontier
+%%       -> tab:summary (2 rows), Sec eval-realagent rewrite, abstract/intro/conclusion qualified.
+%%  [T4] DONE: throughput-under-concurrency figure wired in (fig:throughput), real n=50 data.
+%%  [T2] naive-baseline attribution (random/recency/bm25 vs IDF) -- NOT YET RUN
+%% ============================================================
+
 \title{Agentc: Just-in-Time Optimization for Multi-Step LLM Agent Workloads}
 
 \author{Avery Clapp}
@@ -42,8 +55,11 @@ regressions. Across seven workloads spanning purpose-built benchmarks, three rea
 production agents, and one unseen third-party agent instrumented with a single
 \texttt{agentc.init()} call, Agentc reduces input-token cost by up to 34\% on
 long-context workloads, with rule-specific savings on routing and state-accumulation
-workloads; all real-agent accuracy deltas are not statistically significant across
-three model providers (OpenAI, Anthropic, open-source Llama-3.3-70B). On
+workloads; real-agent accuracy deltas are not statistically significant across three
+model providers (OpenAI, Anthropic, open-source Llama-3.3-70B), and an automatic,
+label-free accuracy guard catches the rare rule that misfires, converting a $-$42.7\,pp
+StateDrop catastrophe into a non-significant delta while keeping beneficial compression
+enabled. On
 HotpotQA-distractor at $n$=100, Agentc improves accuracy from 68\% to 100\% (McNemar
 exact $p=4.66\times10^{-10}$, BF=0) while LLMLingua-2 degrades accuracy to 53\%
 ($p=0.0013$), both achieving 53\% token reduction, at sub-millisecond versus
@@ -106,7 +122,9 @@ do not claim Agentc optimizes any agent, but rather any agent whose calls exhibi
 properties its rules target. On three real production agents and one unseen third-party
 agent instrumented with only \texttt{agentc.init()}, the runtime either produces
 measurable cost savings or correctly abstains, with no statistically significant
-accuracy changes in any configuration.
+accuracy change at either its aggressive single-rule or its composed operating point;
+the rare rule that does misfire catastrophically is caught at runtime by an automatic
+accuracy guard (Section~\ref{sec:eval-guard}).
 
 Measuring optimization savings correctly requires methodological care. LLM output
 tokens are stochastic: a single trial on StateDrop at temperature~1 produced a $-$7\%
@@ -119,8 +137,11 @@ signal when cost measurements alone are ambiguous.
 This paper makes three contributions:
 
 \begin{itemize}
-\item \textbf{A JIT optimization runtime} with nine rule families, three empirically
-validated and four characterized in composition experiments, featuring a two-stage
+\item \textbf{A JIT optimization runtime} comprising nine rewrite rules, of which
+three are validated in isolation (ContextCompress, ModelDowngrade, StateDrop) and two
+in composition experiments, with the remaining four implemented but not benchmarked
+end to end; we claim empirical savings only for the three rules validated in isolation.
+It features a two-stage
 applicability/proposal rule design, an IDF-weighted online attention proxy for
 extractive context compression, and a CompositionPlanner grounded in cost-driver
 orthogonality that combines compatible rules on the same call, validated near-additive
@@ -145,6 +166,17 @@ vectors. The methodology is grounded in three documented failure modes of naive
 optimizer-runtime evaluation: cross-configuration optimizer-state contamination,
 cold-start cost model effects, and cross-run baseline variance. These failure modes
 and their fixes are detailed in Section~\ref{sec:methodology}.
+
+\item \textbf{An automatic, label-free accuracy guard} that shadow-samples rewritten
+calls, measures output divergence against the unrewritten call, and auto-disables a
+rule once it drifts beyond budget. It converts a catastrophic StateDrop misfire
+($-$42.7\,pp on an unseen agent) into a non-significant delta ($-$0.7\,pp) with no
+ground-truth labels, while \textit{preserving} beneficial compression (ContextCompress
+stays enabled at 37.5--37.6\% savings on two agents under the guard). With a
+normalization-robust divergence metric the guard is \textit{selective}, keeping benign
+output-changing rules and still blocking catastrophic ones using a dependency-free signal;
+the remaining limit is lexically-invisible semantic disagreement
+(Section~\ref{sec:eval-guard}).
 \end{itemize}
 
 \section{Background}
@@ -511,7 +543,11 @@ trace). In this context, \texttt{propose()} removes messages of type
 \texttt{DepSource::State\{key\}} where \texttt{key} is not found in
 \texttt{window\_state\_reads}, subject to a 50\% retention floor and system message
 preservation. In iterative refinement workloads, earlier outputs accumulate as state
-but are not re-consumed in later steps, making them safe to drop.
+but are not re-consumed in later steps, making them safe to drop. Unlike ContextCompress
+and ModelDowngrade, which require only \texttt{agentc.init()}, StateDrop depends on
+\texttt{agentc.state\_write}/\texttt{state\_read} annotations to populate these fields;
+removing this instrumentation requirement (StateReadWindowPropagation) is future work
+(Section~\ref{sec:futurework}).
 
 StateDrop's correctness rests on a runtime read-window model, not sound program
 slicing. A \texttt{State}-tagged message with key $k$ is removable iff $k$ is absent
@@ -669,6 +705,29 @@ HotpotQA is composition, not source data. To reduce concern about regime-specifi
 behavior, each workload is additionally evaluated on a real-world corpus near the
 activation boundary, as described in Section~\ref{sec:eval-hotpot}.
 
+Three distinct HotpotQA-derived fixtures appear in this paper; Table~\ref{tab:fixtures}
+disambiguates them, since they differ in size and construction and back different
+claims. The 100\% distractor result (Section~\ref{sec:eval-llmlingua}) is on the
+constructed \texttt{hotpot\_distractor} fixture, while \texttt{hotpot\_real} is the
+abstention control near the activation boundary.
+
+\begin{table}[t]
+\caption{The three HotpotQA-derived fixtures are distinct in size, construction, and
+the claim each supports. They must not be conflated: the headline distractor result is
+on \texttt{hotpot\_distractor}; \texttt{hotpot\_real} is the abstention control.}
+\label{tab:fixtures}
+\footnotesize
+\begin{tabularx}{\columnwidth}{@{} l r l X @{}}
+\toprule
+Fixture & $n$ & Size & Role \\
+\midrule
+\texttt{long\_context\_qa}  & 300 & 13--18\,KB & CC isolation matrix (\S\ref{sec:eval-cc}); 20 expanded paragraphs \\
+\texttt{hotpot\_distractor} & 100 & $>$8\,KB   & LLMLingua-2 head-to-head (\S\ref{sec:eval-llmlingua}); 2 supporting + 8 distractors \\
+\texttt{hotpot\_real}       & 300 & 6.9\,KB    & Abstention boundary (\S\ref{sec:eval-hotpot}); unmodified split \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \subsection{Shared-Baseline Ablation}
 
 Each agent is executed once with optimization disabled to collect a baseline
@@ -747,7 +806,10 @@ the remainder of this section details each.
 \begin{table*}[t]
 \caption{Agentc across seven agent workloads spanning three distinct cost drivers,
 three real agents, one unseen cold agent, and three model providers.
-All real-agent accuracy deltas are not statistically significant.
+Real-agent accuracy deltas are not statistically significant at either the CC-only or
+the composed operating point; on autogen the aggressive CC-only point reaches higher
+savings, while composition trades savings (StateDrop preempts ContextCompress) without
+affecting accuracy (Section~\ref{sec:eval-realagent}).
 Purpose-built workloads validate rule isolation;
 real and unseen agents validate generalization. Rule specialization by workload class
 is visible in the dominant-rule column: long-context agents are CC-dominated;
@@ -762,8 +824,9 @@ long\_context\_qa   & purpose-built QA      & ContextCompress      & 33.9\% & 34
 gaia\_router        & purpose-built routing & ModelDowngrade       & 11.4\%$^\dagger$ &  0.0\% & $-$3.9\,pp (ns, $p$=0.18) & --- \\
 iterative\_refiner  & purpose-built state   & StateDrop            & $\sim$4--6\,pp (within-run)$^\ddagger$ & see \S\ref{sec:eval-sd} & $<$1\,pp SD-neutral & --- \\
 \midrule
-autogen\_bridge     & real agent (Llama\,3.3-70B)  & CC             & ---$^\S$ & 38.5\% & $-$3.0\,pp (ns, $p$=0.07) & 0.07 \\
-research\_planner   & real agent            & CC~+~StateDrop       & 25.8\% & 33.0\% & --- & --- \\
+autogen (CC-only)   & real agent (Llama\,3.3-70B)  & CC            & ---$^\S$ & 23.5\% & $-$1.3\,pp (ns, $p$=0.29) & 0.29 \\
+autogen (composed)  & real agent (Llama\,3.3-70B)  & CC~+~StateDrop & ---$^\S$ & 14.0\% & $-$1.0\,pp (ns, $p$=0.55) & 0.55 \\
+research\_planner (CC)  & real agent        & CC            & 41.7\% & 37.7\% & $+$4.0\,pp (ns) & 0.22 \\
 debug\_agent        & real agent            & StateDrop            &  8.3\% & 16.8\% & --- & --- \\
 \midrule
 support\_qa         & unseen cold agent     & correct abstain      & $\sim$0\% & $\sim$0\% & 0.0\,pp & 1.000 \\
@@ -771,7 +834,7 @@ support\_qa         & unseen cold agent     & correct abstain      & $\sim$0\% &
 \end{tabularx}
 \footnotesize{$\dagger$MD-only cost savings: 11.23\,mUSD / 98.91\,mUSD baseline = 11.4\%. All input-tok deltas $\approx$0 (ModelPrice driver).}\\
 \footnotesize{$\ddagger$Within-run SD contribution: SD-only $\sim$6.1\% vs.\ SD-off $\sim$2.1\%; other configs show small ns deltas attributable to non-SD rules active in those configs.}\\
-\footnotesize{$\S$Together AI cost model not in Agentc pricing table; input-token savings (38.5\%) shown in Tok column.}
+\footnotesize{$\S$Together AI cost model not in Agentc pricing table; input-token savings shown in Tok column.}
 \end{table*}
 
 Optimizer overhead, measured across 1{,}818 plan decisions captured in the
@@ -786,7 +849,9 @@ three orders of magnitude below typical LLM round-trip latency. The flat overhea
 profile under concurrency is attributable to the execution-optimizer decoupling
 described in Section~\ref{sec:decoupling}: because the optimizer holds no shared
 mutable state across concurrent calls and never manages threads, it does not become
-a serialization point under parallel workloads.
+a serialization point under parallel workloads. Figure~\ref{fig:throughput} confirms
+this end to end: across 1/8/32$\times$ concurrency, optimized throughput scales with
+baseline and optimized p50 latency stays at or below baseline.
 
 \begin{figure}[t]
 \centering
@@ -799,6 +864,21 @@ overhead remains three orders of magnitude below typical LLM
 round-trip latency.}
 \label{fig:overhead}
 \end{figure}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig8_throughput.pdf}
+\caption{End-to-end behavior under concurrent load (\texttt{long\_context\_qa},
+\texttt{gpt-4o-mini}, $n$=50 per condition, real API calls). \textit{Left}: per-task
+latency CDFs. \textit{Center}: throughput (QPS) and token savings versus concurrency.
+\textit{Right}: optimized/baseline p50 and p99 latency ratio. Throughput scales with
+concurrency for both baseline and optimized (optimized QPS 1.35$\rightarrow$4.55
+$\rightarrow$8.92 across 1/8/32$\times$), and optimized p50 latency is at or below
+baseline at every level (ratio $\leq$1.0), confirming the optimizer does not become a
+serialization point under parallel load (Section~\ref{sec:decoupling}). Token savings
+persist under concurrency. The 8$\times$ QPS dip is single-run API variance at $n$=50.}
+\label{fig:throughput}
+\end{figure*}
 
 \begin{figure}[t]
 \centering
@@ -838,6 +918,16 @@ accuracy change. CacheHit-off (36.9\%) and StateDrop-off (36.8\%) exceed all-on
 (33.9\%) because the removed rule occasionally serves or rewrites a call before CC
 evaluates it, slightly reducing CC's aggregate fire opportunity; the 0\% savings on
 ContextCompress-off remains the definitive precondition check.
+
+\textbf{Powered accuracy check ($n$=500).} To power the central neutrality claim beyond
+$n$=300, we re-run ContextCompress against a shared baseline on an $n$=500 fixture (every
+HotpotQA-distractor task expanded above the 8\,KB gate; CC fires 489 of 500). At this
+sample size ContextCompress does not merely avoid degradation: it marginally improves
+accuracy, $+$2.8\,pp (McNemar exact $p$=0.044, 95\% bootstrap CI $[+0.2,+5.2]$, 14 tasks
+broken vs.\ 28 fixed) at 38.2\% input-token savings. The improvement is small and only
+marginally significant, but it is directionally consistent with the oracle ceiling
+(Section~\ref{sec:eval-oracle}): removing distractor context is mildly beneficial, so
+ContextCompress trades no accuracy for its savings on this workload.
 
 \begin{table}[t]
 \caption{ContextCompress isolation matrix ($n$=300, \texttt{long\_context\_qa},
@@ -1129,7 +1219,9 @@ messages are identifiable at message granularity as low-attention units. The sec
 a natural Wikipedia prose workload ($n$=39): each task contains 18 paragraphs from the
 same Wikipedia article, all topically related to the subject, with no injected
 distractors. LLMLingua-2 uses the \texttt{xlm-roberta-large} compression model
-(300\,MB); Agentc uses its 28\,MB IDF proxy with zero auxiliary inference. All
+(300\,MB) run on CPU (no CUDA device was available in our setup); GPU inference would
+reduce its absolute overhead but remains orders of magnitude above a dependency-free
+IDF pass. Agentc uses its 28\,MB IDF proxy with zero auxiliary inference. All
 McNemar tests use the exact binomial formulation.
 
 \textbf{Results: distractor fixture.} Table~\ref{tab:llmlingua-distractor} shows
@@ -1343,25 +1435,114 @@ that the authors use but did not design for this paper. The evaluation uses
 Llama-3.3-70B-Instruct-Turbo via Together AI to confirm cross-provider behavior on
 a multi-step agent with no fixture engineering.
 
-\textbf{Setup.} $n$=200 tasks, \texttt{meta-llama/Llama-3.3-70B-Instruct-Turbo} via
-Together AI. The agent makes two LLM calls per task (400 total), accumulating tool
-outputs and prior LLM outputs across turns. The shared-baseline ablation runs 11
-configurations under per-configuration isolated optimizer state and warmup ($W$=30).
-Together AI pricing is not in Agentc's cost model; cost savings are not reported.
-Input-token savings are deterministic and remain the primary attribution signal.
+\textbf{Setup.} $n$=300 tasks, \texttt{meta-llama/Llama-3.3-70B-Instruct-Turbo} via
+Together AI. The agent makes two LLM calls per task (600 total), accumulating tool
+outputs and prior LLM outputs across turns; it writes a tool result to state that the
+answer step never re-reads, so both ContextCompress and StateDrop activate. The
+shared-baseline ablation uses per-configuration isolated optimizer state and warmup
+($W$=30). Together AI pricing is not in Agentc's cost model; input-token savings are
+the deterministic attribution signal. ModelDowngrade is inapplicable: no downgrade
+route is configured for Llama-3.3-70B, so its \texttt{applies()} precondition blocks
+the rule on every call (0 fires).
 
-\textbf{Results.} ContextCompress fires on 396 of 400 calls (99\%) in the all-on
-configuration, producing 38.48\% input-token savings. When CC is disabled
-(ContextCompress-off), StateDrop fires on 197 of 400 calls, producing 2.91\%
-input-token savings; this confirms that both rules activate on this multi-step agent
-structure even on an unseen provider. ModelDowngrade does not fire on any
-configuration: no downgrade route is configured for Llama-3.3-70B, so the
-\texttt{applies()} precondition correctly blocks the rule on every call (0 of 400
-fires across all 11 plan\_audit databases). Accuracy: all-on 75.0\% vs.\ baseline
-78.0\% (CacheHit-only), $-$3.0\,pp, McNemar $p$=0.07 (BF=7/FB=1, ns). All other
-configuration accuracy deltas are not statistically significant. Input-token savings
-within 1\,pp of the OpenAI baseline (38.5\% vs.\ 34.0\% for CC-focused configs),
-confirming structural invariance across providers when preconditions are met.
+\textbf{A savings frontier, accuracy-neutral throughout.} On a clean shared baseline
+(229 of 300 correct, 76.3\%), both operating points leave accuracy statistically
+unchanged (Table~\ref{tab:summary}). Run with ContextCompress alone, CC fires on 350 of
+600 calls and reaches 23.5\% per-call input-token savings at 75.0\% accuracy, $-$1.3\,pp,
+McNemar exact $p$=0.29 (BF=6, FB=2): not a significant change. In the all-on
+configuration the CompositionPlanner runs StateDrop first (260 of 600 calls), removing
+stale state-tagged messages and shrinking many prompts below ContextCompress's activation
+gate, so CC fires on only 184 calls; accuracy is again neutral at 75.3\%, $-$1.0\,pp,
+McNemar $p$=0.55 (BF=7, FB=4), at 14.0\% input-token savings. The frontier here is
+therefore between two safe points: the aggressive single-rule point is both accuracy-neutral
+and higher-saving, while composition trades roughly a third of the peak savings because
+StateDrop preempts the calls ContextCompress would have rewritten. On this agent the
+accuracy headroom that motivated composition elsewhere is absent; the safety mechanism that
+matters when an aggressive rule \textit{does} misfire is the accuracy guard
+(Section~\ref{sec:eval-guard}), not rule composition.
+
+\subsection{StateDrop Generalization and the Automatic Accuracy Guard}
+\label{sec:eval-guard}
+
+\textbf{The failure mode generalizes.} StateDrop's read-window heuristic assumes that an
+agent forwarding state into a prompt also \texttt{state\_read}s it; when that assumption
+is violated, StateDrop drops content the model still uses. On \texttt{research\_planner}
+the StateDrop-only configuration degrades accuracy by $-$7\,pp (McNemar $p$=0.065,
+$n$=100). To test whether this is fixture-specific, we built a second agent in a
+different domain: \texttt{analyst\_qa}, a SQuAD reading-comprehension pipeline
+(extract\,$\rightarrow$\,classify\,$\rightarrow$\,answer) that forwards the extracted
+context into the answer step without re-reading it. StateDrop there degrades accuracy by
+$-$42.7\,pp (49.3\% vs.\ 92.7\% baseline, McNemar $p<10^{-10}$, 95\% CI $[-50.7,-34.7]$,
+$n$=150), while the StateDrop-off control is unchanged ($-$0.7\,pp, $p$=1.0). The
+degradation is severe precisely because SQuAD answers are fully context-dependent. The
+failure mode is a reproducible property of the read-window heuristic, not a quirk of one
+fixture.
+
+\textbf{An automatic, label-free accuracy guard.} Agentc shadow-samples a fraction of
+rewritten calls: it runs the unrewritten call alongside the optimized one, measures
+output divergence (1\,$-$\,Jaccard on output tokens) between them, and folds the
+divergence into a per-(call-site, rule) budget. When a rule's divergence exceeds its
+budget for five consecutive samples, the planner auto-disables it for that call site.
+The mechanism is rule-agnostic and requires no ground-truth labels.
+
+\textbf{The guard prevents catastrophic misfires.} Re-running \texttt{analyst\_qa} with
+the guard active, StateDrop is auto-disabled after roughly ten fires and accuracy
+recovers from 49.3\% to 91.3\% ($-$1.3\,pp, McNemar $p$=0.50): the guard converts a
+$-$42.7\,pp catastrophe into a non-significant delta, capping damage from 65 broken
+tasks to 2 (Table~\ref{tab:guard}).
+
+\textbf{The guard is divergence-selective, and preserves stable savings.} Because the
+guard keys on output divergence, it keeps a rule whose optimized output agrees with the
+unrewritten output and disables one whose output drifts. ContextCompress on
+\texttt{long\_context\_qa} is the agreement case: it removes distractor paragraphs while
+preserving the answer-bearing supporting context, so the compressed and original answers
+match. With the guard active, ContextCompress is never disabled (fires 289 of 300 calls),
+preserving 37.6\% input-token savings at no accuracy cost ($+$0.7\,pp, McNemar $p$=0.83,
+95\% CI $[-2.3,+3.7]$, $n$=300). The guard therefore does not simply switch the optimizer
+off; it leaves benign, answer-preserving compression intact (Table~\ref{tab:guard}).
+
+\textbf{The divergence metric governs selectivity.} The guard's behavior on benign
+output-\textit{changing} rules depends entirely on how divergence is measured. A raw
+lexical signal (1\,$-$\,Jaccard on output tokens) detects \textit{change}, not
+\textit{degradation}: on \texttt{research\_planner}, where ContextCompress is beneficial
+but rewrites the answer text, the lexical guard disables it after 37 fires, cutting savings
+from 37.7\% to 11.0\%. Replacing the signal with a normalization-robust metric, divergence
+as token \textit{containment} over article- and punctuation-normalized output, removes this
+conservatism without any auxiliary model: a benign elaboration (``Kansas Song'' vs.\
+``Kansas Song (We're From Kansas)'') reads as agreement while a wrong answer still diverges
+(0.7--1.0). Under the normalized metric the guard \textit{keeps} ContextCompress on
+\texttt{research\_planner} (94 fires, 37.5\% savings preserved, accuracy non-degrading) and
+\textit{still} auto-disables catastrophic StateDrop on \texttt{analyst\_qa} (recovering to
+$-$0.7\,pp). The guard is therefore \textbf{selective}: it preserves beneficial compression
+and blocks catastrophic misfires using a dependency-free signal (Table~\ref{tab:guard}).
+The remaining ceiling is genuinely semantic disagreement that is lexically invisible; a
+learned divergence meter would tighten it further, at the cost of the dependency-free
+property.
+
+\begin{table}[t]
+\caption{The shadow-divergence accuracy guard is \textbf{selective}, and its selectivity
+is set by the divergence metric. It keeps stable benign compression (CC on
+\texttt{long\_context\_qa}) and catches catastrophic misfires (StateDrop on
+\texttt{analyst\_qa}) under either metric. For benign \textit{output-changing} compression
+(CC on \texttt{research\_planner}) the lexical metric is over-conservative (disables,
+11.0\%) while the normalized containment metric preserves it (37.5\%) and still catches
+StateDrop. All guard-on accuracy deltas are non-degrading.}
+\label{tab:guard}
+\small
+\begin{tabular}{lllr}
+\toprule
+Agent / rule & Guard & Acc $\Delta$ & Token savings \\
+\midrule
+long\_context\_qa / CC  & on            & $+$0.7\,pp (ns) & 37.6\% (kept) \\
+analyst\_qa / StateDrop & off           & $-$42.7\,pp     & --- \\
+analyst\_qa / StateDrop & on (lexical)  & $-$1.3\,pp (ns) & disabled \\
+analyst\_qa / StateDrop & on (norm.)    & $-$0.7\,pp (ns) & disabled \\
+research\_planner / CC  & off           & $+$4.0\,pp (ns) & 37.7\% \\
+research\_planner / CC  & on (lexical)  & $-$1.0\,pp (ns) & 11.0\% (disabled) \\
+research\_planner / CC  & \textbf{on (norm.)} & \textbf{$+$9.0\,pp} & \textbf{37.5\% (kept)} \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{CacheHit Validation}
 \label{sec:eval-cachehit}
@@ -1566,12 +1747,27 @@ CC abstains with BF=0, FB=0, is the control and must always be reported alongsid
 Reporting the distractor result without the abstention result would misrepresent the
 system's scope.
 
-\textbf{Real-agent sample sizes.} autogen\_bridge is evaluated at $n$=200 on
-Llama-3.3-70B under the warmup-corrected harness. The accuracy delta (all-on:
-$-$3.0\,pp, $p$=0.07) is not statistically significant; the evaluation demonstrates
-rule activation and input-token savings, not a powered accuracy-effect measurement.
-research\_planner and debug\_agent are evaluated without accuracy tracking (no
-per-task scoring fixture); their results are cost and token savings only.
+\textbf{Real-agent operating points.} autogen\_bridge is evaluated at $n$=300 on
+Llama-3.3-70B under the warmup-corrected harness with a clean shared baseline. Both the
+CC-only ($-$1.3\,pp, $p$=0.29, 23.5\% savings) and the composed ($-$1.0\,pp, $p$=0.55,
+14.0\% savings) configurations are accuracy-neutral; the two points form a savings
+frontier, not a savings/accuracy tradeoff, with composition trading peak savings because
+StateDrop preempts ContextCompress (Section~\ref{sec:eval-realagent}).
+debug\_agent is evaluated without accuracy tracking (no per-task scoring fixture); its
+results are cost and token savings only. research\_planner is evaluated with EM accuracy
+($n$=100): ContextCompress is beneficial there ($+$4\,pp, 37.7\% savings) while StateDrop
+degrades accuracy ($-$7\,pp) by dropping forwarded-but-unread state, the failure mode the
+accuracy guard targets (Section~\ref{sec:eval-guard}).
+
+\textbf{The accuracy guard's selectivity is bounded by its divergence metric.} The
+shadow-divergence guard keys on change from the unrewritten output. A normalization-robust
+containment metric makes it selective, preserving benign output-changing compression
+(ContextCompress on \texttt{research\_planner}, 37.5\% savings retained) while still
+disabling catastrophic StateDrop, with no auxiliary model. Its remaining ceiling is
+genuine semantic disagreement that is lexically invisible (two correct answers with no
+token overlap would read as divergence); a learned divergence meter would close this at the
+cost of the dependency-free property. The threshold and metric tune the safety/savings
+tradeoff, and label-free gating still cannot certify accuracy without ground truth.
 
 \textbf{ContextCompress requires multi-message prompt structure.} Providers or agents
 that concatenate context into a single message, as the Anthropic API convention does
@@ -1669,7 +1865,9 @@ Across seven workloads spanning three cost drivers, three real multi-step agents
 (autogen\_bridge, research\_planner, debug\_agent), and one unseen third-party agent
 instrumented with a single \texttt{agentc.init()} call, the runtime produces
 measurable savings or correctly abstains, with no statistically significant accuracy
-changes across real-agent configurations. Input-token savings are within 1\,pp across
+change at either its aggressive single-rule or its composed operating point; the rare
+rule that misfires catastrophically is caught at runtime by an automatic, label-free
+accuracy guard (Section~\ref{sec:eval-guard}). Input-token savings are within 1\,pp across
 three model providers (OpenAI, Anthropic, open-source Llama-3.3-70B) when structural
 preconditions are met. A CompositionPlanner grounded in cost-driver orthogonality
 combines compatible rules to near-additive savings (95.2\% of ideal for orthogonal
@@ -1750,6 +1948,32 @@ Run oracle agent; query \texttt{traces.db} as above \\
 \texttt{traces.db} (\texttt{plan\_audit}) &
 Run 1: \texttt{python -m bench.cachehit\_\allowbreak eval --run 1 \&\& agentc shutdown};
 Run 2: \texttt{python -m bench.cachehit\_\allowbreak eval --run 2} \\
+
+\addlinespace
+\ref{tab:summary} (research\_planner) &
+\texttt{research\_\allowbreak planner\_\allowbreak warmup\_\allowbreak n150.csv} &
+\texttt{python -m bench.run\_\allowbreak research\_\allowbreak planner\_\allowbreak warmup} \\
+
+\addlinespace
+\ref{tab:summary} (autogen rows) &
+\texttt{autogen\_\allowbreak bridge\_\allowbreak warmup\_\allowbreak n300.csv} &
+\texttt{AB\_\allowbreak CONFIGS=...\ python -m bench.run\_\allowbreak autogen\_\allowbreak warmup\_\allowbreak n300} \\
+
+\addlinespace
+\ref{tab:guard} (SD generalization) &
+\texttt{analyst\_\allowbreak qa\_\allowbreak sd\_\allowbreak gen.csv} &
+\texttt{python -m bench.build\_\allowbreak squad\_\allowbreak fixture}; \texttt{python -m bench.run\_\allowbreak analyst\_\allowbreak sd\_\allowbreak generalization} \\
+
+\addlinespace
+\ref{tab:guard} (guard on/off) &
+\texttt{analyst\_\allowbreak qa\_\allowbreak sd\_\allowbreak gen.csv}, \texttt{lcqa\_\allowbreak cc\_\allowbreak guard.csv} &
+\texttt{AGENTC\_\allowbreak OPTIMIZE\_\allowbreak SHADOW=1.0 ... python -m bench.run\_\allowbreak guard\_\allowbreak eval} \\
+
+\addlinespace
+\ref{fig:throughput} &
+\texttt{concurrency\_\allowbreak bench\_\allowbreak summary.csv} &
+\texttt{python -m bench.run\_\allowbreak concurrency\_\allowbreak bench --concurrency 1 8 32};
+\texttt{python bench/paper\_\allowbreak figures/fig\_\allowbreak concurrency.py} \\
 
 \bottomrule
 \end{tabularx}

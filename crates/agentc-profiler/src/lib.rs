@@ -24,7 +24,7 @@ use agentc_optimizer::{
     cost_model::CostModel,
     ffi::{optimize_observe as rust_observe, optimize_plan as rust_plan, PASS_THROUGH_JSON},
     planner::{Optimizer, Plan},
-    Budget, Wired,
+    Budget, SampleOutcome, Wired,
 };
 
 /// Package version, exposed as `agentc._native.__version__`.
@@ -896,6 +896,56 @@ fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) {
     });
 }
 
+/// Fold one shadow-mode divergence sample for `(call_site_id, rule)` into
+/// the accuracy budget. The Python dispatch layer computes divergence
+/// between the optimized and unrewritten outputs on sampled calls and
+/// calls this; when a rule breaches its budget for `BREACH_STREAK`
+/// consecutive samples the budget auto-disables it (the planner's
+/// `is_disabled` gate then skips the rule on subsequent calls).
+///
+/// Threshold precedence: `AGENTC_SHADOW_DIVERGENCE_BUDGET` env override,
+/// else the firing rule's own `accuracy_budget()`, else a conservative
+/// 0.05. Never raises — the user-visible call has already returned.
+#[pyfunction]
+fn optimize_record_divergence(py: Python<'_>, call_site_id: &str, rule: &str, divergence: f64) {
+    py.allow_threads(|| {
+        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let state = optimizer_state();
+            let threshold = std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
+                .ok()
+                .and_then(|v| v.trim().parse::<f32>().ok())
+                .or_else(|| state.optimizer.accuracy_budget_for(rule))
+                .unwrap_or(0.05);
+            let now = now_us_i64();
+            let outcome = state.budget.record_sample(
+                call_site_id,
+                rule,
+                divergence as f32,
+                threshold,
+                now,
+            );
+            if let SampleOutcome::Disable { disabled_at_us, reenable_at_us } = outcome {
+                eprintln!(
+                    "[agentc] shadow guard auto-disabled rule={rule} site={call_site_id} \
+                     (divergence={divergence:.3} > budget={threshold:.3})"
+                );
+                if let Some(mu) = state.cost_db.as_ref() {
+                    if let Ok(conn) = mu.lock() {
+                        let _ = state.budget.persist_disable(
+                            &conn,
+                            call_site_id,
+                            rule,
+                            "shadow_divergence",
+                            disabled_at_us,
+                            reenable_at_us,
+                        );
+                    }
+                }
+            }
+        }));
+    });
+}
+
 /// Force-flush the cost model to `cost_model.db`. Called from Python at
 /// process shutdown so the final partial batch isn't lost. No-op when the
 /// optimizer wasn't successfully wired.
@@ -933,6 +983,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(canonicalize_parameters_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_plan, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_observe, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_record_divergence, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_flush, m)?)?;
     Ok(())
 }

@@ -913,6 +913,16 @@ accuracy change. CacheHit-off (36.9\%) and StateDrop-off (36.8\%) exceed all-on
 evaluates it, slightly reducing CC's aggregate fire opportunity; the 0\% savings on
 ContextCompress-off remains the definitive precondition check.
 
+\textbf{Powered accuracy check ($n$=500).} To power the central neutrality claim beyond
+$n$=300, we re-run ContextCompress against a shared baseline on an $n$=500 fixture (every
+HotpotQA-distractor task expanded above the 8\,KB gate; CC fires 489 of 500). At this
+sample size ContextCompress does not merely avoid degradation: it marginally improves
+accuracy, $+$2.8\,pp (McNemar exact $p$=0.044, 95\% bootstrap CI $[+0.2,+5.2]$, 14 tasks
+broken vs.\ 28 fixed) at 38.2\% input-token savings. The improvement is small and only
+marginally significant, but it is directionally consistent with the oracle ceiling
+(Section~\ref{sec:eval-oracle}): removing distractor context is mildly beneficial, so
+ContextCompress trades no accuracy for its savings on this workload.
+
 \begin{table}[t]
 \caption{ContextCompress isolation matrix ($n$=300, \texttt{long\_context\_qa},
 \texttt{gpt-4o-mini}, warmup-corrected). Top block: configurations where CC is

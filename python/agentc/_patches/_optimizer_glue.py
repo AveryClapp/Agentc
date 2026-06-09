@@ -510,8 +510,35 @@ def _response_output_text(response: Any) -> str:
     return ""
 
 
+_ARTICLES = {"a", "an", "the"}
+_PUNCT = str.maketrans({c: " " for c in ",.;:!?\"'`()[]{}<>-_/\\|"})
+
+
+def _normalize_tokens(s: str) -> set:
+    """Lowercase, strip punctuation, drop articles. Makes the divergence
+    signal invariant to formatting/article/case noise so benign rewrites
+    (e.g. 'Kansas Song' vs 'Kansas Song (We're From Kansas)') register as
+    agreement while genuinely different answers still diverge."""
+    toks = s.lower().translate(_PUNCT).split()
+    return {t for t in toks if t and t not in _ARTICLES}
+
+
 def _text_divergence(a: str, b: str) -> float:
-    """1 - Jaccard over whitespace tokens; mirrors the Rust ``text_divergence``."""
+    """1 - Jaccard over output tokens. ``AGENTC_SHADOW_DIVERGENCE_MODE``:
+    'lexical' (default, raw whitespace tokens, mirrors the Rust meter) or
+    'normalized' (article/punctuation/case-invariant) for a selective guard."""
+    import os
+    mode = os.environ.get("AGENTC_SHADOW_DIVERGENCE_MODE", "lexical").strip().lower()
+    if mode == "normalized":
+        sa, sb = _normalize_tokens(a), _normalize_tokens(b)
+        if not sa and not sb:
+            return 0.0
+        if not sa or not sb:
+            return 1.0
+        # Containment (overlap coefficient): agreement when one answer
+        # subsumes the other (e.g. a span vs the same span plus a gloss),
+        # so benign elaboration reads as 0 while a different answer diverges.
+        return 1.0 - (len(sa & sb) / min(len(sa), len(sb)))
     sa, sb = set(a.split()), set(b.split())
     if not sa and not sb:
         return 0.0

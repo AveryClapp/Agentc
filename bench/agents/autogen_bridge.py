@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import json
 import os
+import random
+import time
 
 import agentc
 
@@ -54,6 +56,34 @@ _FAKE_TOOL_JSON = json.dumps({
 
 def _model() -> str:
     return os.environ.get("BENCH_BASELINE_MODEL", "gpt-4o-mini-2024-07-18")
+
+
+# Transient-error resilience. Providers (esp. Together's 70B endpoint under
+# load) return 429/timeout/5xx intermittently; a single uncaught error here
+# would crash the whole phase mid-run and silently truncate the comparison.
+# Retry on ANY exception with exponential backoff + jitter. A successful call
+# records exactly one completion span, so retried attempts (which raise before
+# the SDK records usage) do not inflate the span count the runner asserts on.
+_MAX_ATTEMPTS = int(os.environ.get("BENCH_LLM_RETRIES", "8"))
+
+
+def _create_with_retry(client, **kwargs):
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            return client.chat.completions.create(**kwargs)
+        except Exception as exc:  # noqa: BLE001 - provider-agnostic transient handling
+            last_exc = exc
+            if attempt == _MAX_ATTEMPTS - 1:
+                break
+            sleep = min(2.0 ** attempt + random.random(), 30.0)
+            print(
+                f"  [retry] {type(exc).__name__} on attempt "
+                f"{attempt + 1}/{_MAX_ATTEMPTS}; sleeping {sleep:.1f}s",
+                flush=True,
+            )
+            time.sleep(sleep)
+    raise last_exc  # type: ignore[misc]
 
 
 def _doc_messages(task: SyntheticTask) -> list[dict[str, str]]:
@@ -82,8 +112,8 @@ def _run_one(task: SyntheticTask) -> str:
             {"role": "user", "content": f"Reason about: {task.prompt}"},
         ]
         if client:
-            r1 = client.chat.completions.create(
-                model=_model(), messages=messages_1, temperature=0
+            r1 = _create_with_retry(
+                client, model=_model(), messages=messages_1, temperature=0
             )
             _reasoning = r1.choices[0].message.content or ""
         else:
@@ -100,8 +130,8 @@ def _run_one(task: SyntheticTask) -> str:
             {"role": "user", "content": f"Question: {task.prompt}"},
         ]
         if client:
-            r2 = client.chat.completions.create(
-                model=_model(), messages=messages_2, temperature=0
+            r2 = _create_with_retry(
+                client, model=_model(), messages=messages_2, temperature=0
             )
             return r2.choices[0].message.content or ""
         else:

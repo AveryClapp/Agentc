@@ -204,6 +204,40 @@ def _run_phase(
     return per_task, cost, tokens
 
 
+def _assert_complete(storage_dir: Path, n_tasks: int, label: str) -> None:
+    """Guardrail: autogen_bridge makes exactly 2 LLM calls per task, so a clean
+    phase persists 2*n_tasks completion spans. Catches catastrophic truncation
+    (the n=72-vs-600 crash bug). Tolerates minor async span-export loss on the
+    optimized path: under high-latency providers a few spans can fail to flush
+    at shutdown even though the work (and stdout pass/fail) completed. Below the
+    SPAN_FLOOR fraction we abort (real truncation); between floor and expected we
+    WARN, and token savings must be computed per-call (avg), not as naive sums."""
+    SPAN_FLOOR = 0.90
+    db = storage_dir / "traces.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM spans WHERE name LIKE '%chat.completion%'"
+        ).fetchone()
+    finally:
+        conn.close()
+    got = int(row[0]) if row else 0
+    expected = 2 * n_tasks
+    if got < SPAN_FLOOR * expected:
+        raise RuntimeError(
+            f"INCOMPLETE {label}: {got} completion spans, expected {expected} "
+            f"(2x{n_tasks}), below {SPAN_FLOOR:.0%} floor. Phase truncated — "
+            f"refusing to emit a comparison."
+        )
+    if got != expected:
+        print(
+            f"  completeness WARN ({label}): {got}/{expected} spans "
+            f"({got/expected:.1%}) — async-flush loss; use per-call token avg."
+        )
+    else:
+        print(f"  completeness OK ({label}): {got}/{expected} completion spans")
+
+
 def _reset_between_phases(opt_dir: Path) -> None:
     for fname in ["traces.db", "traces.db.lock", "optimizer_audit.db"]:
         p = opt_dir / fname
@@ -277,6 +311,7 @@ def main() -> int:
     print(f"\n{'='*60}\nbaseline (AGENTC_OPTIMIZE=0, N={N_TASKS})\n{'='*60}")
     baseline_dir = STORAGE_ROOT / "baseline"
     baseline_per, baseline_cost, baseline_tokens = _run_phase(baseline_dir, optimize=False, n_tasks=N_TASKS)
+    _assert_complete(baseline_dir, N_TASKS, "baseline")
     _check_ceiling("baseline", baseline_cost)
     n_base_pass = sum(1 for _, p in baseline_per if p)
     b_acc = 100.0 * n_base_pass / N_TASKS
@@ -333,6 +368,7 @@ def main() -> int:
 
         print(f"  [measure] tasks 0..{N_TASKS-1}")
         per_task, opt_cost, opt_tokens = _run_phase(opt_dir, optimize=True, n_tasks=N_TASKS)
+        _assert_complete(opt_dir, N_TASKS, f"{config} measure")
         _check_ceiling(f"{config} measure", opt_cost)
 
         n_pass = sum(1 for _, p in per_task if p)

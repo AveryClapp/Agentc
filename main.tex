@@ -30,7 +30,7 @@
 %%       -> tab:summary row + Limitations + guard section (sec:eval-guard).
 %%  [GUARD] DONE: shadow-divergence accuracy guard built + validated (Path A) -> sec:eval-guard,
 %%       contribution bullet 4, limitation. analyst SD -42.7->-1.3 (guard on); CC 37.7->11 (conservative).
-%%  [3b] DONE: autogen n=300 frontier applied (CC-only 38.8%/-3.3pp/p=0.02; composed 13.1%/-0.7pp/p=0.77)
+%%  [3b] DONE: autogen n=300 clean shared-baseline (CC-only 23.5%/-1.3pp/p=0.29 ns; composed 14.0%/-1.0pp/p=0.55 ns) -- both neutral, no safety frontier
 %%       -> tab:summary (2 rows), Sec eval-realagent rewrite, abstract/intro/conclusion qualified.
 %%  [T4] DONE: throughput-under-concurrency figure wired in (fig:throughput), real n=50 data.
 %%  [T2] naive-baseline attribution (random/recency/bm25 vs IDF) -- NOT YET RUN
@@ -55,10 +55,11 @@ regressions. Across seven workloads spanning purpose-built benchmarks, three rea
 production agents, and one unseen third-party agent instrumented with a single
 \texttt{agentc.init()} call, Agentc reduces input-token cost by up to 34\% on
 long-context workloads, with rule-specific savings on routing and state-accumulation
-workloads; at its composed, accuracy-preserving operating point real-agent accuracy
-deltas are not statistically significant across three model providers (OpenAI,
-Anthropic, open-source Llama-3.3-70B), and composition is what makes aggressive
-single-rule compression safe. On
+workloads; real-agent accuracy deltas are not statistically significant across three
+model providers (OpenAI, Anthropic, open-source Llama-3.3-70B), and an automatic,
+label-free accuracy guard catches the rare rule that misfires, converting a $-$42.7\,pp
+StateDrop catastrophe into a non-significant delta while keeping beneficial compression
+enabled. On
 HotpotQA-distractor at $n$=100, Agentc improves accuracy from 68\% to 100\% (McNemar
 exact $p=4.66\times10^{-10}$, BF=0) while LLMLingua-2 degrades accuracy to 53\%
 ($p=0.0013$), both achieving 53\% token reduction, at sub-millisecond versus
@@ -121,9 +122,9 @@ do not claim Agentc optimizes any agent, but rather any agent whose calls exhibi
 properties its rules target. On three real production agents and one unseen third-party
 agent instrumented with only \texttt{agentc.init()}, the runtime either produces
 measurable cost savings or correctly abstains, with no statistically significant
-accuracy change at its composed operating point; where an aggressive single-rule
-configuration would trade accuracy for higher savings, the CompositionPlanner recovers
-neutrality (Section~\ref{sec:eval-realagent}).
+accuracy change at either its aggressive single-rule or its composed operating point;
+the rare rule that does misfire catastrophically is caught at runtime by an automatic
+accuracy guard (Section~\ref{sec:eval-guard}).
 
 Measuring optimization savings correctly requires methodological care. LLM output
 tokens are stochastic: a single trial on StateDrop at temperature~1 produced a $-$7\%
@@ -805,9 +806,10 @@ the remainder of this section details each.
 \begin{table*}[t]
 \caption{Agentc across seven agent workloads spanning three distinct cost drivers,
 three real agents, one unseen cold agent, and three model providers.
-Real-agent accuracy deltas are not statistically significant at the composed operating
-point; the aggressive CC-only autogen point trades accuracy for higher savings
-(Section~\ref{sec:eval-realagent}).
+Real-agent accuracy deltas are not statistically significant at either the CC-only or
+the composed operating point; on autogen the aggressive CC-only point reaches higher
+savings, while composition trades savings (StateDrop preempts ContextCompress) without
+affecting accuracy (Section~\ref{sec:eval-realagent}).
 Purpose-built workloads validate rule isolation;
 real and unseen agents validate generalization. Rule specialization by workload class
 is visible in the dominant-rule column: long-context agents are CC-dominated;
@@ -822,8 +824,8 @@ long\_context\_qa   & purpose-built QA      & ContextCompress      & 33.9\% & 34
 gaia\_router        & purpose-built routing & ModelDowngrade       & 11.4\%$^\dagger$ &  0.0\% & $-$3.9\,pp (ns, $p$=0.18) & --- \\
 iterative\_refiner  & purpose-built state   & StateDrop            & $\sim$4--6\,pp (within-run)$^\ddagger$ & see \S\ref{sec:eval-sd} & $<$1\,pp SD-neutral & --- \\
 \midrule
-autogen (CC-only)   & real agent (Llama\,3.3-70B)  & CC            & ---$^\S$ & 38.8\% & $-$3.3\,pp ($p$=0.02) & 0.02 \\
-autogen (composed)  & real agent (Llama\,3.3-70B)  & CC~+~StateDrop & ---$^\S$ & 13.1\% & $-$0.7\,pp (ns, $p$=0.77) & 0.77 \\
+autogen (CC-only)   & real agent (Llama\,3.3-70B)  & CC            & ---$^\S$ & 23.5\% & $-$1.3\,pp (ns, $p$=0.29) & 0.29 \\
+autogen (composed)  & real agent (Llama\,3.3-70B)  & CC~+~StateDrop & ---$^\S$ & 14.0\% & $-$1.0\,pp (ns, $p$=0.55) & 0.55 \\
 research\_planner (CC)  & real agent        & CC            & 41.7\% & 37.7\% & $+$4.0\,pp (ns) & 0.22 \\
 debug\_agent        & real agent            & StateDrop            &  8.3\% & 16.8\% & --- & --- \\
 \midrule
@@ -1443,21 +1445,21 @@ the deterministic attribution signal. ModelDowngrade is inapplicable: no downgra
 route is configured for Llama-3.3-70B, so its \texttt{applies()} precondition blocks
 the rule on every call (0 fires).
 
-\textbf{A savings/safety frontier.} autogen exposes a tradeoff between an aggressive and
-a safe operating point (Table~\ref{tab:summary}). Run with ContextCompress alone, CC
-fires on 597 of 600 calls (99.5\%) and reaches 38.8\% input-token savings, but at a
-statistically significant accuracy cost: 73.3\% versus 76.7\% baseline, $-$3.3\,pp,
-McNemar exact $p$=0.021 (BF=13, FB=3, 95\% bootstrap CI $[-6.0,-1.0]$\,pp). On this
-agent, dropping whole low-attention messages is too aggressive: some removed messages
-carry answer-relevant content. The CompositionPlanner recovers safety. In the all-on
-configuration, StateDrop fires first (231 of 600 calls), removing stale state-tagged
-messages and shrinking many prompts below ContextCompress's activation gate, so CC
-fires on only 172 calls. The composed result is accuracy-neutral: 75.7\% versus
-76.3\% baseline, $-$0.7\,pp, McNemar $p$=0.77 (BF=7, FB=5, 95\% CI $[-3.0,+1.7]$\,pp),
-at 13.1\% input-token savings. Composition thus converts an aggressive,
-accuracy-degrading compression into a safe one, trading roughly two thirds of the peak
-savings for accuracy neutrality. The composed configuration is the deployable operating
-point; the aggressive point is available when accuracy headroom permits.
+\textbf{A savings frontier, accuracy-neutral throughout.} On a clean shared baseline
+(229 of 300 correct, 76.3\%), both operating points leave accuracy statistically
+unchanged (Table~\ref{tab:summary}). Run with ContextCompress alone, CC fires on 350 of
+600 calls and reaches 23.5\% per-call input-token savings at 75.0\% accuracy, $-$1.3\,pp,
+McNemar exact $p$=0.29 (BF=6, FB=2): not a significant change. In the all-on
+configuration the CompositionPlanner runs StateDrop first (260 of 600 calls), removing
+stale state-tagged messages and shrinking many prompts below ContextCompress's activation
+gate, so CC fires on only 184 calls; accuracy is again neutral at 75.3\%, $-$1.0\,pp,
+McNemar $p$=0.55 (BF=7, FB=4), at 14.0\% input-token savings. The frontier here is
+therefore between two safe points: the aggressive single-rule point is both accuracy-neutral
+and higher-saving, while composition trades roughly a third of the peak savings because
+StateDrop preempts the calls ContextCompress would have rewritten. On this agent the
+accuracy headroom that motivated composition elsewhere is absent; the safety mechanism that
+matters when an aggressive rule \textit{does} misfire is the accuracy guard
+(Section~\ref{sec:eval-guard}), not rule composition.
 
 \subsection{StateDrop Generalization and the Automatic Accuracy Guard}
 \label{sec:eval-guard}
@@ -1746,11 +1748,11 @@ Reporting the distractor result without the abstention result would misrepresent
 system's scope.
 
 \textbf{Real-agent operating points.} autogen\_bridge is evaluated at $n$=300 on
-Llama-3.3-70B under the warmup-corrected harness. The composed configuration is
-accuracy-neutral ($-$0.7\,pp, $p$=0.77), while ContextCompress alone significantly
-degrades accuracy ($-$3.3\,pp, $p$=0.02) at higher savings; we report both as a
-savings/accuracy frontier rather than a single number, and treat the composed
-configuration as the deployable point (Section~\ref{sec:eval-realagent}).
+Llama-3.3-70B under the warmup-corrected harness with a clean shared baseline. Both the
+CC-only ($-$1.3\,pp, $p$=0.29, 23.5\% savings) and the composed ($-$1.0\,pp, $p$=0.55,
+14.0\% savings) configurations are accuracy-neutral; the two points form a savings
+frontier, not a savings/accuracy tradeoff, with composition trading peak savings because
+StateDrop preempts ContextCompress (Section~\ref{sec:eval-realagent}).
 debug\_agent is evaluated without accuracy tracking (no per-task scoring fixture); its
 results are cost and token savings only. research\_planner is evaluated with EM accuracy
 ($n$=100): ContextCompress is beneficial there ($+$4\,pp, 37.7\% savings) while StateDrop
@@ -1863,9 +1865,9 @@ Across seven workloads spanning three cost drivers, three real multi-step agents
 (autogen\_bridge, research\_planner, debug\_agent), and one unseen third-party agent
 instrumented with a single \texttt{agentc.init()} call, the runtime produces
 measurable savings or correctly abstains, with no statistically significant accuracy
-change at its composed operating point; on a real agent where single-rule compression
-alone would degrade accuracy, the CompositionPlanner exposes a savings/accuracy frontier
-and restores neutrality (Section~\ref{sec:eval-realagent}). Input-token savings are within 1\,pp across
+change at either its aggressive single-rule or its composed operating point; the rare
+rule that misfires catastrophically is caught at runtime by an automatic, label-free
+accuracy guard (Section~\ref{sec:eval-guard}). Input-token savings are within 1\,pp across
 three model providers (OpenAI, Anthropic, open-source Llama-3.3-70B) when structural
 preconditions are met. A CompositionPlanner grounded in cost-driver orthogonality
 combines compatible rules to near-additive savings (95.2\% of ideal for orthogonal

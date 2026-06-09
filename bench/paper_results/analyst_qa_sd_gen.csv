@@ -1,0 +1,2 @@
+config,n_pass,n_total,acc_pct,acc_delta_pp,se_pp,mcnemar_p,BF,FB,baseline_cost_mUSD,optimized_cost_mUSD,cost_savings_mUSD,input_tokens_baseline,input_tokens_optimized,input_token_savings_pct,sd_fire_count,total_calls
+StateDrop-only,137,150,91.3,-0.7,2.3,1.0000,2,1,9.1908,9.4791,-0.2883,45440,45302,0.30,21,450

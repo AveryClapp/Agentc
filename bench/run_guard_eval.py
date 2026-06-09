@@ -133,13 +133,17 @@ def _reset_between_phases(opt_dir: Path) -> None:
             p.unlink()
 
 
-def _guard_disables() -> tuple[int, str, str]:
-    """Query ~/.agentc/cost_model.db for auto-disable events since last call.
+def _guard_disables(opt_dir: Path) -> tuple[int, str, str]:
+    """Query <opt_dir>/cost_model.db for auto-disable events since last call.
+
+    `agentc record --storage-path opt_dir` points AGENTC_STORAGE_PATH at
+    opt_dir, so the optimizer's cost_model.db (and its optimizer_disabled
+    table) lives there, not under ~/.agentc.
 
     Returns (count, pipe-separated rules, pipe-separated call_sites).
     The table uses (call_site_id, rule) as PK so each row is one disabled slot.
     """
-    db = Path.home() / ".agentc" / "cost_model.db"
+    db = opt_dir / "cost_model.db"
     if not db.is_file():
         return (0, "", "")
     try:
@@ -157,9 +161,10 @@ def _guard_disables() -> tuple[int, str, str]:
     return (len(rows), rules, sites)
 
 
-def _clear_guard_disables() -> None:
-    """Delete all rows from optimizer_disabled so we start fresh per config."""
-    db = Path.home() / ".agentc" / "cost_model.db"
+def _clear_guard_disables(opt_dir: Path) -> None:
+    """Delete all rows from <opt_dir>/cost_model.db's optimizer_disabled
+    table so we start fresh per config (see _guard_disables for path)."""
+    db = opt_dir / "cost_model.db"
     if not db.is_file():
         return
     try:
@@ -217,13 +222,13 @@ def main() -> int:
         opt_dir = STORAGE_ROOT / config / "optimized"
         opt_dir.mkdir(parents=True)
         _disable(_rules_off(config), opt_dir)
-        _clear_guard_disables()
+        _clear_guard_disables(opt_dir)
         print(f"  [warmup] 0..{W_TASKS-1}")
         _run_phase(opt_dir, optimize=True, n_tasks=W_TASKS)
         wcost, _, _ = _aggregate_from_db(opt_dir / "traces.db")
         _check(f"{config} warmup", wcost)
         _reset_between_phases(opt_dir)
-        _clear_guard_disables()
+        _clear_guard_disables(opt_dir)
         print(f"  [measure] 0..{N_TASKS-1}")
         per_task, opt_cost, opt_tokens = _run_phase(opt_dir, optimize=True, n_tasks=N_TASKS)
         _check(f"{config} measure", opt_cost)
@@ -239,7 +244,7 @@ def main() -> int:
         cost_pct = 100.0 * (baseline_cost - opt_cost) / baseline_cost if baseline_cost else 0.0
         tok_pct = 100.0 * (baseline_tokens - opt_tokens) / baseline_tokens if baseline_tokens else 0.0
         cc, sd, total = _fires(opt_dir)
-        dis_count, dis_rules, dis_sites = _guard_disables()
+        dis_count, dis_rules, dis_sites = _guard_disables(opt_dir)
         print(f"  {n_pass}/{n}  BF={n_BF} FB={n_FB} p={p_val:.4f}  cost={cost_pct:+.1f}% tok={tok_pct:+.1f}%  CC={cc} SD={sd}/{total}  disables={dis_count}")
         with OUT_PATH.open("a", newline="") as f:
             csv.writer(f).writerow([

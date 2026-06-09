@@ -58,6 +58,7 @@ _CSV_COLUMNS = [
     "baseline_cost_mUSD", "optimized_cost_mUSD", "cost_savings_pct",
     "input_tokens_baseline", "input_tokens_optimized", "input_token_savings_pct",
     "cc_fire_count", "sd_fire_count", "total_calls",
+    "guard_disable_count", "guard_disable_rules", "guard_disable_sites",
 ]
 _PER_TASK_COLS = ["agent_module", "config", "task_id", "baseline_passed", "optimized_passed"]
 
@@ -132,6 +133,44 @@ def _reset_between_phases(opt_dir: Path) -> None:
             p.unlink()
 
 
+def _guard_disables() -> tuple[int, str, str]:
+    """Query ~/.agentc/cost_model.db for auto-disable events since last call.
+
+    Returns (count, pipe-separated rules, pipe-separated call_sites).
+    The table uses (call_site_id, rule) as PK so each row is one disabled slot.
+    """
+    db = Path.home() / ".agentc" / "cost_model.db"
+    if not db.is_file():
+        return (0, "", "")
+    try:
+        conn = sqlite3.connect(str(db))
+        rows = conn.execute(
+            "SELECT rule, call_site_id FROM optimizer_disabled"
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return (0, "", "")
+    if not rows:
+        return (0, "", "")
+    rules = "|".join(r[0] for r in rows)
+    sites = "|".join(r[1] for r in rows)
+    return (len(rows), rules, sites)
+
+
+def _clear_guard_disables() -> None:
+    """Delete all rows from optimizer_disabled so we start fresh per config."""
+    db = Path.home() / ".agentc" / "cost_model.db"
+    if not db.is_file():
+        return
+    try:
+        conn = sqlite3.connect(str(db))
+        conn.execute("DELETE FROM optimizer_disabled")
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
 def _fires(storage_dir: Path) -> tuple[int, int, int]:
     db = storage_dir / "optimizer_audit.db"
     if not db.is_file():
@@ -178,11 +217,13 @@ def main() -> int:
         opt_dir = STORAGE_ROOT / config / "optimized"
         opt_dir.mkdir(parents=True)
         _disable(_rules_off(config), opt_dir)
+        _clear_guard_disables()
         print(f"  [warmup] 0..{W_TASKS-1}")
         _run_phase(opt_dir, optimize=True, n_tasks=W_TASKS)
         wcost, _, _ = _aggregate_from_db(opt_dir / "traces.db")
         _check(f"{config} warmup", wcost)
         _reset_between_phases(opt_dir)
+        _clear_guard_disables()
         print(f"  [measure] 0..{N_TASKS-1}")
         per_task, opt_cost, opt_tokens = _run_phase(opt_dir, optimize=True, n_tasks=N_TASKS)
         _check(f"{config} measure", opt_cost)
@@ -198,13 +239,15 @@ def main() -> int:
         cost_pct = 100.0 * (baseline_cost - opt_cost) / baseline_cost if baseline_cost else 0.0
         tok_pct = 100.0 * (baseline_tokens - opt_tokens) / baseline_tokens if baseline_tokens else 0.0
         cc, sd, total = _fires(opt_dir)
-        print(f"  {n_pass}/{n}  BF={n_BF} FB={n_FB} p={p_val:.4f}  cost={cost_pct:+.1f}% tok={tok_pct:+.1f}%  CC={cc} SD={sd}/{total}")
+        dis_count, dis_rules, dis_sites = _guard_disables()
+        print(f"  {n_pass}/{n}  BF={n_BF} FB={n_FB} p={p_val:.4f}  cost={cost_pct:+.1f}% tok={tok_pct:+.1f}%  CC={cc} SD={sd}/{total}  disables={dis_count}")
         with OUT_PATH.open("a", newline="") as f:
             csv.writer(f).writerow([
                 config, n_pass, n, f"{acc:.1f}", f"{acc-b_acc:.1f}", f"{se:.1f}",
                 f"{p_val:.4f}", n_BF, n_FB,
                 f"{baseline_cost*1000:.4f}", f"{opt_cost*1000:.4f}", f"{cost_pct:.2f}",
                 baseline_tokens, opt_tokens, f"{tok_pct:.2f}", cc, sd, total,
+                dis_count, dis_rules, dis_sites,
             ])
         with PER_TASK_PATH.open("a", newline="") as f:
             w = csv.writer(f)

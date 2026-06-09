@@ -523,12 +523,44 @@ def _normalize_tokens(s: str) -> set:
     return {t for t in toks if t and t not in _ARTICLES}
 
 
+def _cosine_distance_from_bytes(ba: bytes, bb: bytes) -> float:
+    """Cosine distance in [0, 1] from two 256×f32 little-endian byte strings.
+
+    Returns 1.0 (maximally distant) if either vector is zero-norm.
+    """
+    import struct
+    n = len(ba) // 4
+    va = struct.unpack_from(f"{n}f", ba)
+    vb = struct.unpack_from(f"{n}f", bb)
+    dot = sum(x * y for x, y in zip(va, vb))
+    norm_a = sum(x * x for x in va) ** 0.5
+    norm_b = sum(x * x for x in vb) ** 0.5
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 1.0
+    return 1.0 - dot / (norm_a * norm_b)
+
+
 def _text_divergence(a: str, b: str) -> float:
     """1 - Jaccard over output tokens. ``AGENTC_SHADOW_DIVERGENCE_MODE``:
-    'lexical' (default, raw whitespace tokens, mirrors the Rust meter) or
-    'normalized' (article/punctuation/case-invariant) for a selective guard."""
+    'lexical' (default, raw whitespace tokens, mirrors the Rust meter),
+    'normalized' (article/punctuation/case-invariant) for a selective guard,
+    or 'embedding' (cosine distance on 256-dim model2vec embeddings).
+
+    The 'embedding' mode falls back to 'normalized' if the embedder is
+    unavailable at runtime, keeping the guard fail-open."""
     import os
     mode = os.environ.get("AGENTC_SHADOW_DIVERGENCE_MODE", "lexical").strip().lower()
+    if mode == "embedding":
+        try:
+            from agentc._native import embed_text_bytes
+            ba = embed_text_bytes(a)
+            bb = embed_text_bytes(b)
+            if ba is not None and bb is not None:
+                return _cosine_distance_from_bytes(bytes(ba), bytes(bb))
+        except BaseException:
+            log.debug("embedding divergence failed; falling back to normalized", exc_info=True)
+        # Fallback: treat as normalized mode (fail-open)
+        mode = "normalized"
     if mode == "normalized":
         sa, sb = _normalize_tokens(a), _normalize_tokens(b)
         if not sa and not sb:

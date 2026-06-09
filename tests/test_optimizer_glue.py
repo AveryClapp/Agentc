@@ -1,20 +1,15 @@
-"""Unit tests for ``agentc._patches._optimizer_glue.build_call_dict_openai``.
+"""Unit tests for ``agentc._patches._optimizer_glue``.
 
-The OpenAI patch is the only place where StateDrop / ContextCompress
-get their per-message provenance and window-state-reads. These tests
-pin the contract:
-
-- ``input_deps`` is mirrored as ``parameters.extra.message_deps``.
-- The state-read window is consumed and surfaced as
-  ``parameters.extra.window_state_reads``.
-- Untagged messages serialize as ``literal``.
+Covers:
+- ``build_call_dict_openai``: StateDrop / ContextCompress provenance contract.
+- ``_text_divergence``: lexical, normalized, and embedding divergence modes.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from agentc._patches._optimizer_glue import build_call_dict_openai
+from agentc._patches._optimizer_glue import _text_divergence, build_call_dict_openai
 from agentc._provenance import (
     State,
     UserInput,
@@ -163,3 +158,58 @@ def test_state_drop_payload_shape_matches_rule_contract():
     assert extra["window_state_reads"] == ["critique"]
     # consume_state_reads must have cleared the window.
     assert consume_state_reads() == []
+
+
+# ---------------------------------------------------------------------------
+# _text_divergence — embedding mode
+# ---------------------------------------------------------------------------
+
+class TestEmbeddingDivergenceMode:
+    """Tests for AGENTC_SHADOW_DIVERGENCE_MODE=embedding."""
+
+    def test_identical_strings_score_near_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AGENTC_SHADOW_DIVERGENCE_MODE", "embedding")
+        score = _text_divergence("The answer is Paris.", "The answer is Paris.")
+        assert score < 0.05, f"identical strings gave divergence {score:.4f}; expected < 0.05"
+
+    def test_unrelated_strings_score_high(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AGENTC_SHADOW_DIVERGENCE_MODE", "embedding")
+        score = _text_divergence(
+            "The capital of France is Paris.",
+            "Photosynthesis converts sunlight into chemical energy in plants.",
+        )
+        assert score > 0.2, f"unrelated strings gave low divergence {score:.4f}; expected > 0.2"
+
+    def test_paraphrase_lower_than_raw_lexical(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The motivating case: 'The answer is Paris' vs 'Paris is the answer'
+        should score LOWER divergence in embedding mode than in lexical mode,
+        because the embedding captures semantic equivalence."""
+        a = "The answer is Paris."
+        b = "Paris is the answer."
+
+        monkeypatch.setenv("AGENTC_SHADOW_DIVERGENCE_MODE", "lexical")
+        lexical_score = _text_divergence(a, b)
+
+        monkeypatch.setenv("AGENTC_SHADOW_DIVERGENCE_MODE", "embedding")
+        embedding_score = _text_divergence(a, b)
+
+        assert embedding_score < lexical_score, (
+            f"embedding ({embedding_score:.4f}) should be < lexical ({lexical_score:.4f}) "
+            "for a semantically equivalent paraphrase"
+        )
+
+    def test_fallback_when_native_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When _native.embed_text_bytes raises, the mode falls back to
+        'normalized' (containment) rather than crashing."""
+        import unittest.mock
+
+        monkeypatch.setenv("AGENTC_SHADOW_DIVERGENCE_MODE", "embedding")
+        # Patch embed_text_bytes to raise so we exercise the fallback path.
+        with unittest.mock.patch(
+            "agentc._native.embed_text_bytes",
+            side_effect=RuntimeError("embedder offline"),
+        ):
+            # Must not raise; should return a valid float via normalized fallback.
+            score = _text_divergence("hello world", "hello world")
+            assert isinstance(score, float)
+            assert 0.0 <= score <= 1.0

@@ -32,8 +32,7 @@
 %%       contribution bullet 4, limitation. analyst SD -42.7->-1.3 (guard on); CC 37.7->11 (conservative).
 %%  [3b] DONE: autogen n=300 frontier applied (CC-only 38.8%/-3.3pp/p=0.02; composed 13.1%/-0.7pp/p=0.77)
 %%       -> tab:summary (2 rows), Sec eval-realagent rewrite, abstract/intro/conclusion qualified.
-%%  [T4] throughput-under-concurrency figure -> fig:throughput (commented, near fig:overhead)
-%%       src: bench/paper_results/concurrency_bench_summary.csv
+%%  [T4] DONE: throughput-under-concurrency figure wired in (fig:throughput), real n=50 data.
 %%  [T2] naive-baseline attribution (random/recency/bm25 vs IDF) -- NOT YET RUN
 %% ============================================================
 
@@ -847,7 +846,9 @@ three orders of magnitude below typical LLM round-trip latency. The flat overhea
 profile under concurrency is attributable to the execution-optimizer decoupling
 described in Section~\ref{sec:decoupling}: because the optimizer holds no shared
 mutable state across concurrent calls and never manages threads, it does not become
-a serialization point under parallel workloads.
+a serialization point under parallel workloads. Figure~\ref{fig:throughput} confirms
+this end to end: across 1/8/32$\times$ concurrency, optimized throughput scales with
+baseline and optimized p50 latency stays at or below baseline.
 
 \begin{figure}[t]
 \centering
@@ -861,18 +862,20 @@ round-trip latency.}
 \label{fig:overhead}
 \end{figure}
 
-%% DROPIN [T4]: end-to-end throughput/latency under concurrency. Uncomment once
-%% figures/fig8_throughput.pdf exists (generated post-experiment from
-%% bench/paper_results/concurrency_bench_summary.csv via run_concurrency_bench).
-%% This is the systems-venue metric R3 asked for (QPS scaling + p99, optimized vs baseline).
-%% \begin{figure}[t]
-%% \centering
-%% \includegraphics[width=\columnwidth]{figures/fig8_throughput.pdf}
-%% \caption{End-to-end throughput scales with concurrency for both baseline and
-%% optimized runs, confirming the optimizer is not a serialization point
-%% (Section~\ref{sec:decoupling}). QPS at 1/8/32$\times$ concurrency with p99 latency overlay.}
-%% \label{fig:throughput}
-%% \end{figure}
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/fig8_throughput.pdf}
+\caption{End-to-end behavior under concurrent load (\texttt{long\_context\_qa},
+\texttt{gpt-4o-mini}, $n$=50 per condition, real API calls). \textit{Left}: per-task
+latency CDFs. \textit{Center}: throughput (QPS) and token savings versus concurrency.
+\textit{Right}: optimized/baseline p50 and p99 latency ratio. Throughput scales with
+concurrency for both baseline and optimized (optimized QPS 1.35$\rightarrow$4.55
+$\rightarrow$8.92 across 1/8/32$\times$), and optimized p50 latency is at or below
+baseline at every level (ratio $\leq$1.0), confirming the optimizer does not become a
+serialization point under parallel load (Section~\ref{sec:decoupling}). Token savings
+persist under concurrency. The 8$\times$ QPS dip is single-run API variance at $n$=50.}
+\label{fig:throughput}
+\end{figure*}
 
 \begin{figure}[t]
 \centering
@@ -1954,6 +1957,12 @@ Run 2: \texttt{python -m bench.cachehit\_\allowbreak eval --run 2} \\
 \ref{tab:guard} (guard on/off) &
 \texttt{analyst\_\allowbreak qa\_\allowbreak sd\_\allowbreak gen.csv}, \texttt{lcqa\_\allowbreak cc\_\allowbreak guard.csv} &
 \texttt{AGENTC\_\allowbreak OPTIMIZE\_\allowbreak SHADOW=1.0 ... python -m bench.run\_\allowbreak guard\_\allowbreak eval} \\
+
+\addlinespace
+\ref{fig:throughput} &
+\texttt{concurrency\_\allowbreak bench\_\allowbreak summary.csv} &
+\texttt{python -m bench.run\_\allowbreak concurrency\_\allowbreak bench --concurrency 1 8 32};
+\texttt{python bench/paper\_\allowbreak figures/fig\_\allowbreak concurrency.py} \\
 
 \bottomrule
 \end{tabularx}

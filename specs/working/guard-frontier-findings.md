@@ -1,3 +1,9 @@
+---
+title: Guard Frontier Sweep Findings
+status: active
+last-updated: 2026-06-10
+---
+
 # Guard Frontier Sweep: Findings and Open Decisions
 
 Date: 2026-06-10 (overnight autonomous run)
@@ -68,13 +74,40 @@ this **reproduces the paper's over-conservatism failure mode** (paper reports
 37.7% -> 11.0%). But it is **non-monotonic**: tau=0.02 keeps the rule, 0.05 kills
 it, 0.10/0.15 keep it. At n=50 the disable *timing* is high-variance.
 
+## UPDATE 2026-06-10: metric-selectivity claim CONFIRMED at n=300
+
+The "undertested / threshold-sensitive" worry below was an **n=50 small-sample
+artifact**. Re-run at n=300 (research_planner/CC, fixture long_context_qa_n300,
+full shadow sampling), the selectivity is robust and clean:
+
+| metric @0.15 | acc d | CC fires (of 300) | disabled? |
+|--------------|-------|-------------------|-----------|
+| lexical      | -0.7  | 49                | YES       |
+| normalized   | -0.7  | 289               | no (kept) |
+| embedding    | +0.7  | 290               | no (kept) |
+
+Lexical also disables CC at tau=0.05 (10 fires). So at n=300 **lexical
+over-disables benign CC at both thresholds tested, while normalized and embedding
+keep it** -- all at ~0 accuracy cost. The naive metric cannot preserve a benign
+output-changing rule; the selective metric can.
+
+**Savings numbers are NOT usable from these cells.** With shadow_rate=1.0 (set so
+disables actually trigger), each rewritten call gets a full-cost shadow twin for
+measurement. cost_savings_pct is dominated by that overhead, not compression:
+lexical@0.05 (10 fires) shows +25% while lexical@0.15 (49 fires) shows -15% --
+non-monotonic, driven purely by fire-count -> shadow-twin count. Use **behavioral
+axes** (rule retention = fires/total; disabled yes/no; accuracy delta) which are
+sampling-rate-independent. A clean savings magnitude needs a production-rate
+(shadow~=0.02) run, which is a separate measurement.
+
+Data: bench/paper_results/gsweep_n300_{lexical,normalized,embedding}_rp_0.15.csv,
+gsweep_n300_lexical_rp_0.05.csv.
+
 ## Concerns for the author
 
-1. **Metric-selectivity claim is threshold-sensitive and undertested.** The paper's
-   `tab:guard` presents lexical-over-conservative-vs-normalized-keeps as a property
-   of the operating point. The data shows it is only true in a narrow, noisy budget
-   band (tau~=0.05 at n=50), not at tau=0.15. To be load-bearing, the metric ablation
-   needs higher n to stabilize disable timing, at a stated threshold.
+1. ~~**Metric-selectivity claim is threshold-sensitive and undertested.**~~
+   RESOLVED at n=300 (see UPDATE above). The earlier n=50 non-reproduction was a
+   small-sample artifact; the claim holds robustly at scale.
 
 2. **Paper's rp/CC guard numbers lack a committed backing CSV.** Commit a80f4b7
    (which introduced "rp 37.5%") changed no result CSV. No committed CSV in

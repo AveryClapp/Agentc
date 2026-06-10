@@ -1,0 +1,2 @@
+threshold,n,n_pass,acc_pct,n_cheap_pass,cheap_acc_pct,n_escalated,escalation_rate_pct,total_cost_usd,cheap_only_cost_usd,cost_overhead_pct
+70,127,15,11.81,15,11.81,6,4.7,0.024529,0.014634,67.6

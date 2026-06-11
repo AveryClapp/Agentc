@@ -43,6 +43,16 @@ Providers used: Together (Llama, Qwen3; ~$2.39+$2) and Anthropic compat endpoint
 (Claude Haiku; HF PRO plan was cancelled -- use Together/Anthropic, not HF). All via
 existing BENCH_OPENAI_BASE_URL+BENCH_BASELINE_MODEL env plumbing, no code changes.
 
+ARTIFACT-EVAL READINESS (commit e043c6c): the guard/cross-model drivers were
+ephemeral (/tmp) -- committed them so the headline tables are reproducible (MLSys AE
+track): bench/repro/guard_frontier.sh (tab:guard + fig:metric-tradeoff),
+bench/repro/crossmodel_selectivity.sh (tab:xmodel, parametrized per family),
+bench/repro/README.md (script->artifact map + per-family invocations). tab:repro
+updated with these rows. Scripts validated (bash -n + guard-error check).
+
+REMAINING (author): (1) latexmk compile check -- all edits structure-verified only,
+no TeX toolchain on the dev machine. (2) bd/dolt sync when server returns.
+
 ## QUEUED FOLLOW-UP (file as bd issues when dolt server is back; queued 2026-06-10)
 
 bd server was unreachable at queue time, so these live here until they can be

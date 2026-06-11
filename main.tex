@@ -57,9 +57,10 @@ production agents, and one unseen third-party agent instrumented with a single
 long-context workloads, with rule-specific savings on routing and state-accumulation
 workloads; real-agent accuracy deltas are not statistically significant across three
 model providers (OpenAI, Anthropic, open-source Llama-3.3-70B), and an automatic,
-label-free accuracy guard catches the rare rule that misfires, converting a $-$42.7\,pp
-StateDrop catastrophe into a non-significant delta while keeping beneficial compression
-enabled. On
+label-free accuracy guard, at a bounded 2\% shadow-sampling cost, converts a $-$42.7\,pp
+StateDrop catastrophe to $-$1.3\,pp (97\% of the damage prevented) while keeping beneficial
+compression enabled; the containment metric that makes it selective reproduces across model
+families. On
 HotpotQA-distractor at $n$=100, Agentc improves accuracy from 68\% to 100\% (McNemar
 exact $p=4.66\times10^{-10}$, BF=0) while LLMLingua-2 degrades accuracy to 53\%
 ($p=0.0013$), both achieving 53\% token reduction, at sub-millisecond versus
@@ -1483,7 +1484,10 @@ rewritten calls: it runs the unrewritten call alongside the optimized one, measu
 output divergence (1\,$-$\,Jaccard on output tokens) between them, and folds the
 divergence into a per-(call-site, rule) budget. When a rule's divergence exceeds its
 budget for five consecutive samples, the planner auto-disables it for that call site.
-The mechanism is rule-agnostic and requires no ground-truth labels.
+The mechanism is rule-agnostic and requires no ground-truth labels. It samples at a
+configurable rate (2\% in production), so the guard's safety costs roughly 2\% extra
+inference in the steady state, a bounded and tunable cost/safety knob; a rule that
+auto-disables thereafter incurs no further shadow cost.
 
 \textbf{The guard prevents catastrophic misfires.} Re-running \texttt{analyst\_qa} with
 the guard active, StateDrop is auto-disabled after roughly ten fires and accuracy
@@ -1523,6 +1527,17 @@ budget} (Fig.~\ref{fig:metric-tradeoff}): the naive metric cannot preserve a ben
 output-changing rule, whereas the selective metric can. The remaining ceiling is genuinely
 semantic disagreement that is lexically invisible; a learned divergence meter would tighten
 it further, at the cost of the dependency-free property.
+
+\textbf{The selectivity is model-agnostic.} The lexical-versus-normalized behavior is not a
+quirk of one model. Re-running both agents on Llama-3.3-70B (a different family and provider,
+via an OpenAI-compatible endpoint, $n$=100) reproduces it: unguarded ContextCompress on
+\texttt{research\_planner} fires 93 of 100 calls at $+$3.0\,pp (ns) and 29.9\% input-token
+savings, the lexical guard disables it after 5 fires (savings collapse to 1.6\%), while the
+normalized metric keeps it at the full unguarded rate (93 fires, 29.9\% savings preserved,
+$+$2.0\,pp ns). Both metrics still disable catastrophic StateDrop ($-$26.0\,pp unguarded
+$\rightarrow$ $-$12 to $-$17\,pp), though the recovery is less complete than on the GPT model.
+Across both model families it is the divergence \textit{metric}, not the model, that decides
+whether a benign output-changing rule survives.
 
 \begin{table}[t]
 \caption{The shadow-divergence accuracy guard is \textbf{selective}, and its selectivity

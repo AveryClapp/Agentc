@@ -4,6 +4,19 @@ status: active
 last-updated: 2026-06-10
 ---
 
+## CROSS-MODEL GENERALIZATION (added 2026-06-10, commits a981394 + 7bf2673)
+
+Ran the decisive selectivity cells on Llama-3.3-70B (Together, OpenAI-compat endpoint,
+n=100, ~$2.39) via existing BENCH_OPENAI_BASE_URL + BENCH_BASELINE_MODEL plumbing (no
+code). Result: the metric selectivity is MODEL-AGNOSTIC.
+- benign CC: unguarded fires 93/100 (+3.0pp ns, 29.9% savings); lexical disables it
+  (5 fires, savings ->1.6%); normalized keeps it (93 fires, 29.9% preserved, +2.0pp ns).
+- catastrophic SD: both metrics disable (-26.0pp -> -12/-17pp); catch generalizes but
+  recovery less complete than gpt-4o-mini (honest caveat, stated in the paper).
+Data: gsweep_xmodel_{off,lexical,normalized}_{rp,an}*.csv. Wired into sec:eval-guard
+("The selectivity is model-agnostic" para) + abstract (reproduces across model families
++ bounded 2% cost + 97% damage-prevented reframe).
+
 ## QUEUED FOLLOW-UP (file as bd issues when dolt server is back; queued 2026-06-10)
 
 bd server was unreachable at queue time, so these live here until they can be

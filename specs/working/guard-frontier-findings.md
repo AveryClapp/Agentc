@@ -17,6 +17,32 @@ Data: gsweep_xmodel_{off,lexical,normalized}_{rp,an}*.csv. Wired into sec:eval-g
 ("The selectivity is model-agnostic" para) + abstract (reproduces across model families
 + bounded 2% cost + 97% damage-prevented reframe).
 
+## 4-FAMILY CROSS-MODEL + OVERHEAD (added 2026-06-11, commits a981394..ddabccf)
+
+Extended the cross-model study to FOUR families and measured guard overhead.
+Selectivity (lexical over-disables benign CC / normalized keeps it) at each model's
+operating budget; normalized keeps benign on 4/4 (93/100 fires), lexical over-disables
+on 4/4. Catastrophe-recovery completeness is model-dependent (35-93%).
+- gpt-4o-mini (OpenAI) tau=0.20: lex disabled/8%, norm kept/32%, SD 93% prevented
+- Llama-3.3-70B (Meta) tau=0.20: lex 1.6%, norm 30%, SD 35%
+- Claude Haiku 4.5 (Anthropic) tau=0.20: lex 17%, norm 31%, SD 73%
+- Qwen3-235B (Alibaba) tau=0.10: lex 1.7%, norm 31%, SD 66%
+KEY FINDING: the divergence budget is a PER-MODEL hyperparameter. Qwen3's verbose
+output regime needs tau=0.10 (not 0.20); at 0.10 the full pattern reproduces on both
+axes (lexical collapses benign to 1.7%, normalized catches SD 20%->66%). The apparent
+Qwen3 anomaly was an operating-point shift, not a failure -- characterized via a
+deliberate sweep (reported in full, not fished). Data: gsweep_{xmodel,claude,qwen3}_*.csv.
+Integrated: tab:xmodel + upgraded "selectivity generalizes" para + abstract (4 families).
+
+GUARD OVERHEAD (venue-fit): bench/guard_overhead_bench.py measures per-sample
+bookkeeping = 18us (17.8us divergence metric + 0.7us PyO3->Rust budget fold), ~5 orders
+of magnitude below an LLM call. Wired into the guard mechanism para: bounded-cost claim
+now MEASURED. Only material cost is the tunable 2% shadow inference.
+
+Providers used: Together (Llama, Qwen3; ~$2.39+$2) and Anthropic compat endpoint
+(Claude Haiku; HF PRO plan was cancelled -- use Together/Anthropic, not HF). All via
+existing BENCH_OPENAI_BASE_URL+BENCH_BASELINE_MODEL env plumbing, no code changes.
+
 ## QUEUED FOLLOW-UP (file as bd issues when dolt server is back; queued 2026-06-10)
 
 bd server was unreachable at queue time, so these live here until they can be

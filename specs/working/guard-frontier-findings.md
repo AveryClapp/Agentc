@@ -42,12 +42,27 @@ filed. Both are paper-integration blockers, not research.
 
 ## INTEGRATION CHECKLIST (run before declaring the artifact clean)
 
-- [ ] #1 guard-table reconciliation (above) -- the one remaining prose edit
+- [x] #1 guard-table reconciliation DONE (scoped, commit 401d49f): research_planner
+      guard rows -> n=200 frontier (off -1.5/33.8, lexical disabled/8.1, normalized
+      +-0.0/32.4 kept); caption reconciles the n=100 +4pp per-agent result.
 - [x] #2 savings magnitude RESOLVED (no new cell): ~30% cost / ~34% input tokens,
-      corroborated by shadow=0 off_rp; numbers ready to wire in
-- [ ] #3 normalized-hero framing wired into prose
-- [ ] Drop frontier tradeoff figure (fig10_metric_tradeoff) + writeup into
-      sec:eval-guard
+      corroborated by shadow=0 off_rp. Wired into the rows above.
+- [x] #3 normalized-hero framing wired into prose (normalized = selective hero,
+      embedding = optional learned upgrade).
+- [x] Drop frontier figure DONE: fig9_metric_tradeoff (figures/) + caption + the
+      rewritten 'divergence metric governs selectivity' paragraph in sec:eval-guard.
+
+### Residual flagged for author (NOT auto-edited; abstract/intro left untouched)
+
+- Intro (main.tex ~L175) still says CC "stays enabled at 37.5--37.6% savings on two
+  agents". The research_planner figure is now 32.4% at n=200 in the body/table; the
+  37.5% there was the old n=100 number. Left as-is per the scoped decision (no
+  intro edits). If you want the intro internally consistent with the table, change
+  "37.5--37.6\%" -> "32.4--37.6\%" (one number, not the headline claim).
+- Abstract (L60) + intro (L173): StateDrop "-42.7pp -> non-significant -0.7pp" kept
+  at n=150 by design. The n=200 result (-49.5 -> -3.5, ~91% prevented, borderline
+  significant) appears only as corroboration in the eval body. If you ever want the
+  whole paper at n=200, that is the full-replacement path and it edits the abstract.
 - [x] **bd-e0s artifact-cleanliness check (DONE 2026-06-10, clean).** Verified in
       bench/run_guard_eval.py: STORAGE_ROOT=/tmp/agentc-<TAG> (L45) is rmtree'd +
       recreated per cell (L201-203); disable readout/wipe scoped to

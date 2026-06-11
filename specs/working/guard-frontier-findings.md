@@ -4,6 +4,77 @@ status: active
 last-updated: 2026-06-10
 ---
 
+## QUEUED FOLLOW-UP (file as bd issues when dolt server is back; queued 2026-06-10)
+
+bd server was unreachable at queue time, so these live here until they can be
+filed. Both are paper-integration blockers, not research.
+
+- **[#1, BLOCKER] Reconcile `tab:guard` to one self-consistent run family.** The
+  paper's guard table cites rp/CC 37.7% off -> 11.0% (lexical) / 37.5% (norm.) at
+  n=150, but no committed CSV produces those numbers and the off baseline (37.7%)
+  does not match this run family (27.8%) -- different fixture/n/config. Replace the
+  operating-point row with numbers drawn from the n=200 tradeoff frontier (this
+  family), OR re-run the table's exact cells at matched config. Every number in the
+  guard section must trace to one committed, reproducible run. Resolve the n=150 vs
+  n=200 mismatch in the same pass.
+- **[#2, SHOULD-FIX] One clean savings magnitude at production shadow rate.** All
+  frontier cells run at shadow_rate=1.0, which inflates optimized_cost with
+  full-cost shadow twins -- savings numbers from these cells are unusable (we use
+  behavioral axes instead). Run one production-rate (shadow~=0.02) rp/CC cell to get
+  an honest guarded-benign savings figure for the paper. ~1 cell, ~25min.
+- **[#3, DECIDED] Lock normalized (dependency-free) as the hero metric**, embedding
+  framed as optional semantic tightening. Author agreed 2026-06-10; the frontier
+  supports it (normalized is both dependency-free and the metric that beats lexical).
+- **[#4, CONSIDER PRE-SUBMISSION] bd-ljd (CC proxy quality).** ContextCompress is
+  now load-bearing for the benign half of the headline. If CC's compression quality
+  is shaky a reviewer can attack the foundation under the frontier ("you preserve a
+  rule that produces worse outputs"). Hardening CC quality directly armors the lead
+  result. The only deferred issue that would strengthen *this* paper; pull forward if
+  time allows. (bd-j3k memoization eval and bd-4hy writer queue stay post-submission.)
+
+## INTEGRATION CHECKLIST (run before declaring the artifact clean)
+
+- [ ] #1 guard-table reconciliation (above)
+- [ ] #2 production-rate savings cell (above)
+- [ ] #3 normalized-hero framing wired into prose
+- [ ] Drop frontier tradeoff figure + writeup into sec:eval-guard
+- [x] **bd-e0s artifact-cleanliness check (DONE 2026-06-10, clean).** Verified in
+      bench/run_guard_eval.py: STORAGE_ROOT=/tmp/agentc-<TAG> (L45) is rmtree'd +
+      recreated per cell (L201-203); disable readout/wipe scoped to
+      reason='shadow_divergence' in the per-cell opt_dir, not ~/.agentc (L137-178).
+      The shared-DB contamination class cannot affect committed frontier CSVs.
+
+### bd-ljd sequencing (pulled BEFORE integration so the paper is written once)
+
+CC is load-bearing for the benign half, so any change to *what CC outputs* would
+make the running n=200 frontier (and the n=300 cells) stale and force a full
+re-run. Therefore split bd-ljd into assess-then-maybe-harden:
+
+- [x] **CC quality assessed (DONE 2026-06-10): SOUND, no re-run.** On the benign
+      normalized cells where CC fires ~190x (max exposure), pass->fail flips are
+      balanced by fail->pass flips and NONE are significant: rp 0.10 BF12/FB9 p=0.66;
+      0.20 BF10/FB10 p=1.00; 0.30 BF9/FB11 p=0.82; 0.50 BF6/FB8 p=0.79. acc delta
+      -1.5..+1.0pp. The flips are temperature-1 noise, not systematic compression
+      damage (which would show BF>>FB, p<0.05). CC compressions are faithful.
+- [x] **Harden+re-run NOT triggered** -- audit found no real problem. The only
+      re-run path in the endgame is closed.
+
+Sequence: finish frontier -> e0s (done) -> CC audit -> (harden+re-run only if
+needed) -> production-rate savings cell (#2) -> integrate prose ONCE (#1/#3 + figure).
+
+## POST-PAPER BACKLOG (only after #1/#2/#3 + checklist are complete)
+
+Deferred engineering/scope items. None block submission; revisit once the paper is
+done. File as bd issues when dolt is back.
+
+- **bd-ljd (CC proxy quality)** -- if not already pulled forward as pre-submission #4.
+- **bd-e0s (traces.db contamination)** -- the durable fix to the shared-DB state leak
+  (the checklist above is just the one-time artifact verification, not the fix).
+- **bd-j3k (memoization eval)** -- second optimization axis; additive scope, a
+  follow-on contribution rather than reinforcement of the guard claim.
+- **bd-4hy (writer queue)** -- runtime internals; no paper relevance.
+
+
 # Guard Frontier Sweep: Findings and Open Decisions
 
 Date: 2026-06-10 (overnight autonomous run)

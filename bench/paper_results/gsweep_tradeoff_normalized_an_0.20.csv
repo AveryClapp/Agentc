@@ -1,0 +1,2 @@
+config,n_pass,n_total,acc_pct,acc_delta_pp,se_pp,mcnemar_p,BF,FB,baseline_cost_mUSD,optimized_cost_mUSD,cost_savings_pct,input_tokens_baseline,input_tokens_optimized,input_token_savings_pct,cc_fire_count,sd_fire_count,total_calls,guard_disable_count,guard_disable_rules,guard_disable_sites
+StateDrop-only,179,200,89.5,-3.5,2.2,0.0654,9,2,12.4379,13.1739,-5.92,61787,61846,-0.10,0,38,600,2,StateDrop|StateDrop,__main__:_run_one:104|__main__:_run_one:90

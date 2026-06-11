@@ -17,11 +17,19 @@ filed. Both are paper-integration blockers, not research.
   family), OR re-run the table's exact cells at matched config. Every number in the
   guard section must trace to one committed, reproducible run. Resolve the n=150 vs
   n=200 mismatch in the same pass.
-- **[#2, SHOULD-FIX] One clean savings magnitude at production shadow rate.** All
-  frontier cells run at shadow_rate=1.0, which inflates optimized_cost with
-  full-cost shadow twins -- savings numbers from these cells are unusable (we use
-  behavioral axes instead). Run one production-rate (shadow~=0.02) rp/CC cell to get
-  an honest guarded-benign savings figure for the paper. ~1 cell, ~25min.
+- **[#2, RESOLVED 2026-06-10 -- no new cell needed].** Earlier worry was that
+  shadow_rate=1.0 inflates savings. CORRECTION: the negative-savings artifact is a
+  *disable* artifact, not a shadow-twin artifact -- it appears ONLY in cells where
+  the rule got disabled mid-run (n300 lexical 49 fires -> disabled -> -15%). For the
+  NON-disabled (kept) benign case the savings are clean and corroborated two ways:
+  off_rp (shadow=0, zero twins) = 30.15% cost / 33.82% input-token savings; the
+  full-shadow normalized frontier rp cells (shadow=1.0, kept) = 29-30% cost /
+  32-34% input tokens. They agree to ~1pp, so shadow overhead is negligible when the
+  rule is kept, and the production-rate (0.02) number lies in the same band.
+  **Honest guarded-benign savings = ~30% cost / ~34% input tokens** (n=200, same run
+  family as the frontier and the off baseline). Use input-token savings as the
+  headline magnitude (pricing-independent). Disabled-cell savings are still garbage
+  and must not be reported -- but we never report savings for a disabled rule anyway.
 - **[#3, DECIDED] Lock normalized (dependency-free) as the hero metric**, embedding
   framed as optional semantic tightening. Author agreed 2026-06-10; the frontier
   supports it (normalized is both dependency-free and the metric that beats lexical).
@@ -34,10 +42,12 @@ filed. Both are paper-integration blockers, not research.
 
 ## INTEGRATION CHECKLIST (run before declaring the artifact clean)
 
-- [ ] #1 guard-table reconciliation (above)
-- [ ] #2 production-rate savings cell (above)
+- [ ] #1 guard-table reconciliation (above) -- the one remaining prose edit
+- [x] #2 savings magnitude RESOLVED (no new cell): ~30% cost / ~34% input tokens,
+      corroborated by shadow=0 off_rp; numbers ready to wire in
 - [ ] #3 normalized-hero framing wired into prose
-- [ ] Drop frontier tradeoff figure + writeup into sec:eval-guard
+- [ ] Drop frontier tradeoff figure (fig10_metric_tradeoff) + writeup into
+      sec:eval-guard
 - [x] **bd-e0s artifact-cleanliness check (DONE 2026-06-10, clean).** Verified in
       bench/run_guard_eval.py: STORAGE_ROOT=/tmp/agentc-<TAG> (L45) is rmtree'd +
       recreated per cell (L201-203); disable readout/wipe scoped to

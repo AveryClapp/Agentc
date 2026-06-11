@@ -2037,9 +2037,20 @@ Run 2: \texttt{python -m bench.cachehit\_\allowbreak eval --run 2} \\
 \texttt{python -m bench.build\_\allowbreak squad\_\allowbreak fixture}; \texttt{python -m bench.run\_\allowbreak analyst\_\allowbreak sd\_\allowbreak generalization} \\
 
 \addlinespace
-\ref{tab:guard} (guard on/off) &
-\texttt{analyst\_\allowbreak qa\_\allowbreak sd\_\allowbreak gen.csv}, \texttt{lcqa\_\allowbreak cc\_\allowbreak guard.csv} &
-\texttt{AGENTC\_\allowbreak OPTIMIZE\_\allowbreak SHADOW=1.0 ... python -m bench.run\_\allowbreak guard\_\allowbreak eval} \\
+\ref{tab:guard} (guard on/off), \ref{fig:metric-tradeoff} &
+\texttt{gsweep\_\allowbreak tradeoff\_\allowbreak *.csv} &
+\texttt{OPENAI\_\allowbreak API\_\allowbreak KEY=...\ bash bench/repro/guard\_\allowbreak frontier.sh};
+\texttt{python bench/paper\_\allowbreak figures/fig9\_\allowbreak metric\_\allowbreak tradeoff.py} \\
+
+\addlinespace
+\ref{tab:xmodel} &
+\texttt{gsweep\_\allowbreak \{xmodel,claude,qwen3\}\_\allowbreak *.csv} &
+\texttt{bash bench/repro/crossmodel\_\allowbreak selectivity.sh} (one invocation per model family; see \texttt{bench/repro/README.md}) \\
+
+\addlinespace
+\S\ref{sec:eval-guard} (guard overhead) &
+CPU microbenchmark (no API) &
+\texttt{python -m bench.guard\_\allowbreak overhead\_\allowbreak bench} \\
 
 \addlinespace
 \ref{fig:throughput} &

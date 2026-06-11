@@ -1,0 +1,2 @@
+config,n_pass,n_total,acc_pct,acc_delta_pp,se_pp,mcnemar_p,BF,FB,baseline_cost_mUSD,optimized_cost_mUSD,cost_savings_pct,input_tokens_baseline,input_tokens_optimized,input_token_savings_pct,cc_fire_count,sd_fire_count,total_calls,guard_disable_count,guard_disable_rules,guard_disable_sites
+ContextCompress-only,68,100,68.0,3.0,4.7,0.4531,2,5,0.0000,0.0000,0.00,544099,345650,36.47,53,0,300,1,ContextCompress,__main__:_run_one:103

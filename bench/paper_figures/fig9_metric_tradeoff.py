@@ -45,7 +45,7 @@ plt.rcParams.update({
     "axes.linewidth": 0.7,
 })
 
-OUT = Path(__file__).resolve().parent / "fig10_metric_tradeoff.pdf"
+OUT = Path(__file__).resolve().parents[2] / "figures" / "fig9_metric_tradeoff.pdf"
 RESULTS = Path(__file__).resolve().parents[1] / "paper_results"
 
 LEX   = "#b03030"   # lexical (red)

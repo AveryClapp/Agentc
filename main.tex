@@ -1502,31 +1502,40 @@ preserving 37.6\% input-token savings at no accuracy cost ($+$0.7\,pp, McNemar $
 off; it leaves benign, answer-preserving compression intact (Table~\ref{tab:guard}).
 
 \textbf{The divergence metric governs selectivity.} The guard's behavior on benign
-output-\textit{changing} rules depends entirely on how divergence is measured. A raw
-lexical signal (1\,$-$\,Jaccard on output tokens) detects \textit{change}, not
-\textit{degradation}: on \texttt{research\_planner}, where ContextCompress is beneficial
-but rewrites the answer text, the lexical guard disables it after 37 fires, cutting savings
-from 37.7\% to 11.0\%. Replacing the signal with a normalization-robust metric, divergence
-as token \textit{containment} over article- and punctuation-normalized output, removes this
-conservatism without any auxiliary model: a benign elaboration (``Kansas Song'' vs.\
-``Kansas Song (We're From Kansas)'') reads as agreement while a wrong answer still diverges
-(0.7--1.0). Under the normalized metric the guard \textit{keeps} ContextCompress on
-\texttt{research\_planner} (94 fires, 37.5\% savings preserved, accuracy non-degrading) and
-\textit{still} auto-disables catastrophic StateDrop on \texttt{analyst\_qa} (recovering to
-$-$0.7\,pp). The guard is therefore \textbf{selective}: it preserves beneficial compression
-and blocks catastrophic misfires using a dependency-free signal (Table~\ref{tab:guard}).
-The remaining ceiling is genuinely semantic disagreement that is lexically invisible; a
-learned divergence meter would tighten it further, at the cost of the dependency-free
-property.
+output-\textit{changing} rules depends entirely on how divergence is measured, and we trace
+this across the full divergence-budget frontier (Fig.~\ref{fig:metric-tradeoff}, $n$=200 per
+agent). A raw lexical signal (1\,$-$\,Jaccard on output tokens) detects \textit{change}, not
+\textit{degradation}: on \texttt{research\_planner}, where ContextCompress is beneficial but
+rewrites the answer text, the lexical guard disables the rule at \textit{every} budget
+tested ($\tau\in\{0.10,0.20,0.30,0.50\}$), retaining only 5--63\% of its fires and
+collapsing input-token savings to 8.1\% ($\tau$=0.20). Replacing the signal with a
+normalization-robust metric, divergence as token \textit{containment} over article- and
+punctuation-normalized output, removes this conservatism without any auxiliary model: a
+benign elaboration (``Kansas Song'' vs.\ ``Kansas Song (We're From Kansas)'') reads as
+agreement while a wrong answer still diverges. Under the normalized metric the guard
+\textit{keeps} ContextCompress at every budget (96--100\% of fires retained, 32.4\%
+input-token savings preserved, accuracy neutral at $\pm$0.0\,pp, $\tau$=0.20) and
+\textit{still} auto-disables catastrophic StateDrop on \texttt{analyst\_qa} (at $n$=200 the
+unguarded misfire deepens to $-$49.5\,pp and the guard caps it to $-$3.5\,pp, $\sim$91\% of
+the damage prevented). \textbf{No lexical operating point reaches the benign-and-safe region
+across this 10$\times$ range of budgets, while the normalized metric occupies it at every
+budget} (Fig.~\ref{fig:metric-tradeoff}): the naive metric cannot preserve a benign
+output-changing rule, whereas the selective metric can. The remaining ceiling is genuinely
+semantic disagreement that is lexically invisible; a learned divergence meter would tighten
+it further, at the cost of the dependency-free property.
 
 \begin{table}[t]
 \caption{The shadow-divergence accuracy guard is \textbf{selective}, and its selectivity
 is set by the divergence metric. It keeps stable benign compression (CC on
-\texttt{long\_context\_qa}) and catches catastrophic misfires (StateDrop on
-\texttt{analyst\_qa}) under either metric. For benign \textit{output-changing} compression
-(CC on \texttt{research\_planner}) the lexical metric is over-conservative (disables,
-11.0\%) while the normalized containment metric preserves it (37.5\%) and still catches
-StateDrop. All guard-on accuracy deltas are non-degrading.}
+\texttt{long\_context\_qa}, $n$=300) and catches catastrophic misfires (StateDrop on
+\texttt{analyst\_qa}, $n$=150) under either metric. For benign \textit{output-changing}
+compression (CC on \texttt{research\_planner}, $n$=200, operating point $\tau$=0.20) the
+lexical metric is over-conservative (disables the rule, savings collapse to 8.1\%) while the
+normalized containment metric preserves it (32.4\% retained) and still catches StateDrop;
+this holds across the full divergence-budget frontier (Fig.~\ref{fig:metric-tradeoff}). The
+$n$=200 \texttt{research\_planner} guard rows are the frontier-sweep configuration; the
+$n$=100 per-agent evaluation finds CC mildly beneficial ($+$4\,pp), consistent with benign
+compression. All guard-on accuracy deltas are non-degrading.}
 \label{tab:guard}
 \small
 \begin{tabular}{lllr}
@@ -1537,12 +1546,27 @@ long\_context\_qa / CC  & on            & $+$0.7\,pp (ns) & 37.6\% (kept) \\
 analyst\_qa / StateDrop & off           & $-$42.7\,pp     & --- \\
 analyst\_qa / StateDrop & on (lexical)  & $-$1.3\,pp (ns) & disabled \\
 analyst\_qa / StateDrop & on (norm.)    & $-$0.7\,pp (ns) & disabled \\
-research\_planner / CC  & off           & $+$4.0\,pp (ns) & 37.7\% \\
-research\_planner / CC  & on (lexical)  & $-$1.0\,pp (ns) & 11.0\% (disabled) \\
-research\_planner / CC  & \textbf{on (norm.)} & \textbf{$+$9.0\,pp} & \textbf{37.5\% (kept)} \\
+research\_planner / CC  & off           & $-$1.5\,pp (ns) & 33.8\% \\
+research\_planner / CC  & on (lexical)  & $-$1.0\,pp (ns) & 8.1\% (disabled) \\
+research\_planner / CC  & \textbf{on (norm.)} & \textbf{$\pm$0.0\,pp (ns)} & \textbf{32.4\% (kept)} \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig9_metric_tradeoff.pdf}
+\caption{The divergence metric decides the benign/safety tradeoff. Each point is one
+(metric, budget~$\tau$) configuration ($n$=200 per agent): $x$ is the benign rule retained
+(guarded CC fires\,/\,unguarded), $y$ is the catastrophic damage prevented (one minus the
+ratio of guarded to unguarded StateDrop accuracy loss). The lexical metric catches the
+catastrophe at every budget ($y\!\approx\!92\%$) but disables the benign rule at every
+budget ($x\!=\!5$--$63\%$, top-left); the normalized containment metric occupies the
+benign-and-safe region at every budget ($x\!\ge\!96\%$, top-right). Unguarded keeps the
+benign rule but prevents no damage (bottom-right). No lexical operating point reaches the
+desired region.}
+\label{fig:metric-tradeoff}
+\end{figure}
 
 \subsection{CacheHit Validation}
 \label{sec:eval-cachehit}
@@ -1762,8 +1786,8 @@ accuracy guard targets (Section~\ref{sec:eval-guard}).
 \textbf{The accuracy guard's selectivity is bounded by its divergence metric.} The
 shadow-divergence guard keys on change from the unrewritten output. A normalization-robust
 containment metric makes it selective, preserving benign output-changing compression
-(ContextCompress on \texttt{research\_planner}, 37.5\% savings retained) while still
-disabling catastrophic StateDrop, with no auxiliary model. Its remaining ceiling is
+(ContextCompress on \texttt{research\_planner}, 32.4\% savings retained at $n$=200) while
+still disabling catastrophic StateDrop, with no auxiliary model. Its remaining ceiling is
 genuine semantic disagreement that is lexically invisible (two correct answers with no
 token overlap would read as divergence); a learned divergence meter would close this at the
 cost of the dependency-free property. The threshold and metric tune the safety/savings

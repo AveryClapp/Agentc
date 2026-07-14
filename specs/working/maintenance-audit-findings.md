@@ -362,6 +362,56 @@ on the headline matrices, Tables 5 and 6 must be re-run entirely.
 `0.500001` bug would suppress CC/SD on Anthropic too. P8-6 (enable audit-ring pruning at cap 10,000) must not
 land alongside the fire-count fix, or it will silently truncate counts on long runs.
 
+## Pass 7 — Meta-Audit (2026-07-17): the statistics and pricing nobody had read
+
+Twelve prior lanes never opened `bench/paired_analysis.py` or `data/pricing.json`. Both were
+checked here. **The statistics core is clean. The pricing path is broken.**
+
+### VERIFIED CLEAN — the most important result in this pass
+
+- **McNemar exact is CORRECT.** Both implementations (the symmetric-distance form in
+  `paired_analysis.py:58` and the doubled-smaller-tail form duplicated across 17 drivers) are
+  mathematically sound and agree with each other. Recomputing the n=500 claim gives **p=0.0436**
+  vs the paper's 0.044. ✓
+- **The bootstrap is CORRECT.** It resamples *task pairs* (preserving pairing), is seeded
+  (`rng_seed=0`), deterministic across runs, 5,000 iterations, percentile method — exactly as
+  `main.tex:788-790` claims. It reproduces the published CI `[+0.20, +5.20]` **exactly**. ✓
+- **NO p-VALUE IN THE PAPER IS INVALIDATED BY A STATISTICS BUG.**
+- Fixture RNG hygiene is clean (`random.Random(42)`, no unseeded shuffle). Scorer symmetry is
+  clean (identical scorer both arms; leniency compresses dynamic range but does not skew a delta).
+  The OpenAI cost path is correct — the GAIA/MD numbers (98.91 mUSD, 11.4%) are real measurements.
+  The Limitations section is genuinely candid; related-work characterizations are fair.
+
+### TIER 1 — affects headline claims
+
+| ID | Finding | Evidence | State |
+|---|---|---|---|
+| **MNT-130** | **The guard's operating point is 100% shadow sampling, not 2%.** `run_guard_sweep.py:67` sets `AGENTC_OPTIMIZE_SHADOW="1"`; production default is `0.02`. `bench/repro/guard_frontier.sh:10` says why, outright: *"(AGENTC_OPTIMIZE_SHADOW=1) **so disables actually trigger**"* — i.e. at 2% they would not. Shadow calls invoke the **unpatched** SDK method (`_openai.py:367`), so they **emit no span**: every guard run made a second, real, billed LLM call per rewritten call that is **invisible to `traces.db`**. The abstract sells the guard "at a bounded **2%** shadow-sampling cost." **This is the single most damaging item left in the paper.** It compounds with MNT-131 — the doubled spend is invisible because the cost column on those runs is structurally $0.00. | `run_guard_sweep.py:67`; `guard_frontier.sh:10`; `_openai.py:367` | verified defect |
+| **MNT-131** | **30 committed CSVs have structurally-zero cost.** `cost.rs:203` joins `spans.model = mp.model_id` on **exact string match**. Every non-OpenAI model in the paper (`meta-llama/Llama-3.3-70B-Instruct-Turbo`, `claude-haiku-4-5-20251001`, Qwen3) is **absent from `data/pricing.json`**, so `cost_usd` stays NULL and `COALESCE(SUM(cost_usd), 0.0)` returns **$0.00**. Affects all `gsweep_{xmodel,claude,qwen3}_*` (→ `tab:xmodel`), `autogen_bridge_warmup_n*`, `rag_summarizer_warmup_n200`. **Mitigation: the paper already discloses this** (`main.tex:838` footnote; prints `---`) and publishes only *token* savings for those tables. The paper survives; the **artifact** ships a `cost_savings_pct` column that is structurally zero. | `cost.rs:203`; `data/pricing.json` | verified defect |
+| **MNT-132** | **The provider-generalization cost numbers are arithmetic, not measurement.** `main.tex:1038` says MD "**achieves** 14.7% cost reduction on Anthropic … and 31.1% on HuggingFace." Those models have no price entry, so measured cost was $0. All four published figures reproduce **exactly** from a *second, hardcoded* price table (`_optimizer_glue.py:60-101`) as `fire_rate × (1 − cheap/expensive)`. The HF prices are an **admitted proxy** (`:88-89`: *"no published $/tok; use Groq rates as a conservative stand-in"*). This contradicts the paper's own `tab:summary` footnote, which refuses to report LLaMA cost. | `_optimizer_glue.py:60-101` | verified defect |
+| **MNT-133** | **Two price tables disagree, and one is wrong.** `claude-3-5-haiku-20241022` is `(0.80, 4.00)` in `pricing.json` but `(1.00, 5.00)` in `_optimizer_glue.py:78`. `claude-haiku-4-5` is priced at `$0.80/$4.00`; Anthropic's list is `$1.00/$5.00` (the comment admits "estimated"). Correcting it moves the published Anthropic MD claim **14.7% → 13.3%**. | `_optimizer_glue.py:78`; `data/pricing.json` | verified defect |
+| **MNT-134** | **`se_pp` is the wrong statistic, in 15 drivers.** `se = 100*sqrt(acc*(1-acc)/N)` is the **single-arm binomial SE**, published as the uncertainty on a **paired delta**. A paired-delta SE depends on the *discordant* pairs, not the marginal accuracy. It overstates delta uncertainty **2.3–2.7×** (autogen n=300: published 2.5pp, true paired 0.94pp) and produces a visible self-contradiction: `research_planner` prints **p=0.0117 (significant)** beside **+9.0 ± 4.9**, which spans zero at 2 SE. Even the Limitations section's underpowering admissions use the wrong statistic. **Direction is conservative** (it overstates uncertainty), so no claim is inflated — but it is wrong and internally inconsistent. | `run_lcqa_warmup_n300.py:322` | verified defect |
+| **MNT-135** | **The guard section's scorer passes the empty string.** `bench/agents/analyst_qa.py:63`: `return e in a or a in e`. **Executed: `scored("", "fort worth")` → `True`** (the empty string is a substring of everything). So do bare prefixes (`"Fort"` vs `"Fort Worth"`). `analyst_qa` carries the **entire guard evaluation** (`main.tex:1473-1601`) — and the reverse-containment branch passes exactly the *truncation-shaped* failures StateDrop causes. | `bench/agents/analyst_qa.py:63` | verified defect |
+
+### TIER 2 — methods and integrity
+
+| ID | Finding | State |
+|---|---|---|
+| MNT-136 | **The paper names a library it has never used.** `main.tex:787`: *"the exact binomial formulation is used throughout (**statsmodels** `exact=True`)."* `statsmodels` appears nowhere — not in `pyproject.toml`, `uv.lock`, or any source file. Neither does `scipy`. All statistics are hand-rolled with `math`. (They are *correct* — see VERIFIED CLEAN — but the citation is false.) | verified defect |
+| MNT-137 | **A committed paper artifact reports a fabricated 100% accuracy.** `run_generalization_evals.py:122`: `n_passed = sum(1 for _, p in per_task)` — **missing `if p`**. All 16 other runners have it. `generalization_evals.csv` reports `100.0/100.0` on all three rows; true values recoverable from its own McNemar cells are **3.3% / 63.3% / 97.4%**. Deltas survive (both arms inflated equally); the absolute column is fiction. This is the `support_qa` cold-agent row — refines MNT-001. | verified defect |
+| MNT-138 | **"Exact-match" is a mislabel.** There is **no EM and no F1 anywhere in `bench/`**. The HotpotQA scorer omits article-stripping and uses *containment*, not equality; GAIA uses raw case-insensitive substring. Figures labelled "exact-match accuracy" (`main.tex:1191,1204-1206`) are normalized containment and are **not comparable to published HotpotQA/GAIA baselines**. | verified defect |
+| MNT-139 | **The multiple-comparisons surface is large and entirely undisclosed.** 284 McNemar tests across the committed CSVs, 26 p-values printed, 18 tables. Grep for `bonferroni|benjamini|holm|FDR` → **zero**. Worse for a *safety* thesis: the central claim **accepts the null** ("no significant degradation"), which requires an equivalence test (TOST) or a minimum-detectable-effect — grep for `TOST|equivalence|power analysis|non-inferiority` → **zero**. The marginal `p=0.044` offered as the powered neutrality check would not survive any correction. | verified defect |
+
+### TIER 3 — reproducibility, ethics, LaTeX
+
+| ID | Finding | State |
+|---|---|---|
+| MNT-140 | The documented fixture-build command yields the **wrong N**: `build_hotpot_fixture.py:86` defaults to `--limit 150`; the paper needs 300 and 500. `build_lcqa_n500.py:32` does `src[:500]` with **no assertion**, silently producing 150. The n=500 powered check has no repro-appendix row at all. | verified defect |
+| MNT-141 | **Zero dataset revision pinning.** `build_gaia_fixture.py:45` uses `trust_remote_code=True`; `build_wikipedia_qa_fixture.py:115` scrapes the **live** Wikipedia API with no `oldid`, swallows every exception (`:136`), and has already silently dropped **31 of 70** QA pairs. That fixture backs the abstention control the Limitations section says must **always** be reported alongside the headline. | verified defect |
+| MNT-142 | **No ethics/broader-impact/data-licensing section, and the datasets are never cited.** HotpotQA, GAIA, and SQuAD are absent from the 43 cite keys. GAIA is **gated**; HotpotQA/Wikipedia are **CC BY-SA** (share-alike; fixtures are derived works). `PRESUBMIT.md:128` has this `OPEN`. | verified defect |
+| MNT-143 | **Three tables overflow the column** (`tab:xmodel` by **185.9pt**). Root cause is a real LaTeX bug: `tabularx` **with no `X` column** silently degrades to `tabular` and enforces nothing (`main.tex:820,1249,1275`). Also 6 of 9 figures are never `\ref`'d. | verified defect |
+| MNT-144 | **Latent 16.7× cost bug.** `estimate_cost_usd`'s prefix fallback iterates the dict in **insertion order**, where `"gpt-4o"` precedes `"gpt-4o-mini"`. Any *new* gpt-4o-mini snapshot would be billed at **$2.50 instead of $0.15**. Same class as MNT-018 — guarded only by luck. | verified defect |
+
 ## Do Not Touch Yet
 
 | Path | Reason | Unblock evidence needed |

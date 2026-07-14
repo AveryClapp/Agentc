@@ -1,9 +1,15 @@
 # Agent orchestration (per-user, loaded via symlink to orchestration-CLAUDE.md)
-.claude/
+# Project skills ARE tracked — they encode shared methodology, not user settings.
+.claude/*
+!.claude/skills/
 
 # Beads runtime state (issues.jsonl is the source of truth, rest is ephemeral)
 .beads/beads.db
 .beads/beads.db-*
+.beads/dolt
+.beads/dolt-wal
+.beads/.br_history/
+.beads/.br_recovery/
 
 # Agent Mail MCP config (per-user server auth)
 .mcp.json

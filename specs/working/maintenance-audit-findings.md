@@ -305,6 +305,63 @@ optimize"* — and the paper's numbers cannot tell the difference either.
 | MNT-125 | **Any `@agentc.trace` function that raises is executed TWICE.** `_run_traced_sync:227` catches the *user's* exception, logs, and re-raises; the wrapper at `:172` catches that same re-raised exception, cannot tell it from an internal failure, and with `fail_open=True` (default) **calls the user's function again**. Duplicate LLM calls, duplicate token spend, and a span already emitted with `status=ERROR`. At DEBUG. | `_span.py:150,172` | verified defect | OPEN |
 | MNT-126 | Also silently degrading, all at DEBUG: `_memoize.py:116/139/147/159/172/237/265` (cache degrades to a **permanent 0% hit rate**); `_writer.py:302/318/365` (dropped cache inserts; a failed `merge_all_pending` means per-process DBs never fold into `traces.db`); `_lifecycle.py:184` (`install_all()` failure → no provenance tags → **ParallelBranch and StateDrop conservatively refuse to fire**); `langgraph.py:66` (falls through and forwards the **unwrapped** node — provenance silently vanishes); `_config.py:69` (a malformed `config.toml` silently reverts to defaults, discarding `storage_path` *and* `fail_open`). | — | verified defect | OPEN |
 
+## Pass 6 — Functional-Risk Review + Corrections (2026-07-17)
+
+### Corrections to this audit
+
+| ID | Correction |
+|---|---|
+| MNT-113-CORR | **The stated ParallelBranch mechanism was WRONG.** MNT-113 claimed PB is hidden because `Plan::Parallel` writes `rule=NULL`. **False** — `profiler/lib.rs:815` records `Some(rule.clone())` for Parallel. **Only `Plan::Cached` nulls it.** PB is invisible because *no driver ever queries for it* and the `plan_kind='rewritten'` filter excludes `'parallel'`. The conclusion holds; a fix written against the original mechanism would itself have been wrong. The CacheHit half of MNT-113 stands — `Plan::Cached` genuinely nulls the rule. |
+| MNT-033/066 | This findings document is now itself the **fifth tracker**, and MNT-033 went stale *within one day* (retracted by MNT-066 in the same file). **bd holds the state; this file is narrative.** Do not add status here. |
+
+### The finding that reframes everything
+
+| ID | Finding | Evidence | State |
+|---|---|---|---|
+| **MNT-127** | **Cost/token/accuracy and fire counts come from DIFFERENT DATABASES.** `bench/run_*.py`: `_aggregate_from_db(storage_dir/"traces.db")` produces cost and tokens; `optimizer_audit.db` + `plan_audit` produces fire counts. Accuracy comes from per-task pass/fail. **THEREFORE THE FIRE-COUNT BUG (MNT-112/113) TOUCHES ZERO COST, TOKEN, OR ACCURACY NUMBERS.** Every headline quantitative result survives intact: 33.9% CC savings, 34.0% token savings, 95.2% of additive ideal, 100.5% super-additivity, the guard's damage-prevention deltas, and every McNemar p-value. **What breaks is only the mechanistic diagnostic layer.** | `bench/run_lcqa_warmup_n300.py:188` vs `:220-226` | verified |
+
+### The two landmines the audit missed
+
+| ID | Finding | Evidence | State |
+|---|---|---|---|
+| **MNT-128** | **`data/pricing.json` is EVIDENCE, not config — and P6-1's "obvious fix" would detonate it.** `cost.rs:4-5`: *"Cost is computed at query time (not capture time) so pricing updates **retroactively apply to old spans**."* Chain: `pricing.json` → `model_pricing` → `backfill_costs()` → `spans.cost_usd` → `SUM(cost_usd)` → **every `cost_savings_mUSD` column in every committed CSV** — and it also feeds `CostModel` → `planner.rs` projected savings → **rule ranking**. The red test (MNT-091) fails because pricing is 117 days old vs `STALENESS_DAYS=90`. **Refreshing the pricing file to make the test pass would silently rewrite every cost number in the paper and change which rules fire.** The only safe fix is to change the *test*, and hash-pin `pricing.json`. | `crates/agentc-analyzer/src/cost.rs:4-5,17` | verified defect |
+| **MNT-129** | **The paper gives a causal mechanism for a measurement artifact.** `main.tex:1357-58`: *"SD fires 58 times when run alone; in composition, SD fires only 1 of 90 calls **because CC already removes the messages SD would otherwise target**."* That "1 of 90" **is the composed-undercount signature** (MNT-112). SD never stopped firing — its fires were logged as composed rows attributed to the first rule. A reviewer who opens `autogen_bridge_warmup_n200.csv` (`sd_fire=0` all-on, `197` alone) sees this in thirty seconds. **Not an erratum — a retraction risk.** Same class: `tab:mdcc-orthogonality`'s "MD fires 15%/25%". | `main.tex:1357-58,1371` | verified defect |
+
+### Freeze policy (recommended)
+
+Three options were evaluated. **(c) recompute from retained DBs is IMPOSSIBLE** — no `optimizer_audit.db`,
+`traces.db`, or `~/.agentc` exists anywhere; drivers `rmtree` their storage root on startup, delete the audit
+DB mid-run by design, and wrote to `/tmp`. The per-task sidecars carry no plan information.
+**(b) fix + re-run is a trap** — `bench/fixtures/` was never committed, model snapshots were never pinned, and
+the authors' own artifact documents a 32%→100% baseline drift. **You cannot re-run "just one column."**
+
+**Adopted: (a′) — freeze the numbers, delete the mechanism, disclose the instrument.**
+
+1. **Freeze now.** Tag the commit that produced the CSVs. Hash-pin `data/pricing.json` (MNT-128).
+2. **Run the two free diagnostics first:** V4 (does ParallelBranch fire?) and **P11-7 — does `AGENTC_ENABLED_RULES` parse correctly?** If that knob mis-parses, *every ablation config in the paper is wrong* and the freeze question is moot. Both are cheap. Do them before deciding anything else.
+3. **Do not report corrected fire counts. Delete the uncorrectable ones** (MNT-129). Costs nothing scientifically — see MNT-127.
+4. **Disclose the instrument:** temperature, per-experiment W, no model pinning, and that composed-plan fire attribution is first-rule-only. *Reviewers forgive a documented limitation; they do not forgive a mechanism invented from an artifact.*
+5. **Land INERT + ADDITIVE freely (≈73 beads).** Land BEHAVIOR-CHANGING and EVIDENCE-INVALIDATING behind the freeze tag, on a post-submission branch — so the artifact reviewer gets code that reproduces the CSVs.
+6. **Spend money on exactly one thing:** the `[T2]` attribution ablation (P1-17). It is *additive* — new evidence, invalidates nothing — and it is the acceptance lever reviewers will actually demand.
+
+### Bead risk buckets
+
+| Bucket | Count | Policy |
+|---|---|---|
+| **1 — INERT** (docs, paper text from committed CSVs, archiving, LICENSE) | ~60 | Land freely on main |
+| **2 — ADDITIVE** (tests, CI, `.env.example`, toolchain pin, V4 diagnostic) | 13 | Land freely; expect CI to go red — that is the point |
+| **3 — BEHAVIOR-CHANGING** (ParallelBranch USD, C1–C5, WAL, async dispatch, memo LRU) | 25 | **Post-submission branch, behind the freeze tag** |
+| **4 — EVIDENCE-INVALIDATING** (driver consolidation, fire-count fixes, figure regeneration, V5) | 11 | **Post-submission branch.** Re-running is a trap — fixtures are gone. |
+
+**Three "inert" beads with teeth:** P1-9..15 contains a *rounding correction to a number that is structurally
+wrong* (the CC fire range) — do not ship it as a fix. P1-2 rebuilds `tab:mdcc-orthogonality` from a CSV whose
+**fire counts are double-contaminated**. P10-1 is inert *as disclosure*, but if anyone *sets* `temperature=0`
+on the headline matrices, Tables 5 and 6 must be re-run entirely.
+
+**Ordering hazards:** P3-3 (enable PB on Anthropic) must never land before P3-1 (the USD fix), or the
+`0.500001` bug would suppress CC/SD on Anthropic too. P8-6 (enable audit-ring pruning at cap 10,000) must not
+land alongside the fire-count fix, or it will silently truncate counts on long runs.
+
 ## Do Not Touch Yet
 
 | Path | Reason | Unblock evidence needed |

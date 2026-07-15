@@ -1,5 +1,6 @@
 # Dolt database (managed by Dolt, not git)
-dolt/
+dolt
+dolt-wal
 dolt-access.lock
 
 # Runtime files

@@ -163,8 +163,14 @@ ENV/
 env.bak/
 venv.bak/
 
-# Materialized evaluation fixtures — regenerate from bench/build_fixtures/*
+# Materialized evaluation fixtures — regenerate from bench/build_*.py
 bench/fixtures/*.json
+
+# Stale compiled paper snapshots (May 2026, predating the June guard / cross-model
+# work). Kept locally for reference (AgentcV2.pdf renders the bibliography) but not
+# tracked — they would mislead anyone reading them as the current manuscript.
+paper-intelligence/AgentcV1.pdf
+paper-intelligence/AgentcV2.pdf
 
 # Spyder project settings
 .spyderproject

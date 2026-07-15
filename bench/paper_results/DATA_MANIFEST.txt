@@ -18,14 +18,14 @@ Table 6 (sec 6.2 -- ModelDowngrade, n=127, gaia_router)
   Canonical: bench/paper_results/gaia_router-modeldowngrade-n127-warmup.csv
   Key result: MD-only cost savings 11.2% (11.23 mUSD); BF=7/FB=2/p=0.1797
                (n.s. -- MD safe on gaia_router); MD fire rate 25.6% (65/254 calls)
-  Run script: bench/run_gaia_warmup_n127.py
+  Run script: bench/run_gaia_warmup.py
 
 Table 7 (sec 6.3 -- StateDrop, n=50, iterative_refiner)
   Source:  bench/paper_results/iterative_refiner_warmup_n50.csv
   Canonical: bench/paper_results/iterative_refiner-statedrop-n50-warmup.csv
   Key result: SD-only cost savings 6.1% (5.15 mUSD), input-token savings 10.8%
                SD fires 183/call sites; all-on 12.0% input-token savings
-  Run script: bench/run_iterative_refiner_warmup_n50.py
+  Run script: bench/run_refiner_warmup.py
 
 Table 13 (sec 6.4 -- CC+SD composition, n=30, multirule_qa)
   Source:  bench/paper_results/cc_sd_subadditivity_warmup.csv

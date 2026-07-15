@@ -243,6 +243,7 @@ Storage is three SQLite databases under `~/.agentc`: `traces.db` (spans + cache 
 - [specs/profiler.md](specs/profiler.md) - instrumentation, span schema, waste detectors
 - [specs/memoization.md](specs/memoization.md) - canonical keys, LSH, cache lifecycle
 - [specs/optimizer.md](specs/optimizer.md) - DAG IR, cost model, rule definitions, accuracy budget
+- [CONFIG.md](CONFIG.md) - every environment variable the runtime and benchmark harness read
 - [specs/future-work.md](specs/future-work.md) - items intentionally out of scope
 
 ---

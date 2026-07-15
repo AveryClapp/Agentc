@@ -43,6 +43,11 @@ Agentc/
 ## Conventions
 
 - Commit messages: imperative mood, concise (e.g., `Add profiler span serialization logic`)
+- **No standalone bookkeeping commits.** Never commit a status/tracker update on its
+  own — no commit whose only change is a resume/status doc or a "record bead closes"
+  note. Fold any such update into the substantive commit it accompanies, or
+  `git commit --amend` while the commit is still local. Durable cross-session state
+  belongs in the tracker (a bead comment / dedicated issue), not a committed doc.
 - Branches: `feat/<slug>`, `fix/<slug>`, or `spec/<slug>`
 - Default branch: `main`
 - No over-engineering — minimum complexity for the current task
@@ -98,7 +103,9 @@ bd close <id>         # Complete work
 
 - Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
 - Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+- For persistent knowledge, attach a `bd comments` note to the relevant issue (or a
+  dedicated tracking issue) — do NOT use MEMORY.md files. (There is no `bd remember`
+  subcommand; `bd` is an alias for `br`.)
 
 ## Session Completion
 
@@ -112,8 +119,8 @@ bd close <id>         # Complete work
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd dolt push
-   git push
+   bd sync                 # export bead state to .beads/issues.jsonl (there is no `bd dolt push`)
+   git push                # .beads/issues.jsonl is git-tracked and rides the push
    git status  # MUST show "up to date with origin"
    ```
 5. **Clean up** - Clear stashes, prune remote branches

@@ -72,8 +72,20 @@ now, single owner). All cargo test + clippy green; all latent (no re-run).
 - **bd-4xr** (P8-8): number-toucher (overhead heap allocs) — RE-VERIFY overhead bench (free); do in
   the number-toucher phase, add a ledger row.
 
-Next lane: Phase 11 (test-coverage beads: bd-inc, bd-rj7, bd-gzf, bd-004, bd-c45, bd-1cb) → docs/artifact
-→ paper-number edits → the 7 number-touchers + 2 refactors (bd-yqr, bd-n8s after golden test bd-xlqh) last.
+**Phase 11 test-coverage — DONE (6):** bd-inc (planner disable-gate test, mutation-proven),
+bd-gzf (composition driver-conflict gate reached, mutation-proven), bd-1cb (guard now runs on native
+Anthropic + _response_output_text handles Anthropic shape), bd-004 (4 false-assurance tests fixed:
+V2 composition gate now requires real Composed, CC follow-on de-vacuumed, dead _shadow.py+test
+deleted → idea filed as bd-v02z, fail_open was bd-jvk), bd-c45 (CI installs .[test] + builds CLI +
+loud guards so provider-patch & CLI suites can't silently skip), bd-rj7 (Python entry of the guard
+loop tested). Full workspace green (15 groups), clippy clean.
+
+Filed during this run: **bd-v02z** (async background shadow sampling — future improvement over the
+sync inline maybe_shadow_record; recoverable from git at the bd-004 deletion commit).
+
+Next lane: docs/artifact (bd-o4q DATA_MANIFEST, bd-u50 repro appendix, bd-609 .env.example, Phase 9
+docs, Phase 4/5) → paper-number edits (Phase 1/10/14, RE-VERIFY vs CSV) → the 7 number-touchers +
+2 refactors (bd-yqr, bd-n8s after golden test bd-xlqh) last. bd-jz4 CI partly addressed by bd-c45.
 
 ## Invariants (from the whole audit — don't relearn the hard way)
 - Every executed change: verify before commit (run the test/build; check numbers vs CSV).

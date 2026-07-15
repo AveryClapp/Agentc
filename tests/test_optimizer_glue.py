@@ -13,6 +13,7 @@ from agentc._patches._optimizer_glue import (
     _text_divergence,
     build_call_dict_openai,
     dispatch_sync,
+    maybe_shadow_record,
 )
 from agentc._provenance import (
     State,
@@ -269,3 +270,60 @@ class TestDispatchSyncCachedFallback:
             decode_cached=lambda v: 0,
         )
         assert out == 0
+
+
+class TestShadowGuardPythonEntry:
+    """Regression (bd-rj7): the Python ENTRY of the accuracy-guard loop —
+    maybe_shadow_record -> record_divergence — was exercised by zero tests
+    (only the middle Rust link, Budget, was covered). The Rust EXIT of the loop
+    (record_sample -> planner disable gate) is covered by the Rust test
+    planner::budget_disabled_rule_is_gated_off. Together they close the loop."""
+
+    @staticmethod
+    def _resp(text: str):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=text))]
+        )
+
+    @staticmethod
+    def _plan():
+        from types import SimpleNamespace
+
+        return SimpleNamespace(kind="rewritten", rule="ContextCompress", call={})
+
+    def test_divergent_shadow_forwards_positive_divergence(self, monkeypatch):
+        import agentc._optimizer
+
+        recorded: list = []
+        monkeypatch.setattr(
+            agentc._optimizer,
+            "record_divergence",
+            lambda site, rule, div: recorded.append((site, rule, div)),
+        )
+        monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "1.0")  # always sample
+
+        optimized = self._resp("Paris is the capital of France")
+        original = self._resp("Photosynthesis converts sunlight in plants")
+        maybe_shadow_record(self._plan(), "site", optimized, run_original=lambda: original)
+
+        assert len(recorded) == 1
+        site, rule, div = recorded[0]
+        assert (site, rule) == ("site", "ContextCompress")
+        assert div > 0.0, "divergent shadow outputs must forward a positive divergence"
+
+    def test_identical_shadow_forwards_zero_divergence(self, monkeypatch):
+        import agentc._optimizer
+
+        recorded: list = []
+        monkeypatch.setattr(
+            agentc._optimizer,
+            "record_divergence",
+            lambda site, rule, div: recorded.append((site, rule, div)),
+        )
+        monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "1.0")
+
+        resp = self._resp("identical output text")
+        maybe_shadow_record(self._plan(), "site", resp, run_original=lambda: resp)
+        assert recorded == [("site", "ContextCompress", 0.0)]

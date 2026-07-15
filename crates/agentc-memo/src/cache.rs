@@ -177,13 +177,33 @@ impl SqliteCache {
         query_embedding: Option<&[f32]>,
         now_micros: i64,
     ) -> Result<Option<CacheHit>> {
+        self.lookup_with_embedding_threshold(
+            key,
+            query_embedding,
+            now_micros,
+            self.similarity_threshold,
+        )
+    }
+
+    /// Like [`Self::lookup_with_embedding`] but with an explicit similarity
+    /// threshold instead of the instance's stored one. This lets a single
+    /// long-lived (shared) cache serve per-request thresholds without mutating
+    /// instance state — the FFI layer keeps one cache per DB path and passes
+    /// the request's threshold here (bd-ul9).
+    pub fn lookup_with_embedding_threshold(
+        &self,
+        key: &CacheKey,
+        query_embedding: Option<&[f32]>,
+        now_micros: i64,
+        similarity_threshold: f32,
+    ) -> Result<Option<CacheHit>> {
         if let Some(hit) = self.lookup(key, now_micros)? {
             return Ok(Some(hit));
         }
         let Some(embedding) = query_embedding else {
             return Ok(None);
         };
-        if self.similarity_threshold >= 1.0 {
+        if similarity_threshold >= 1.0 {
             return Ok(None);
         }
 
@@ -192,7 +212,7 @@ impl SqliteCache {
             .lock()
             .map_err(|_| anyhow::anyhow!("cache mutex poisoned"))?;
         let Some(candidate) =
-            best_candidate(&guard, embedding, self.similarity_threshold, now_micros)?
+            best_candidate(&guard, embedding, similarity_threshold, now_micros)?
         else {
             return Ok(None);
         };

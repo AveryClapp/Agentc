@@ -8,6 +8,9 @@
 //! `eprintln!` and return a safe value (miss, zero rows affected, default
 //! stats). A cache fault never propagates to the user's LLM call.
 
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
@@ -78,17 +81,17 @@ pub fn lookup(
         call_site_id: call_site_id.to_string(),
     };
 
-    let mut cache = match SqliteCache::from_shared(conn) {
+    let cache = match shared_cache(conn) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("agentc-memo: lookup schema setup failed: {e}");
+            eprintln!("agentc-memo: lookup cache init failed: {e}");
             return None;
         }
     };
-    if let Some(t) = similarity {
-        cache.set_similarity_threshold(t);
-    }
-    match cache.lookup_with_embedding(&key, embedding, now_micros()) {
+    // Pass the request's threshold explicitly so the shared cache is never
+    // mutated (the old code called set_similarity_threshold per request).
+    let threshold = similarity.unwrap_or_else(|| cache.similarity_threshold());
+    match cache.lookup_with_embedding_threshold(&key, embedding, now_micros(), threshold) {
         Ok(hit) => hit,
         Err(e) => {
             eprintln!("agentc-memo: lookup failed: {e}");
@@ -125,7 +128,7 @@ pub fn insert(
     let now = now_micros();
     let ttl_micros = ttl_seconds.saturating_mul(1_000_000);
 
-    ensure_schema(conn).map_err(|e| format!("ensure_schema: {e}"))?;
+    ensure_schema_once(conn).map_err(|e| format!("ensure_schema: {e}"))?;
 
     let tx = conn.transaction().map_err(|e| format!("begin: {e}"))?;
 
@@ -187,7 +190,7 @@ pub fn insert(
 /// that fails returns `0` / `false` for its slot and the remaining steps
 /// still run.
 pub fn maintenance(conn: &Connection, max_entries: u64) -> (u64, u64, bool) {
-    if let Err(e) = ensure_schema(conn) {
+    if let Err(e) = ensure_schema_once(conn) {
         eprintln!("agentc-memo: maintenance schema setup failed: {e}");
         return (0, 0, false);
     }
@@ -236,10 +239,10 @@ fn on_disk_bytes(conn: &Connection) -> rusqlite::Result<u64> {
 
 /// FFI-safe `invalidate`. Returns rows deleted, or 0 on error.
 pub fn invalidate(conn: &Connection, pattern: InvalidationPattern) -> u64 {
-    let cache = match SqliteCache::from_shared(conn) {
+    let cache = match shared_cache(conn) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("agentc-memo: invalidate schema setup failed: {e}");
+            eprintln!("agentc-memo: invalidate cache init failed: {e}");
             return 0;
         }
     };
@@ -254,10 +257,10 @@ pub fn invalidate(conn: &Connection, pattern: InvalidationPattern) -> u64 {
 
 /// FFI-safe `stats`. Returns a default zeroed struct on error.
 pub fn stats(conn: &Connection) -> CacheStats {
-    let cache = match SqliteCache::from_shared(conn) {
+    let cache = match shared_cache(conn) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("agentc-memo: stats schema setup failed: {e}");
+            eprintln!("agentc-memo: stats cache init failed: {e}");
             return CacheStats::default();
         }
     };
@@ -268,22 +271,61 @@ pub fn stats(conn: &Connection) -> CacheStats {
 // Non-owning cache wrapper.
 // ---------------------------------------------------------------------------
 
-impl SqliteCache {
-    /// Build a cache around a borrowed connection by cloning it into a new
-    /// in-memory handle to the same database path. Callers that already own
-    /// a `Connection` use `SqliteCache::new` instead.
-    ///
-    /// For the FFI use case, `conn` is the profiler's writer connection; we
-    /// can't take ownership of it, so we open a second handle to the same
-    /// path. Readers and writers to a WAL-mode SQLite file play nicely.
-    fn from_shared(conn: &Connection) -> anyhow::Result<SqliteCache> {
-        let path = conn
-            .path()
-            .ok_or_else(|| anyhow::anyhow!("connection has no file path (in-memory?)"))?;
-        let fresh = Connection::open(path)?;
-        fresh.execute_batch("PRAGMA busy_timeout = 5000;")?;
-        SqliteCache::new(fresh)
+/// Process-global pool of long-lived caches, one per DB path. The old
+/// `from_shared` opened a NEW connection and re-ran the full memoization DDL
+/// on EVERY lookup while holding the profiler mutex (bd-ul9). Reusing one
+/// `Arc<SqliteCache>` per path removes both the connect and the DDL from the
+/// hot path.
+static SHARED_CACHES: OnceLock<Mutex<HashMap<PathBuf, Arc<SqliteCache>>>> = OnceLock::new();
+
+/// Paths whose memoization schema has already been ensured this process, so
+/// `insert()` / `maintenance()` skip the redundant (idempotent but not free)
+/// DDL that previously ran on every FFI call.
+static SCHEMA_ENSURED: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+
+fn conn_path(conn: &Connection) -> Option<PathBuf> {
+    conn.path().map(PathBuf::from)
+}
+
+fn mark_schema_ensured(path: &std::path::Path) {
+    let set = SCHEMA_ENSURED.get_or_init(|| Mutex::new(HashSet::new()));
+    set.lock().unwrap_or_else(|e| e.into_inner()).insert(path.to_path_buf());
+}
+
+/// Return a long-lived shared cache for the file backing `conn`, creating it
+/// (and applying the DDL) at most once per path. Errors for path-less
+/// (in-memory) connections, which cannot be shared across handles.
+fn shared_cache(conn: &Connection) -> anyhow::Result<Arc<SqliteCache>> {
+    let path = conn_path(conn)
+        .ok_or_else(|| anyhow::anyhow!("connection has no file path (in-memory?)"))?;
+    let map = SHARED_CACHES.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(existing) = map.lock().unwrap_or_else(|e| e.into_inner()).get(&path).cloned() {
+        return Ok(existing);
     }
+    // Open a second handle to the same file (readers/writers to a WAL DB play
+    // nicely). SqliteCache::new applies the DDL once.
+    let fresh = Connection::open(&path)?;
+    fresh.execute_batch("PRAGMA busy_timeout = 5000;")?;
+    let cache = Arc::new(SqliteCache::new(fresh)?);
+    mark_schema_ensured(&path);
+    // Insert-or-get under the lock so a racing thread doesn't get a second cache.
+    let mut guard = map.lock().unwrap_or_else(|e| e.into_inner());
+    Ok(guard.entry(path).or_insert(cache).clone())
+}
+
+/// Ensure the memoization schema on `conn`, but at most once per DB path per
+/// process. In-memory (path-less) connections always ensure (cheap, unkeyable).
+fn ensure_schema_once(conn: &Connection) -> anyhow::Result<()> {
+    let Some(path) = conn_path(conn) else {
+        return ensure_schema(conn);
+    };
+    let set = SCHEMA_ENSURED.get_or_init(|| Mutex::new(HashSet::new()));
+    if set.lock().unwrap_or_else(|e| e.into_inner()).contains(&path) {
+        return Ok(());
+    }
+    ensure_schema(conn)?;
+    set.lock().unwrap_or_else(|e| e.into_inner()).insert(path);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -322,6 +364,17 @@ mod tests {
         assert!(hash_from_bytes(&[0u8; 31]).is_none());
         assert!(hash_from_bytes(&[0u8; 33]).is_none());
         assert!(hash_from_bytes(&[0u8; 32]).is_some());
+    }
+
+    #[test]
+    fn shared_cache_reuses_one_instance_per_path() {
+        // Regression (bd-ul9): repeat FFI calls for the same DB must reuse one
+        // long-lived cache (connection + ensured schema), not open a fresh
+        // connection and re-run the DDL every time.
+        let (_dir, conn) = bootstrap_db();
+        let a = shared_cache(&conn).unwrap();
+        let b = shared_cache(&conn).unwrap();
+        assert!(Arc::ptr_eq(&a, &b), "same path must reuse the same cache instance");
     }
 
     #[test]

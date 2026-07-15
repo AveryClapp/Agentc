@@ -630,15 +630,16 @@ fn cohere_envelope(raw: &Value) -> Value {
     build_envelope("cohere", norm, tools.as_ref(), response_format.as_ref())
 }
 
-fn cohere_extract(
-    raw: &Value,
-) -> (
+/// (preamble, chat_history, tools, response_format, extra) extracted from a raw Cohere request.
+type CohereExtract = (
     Option<Value>,
     Vec<Value>,
     Option<Value>,
     Option<Value>,
     Option<Value>,
-) {
+);
+
+fn cohere_extract(raw: &Value) -> CohereExtract {
     match raw {
         Value::Object(m) => {
             let history = m

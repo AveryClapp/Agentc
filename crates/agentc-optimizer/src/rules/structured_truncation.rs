@@ -72,10 +72,9 @@ impl RewriteRule for StructuredTruncationRule {
             .messages
             .iter()
             .zip(&message_deps)
-            .filter(|(msg, dep)| {
+            .rfind(|(msg, dep)| {
                 msg.role == "user" && !matches!(dep, DepSource::ToolOutput { .. })
             })
-            .last()
             .map(|(msg, _)| msg.content.as_str())
             .unwrap_or("");
 

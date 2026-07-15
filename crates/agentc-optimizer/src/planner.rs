@@ -266,7 +266,8 @@ impl Optimizer {
 
         // Step 5 — either V2 composition or V1 first-match-wins.
         // `AGENTC_COMPOSE=0` disables composition for baseline comparisons.
-        let plan = if self.config.compose {
+        
+        if self.config.compose {
             let result = crate::composition::compose_proposals(proposals, call);
             if deadline.elapsed().as_micros() > max_overhead_us {
                 return Plan::PassThrough;
@@ -284,8 +285,7 @@ impl Optimizer {
                     }
                 })
                 .unwrap_or(Plan::PassThrough)
-        };
-        plan
+        }
     }
 }
 

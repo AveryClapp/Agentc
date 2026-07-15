@@ -209,7 +209,7 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
                 .collect()
         });
     let rule_enabled = |name: &str| -> bool {
-        enabled.as_ref().map_or(true, |set| set.contains(name))
+        enabled.as_ref().is_none_or(|set| set.contains(name))
     };
 
     let mut rules: Vec<Box<dyn RewriteRule>> = Vec::with_capacity(5);

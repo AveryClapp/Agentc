@@ -37,8 +37,8 @@ pub use reporting::{
     OptimizerReport, RuleBreakdown, RuleFiringRate,
 };
 pub use rules::{
-    CacheHitRule, ContextCompressRule, DeadOutputTruncationRule, ModelDowngradeRoute,
-    ModelDowngradeRule, OutputBudgetRule, ParallelBranchRule, PromptDedupRule, StateDropRule,
-    StructuredTruncationRule,
+    is_known_rule_name, CacheHitRule, ContextCompressRule, DeadOutputTruncationRule,
+    ModelDowngradeRoute, ModelDowngradeRule, OutputBudgetRule, ParallelBranchRule, PromptDedupRule,
+    StateDropRule, StructuredTruncationRule, KNOWN_RULE_NAMES,
 };
 pub use wiring::{build_optimizer, Wired};

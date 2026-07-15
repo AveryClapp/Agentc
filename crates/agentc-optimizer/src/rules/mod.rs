@@ -30,3 +30,56 @@ pub use parallel_branch::ParallelBranchRule;
 pub use prompt_dedup::PromptDedupRule;
 pub use state_drop::StateDropRule;
 pub use structured_truncation::StructuredTruncationRule;
+
+/// Canonical names of the nine rewrite rules, exactly as each rule's
+/// `RewriteRule::name()` returns them. The `agentc optimize disable` CLI
+/// validates `--rule` against this set so a typo fails loudly instead of
+/// writing a disable entry that silently never matches a real rule. Kept in
+/// sync with the `name()` impls by `known_rule_names_match_rule_impls`.
+pub const KNOWN_RULE_NAMES: [&str; 9] = [
+    "CacheHit",
+    "ContextCompress",
+    "ModelDowngrade",
+    "ParallelBranch",
+    "StateDrop",
+    "PromptDedup",
+    "OutputBudget",
+    "StructuredTruncation",
+    "DeadOutputTruncation",
+];
+
+/// True if `name` is one of the nine rewrite-rule names.
+pub fn is_known_rule_name(name: &str) -> bool {
+    KNOWN_RULE_NAMES.contains(&name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::planner::RewriteRule;
+
+    #[test]
+    fn known_rule_names_match_rule_impls() {
+        // Every Default-constructible rule reports a name in the set. Guards
+        // against a rule's name() drifting away from KNOWN_RULE_NAMES.
+        let default_rule_names: [&str; 7] = [
+            ContextCompressRule::default().name(),
+            ParallelBranchRule::default().name(),
+            StateDropRule::default().name(),
+            PromptDedupRule::default().name(),
+            OutputBudgetRule::default().name(),
+            StructuredTruncationRule::default().name(),
+            DeadOutputTruncationRule::default().name(),
+        ];
+        for n in default_rule_names {
+            assert!(
+                KNOWN_RULE_NAMES.contains(&n),
+                "rule name {n:?} missing from KNOWN_RULE_NAMES"
+            );
+        }
+        // CacheHit and ModelDowngrade need construction args; assert by name.
+        assert!(KNOWN_RULE_NAMES.contains(&"CacheHit"));
+        assert!(KNOWN_RULE_NAMES.contains(&"ModelDowngrade"));
+        assert_eq!(KNOWN_RULE_NAMES.len(), 9);
+    }
+}

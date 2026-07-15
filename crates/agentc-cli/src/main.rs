@@ -1556,6 +1556,13 @@ fn cmd_optimize_disable(
     hours: u64,
     storage_path: String,
 ) -> anyhow::Result<()> {
+    if !agentc_optimizer::is_known_rule_name(&rule) {
+        anyhow::bail!(
+            "Unknown rule '{}'. Known rules: {}",
+            rule,
+            agentc_optimizer::KNOWN_RULE_NAMES.join(", ")
+        );
+    }
     let storage_dir = resolve_storage_path(&storage_path);
     let mut cost = open_cost_model_db(&storage_dir)?;
     let now = now_us();

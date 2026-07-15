@@ -62,9 +62,25 @@ added and run in CI. No ledger entries needed (all pure-latent / plumbing / docs
 bd-nr5 was a disclosure only (no number changed). bd-lcd (P3-1 ParallelBranch USD-ratio) still
 deferred to the number-toucher phase.
 
-Next lane: Phase 8 (DB plumbing: bd-gzm, bd-ul9, bd-77x, bd-p0i, bd-6sk, bd-c0l, bd-scy, bd-smg, bd-4xr*)
-→ Phase 11 (tests) → docs/artifact → paper-number edits → the 7 number-touchers + 2 refactors last.
-(bd-4xr is a number-toucher: RE-VERIFY overhead bench, free.)
+**Phase 8 DB plumbing (6 of 9 done):** bd-c0l (p99 migration propagates non-dup errors), bd-gzm
+(WAL on audit+cost DBs), bd-p0i (merge lock no longer defeatable — removed unsafe unlink-recovery),
+bd-6sk (failed merge rolls back before DETACH; mutation-proven), bd-scy (report projected savings
+honestly). All cargo test + clippy green; all latent (no re-run).
+
+**Phase 8 REMAINING — the 3 architectural/perf ones (heavier risk class, need care):**
+- **bd-ul9** (P8-1): memo FFI `lookup` opens a NEW connection + re-runs full DDL every call via
+  SqliteCache::from_shared. Fix = process-global cache of Arc<SqliteCache> keyed by path + thread
+  the similarity threshold per-call (it's currently instance state mutated per lookup). Perf, latent.
+- **bd-77x** (P8-2): `migrate_db` is a stub (migrations_applied=0, creates no tables). Bumping
+  SCHEMA_VERSION would brick DBs. Needs a real migration mechanism OR a guard. Architectural.
+- **bd-smg** (P8-7): agentc-core depends on agentc-memo only so merge.rs can call
+  agentc_memo::ensure_schema; neither crate owns traces.db (root cause of bd-77x). Cross-crate
+  schema-ownership refactor. Architectural.
+- **bd-4xr** (P8-8): number-toucher (overhead heap allocs) — RE-VERIFY overhead bench (free); do in
+  the number-toucher phase, add a ledger row.
+
+Next lane after Phase 8: Phase 11 (tests) → docs/artifact → paper-number edits → the 7
+number-touchers + 2 refactors last.
 
 ## Invariants (from the whole audit — don't relearn the hard way)
 - Every executed change: verify before commit (run the test/build; check numbers vs CSV).

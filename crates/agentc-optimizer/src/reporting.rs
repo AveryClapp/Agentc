@@ -138,8 +138,11 @@ pub fn build_report(
                 entry.skipped += 1;
             } else {
                 entry.applied += 1;
-                // Measured savings replaces projected once the executor
-                // reports back; projected is kept as a fallback.
+                // measured_savings_usd would replace projected once the
+                // executor reports realized savings back — but the production
+                // writer hardcodes it to NULL (no measured feedback is
+                // recorded yet), so in practice this is ALWAYS the projected
+                // value. The report labels it as projected accordingly (bd-scy).
                 let saved = row.measured.or(row.projected).unwrap_or(0.0);
                 entry.savings_usd += saved;
                 total_savings += saved;
@@ -613,7 +616,7 @@ pub fn render_report(r: &OptimizerReport) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Rule firings:       applied   skipped   savings"
+        "Rule firings:       applied   skipped   projected"
     );
     for rule in &r.rules {
         let _ = writeln!(
@@ -631,10 +634,14 @@ pub fn render_report(r: &OptimizerReport) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Savings ({}h):       {}  ({} of baseline spend)",
+        "Projected savings ({}h):  {}  ({} of baseline spend)",
         r.window_hours,
         format_usd(r.total_savings_usd),
         format_pct_1(r.savings_fraction())
+    );
+    let _ = writeln!(
+        out,
+        "  (cost-model projections; measured executor feedback is not recorded)"
     );
     match r.accuracy_divergence {
         Some(d) => {
@@ -1106,7 +1113,8 @@ mod tests {
             "Overhead per call:       0.4ms    p99 1.2ms",
             "  CacheHit              5,211     7,796    $62.19",
             "  ModelDowngrade        3,018     1,482    $41.07",
-            "Savings (24h):       $103.26  (24.6% of baseline spend)",
+            "Projected savings (24h):  $103.26  (24.6% of baseline spend)",
+            "measured executor feedback is not recorded",
             "Accuracy divergence: 0.4%",
         ];
         for line in checks {

@@ -28,9 +28,18 @@ Use these files first:
 
 Use `research-inbox/` and `references/source/` for provenance. Use `archive/` only for historical context.
 
-## Stable IDs
+## ID Namespaces — status
 
-Use existing IDs whenever possible. Do not reuse abandoned IDs.
+**LIVE (keep minting):** `LIT-###` (feeds the bibliography; literature does not rot)
+and `DEC-###` (append-only decision log; DEC-007 is load-bearing). Use existing IDs; never reuse abandoned ones.
+
+**FROZEN (retired 2026-07 — do not mint new IDs):** every other prefix below
+(`RES`, `CLM`, `GAP`, `EXP`, `RUN`, `RR`, `WP`, `QST`, `CIT`, `STAT`, `AE`, `NEG`,
+`IDEA`, `QTE`, `FIG`, `TTL`, `DRP`, `ART`, `ANG`, `VEN`). `main.tex`,
+`bench/paper_results/DATA_MANIFEST.txt`, `bench/repro/`, and `PRESUBMIT.md` never
+cited any of these, so no live artifact depends on them; they persist in git history
+and in `archive/`. Claim→evidence traceability now runs through DATA_MANIFEST +
+bench/repro. The table below is retained for historical decoding only.
 
 | Prefix | Entity |
 |---|---|

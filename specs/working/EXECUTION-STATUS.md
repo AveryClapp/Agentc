@@ -62,25 +62,18 @@ added and run in CI. No ledger entries needed (all pure-latent / plumbing / docs
 bd-nr5 was a disclosure only (no number changed). bd-lcd (P3-1 ParallelBranch USD-ratio) still
 deferred to the number-toucher phase.
 
-**Phase 8 DB plumbing (6 of 9 done):** bd-c0l (p99 migration propagates non-dup errors), bd-gzm
-(WAL on audit+cost DBs), bd-p0i (merge lock no longer defeatable — removed unsafe unlink-recovery),
-bd-6sk (failed merge rolls back before DETACH; mutation-proven), bd-scy (report projected savings
-honestly). All cargo test + clippy green; all latent (no re-run).
-
-**Phase 8 REMAINING — the 3 architectural/perf ones (heavier risk class, need care):**
-- **bd-ul9** (P8-1): memo FFI `lookup` opens a NEW connection + re-runs full DDL every call via
-  SqliteCache::from_shared. Fix = process-global cache of Arc<SqliteCache> keyed by path + thread
-  the similarity threshold per-call (it's currently instance state mutated per lookup). Perf, latent.
-- **bd-77x** (P8-2): `migrate_db` is a stub (migrations_applied=0, creates no tables). Bumping
-  SCHEMA_VERSION would brick DBs. Needs a real migration mechanism OR a guard. Architectural.
-- **bd-smg** (P8-7): agentc-core depends on agentc-memo only so merge.rs can call
-  agentc_memo::ensure_schema; neither crate owns traces.db (root cause of bd-77x). Cross-crate
-  schema-ownership refactor. Architectural.
+**Phase 8 DB plumbing — DONE (8 of 9; bd-4xr deferred):** bd-c0l (p99 migration propagates non-dup
+errors), bd-gzm (WAL on audit+cost DBs), bd-p0i (merge lock no longer defeatable — removed unsafe
+unlink-recovery), bd-6sk (failed merge rolls back before DETACH; mutation-proven), bd-scy (report
+projected savings honestly), bd-ul9 (process-global memo cache pool per path + per-call threshold),
+bd-77x (migrate_db refuses loudly instead of silently bricking; +hardening test fallout fixed),
+bd-smg (agentc-core owns traces.db memoization schema; core no longer depends on memo — memo->core
+now, single owner). All cargo test + clippy green; all latent (no re-run).
 - **bd-4xr** (P8-8): number-toucher (overhead heap allocs) — RE-VERIFY overhead bench (free); do in
   the number-toucher phase, add a ledger row.
 
-Next lane after Phase 8: Phase 11 (tests) → docs/artifact → paper-number edits → the 7
-number-touchers + 2 refactors last.
+Next lane: Phase 11 (test-coverage beads: bd-inc, bd-rj7, bd-gzf, bd-004, bd-c45, bd-1cb) → docs/artifact
+→ paper-number edits → the 7 number-touchers + 2 refactors (bd-yqr, bd-n8s after golden test bd-xlqh) last.
 
 ## Invariants (from the whole audit — don't relearn the hard way)
 - Every executed change: verify before commit (run the test/build; check numbers vs CSV).

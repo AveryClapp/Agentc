@@ -249,8 +249,9 @@ pub fn merge_per_process_db(
 
     // Ensure the memoization schema exists on the canonical DB so the merge
     // can INSERT into memoization_cache / memoization_lsh_bucket /
-    // memoization_embedding. No-op for DBs that already have it.
-    agentc_memo::ensure_schema(canonical_conn)
+    // memoization_embedding. No-op for DBs that already have it. This schema
+    // is owned here (traces.db is this crate's file), not in agentc-memo.
+    crate::memo_schema::ensure_memoization_schema(canonical_conn)
         .context("Failed to ensure memoization schema on canonical DB")?;
 
     // ATTACH the per-process DB.

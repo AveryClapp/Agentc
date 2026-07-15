@@ -7,6 +7,7 @@ description = "Semantic memoization cache for Agentc (exact-hash + LSH)"
 
 [dependencies]
 agentc-embed = { workspace = true }
+agentc-core = { workspace = true }
 anyhow = { workspace = true }
 rusqlite = { workspace = true }
 serde_json = { workspace = true }

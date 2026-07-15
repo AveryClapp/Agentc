@@ -185,9 +185,9 @@ enum OptimizeCmd {
 
 #[derive(clap::Subcommand)]
 enum CacheCmd {
-    /// Summary: entries, hit/miss breakdown, savings, top call sites.
+    /// Summary: entries, total hits, savings, and top call sites.
     Stats {
-        /// Window in hours for the hit/miss breakdown (default 24).
+        /// Window in hours for the "active entries" count (default 24).
         #[arg(long, default_value_t = 24)]
         hours: u64,
         /// Storage path.
@@ -1222,142 +1222,48 @@ fn parse_duration_micros(s: &str) -> anyhow::Result<i64> {
         .ok_or_else(|| anyhow::anyhow!("duration overflow: {}", s))
 }
 
-/// Cache hit/miss breakdown derived from spans tagged by the `@memoize`
-/// decorator. The decorator emits span attributes `agentc.cache.result` in
-/// {"exact","lsh","miss"} and `agentc.cache.saved_cost_usd` on hits. Older
-/// spans without these attributes are ignored.
-struct HitBreakdown {
-    exact: u64,
-    lsh: u64,
-    miss: u64,
-    saved_cost_usd: f64,
-    saved_tokens: i64,
-    p99_lookup_ms: Option<f64>,
-    exact_median_ms: Option<f64>,
-    lsh_median_ms: Option<f64>,
-}
-
-fn query_hit_breakdown(conn: &rusqlite::Connection, window_micros: i64) -> anyhow::Result<HitBreakdown> {
-    let cutoff = now_micros().saturating_sub(window_micros);
-    let mut stmt = conn.prepare(
-        "SELECT attributes, COALESCE(end_time, start_time) - start_time AS lat_us \
-         FROM spans WHERE start_time >= ?1 AND kind = 'chat'",
-    )?;
-    let mut exact = 0u64;
-    let mut lsh = 0u64;
-    let mut miss = 0u64;
-    let mut saved_cost = 0.0f64;
-    let mut saved_tokens = 0i64;
-    let mut lat_exact_ms: Vec<f64> = Vec::new();
-    let mut lat_lsh_ms: Vec<f64> = Vec::new();
-    let mut lat_all_ms: Vec<f64> = Vec::new();
-    let rows = stmt.query_map(rusqlite::params![cutoff], |r| {
-        let attrs: String = r.get(0)?;
-        let lat_us: i64 = r.get(1)?;
-        Ok((attrs, lat_us))
-    })?;
-    for row in rows {
-        let (attrs_json, lat_us) = row?;
-        let Ok(val) = serde_json::from_str::<serde_json::Value>(&attrs_json) else {
-            continue;
-        };
-        let Some(result) = val.get("agentc.cache.result").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let lat_ms = lat_us as f64 / 1000.0;
-        lat_all_ms.push(lat_ms);
-        match result {
-            "exact" => {
-                exact += 1;
-                lat_exact_ms.push(lat_ms);
-            }
-            "lsh" => {
-                lsh += 1;
-                lat_lsh_ms.push(lat_ms);
-            }
-            "miss" => miss += 1,
-            _ => continue,
-        }
-        if let Some(c) = val.get("agentc.cache.saved_cost_usd").and_then(|v| v.as_f64()) {
-            saved_cost += c;
-        }
-        if let Some(t) = val.get("agentc.cache.saved_tokens").and_then(|v| v.as_i64()) {
-            saved_tokens += t;
-        }
-    }
-    Ok(HitBreakdown {
-        exact,
-        lsh,
-        miss,
-        saved_cost_usd: saved_cost,
-        saved_tokens,
-        p99_lookup_ms: percentile(&mut lat_all_ms, 0.99),
-        exact_median_ms: percentile(&mut lat_exact_ms, 0.50),
-        lsh_median_ms: percentile(&mut lat_lsh_ms, 0.50),
-    })
-}
-
-fn percentile(samples: &mut [f64], p: f64) -> Option<f64> {
-    if samples.is_empty() {
-        return None;
-    }
-    samples.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let idx = ((samples.len() as f64 - 1.0) * p).round() as usize;
-    samples.get(idx).copied()
-}
-
 fn cmd_cache_stats(hours: u64, storage_path: String) -> anyhow::Result<()> {
     let (conn, db_path) = open_canonical_for_cache(&storage_path)?;
     let stats = agentc_memo::ffi::stats(&conn);
-    let window_us = (hours as i64).saturating_mul(3_600 * 1_000_000);
-    let hits = query_hit_breakdown(&conn, window_us)?;
-
-    let total_ops = hits.exact + hits.lsh + hits.miss;
-    let pct = |n: u64| -> String {
-        if total_ops == 0 {
-            "—".to_string()
-        } else {
-            format!("{:.1}%", (n as f64 / total_ops as f64) * 100.0)
-        }
-    };
-
     let on_disk = db_size_bytes(&db_path).unwrap_or(stats.bytes_on_disk);
 
-    println!("Cache summary (last {hours}h)");
+    // Every figure below comes from the memoization tables — real recorded
+    // data. The earlier exact/lsh/miss + latency breakdown was removed: it
+    // read span attributes (`agentc.cache.result`, `.saved_cost_usd`, …) that
+    // NOTHING ever writes, so it only printed fabricated zeros (MNT-061). The
+    // cache does not distinguish exact vs LSH hits or track lookup latency, so
+    // we do not report them rather than invent them.
+    println!("Cache summary");
     println!("─────────────────────────────────────────────────────────");
     println!(
-        "Entries:          {:<10} ({} on disk)",
+        "Entries:           {:<12} ({} on disk)",
         format_count(stats.entries),
         format_bytes_human(on_disk)
     );
-    println!("Exact hits:       {:<10} ({})", format_count(hits.exact), pct(hits.exact));
-    println!("LSH hits:         {:<10} ({})", format_count(hits.lsh), pct(hits.lsh));
-    println!("Misses:           {:<10} ({})", format_count(hits.miss), pct(hits.miss));
-    println!();
-    println!(
-        "Savings:          {:<10} {} tokens",
-        format_usd(hits.saved_cost_usd),
-        format_count(hits.saved_tokens.max(0) as u64)
-    );
-    match (hits.p99_lookup_ms, hits.exact_median_ms, hits.lsh_median_ms) {
-        (Some(p99), Some(e), Some(l)) => println!(
-            "p99 lookup:       {:.1}ms      (exact {:.1}ms, lsh {:.1}ms)",
-            p99, e, l
-        ),
-        (Some(p99), Some(e), None) => {
-            println!("p99 lookup:       {:.1}ms      (exact {:.1}ms)", p99, e)
-        }
-        (Some(p99), None, _) => println!("p99 lookup:       {:.1}ms", p99),
-        _ => println!("p99 lookup:       —"),
-    }
+    println!("Total hits:        {}", format_count(stats.total_hits));
+    println!("Estimated savings: {}", format_usd(stats.estimated_savings_usd));
 
-    // Top call sites by hit rate, from span-level agentc.cache.result.
-    let top = query_top_call_sites(&conn, window_us, 4)?;
+    // Entries touched within the window — the one figure --hours drives, and
+    // last_hit_at (bumped on every served hit) makes it exact.
+    let cutoff = now_micros().saturating_sub((hours as i64).saturating_mul(3_600 * 1_000_000));
+    let active: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM memoization_cache WHERE last_hit_at >= ?1",
+        rusqlite::params![cutoff],
+        |r| r.get(0),
+    )?;
+    println!("Active (last {hours}h): {} entries", format_count(active.max(0) as u64));
+
+    let top = query_top_call_sites_by_hits(&conn, 4)?;
     if !top.is_empty() {
         println!();
-        println!("Top call sites by hit rate:");
+        println!("Top call sites by hits:");
         for row in top {
-            println!("  {:<40} {:.1}% hit", row.call_site, row.hit_rate * 100.0);
+            println!(
+                "  {:<40} {} hits ({} entries)",
+                row.call_site,
+                format_count(row.hits.max(0) as u64),
+                format_count(row.entries.max(0) as u64),
+            );
         }
     }
     Ok(())
@@ -1367,9 +1273,10 @@ fn db_size_bytes(path: &std::path::Path) -> Option<u64> {
     std::fs::metadata(path).ok().map(|m| m.len())
 }
 
-struct TopCallSite {
+struct CallSiteHits {
     call_site: String,
-    hit_rate: f64,
+    hits: i64,
+    entries: i64,
 }
 
 struct CacheEntryRow {
@@ -1385,48 +1292,25 @@ struct CacheEntryRow {
     content_id: String,
 }
 
-fn query_top_call_sites(
+/// Top call sites ranked by recorded cache hits (all-time). Reads
+/// memoization_cache directly — real hit_count data, not span attributes.
+fn query_top_call_sites_by_hits(
     conn: &rusqlite::Connection,
-    window_micros: i64,
     limit: usize,
-) -> anyhow::Result<Vec<TopCallSite>> {
-    let cutoff = now_micros().saturating_sub(window_micros);
+) -> anyhow::Result<Vec<CallSiteHits>> {
     let mut stmt = conn.prepare(
-        "SELECT attributes FROM spans WHERE start_time >= ?1 AND kind = 'chat'",
+        "SELECT call_site_id, COALESCE(SUM(hit_count), 0) AS hits, COUNT(*) AS entries \
+         FROM memoization_cache GROUP BY call_site_id \
+         ORDER BY hits DESC, entries DESC LIMIT ?1",
     )?;
-    let mut by_site: HashMap<String, (u64, u64)> = HashMap::new(); // site → (hits, total)
-    let rows = stmt.query_map(rusqlite::params![cutoff], |r| {
-        let s: String = r.get(0)?;
-        Ok(s)
-    })?;
-    for row in rows {
-        let attrs_json = row?;
-        let Ok(val) = serde_json::from_str::<serde_json::Value>(&attrs_json) else {
-            continue;
-        };
-        let Some(site) = val.get("agentc.cache.call_site").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let Some(result) = val.get("agentc.cache.result").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let entry = by_site.entry(site.to_string()).or_insert((0, 0));
-        entry.1 += 1;
-        if matches!(result, "exact" | "lsh") {
-            entry.0 += 1;
-        }
-    }
-    let mut ranked: Vec<TopCallSite> = by_site
-        .into_iter()
-        .filter(|(_, (_, total))| *total > 0)
-        .map(|(call_site, (hits, total))| TopCallSite {
-            call_site,
-            hit_rate: hits as f64 / total as f64,
+    let rows = stmt.query_map(rusqlite::params![limit as i64], |r| {
+        Ok(CallSiteHits {
+            call_site: r.get::<_, String>(0)?,
+            hits: r.get::<_, i64>(1)?,
+            entries: r.get::<_, i64>(2)?,
         })
-        .collect();
-    ranked.sort_by(|a, b| b.hit_rate.partial_cmp(&a.hit_rate).unwrap_or(std::cmp::Ordering::Equal));
-    ranked.truncate(limit);
-    Ok(ranked)
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
 fn cmd_cache_inspect(prefix: String, storage_path: String) -> anyhow::Result<()> {
@@ -2349,17 +2233,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_percentile_empty_is_none() {
-        let mut v: Vec<f64> = vec![];
-        assert!(percentile(&mut v, 0.99).is_none());
-    }
-
-    #[test]
-    fn test_percentile_basic() {
-        let mut v: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-        assert_eq!(percentile(&mut v, 0.5), Some(3.0));
-        let mut v2: Vec<f64> = vec![10.0];
-        assert_eq!(percentile(&mut v2, 0.99), Some(10.0));
-    }
 }

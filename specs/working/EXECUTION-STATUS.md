@@ -44,6 +44,15 @@ bd-f67 (V1), bd-r1m (build), bd-utz (specs V2), bd-jy7 (README numbers), bd-vbp 
 bd-ghi (Google), bd-l7d (README quickstart), bd-3yf (clippy clean), bd-rti (dead deps).
 Plus: retired the freeze gate, wrote the rerun-ledger, hardened per the 3 reviewers.
 
+## Done in the full-cleanup execution run (Phase 3 latent — ALL closed, workspace green)
+bd-jfs (P3-3 Anthropic parallel_peer), bd-nj3 (P3-4 ST composition-excluded), bd-5r5 (P3-5 async
+Composed dispatch), bd-j8c (P3-8 eviction clears companion rows), bd-2wn (P3-6 record hits / true LRU),
+bd-lz1 (P3-7 cache stats reads real memo DB, phantom span readers deleted). Each: fix + tests +
+`cargo test`/`clippy` green + committed. No ledger entries needed (all pure-latent). bd-lcd (P3-1
+ParallelBranch USD-ratio) remains for the number-toucher phase; its stale blocking edge on bd-jfs
+was removed.
+Next lane: Phase 7 (error-handling) → Phase 13 (logging) → Phase 8 (plumbing) → Phase 11 (tests).
+
 ## Invariants (from the whole audit — don't relearn the hard way)
 - Every executed change: verify before commit (run the test/build; check numbers vs CSV).
 - `pricing.json` is frozen evidence — never edit it (a test pins its hash).

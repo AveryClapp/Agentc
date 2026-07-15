@@ -21,9 +21,18 @@ Agentc/
 │   ├── memoization.md
 │   ├── optimizer.md
 │   └── working/             ← research, gap analyses, handoff docs
-├── paper-intelligence/      ← paper evidence/literature/venue workspace; not specs
-└── (submodules planned)
+├── crates/                  ← Rust workspace: core, embed, memo, profiler, analyzer, optimizer, cli
+├── python/agentc/           ← Python SDK: SDK patches, framework adapters, canonicalizers, interceptor
+├── bench/                   ← evaluation harness (agents, drivers, paper_results/, repro/)
+├── tests/                   ← Python unit tests
+├── main.tex                 ← the manuscript (under submission)
+├── figures/                 ← figures the manuscript includes
+└── paper-intelligence/      ← paper evidence/literature/venue workspace; not specs
 ```
+
+> To learn what ships (rule names, counts, CLI subcommands), read the code — this file
+> deliberately states no count that can go stale. The runtime, profiler, memoization layer,
+> optimizer, and `agentc` CLI are all implemented and tested.
 
 ## Languages & Stack
 
@@ -51,17 +60,17 @@ Agentc/
 
 ## Commands
 
-No implementation code exists yet. When it does:
-
 ```bash
-# Rust (planned)
-cargo check                      # Type check
-cargo test                       # Unit tests
-cargo clippy                     # Lint
+# Rust (Cargo workspace under crates/)
+cargo check --workspace
+cargo test --workspace --exclude agentc-profiler   # profiler is a PyO3 cdylib; test via pytest
+cargo clippy --workspace --exclude agentc-profiler
+cargo build --release --workspace --exclude agentc-profiler   # the extension builds via maturin, not cargo
 
-# Python (planned)
-uv run mypy src/                 # Type check
-uv run pytest tests/ -v          # Tests
+# Python (SDK + bench under python/, bench/, tests/)
+maturin develop --release        # build the PyO3 extension into the active venv
+uv run mypy python/agentc
+uv run pytest tests/ -v
 ```
 
 ## Start Here

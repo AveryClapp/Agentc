@@ -564,3 +564,22 @@ written into the manuscript is exactly the error this audit exists to prevent. T
 no such gate. Start the re-verify pass with bd-dka (canonical-run question) and the reframed bd-w5y.
 
 ### Grades: FINDING-RELIABILITY B+ / NET-VALUE A- / READINESS B- / OVERALL B+. Verdict: GO.
+
+## Pass 11 — P11-7 diagnostic result (2026-07-17): CLEAN, premise refuted
+
+The audit worried that if AGENTC_ENABLED_RULES mis-parses, "every ablation config in the paper
+is wrong." **The diagnostic refutes the premise and clears the worry:**
+
+1. **No bench driver uses AGENTC_ENABLED_RULES.** grep across bench/ = zero hits. The env var is
+   read only in wiring.rs, used by no experiment. So a parse bug in it could not affect the paper.
+2. **The real ablation mechanism is `agentc optimize disable --rule <name>`** (writes
+   `optimizer_disabled` rows to cost_model.db, which survives the between-phase reset). Verified
+   functionally: disabling ContextCompress works end to end.
+3. **All 9 bench RULES names match the runtime `rule_enabled()` names EXACTLY** (CacheHit,
+   ContextCompress, ParallelBranch, ModelDowngrade, StateDrop, StructuredTruncation, OutputBudget,
+   PromptDedup, DeadOutputTruncation). So the paper's `-off`/`-only` configs disable the intended
+   rules. **The ablation configs are sound.**
+
+**Latent hardening note (P11-7b, low pri):** the disable CLI accepts a typo'd rule name silently
+("Disabled ContxtCompress on 1 call site"). Not a current defect (names match), but a future typo
+would yield a silent no-op `-off` config. Filed for post-submission.

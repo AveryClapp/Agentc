@@ -305,6 +305,16 @@ optimize"* — and the paper's numbers cannot tell the difference either.
 | MNT-125 | **Any `@agentc.trace` function that raises is executed TWICE.** `_run_traced_sync:227` catches the *user's* exception, logs, and re-raises; the wrapper at `:172` catches that same re-raised exception, cannot tell it from an internal failure, and with `fail_open=True` (default) **calls the user's function again**. Duplicate LLM calls, duplicate token spend, and a span already emitted with `status=ERROR`. At DEBUG. | `_span.py:150,172` | verified defect | OPEN |
 | MNT-126 | Also silently degrading, all at DEBUG: `_memoize.py:116/139/147/159/172/237/265` (cache degrades to a **permanent 0% hit rate**); `_writer.py:302/318/365` (dropped cache inserts; a failed `merge_all_pending` means per-process DBs never fold into `traces.db`); `_lifecycle.py:184` (`install_all()` failure → no provenance tags → **ParallelBranch and StateDrop conservatively refuse to fire**); `langgraph.py:66` (falls through and forwards the **unwrapped** node — provenance silently vanishes); `_config.py:69` (a malformed `config.toml` silently reverts to defaults, discarding `storage_path` *and* `fail_open`). | — | verified defect | OPEN |
 
+> **SUPERSEDED for the current goal (2026-07-15) — read [rerun-ledger.md](rerun-ledger.md) first.**
+> Pass 6's "freeze the runtime / defer behavior-changing beads post-submission" policy AND Pass 8's
+> "two-branch freeze" strategy both assumed an **imminent submission**. That assumption is false:
+> the near-term goal is **repo cleanup**, submission is far off. An impact review (4 subsystems,
+> all 221 CSVs) concluded **no cited experiment needs a paid re-run**, so code fixes proceed as
+> normal cleanup. The blanket freeze gate is retired; the rerun-ledger flags the 7 beads that touch
+> a committed number. The freeze *tag* (`submission-evidence-base`) survives as a harmless bookmark.
+> Everything below in Pass 6/8 remains valid as *analysis*; only the freeze/quarantine *sequencing*
+> is superseded.
+
 ## Pass 6 — Functional-Risk Review + Corrections (2026-07-17)
 
 ### Corrections to this audit

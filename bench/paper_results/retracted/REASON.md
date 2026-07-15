@@ -2,8 +2,8 @@
 
 These files are **preserved, never deleted** — they document corrections and are required
 for traceability. They are quarantined here so they cannot be confused with canonical data
-or cited by the manuscript. Nothing in `main.tex`, the repro scripts, or `DATA_MANIFEST.txt`
-may reference a file under `retracted/`.
+or cited by the manuscript. No `main.tex` table, figure, or repro script may CITE a file under `retracted/` as evidence.
+(A documentary provenance pointer — e.g. `DATA_MANIFEST.txt` noting a file is contaminated — is fine.)
 
 | File | Superseded by | Why retracted |
 |---|---|---|

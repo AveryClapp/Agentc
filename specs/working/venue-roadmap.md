@@ -88,6 +88,14 @@ experiment. It **excludes** Bucket 3 (behavior-changing, 25 beads) and Bucket 4
 (evidence-invalidating, 11 beads) — those are post-submission, behind the freeze tag, and
 re-running is a trap (fixtures gone, snapshots unpinned).
 
+> **SUPERSEDED for the current goal (2026-07-15).** The "freeze tag / post-submission
+> quarantine" model above assumed an imminent submission. The actual near-term goal is
+> **repo cleanup** with submission far off, so the blanket freeze is retired. Per the
+> [rerun-ledger](rerun-ledger.md), an impact review found **no cited experiment needs a
+> paid re-run**, so Bucket 3/4 code fixes proceed as normal cleanup — the ledger flags the
+> 7 beads that touch a committed number. Keep this section only as the *venue-decision*
+> framing; ignore its freeze/quarantine sequencing.
+
 Execute this first. It is the same work whether you end up at MLSys, COLM, or a workshop.
 
 | Group | What it covers | Representative beads |

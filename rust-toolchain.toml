@@ -3,3 +3,7 @@
 # artifact build. Patch releases within 1.94.x are accepted (they are compatible);
 # a new minor requires an explicit bump here. Matches the CI toolchain.
 channel = "1.94"
+# Install clippy + rustfmt for the pinned toolchain so `cargo clippy`/`cargo fmt`
+# work in CI and locally (CI's toolchain action only adds them to `stable`, which
+# this pin overrides). rustup auto-installs these on first use of the toolchain.
+components = ["clippy", "rustfmt"]

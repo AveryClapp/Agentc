@@ -20,9 +20,6 @@ use crate::db::{create_db, open_db};
 /// Lock timeout for flock() acquisition.
 const LOCK_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Lockfile mtime threshold for stale detection (seconds).
-const STALE_LOCK_AGE_SECS: u64 = 60;
-
 /// Orphan detection: minimum file age before considering orphaned.
 const ORPHAN_MIN_AGE_SECS: u64 = 60;
 
@@ -47,30 +44,23 @@ pub struct FileLock {
 impl FileLock {
     /// Acquire an exclusive flock() with timeout.
     ///
-    /// On timeout, checks if the lockfile is stale (mtime > 60s). If stale,
-    /// removes the lockfile, creates a fresh one, and retries once.
+    /// A timeout means a LIVE process holds the lock. flock is released by the
+    /// OS the instant a holder dies or closes its fds, so a lock that is still
+    /// held after the timeout necessarily belongs to a running process. We
+    /// therefore do NOT try to "recover" by unlinking the lockfile: unlinking
+    /// is defeated by flock's per-inode semantics (the old holder keeps its
+    /// lock on the now-unlinked inode while we lock a fresh one), which is
+    /// exactly how two processes used to merge into `traces.db` concurrently
+    /// (bd-p0i). On timeout we skip the merge and retry on the next read.
     pub fn acquire(lockfile_path: &Path, timeout: Duration) -> Result<Self> {
-        match Self::try_acquire_with_timeout(lockfile_path, timeout) {
-            Ok(lock) => Ok(lock),
-            Err(_) => {
-                // Check if stale.
-                if is_lockfile_stale(lockfile_path) {
-                    eprintln!(
-                        "WARN: Stale lockfile detected at {} (mtime > {STALE_LOCK_AGE_SECS}s), removing",
-                        lockfile_path.display()
-                    );
-                    let _ = fs::remove_file(lockfile_path);
-                    // Retry once.
-                    Self::try_acquire_with_timeout(lockfile_path, timeout)
-                        .context("Merge skipped: could not acquire lock after retry")
-                } else {
-                    bail!(
-                        "Merge skipped: could not acquire lock on {}. Will retry on next CLI read.",
-                        lockfile_path.display()
-                    )
-                }
-            }
-        }
+        Self::try_acquire_with_timeout(lockfile_path, timeout).with_context(|| {
+            format!(
+                "Merge skipped: could not acquire lock on {} within {}s \
+                 (another process is merging). Will retry on next CLI read.",
+                lockfile_path.display(),
+                timeout.as_secs(),
+            )
+        })
     }
 
     fn try_acquire_with_timeout(lockfile_path: &Path, timeout: Duration) -> Result<Self> {
@@ -119,20 +109,6 @@ impl Drop for FileLock {
             libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
         }
     }
-}
-
-/// Check if a lockfile is stale based on mtime.
-fn is_lockfile_stale(path: &Path) -> bool {
-    let Ok(metadata) = fs::metadata(path) else {
-        return false;
-    };
-    let Ok(modified) = metadata.modified() else {
-        return false;
-    };
-    let Ok(age) = SystemTime::now().duration_since(modified) else {
-        return false;
-    };
-    age.as_secs() > STALE_LOCK_AGE_SECS
 }
 
 /// Return the agentc data directory. Honors `AGENTC_STORAGE_PATH` if set
@@ -997,17 +973,24 @@ mod tests {
         assert_eq!(traces, 10);
     }
 
+    #[cfg(unix)]
     #[test]
-    fn test_lockfile_stale_detection() {
+    fn test_held_lock_is_not_stolen() {
+        // Regression (bd-p0i): a held lock must NOT be stealable via the old
+        // mtime-staleness/unlink path. A second acquire on a live-held lock
+        // fails cleanly (skip the merge) instead of unlinking and locking a
+        // fresh inode, which would let two processes merge concurrently.
         let dir = TempDir::new().unwrap();
         let lock_path = dir.path().join("test.lock");
 
-        // Fresh lockfile — not stale.
-        fs::write(&lock_path, b"").unwrap();
-        assert!(!is_lockfile_stale(&lock_path));
+        let held = FileLock::acquire(&lock_path, Duration::from_millis(50)).unwrap();
+        let second = FileLock::acquire(&lock_path, Duration::from_millis(100));
+        assert!(second.is_err(), "a live-held lock must not be acquirable");
 
-        // Nonexistent lockfile — not stale.
-        assert!(!is_lockfile_stale(&dir.path().join("nonexistent.lock")));
+        // Once the holder drops, the lock is acquirable again.
+        drop(held);
+        let third = FileLock::acquire(&lock_path, Duration::from_millis(100));
+        assert!(third.is_ok(), "lock should be free after the holder drops");
     }
 
     #[test]

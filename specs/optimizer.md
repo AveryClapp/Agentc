@@ -1,7 +1,7 @@
 ---
 title: Optimizer
 status: active
-last-updated: 2026-05-03
+last-updated: 2026-07-17
 ---
 
 # Optimizer
@@ -22,15 +22,25 @@ The optimizer operates at the **call boundary**. On every intercepted LLM call i
 4. Does the rewrite stay within the accuracy budget for this rule?
 5. Execute the rewritten plan; record outcome for the cost model.
 
-Five rewrite rules ship in the initial implementation:
+Nine rewrite rules ship (five original + four added in V2). The registered set is
+authoritative in `crates/agentc-optimizer/src/wiring.rs`; this table must match it.
 
-| Rule | Trigger | Effect |
-|---|---|---|
-| `CacheHit` | Call site has a hot memoization cache | Serve cached output via the `Cache` trait instead of calling the model. |
-| `ContextCompress` | Prompt > 8 KB and >30% of tokens have zero downstream attention score | Drop or summarize low-salience context chunks. |
-| `ParallelBranch` | ≥2 consecutive calls with disjoint input dependencies | Dispatch the independent calls concurrently. |
-| `ModelDowngrade` | Call site's outputs are consistently simple (short, structured, or high-confidence-classifiable) | Route to a cheaper model with the same interface. |
-| `StateDrop` | Prompt contains agent state fields that no subsequent call in the window reads | Drop the unused fields before dispatch. |
+| Rule | Cost driver | Trigger | Effect |
+|---|---|---|---|
+| `CacheHit` | CallElimination | Call site has a hot memoization cache | Serve cached output via the `Cache` trait instead of calling the model. |
+| `ContextCompress` | InputTokens | Prompt > 8 KB and >30% of tokens have zero downstream attention score | Drop or summarize low-salience context chunks. |
+| `ParallelBranch` | Structural | ≥2 consecutive calls with disjoint input dependencies | Emit `Plan::Parallel` (observability only; the latency win comes from the caller's dispatcher). |
+| `ModelDowngrade` | ModelPrice | Call site's outputs are consistently simple | Route to a cheaper model with the same interface. |
+| `StateDrop` | InputTokens | Prompt contains agent state fields that no subsequent call in the window reads | Drop the unused fields before dispatch. |
+| `PromptDedup` | InputTokens | Near-duplicate message segments (Jaccard ≥ 0.92) | Keep the highest-IDF copy, drop the rest. |
+| `OutputBudget` | OutputTokens | Call site has a stable output-length distribution | Cap `max_output_tokens` at p99 to prevent runaway generation. |
+| `StructuredTruncation` | InputTokens | Tool-output messages with unreferenced JSON fields | Project out fields no downstream call reads. |
+| `DeadOutputTruncation` | OutputTokens | Output feeds a branch that is never read | Cap output length on the dead branch. |
+
+**Composition (V2):** rules with different cost drivers (non-overlapping `Call` fields) may
+compose in a single plan via the `CompositionPlanner`, emitted as `Plan::Composed`. Controlled
+by `AGENTC_COMPOSE=1` (default on); `AGENTC_COMPOSE=0` restores V1 first-match. See the
+composition note below.
 
 Each rule declares its own safety check — a cheap predicate that must be satisfied before the rewrite commits. Rules fire in a cost-ranked order (largest projected savings first); the first rule to pass its safety check wins and the others are skipped for that call.
 
@@ -419,7 +429,13 @@ On a hot call, the optimizer:
 5. For each proposal in order, runs `proposal.safety_check(&call)`. The first to pass wins.
 6. Returns `proposal.rewritten`.
 
-Rules never compose in a single plan — the first passing rule wins. Composition increases the accuracy blast radius (a rewrite that fails under compression AND downgrade is hard to debug). **Rejected: greedy composition with cumulative budget.** See Design Decisions.
+> **SUPERSEDED (2026-05, V2).** This paragraph described the original first-match design.
+> **Orthogonal composition shipped** as the `CompositionPlanner` (`Plan::Composed`,
+> `AGENTC_COMPOSE=1` default) and is the paper's V2 contribution — do **not** delete it. What
+> was rejected was *greedy* composition with a cumulative budget; what shipped composes only
+> rules with **different cost drivers** (non-overlapping `Call` fields), so attribution stays
+> per-field and the accuracy blast radius does not compound. First-match remains available via
+> `AGENTC_COMPOSE=0`.
 
 ### Rule specifications
 
@@ -768,7 +784,19 @@ Cold calls are pass-through; optimization kicks in after `hot_threshold` observa
 
 ### First-match wins, no rule composition
 
-Rules are ranked by projected savings; the first proposal to pass its safety check becomes the plan, and remaining rules are skipped for that call. Composition (e.g., apply `ContextCompress` then `ModelDowngrade`) multiplies the accuracy blast radius and makes divergence attribution ambiguous. **Rejected: greedy composition with cumulative budget.** A compressed-and-downgraded call that produces a bad answer is hard to attribute; debugging the accuracy regression requires running counterfactuals per rule. Start with first-match and revisit after savings data says otherwise.
+Rules are ranked by projected savings. In V1 first-match (`AGENTC_COMPOSE=0`) the first
+proposal to pass its safety check becomes the plan and the rest are skipped for that call.
+
+> **SUPERSEDED (2026-05, V2).** The "start with first-match and revisit" plan was revisited:
+> the `CompositionPlanner` now composes rules with **orthogonal cost drivers** in one
+> `Plan::Composed` (default, `AGENTC_COMPOSE=1`). The blast-radius/attribution concern below
+> is what motivated restricting composition to non-overlapping `Call` fields — *greedy*
+> cumulative-budget composition is still rejected, but orthogonal composition is not. This is
+> a headline V2 result; keep it. The original reasoning is retained for traceability:
+>
+> *Composition (e.g., apply `ContextCompress` then `ModelDowngrade`) multiplies the accuracy
+> blast radius and makes divergence attribution ambiguous; a compressed-and-downgraded call
+> that produces a bad answer is hard to attribute.*
 
 ### Empirical cost model, not learned
 

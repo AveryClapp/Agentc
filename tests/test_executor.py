@@ -107,6 +107,55 @@ async def test_rewritten_falls_back_exactly_once_on_failure():
 
 
 @pytest.mark.asyncio
+async def test_composed_invokes_mutated_call_exactly_once():
+    # Regression (MNT-020): before the fix a Composed plan fell through to
+    # "unknown plan kind" and ran the ORIGINAL call, silently disabling V2
+    # composition on the async path. It must dispatch the composed call.
+    calls = {"original": 0, "mutated": 0}
+
+    async def original() -> str:
+        calls["original"] += 1
+        return "orig"
+
+    async def mutated(c):
+        calls["mutated"] += 1
+        return f"composed:{c['model']}"
+
+    plan = Plan(
+        kind="composed",
+        rules=["StateDrop", "OutputBudget"],
+        rule="StateDrop",
+        call={"model": "gpt-4o", "messages": []},
+    )
+    out = await dispatch(plan, run_original=original, run_mutated=mutated)
+    assert out == "composed:gpt-4o"
+    assert calls == {"original": 0, "mutated": 1}
+
+
+@pytest.mark.asyncio
+async def test_composed_falls_back_exactly_once_on_failure():
+    calls = {"original": 0, "mutated": 0}
+
+    async def original() -> str:
+        calls["original"] += 1
+        return "orig"
+
+    async def mutated(_c):
+        calls["mutated"] += 1
+        raise RuntimeError("composed call failed")
+
+    plan = Plan(
+        kind="composed",
+        rules=["StateDrop", "OutputBudget"],
+        rule="StateDrop",
+        call={"model": "gpt-4o", "messages": []},
+    )
+    out = await dispatch(plan, run_original=original, run_mutated=mutated)
+    assert out == "orig"
+    assert calls == {"original": 1, "mutated": 1}
+
+
+@pytest.mark.asyncio
 async def test_parallel_dispatches_all_calls_concurrently():
     completed = []
 

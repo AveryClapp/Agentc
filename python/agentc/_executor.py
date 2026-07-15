@@ -4,9 +4,10 @@ Given a :class:`Plan` from the optimizer, decide what to execute:
 
 * ``PassThrough`` — run the user's original callable.
 * ``Cached`` — return the cached value without a network call.
-* ``Rewritten`` — dispatch the mutated call; if that fails (e.g. the
-  downgraded model is unavailable), fall back to the original call
-  exactly once and warn.
+* ``Rewritten`` / ``Composed`` — dispatch the mutated call; if that
+  fails (e.g. the downgraded model is unavailable), fall back to the
+  original call exactly once and warn. A Composed plan carries the
+  fully-composed call in the same ``call`` slot as Rewritten.
 * ``Parallel`` — ``asyncio.gather`` over the rewritten calls and stitch
   the results back together.
 
@@ -57,15 +58,19 @@ async def dispatch(
             log.warning("cached plan decode failed; falling back to original", exc_info=True)
             return await run_original()
 
-    if plan.kind == "rewritten":
+    if plan.kind in ("rewritten", "composed"):
+        # A Composed plan carries the fully-composed Call in ``plan.call``,
+        # exactly like Rewritten — dispatch it the same way. (dispatch_sync
+        # groups them identically.)
         if plan.call is None:
-            log.debug("rewritten plan missing call; falling back")
+            log.debug("%s plan missing call; falling back", plan.kind)
             return await run_original()
         try:
             return await run_mutated(plan.call)
         except BaseException as exc:
             log.warning(
-                "rewritten plan %r failed (%s); retrying original call once",
+                "%s plan %r failed (%s); retrying original call once",
+                plan.kind,
                 plan.rule,
                 exc,
             )

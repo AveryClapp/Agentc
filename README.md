@@ -220,7 +220,7 @@ Incoming LLM Call (intercepted via SDK monkey-patch)
 
 The cost model starts with conservative heuristics and is empirically calibrated with every execution. Agentc gets cheaper the more you use it.
 
-The runtime fails open: every FFI boundary, every patch, every framework adapter is wrapped so a bug in Agentc never breaks the user's agent. The worst-case fallback is to pass the call through unmodified.
+By default the runtime fails open: the optimizer's FFI boundary traps panics (`ffi::optimize_plan`), and every patch and framework adapter degrades to passing the call through unmodified, so a bug in Agentc does not break the user's agent. Fail-open is governed by the `fail_open` config flag (default `true`, or `AGENTC_FAIL_OPEN`); setting it to `false` re-raises Agentc-internal errors such as span-emission failures — an opt-in for debugging, not the default.
 
 ---
 

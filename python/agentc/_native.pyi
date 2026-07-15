@@ -165,3 +165,19 @@ def optimize_observe(plan_json: str, outcome_json: str) -> None:
     error is dropped.
     """
     ...
+
+def optimize_record_divergence(call_site_id: str, rule: str, divergence: float) -> None:
+    """Record a shadow-mode divergence sample for a rule at a call site.
+
+    Feeds the accuracy budget: if the rolling divergence for `rule` at
+    `call_site_id` breaches its threshold, the rule is disabled there.
+    Internally fail-open — any error is dropped.
+    """
+    ...
+
+def optimize_flush() -> None:
+    """Flush any buffered optimizer audit/cost-model writes to disk.
+
+    Called on shutdown. Internally fail-open — any error is dropped.
+    """
+    ...

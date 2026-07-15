@@ -1076,7 +1076,10 @@ mod tests {
         }
 
         #[test]
-        fn test_migrate_version_0_upgrades() {
+        fn test_migrate_version_0_refuses() {
+            // bd-77x: a raw v0 DB was never created by agentc (create_db owns
+            // the v0->v1 initial schema). migrate must REFUSE without touching
+            // user_version, not stamp it v1-but-empty as the old stub did.
             let dir = TempDir::new().unwrap();
             let db_path = dir.path().join("test.db");
 
@@ -1086,11 +1089,13 @@ mod tests {
             drop(conn);
 
             let conn = Connection::open(&db_path).unwrap();
-            let result = migrate_db(&conn).unwrap();
-            assert!(result.is_some());
-            let stats = result.unwrap();
-            assert_eq!(stats.old_version, 0);
-            assert_eq!(stats.new_version, 1);
+            let err = migrate_db(&conn).unwrap_err().to_string();
+            assert!(err.contains("No migration path"), "unexpected error: {err}");
+
+            let after: i32 = conn
+                .pragma_query_value(None, "user_version", |r| r.get(0))
+                .unwrap();
+            assert_eq!(after, 0, "must not falsely mark an unrecognized DB migrated");
         }
 
         #[test]
@@ -1106,7 +1111,7 @@ mod tests {
             let result = migrate_db(&conn);
             assert!(result.is_err());
             let err = result.unwrap_err().to_string();
-            assert!(err.contains("Incompatible schema version"));
+            assert!(err.contains("newer than this build"), "unexpected error: {err}");
         }
     }
 }

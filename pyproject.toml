@@ -8,18 +8,37 @@ version = "0.1.0"
 description = "JIT optimization runtime for multi-step LLM agent workloads"
 requires-python = ">=3.12"
 license = { text = "MIT" }
+# Core runtime deps only. wrapt is the sole hard requirement (SDK monkey-patching).
+# Everything the benchmark harness / figures / framework adapters need is optional —
+# see the extras below. (wikipedia moved to [fixtures]: it is imported by exactly one
+# bench fixture builder, not by the runtime — MNT-098.)
 dependencies = [
-    "wikipedia>=1.4.0",
     "wrapt>=1.16",
 ]
 
 [project.optional-dependencies]
 anthropic = ["anthropic>=0.30"]
 openai = ["openai>=1.40"]
+# Framework provenance adapters (python/agentc/_provenance_frameworks/*). Imports are
+# guarded, so these are optional — but they ARE imported by the shipped package, not
+# just bench, so they must be declarable (MNT-012).
+frameworks = ["crewai", "langgraph"]
+# Figure generation (bench/paper_figures/*).
+viz = ["matplotlib", "numpy", "graphviz"]
+# Public-dataset fixture builders (bench/build_*_fixture.py).
+fixtures = ["datasets", "huggingface_hub", "pyarrow", "wikipedia>=1.4.0"]
+# The LLMLingua-2 comparison baseline (bench/agents/llmlingua_baseline.py).
+baselines = ["llmlingua"]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "mypy>=1.10",
+]
+# Everything needed to collect and run the FULL test suite. `testpaths` includes
+# bench/, so bare `pytest` imports the viz/fixtures/frameworks deps — install this
+# extra (not bare `dev`) for a clean-checkout test run. The CI smoke job uses it.
+test = [
+    "agentc[dev,openai,anthropic,frameworks,viz,fixtures,baselines]",
 ]
 
 [tool.maturin]

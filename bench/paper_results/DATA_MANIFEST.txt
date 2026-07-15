@@ -67,7 +67,7 @@ UNRECOVERABLE (no artifacts, cannot reproduce without re-run)
 ============================================================
 
 Table 14 -- CC+PD (ContextCompress + PlannerDispatch) row
-  Original bench: planner_ablation_contaminated_original.csv (contaminated)
+  Original bench: retracted/planner_ablation_contaminated_original.csv (contaminated)
   Rerun:  planner_ablation_rerun.csv does NOT include CC+PD config
   Status: MISSING from paper table. Editorial note required.
            V2-CC alone shows +18pp p=0.0039; CC+PD delta unrecoverable.

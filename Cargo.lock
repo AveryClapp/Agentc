@@ -19,7 +19,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "thiserror",
  "toml",
 ]
 
@@ -53,7 +52,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
- "thiserror",
  "zstd",
 ]
 
@@ -66,10 +64,8 @@ dependencies = [
  "half",
  "model2vec-rs",
  "once_cell",
- "safetensors",
  "serde_json",
  "tempfile",
- "tokenizers",
 ]
 
 [[package]]
@@ -82,7 +78,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
- "thiserror",
 ]
 
 [[package]]
@@ -99,7 +94,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
- "thiserror",
 ]
 
 [[package]]

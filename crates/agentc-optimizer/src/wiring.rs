@@ -150,6 +150,15 @@ pub struct Wired {
     pub audit_conn: Connection,
 }
 
+/// Enable WAL + relaxed sync on a writable SQLite connection. SQLite's default
+/// (journal_mode=DELETE, synchronous=FULL) fsyncs a rollback journal on every
+/// write; WAL + NORMAL removes that per-write fsync while remaining crash-safe.
+fn set_write_pragmas(conn: &Connection) -> Result<()> {
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+        .context("set WAL pragmas")?;
+    Ok(())
+}
+
 /// Construct a fully-wired optimizer rooted at `storage_dir`.
 ///
 /// Side effects:
@@ -167,6 +176,7 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
     let cost_path = storage_dir.join("cost_model.db");
     let cost_conn = Connection::open(&cost_path)
         .with_context(|| format!("open {:?}", cost_path))?;
+    set_write_pragmas(&cost_conn).context("set cost_model pragmas")?;
     ensure_cost_model_schema(&cost_conn).context("ensure cost_model schema")?;
 
     let cost_model = Arc::new(CostModel::new());
@@ -178,11 +188,16 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
     let audit_path = storage_dir.join("optimizer_audit.db");
     let audit_conn = Connection::open(&audit_path)
         .with_context(|| format!("open {:?}", audit_path))?;
+    // The audit DB is written once per plan call. Without WAL, SQLite runs
+    // journal_mode=DELETE + synchronous=FULL and fsyncs a rollback journal on
+    // EVERY write — on the user's LLM-call path (bd-gzm). WAL + NORMAL removes
+    // the per-call fsync while keeping crash-safety.
+    set_write_pragmas(&audit_conn).context("set audit pragmas")?;
     ensure_audit_schema(&audit_conn).context("ensure audit schema")?;
 
-    // CacheHit reads from the same SQLite file as the profiler's spans
-    // and `@memoize`. Open a second connection (read-mostly here, writes
-    // happen elsewhere) — SQLite's WAL mode handles concurrent access.
+    // CacheHit reads from the same SQLite file as the profiler's spans and
+    // `@memoize`. Open a second connection (read-mostly here; the profiler and
+    // `@memoize` own the writes and the file's WAL mode).
     let traces_path = storage_dir.join("traces.db");
     let cache: Option<Arc<dyn agentc_memo::Cache>> = match Connection::open(&traces_path) {
         Ok(c) => match SqliteCache::new(c) {
@@ -270,4 +285,24 @@ fn tracing_warn(msg: &str) {
     // `agentc record` which captures stderr — these warnings show up in
     // the user's session log without a logger setup step.
     eprintln!("[agentc-optimizer] {msg}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writable_dbs_are_wal_mode() {
+        // Regression (bd-gzm): the audit DB is written per plan call; without
+        // WAL it fsyncs a rollback journal every time. build_optimizer must
+        // put the writable DBs into WAL mode.
+        let dir = tempfile::TempDir::new().unwrap();
+        let _wired = build_optimizer(dir.path(), OptimizerConfig::default()).unwrap();
+
+        for name in ["cost_model.db", "optimizer_audit.db"] {
+            let conn = Connection::open(dir.path().join(name)).unwrap();
+            let mode: String = conn.query_row("PRAGMA journal_mode", [], |r| r.get(0)).unwrap();
+            assert_eq!(mode.to_lowercase(), "wal", "{name} must be WAL mode");
+        }
+    }
 }

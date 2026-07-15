@@ -1,7 +1,7 @@
 ---
 title: Semantic Memoization
 status: active
-last-updated: 2026-04-16
+last-updated: 2026-07-15
 ---
 
 # Semantic Memoization
@@ -20,7 +20,7 @@ The runtime answers one question on each LLM call: **has this prompt already bee
 2. **LSH similarity lookup** (fallback on exact miss) — 256-dim embedding → 64-bit hyperplane signature → 8-band hash lookup → cosine rerank. Returns the highest-similarity cached output above threshold.
 3. **Miss** — the LLM call proceeds. The response is canonicalized, hashed, embedded, and written to the cache.
 
-Memoization is **opt-in per call site**. Users annotate functions with `@agentc.memoize(...)` or pass `agentc_memoize=True` on individual LLM calls. The profiler suggests candidates via `agentc analyze`; the user promotes them with full knowledge of what's being cached. This keeps the trust boundary explicit — a false-positive cache hit cannot silently corrupt a production agent that the user didn't sign up for.
+Memoization is **opt-in per call site**. Users annotate functions with `@agentc.memoize(...)`. Memoization is decorator-only; there is no per-call header opt-in. The profiler suggests candidates via `agentc analyze`; the user promotes them with full knowledge of what's being cached. This keeps the trust boundary explicit — a false-positive cache hit cannot silently corrupt a production agent that the user didn't sign up for.
 
 **What memoization does:**
 
@@ -56,13 +56,6 @@ def summarize(text: str) -> str:
         messages=[{"role": "user", "content": f"Summarize: {text}"}],
     ).choices[0].message.content
 
-# Per-call form: one LLM invocation is memoized.
-response = openai_client.chat.completions.create(
-    model="gpt-4o",
-    messages=[...],
-    extra_headers={"agentc-memoize": "true", "agentc-memoize-ttl": "3600"},
-)
-
 # Tighter similarity threshold (default 0.92; 1.0 = exact match only).
 @agentc.memoize(ttl=3600, similarity=0.95)
 def classify(text: str) -> str:
@@ -88,6 +81,7 @@ The `@agentc.memoize` decorator accepts the following keyword arguments:
 | `models` | `list[str] \| None` | `None` | If set, only cache calls where `model` is in this allowlist. |
 | `call_site_id` | `str \| None` | `None` | Override the auto-derived `"module.function:line"` identifier. |
 | `enabled` | `bool \| Callable[..., bool]` | `True` | Gate caching on a runtime predicate (e.g., env flag). |
+| `model` | `str` | `""` | Pin the cache key to a specific model name so the same function called against different backends does not collide. Empty string leaves the model out of the key. |
 
 ### CLI
 
@@ -146,19 +140,9 @@ Divergence:   0.5%    (shadow mode)
 
 ### Configuration
 
-Memoization reads from the same `agentc.toml` the profiler uses:
+Memoization has no TOML configuration. The profiler's `~/.agentc/config.toml` accepts only `capture_content`, `capture_embeddings`, `fail_open`, and `storage_path`; a `[memoization]` table is reported as an unknown key and ignored. Memoization is tuned entirely through the `@memoize` decorator kwargs and the environment variables below.
 
-```toml
-[memoization]
-enabled = true                      # Master switch. False disables all memoize decorators.
-default_ttl_seconds = 3600
-default_similarity = 0.92
-max_entries = 100_000               # LRU eviction triggers above this.
-max_bytes = 2_147_483_648           # 2 GB cap on cache table size.
-ttl_sweep_interval_seconds = 300    # Background eviction cadence.
-```
-
-Environment overrides (take precedence over the TOML):
+Environment overrides:
 
 | Variable | Effect |
 |---|---|
@@ -170,10 +154,10 @@ Environment overrides (take precedence over the TOML):
 
 ```rust
 pub trait Cache: Send + Sync {
-    fn lookup(&self, key: &CacheKey) -> Result<Option<CacheHit>>;
-    fn insert(&self, key: CacheKey, value: CacheValue, ttl_seconds: u64) -> Result<()>;
+    fn lookup(&self, key: &CacheKey, now_micros: i64) -> Result<Option<CacheHit>>;
+    fn insert(&self, key: &CacheKey, value: &CacheValue, ttl_micros: i64, now_micros: i64) -> Result<()>;
     fn invalidate(&self, pattern: &InvalidationPattern) -> Result<u64>;
-    fn stats(&self, window_seconds: u64) -> Result<CacheStats>;
+    fn stats(&self) -> Result<CacheStats>;
 }
 
 pub struct CacheKey {
@@ -186,7 +170,7 @@ pub struct CacheKey {
 pub struct CacheHit {
     pub value: CacheValue,
     pub source: CacheSource,
-    pub age_seconds: u64,
+    pub age_micros: i64,
 }
 
 pub enum CacheSource {
@@ -195,10 +179,17 @@ pub enum CacheSource {
 }
 
 pub struct CacheValue {
-    pub output_content_hash: [u8; 32],  // Points into the shared output_content table.
+    pub output_content_id: String,  // hex SHA-256 into output_content(content_id)
     pub input_tokens: u32,
     pub output_tokens: u32,
     pub recorded_cost_usd: f32,
+}
+
+pub struct CacheStats {
+    pub entries: u64,
+    pub total_hits: u64,
+    pub estimated_savings_usd: f64,
+    pub bytes_on_disk: u64,
 }
 
 pub enum InvalidationPattern {
@@ -212,7 +203,7 @@ The canonical implementation is `SqliteCache` in `agentc-memo/src/cache.rs`. The
 
 ### FFI surface
 
-The Python → Rust boundary adds four functions to `agentc._native`:
+The Python → Rust boundary adds five cache functions to `agentc._native` — `cache_lookup`, `cache_insert`, `cache_invalidate`, `cache_stats`, `cache_maintenance` — plus the shared helpers the decorator reuses: `output_content_load`, `embed_text_bytes`, `canonicalize_prompt_bytes`, `canonicalize_parameters_bytes`.
 
 ```python
 # python/agentc/_native.pyi
@@ -220,28 +211,43 @@ def cache_lookup(
     prompt_hash: bytes,
     model: str,
     parameters_hash: bytes,
-    similarity_threshold: float,
+    call_site_id: str,
+    embedding: bytes | None = None,   # 256 × f32, little-endian; enables LSH fallback
+    similarity: float | None = None,  # per-request threshold; 1.0 disables LSH
 ) -> dict[str, Any] | None:
-    """Return the cached output dict or None. Keys match CacheHit."""
+    """Return the cached output dict or None. Keys: output_content_id,
+    input_tokens, output_tokens, recorded_cost_usd, age_micros, source
+    ('exact' or 'lsh'), similarity (LSH hits only)."""
 
 def cache_insert(
     prompt_hash: bytes,
     model: str,
     parameters_hash: bytes,
     call_site_id: str,
-    output_content_hash: bytes,
+    output_bytes: bytes,
     input_tokens: int,
     output_tokens: int,
     recorded_cost_usd: float,
     ttl_seconds: int,
-    embedding: bytes,  # 256 × f32, little-endian
+    embedding: bytes | None = None,  # 256 × f32, little-endian
 ) -> None: ...
 
 def cache_invalidate(pattern: str) -> int:
     """GLOB pattern against call_site_id. Returns rows deleted."""
 
-def cache_stats(window_seconds: int) -> dict[str, int]:
-    """Aggregated counts and totals over the window."""
+def cache_stats() -> dict[str, int | float]:
+    """Aggregate cache statistics. Keys: entries, total_hits,
+    estimated_savings_usd, bytes_on_disk."""
+
+def cache_maintenance(max_entries: int = 0) -> dict[str, int | bool]:
+    """TTL sweep + LRU eviction + opportunistic VACUUM. max_entries=0
+    disables the LRU cap. Returns {ttl_rows, lru_rows, vacuumed}."""
+
+# Shared helpers reused by the memoize decorator.
+def output_content_load(content_id: str) -> bytes | None: ...
+def embed_text_bytes(text: str) -> bytes | None: ...
+def canonicalize_prompt_bytes(prompt_json: bytes, provider: str) -> bytes: ...
+def canonicalize_parameters_bytes(params_json: bytes) -> bytes: ...
 ```
 
 ---
@@ -324,8 +330,8 @@ def enqueue_cache_insert(msg: CacheInsertMsg) -> None: ...
 
 The writer thread processes `CacheInsertMsg` entries alongside existing `Span` messages. Processing one `CacheInsertMsg` runs the following in a single SQLite transaction:
 
-1. SHA-256 the output bytes → `output_content_hash`.
-2. `INSERT OR IGNORE INTO output_content (hash, bytes_zstd) VALUES (?, ?)` — reuses the profiler's dedup table.
+1. SHA-256 the output bytes, hex-encode → `output_content_id`.
+2. `INSERT OR IGNORE INTO output_content (content_id, content_text, created_at) VALUES (?, ?, ?)` — reuses the profiler's dedup table.
 3. Embed the prompt → 256×f32.
 4. Compute the 64-bit hyperplane signature; split into 8 bands of 8 bits each.
 5. `INSERT INTO memoization_cache (...)`.
@@ -418,44 +424,50 @@ This sigmoid is calibrated to the default threshold of 0.92: true paraphrases co
 ### SQLite schema
 
 ```sql
--- Added to the canonical traces.db schema as migration 0003_memoization.sql.
+-- Applied idempotently by agentc_core::memo_schema::ensure_memoization_schema
+-- (every statement is CREATE ... IF NOT EXISTS). Not a numbered migration file.
+-- All hash columns are TEXT (lowercase hex), not BLOB. foreign_keys is OFF, so
+-- the REFERENCES clause documents intent only and is unenforced. There is no
+-- STRICT, no WITHOUT ROWID, and no ON DELETE CASCADE; companion rows in
+-- memoization_lsh_bucket / memoization_embedding are cleaned up by hand in
+-- eviction.rs on every delete (no cascade).
 
-CREATE TABLE memoization_cache (
-    cache_key_hash          BLOB(32) PRIMARY KEY NOT NULL,
-    prompt_hash             BLOB(32) NOT NULL,
-    model                   TEXT     NOT NULL,
-    parameters_hash         BLOB(32) NOT NULL,
-    output_content_hash     BLOB(32) NOT NULL REFERENCES output_content(hash),
-    input_tokens            INTEGER  NOT NULL,
-    output_tokens           INTEGER  NOT NULL,
-    recorded_cost_usd       REAL     NOT NULL,
-    created_at              INTEGER  NOT NULL,  -- microseconds since epoch
-    expires_at              INTEGER  NOT NULL,
-    last_hit_at             INTEGER  NOT NULL,
-    hit_count               INTEGER  NOT NULL DEFAULT 0,
-    call_site_id            TEXT     NOT NULL
-) STRICT;
+CREATE TABLE IF NOT EXISTS memoization_cache (
+    cache_key_hash          TEXT    PRIMARY KEY NOT NULL,  -- lowercase hex SHA-256
+    prompt_hash             TEXT    NOT NULL,
+    model                   TEXT    NOT NULL,
+    parameters_hash         TEXT    NOT NULL,
+    output_content_id       TEXT    NOT NULL REFERENCES output_content(content_id),
+    input_tokens            INTEGER NOT NULL,
+    output_tokens           INTEGER NOT NULL,
+    recorded_cost_usd       REAL    NOT NULL,
+    created_at              INTEGER NOT NULL,  -- microseconds since epoch
+    expires_at              INTEGER NOT NULL,
+    last_hit_at             INTEGER NOT NULL,
+    hit_count               INTEGER NOT NULL DEFAULT 0,
+    call_site_id            TEXT    NOT NULL
+);
 
-CREATE INDEX idx_memo_prompt_hash    ON memoization_cache(prompt_hash);
-CREATE INDEX idx_memo_expires_at     ON memoization_cache(expires_at);
-CREATE INDEX idx_memo_call_site      ON memoization_cache(call_site_id);
-CREATE INDEX idx_memo_last_hit       ON memoization_cache(last_hit_at);
+CREATE INDEX IF NOT EXISTS idx_memo_prompt_hash ON memoization_cache(prompt_hash);
+CREATE INDEX IF NOT EXISTS idx_memo_expires_at  ON memoization_cache(expires_at);
+CREATE INDEX IF NOT EXISTS idx_memo_call_site   ON memoization_cache(call_site_id);
+CREATE INDEX IF NOT EXISTS idx_memo_last_hit    ON memoization_cache(last_hit_at);
 
-CREATE TABLE memoization_lsh_bucket (
-    band_ix         INTEGER  NOT NULL,   -- 0..7
-    bucket_id       INTEGER  NOT NULL,   -- 0..255 (8 bits)
-    cache_key_hash  BLOB(32) NOT NULL REFERENCES memoization_cache(cache_key_hash) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS memoization_lsh_bucket (
+    band_ix         INTEGER NOT NULL,   -- 0..7
+    bucket_id       INTEGER NOT NULL,   -- 0..255 (8 bits)
+    cache_key_hash  TEXT    NOT NULL,
     PRIMARY KEY (band_ix, bucket_id, cache_key_hash)
-) STRICT, WITHOUT ROWID;
+);
 
-CREATE INDEX idx_lsh_lookup ON memoization_lsh_bucket(band_ix, bucket_id);
+CREATE INDEX IF NOT EXISTS idx_lsh_lookup ON memoization_lsh_bucket(band_ix, bucket_id);
 
-CREATE TABLE memoization_embedding (
-    cache_key_hash  BLOB(32) PRIMARY KEY NOT NULL REFERENCES memoization_cache(cache_key_hash) ON DELETE CASCADE,
-    embedding       BLOB     NOT NULL    -- 256 × f32 = 1024 bytes, little-endian
-) STRICT;
+CREATE TABLE IF NOT EXISTS memoization_embedding (
+    cache_key_hash  TEXT PRIMARY KEY NOT NULL,
+    embedding       BLOB NOT NULL    -- 256 × f32 = 1024 bytes, little-endian
+);
 
-CREATE VIEW memoization_stats AS
+CREATE VIEW IF NOT EXISTS memoization_stats AS
     SELECT
         call_site_id,
         COUNT(*)                     AS entries,
@@ -466,7 +478,7 @@ CREATE VIEW memoization_stats AS
     GROUP BY call_site_id;
 ```
 
-`cache_key_hash` is computed as `SHA-256(prompt_hash || model.as_bytes() || parameters_hash)` in Rust and matches the FFI input from Python.
+`cache_key_hash` is computed as `SHA-256(prompt_hash || model.as_bytes() || parameters_hash)` in Rust and stored as lowercase hex TEXT (not a 32-byte blob). It matches the FFI input from Python.
 
 ### Cross-process coordination
 
@@ -488,9 +500,9 @@ Three eviction triggers:
    ```sql
    DELETE FROM memoization_cache WHERE expires_at < ?;
    ```
-   The `ON DELETE CASCADE` on `memoization_lsh_bucket` and `memoization_embedding` cleans up the associated index entries.
+   There is no `ON DELETE CASCADE` (`foreign_keys` is OFF), so the sweep clears each expired key's `memoization_lsh_bucket` and `memoization_embedding` rows by hand in the same transaction (`eviction.rs`).
 
-2. **Size cap (LRU).** On insert, if `COUNT(*) > max_entries` or `page_count * page_size > max_bytes`, evict the least-recently-hit 5% of entries:
+2. **Size cap (LRU).** During the periodic maintenance pass (not on insert), if `COUNT(*) > max_entries`, evict the least-recently-hit ~5% of entries (`eviction.rs::lru_evict`). There is no byte-size cap.
    ```sql
    DELETE FROM memoization_cache
    WHERE cache_key_hash IN (
@@ -523,7 +535,7 @@ crates/
 │   │   ├── key.rs                  # CacheKey, hashing helpers
 │   │   ├── canonical.rs            # Prompt + parameters canonicalization (Rust mirror for tests)
 │   │   ├── lsh.rs                  # Hyperplane LSH, banding, signature
-│   │   ├── schema.rs               # DDL migration 0003
+│   │   ├── schema.rs               # re-exports ensure_schema (idempotent memoization DDL)
 │   │   ├── eviction.rs             # TTL + LRU sweep
 │   │   └── ffi.rs                  # PyO3 bindings exposed via agentc-profiler
 │   └── tests/

@@ -1,7 +1,7 @@
 ---
 title: Profiler
 status: active
-last-updated: 2026-03-19
+last-updated: 2026-07-15
 ---
 
 # Profiler
@@ -130,7 +130,6 @@ agentc/
 │       │   ├── _anthropic.py
 │       │   ├── _openai.py
 │       │   └── _google.py
-│       ├── _adapters/      # version-dispatched SDK adapters
 │       └── py.typed        # PEP 561 marker
 ├── bench/                  # benchmarking harness, SWE-bench evaluation scripts
 └── specs/                  # this directory
@@ -162,6 +161,8 @@ Users import `agentc`; the `__init__.py` re-exports from `agentc._native` (Rust)
 The Python layer is as thin as possible. It captures data and hands it to Rust. All heavy lifting is Rust.
 
 **Span write boundary:** The Python layer calls a single Rust function per span: `_native.write_span(span_dict: dict)`. The dict contains all span fields: `span_id`, `trace_id`, `parent_span_id`, `name`, `kind`, `start_time`, `end_time`, `status`, `model`, `provider`, `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `attributes`, `input_messages`, `output_messages`. The Rust side converts this to its internal `Span` struct, computes content hashes, compresses content, computes embeddings, and writes to SQLite. Both the background writer path (queue-drained spans) and the root span bypass path call `write_span()` — the Rust function performs the same work (hashing, compression, embedding, SQLite write) regardless of caller. The `input_messages` and `output_messages` fields are consumed by Rust to produce `input_content_id`, `output_content_id`, `input_embedding`, `output_embedding`, and the `input_content`/`output_content` table rows; they do not appear as schema columns.
+
+**Full `_native` export surface:** `_native` exports 18 `#[pyfunction]`s total — span I/O: `write_span`, `create_db`, `query_spans_by_trace`, `read_trace_content`, `merge_all_pending`; memoization: `cache_lookup`, `cache_insert`, `cache_invalidate`, `cache_stats`, `cache_maintenance`, `output_content_load`, `embed_text_bytes`, `canonicalize_prompt_bytes`, `canonicalize_parameters_bytes`; optimizer: `optimize_plan`, `optimize_observe`, `optimize_record_divergence`, `optimize_flush`. The span write path is `write_span`; the others belong to sibling components (memoization, optimizer).
 
 | Component | Language | Rationale |
 |---|---|---|
@@ -404,7 +405,6 @@ agentc report --since 2026-03-10       # filter by date
 agentc report --agent review-agent     # filter by agent name
 agentc report --model claude-sonnet-4  # filter by model ID
 # --last N reports on all available if fewer than N exist.
-agentc pricing update                   # fetch latest model pricing
 
 # Maintenance
 agentc embed --backfill                  # compute embeddings for spans with NULL input_embedding or output_embedding
@@ -481,8 +481,8 @@ CREATE TABLE spans (
     cost_usd            REAL,              -- agentc.cost_usd (NULL if pricing unknown)
     -- Remaining attributes
     attributes          TEXT NOT NULL,      -- JSON: all other gen_ai.* and agentc.* attributes
-    input_content_id    TEXT REFERENCES input_content(content_id),
-    output_content_id   TEXT REFERENCES output_content(content_id),
+    input_content_id    TEXT,              -- SHA-256 hex; no FK (foreign_keys is OFF)
+    output_content_id   TEXT,
     input_embedding     BLOB,              -- float16 256-dim model2vec vector (512 bytes)
     output_embedding    BLOB,              -- float16 256-dim model2vec vector (512 bytes)
     embedding_model     TEXT DEFAULT 'potion-base-8M'  -- tracks which model produced the embedding
@@ -549,6 +549,7 @@ cost = (input_tokens * input_cost / 1M)
 - **Hot-path attributes promoted to columns** — `model`, `provider`, `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `cost_usd` are queried by every analyzer operation. Avoids JSON parsing on the hot path. Remaining attributes stay in the JSON blob.
 - **`agent_name` is NOT promoted** — the CLI extracts `gen_ai.agent.name` from the `attributes` JSON blob for display. This is not a hot-path query — trace display scans at most hundreds of spans. Promotion would add write overhead to every span for a field only present on agent-level spans.
 - **Separate `input_content` and `output_content` tables** — identical prompts share one row regardless of response. Identical responses also deduplicate.
+- **Foreign keys are disabled** — the DB runs with `PRAGMA foreign_keys = OFF`. `input_content_id` and `output_content_id` are plain `TEXT` (SHA-256 hex) that reference `input_content(content_id)` / `output_content(content_id)` by convention only; SQLite does not enforce the relationship.
 - **Content stored as structured JSON messages** (`[{role, content}, ...]`) — makes OTLP export straightforward without reconstructing from flat blobs.
 - **Embeddings stored on the span** — 512 bytes each (float16, 256 dims). `embedding_model` column tracks provenance. The analyzer upcasts to float32 before computing cosine similarity to avoid quantization-induced threshold artifacts.
 - **`kind` values use OTel `gen_ai.operation.name` conventions** — `chat`, `execute_tool`, `invoke_agent` (not `llm`, `tool`, `agent`).
@@ -619,16 +620,12 @@ At `agentc.init()` time, the installed SDK version is detected. The appropriate 
 anthropic >= 0.30.0  ->  adapter_anthropic_v030 (current module paths)
 anthropic >= 0.20.0  ->  adapter_anthropic_v020 (legacy module paths)
 openai >= 1.0.0      ->  adapter_openai_v1 (current module paths)
-unknown version      ->  httpx transport fallback (catches all API calls)
+unknown version      ->  patch targets attempted; on AttributeError the SDK is left unpatched (logged at WARNING)
 ```
 
 Each adapter is a small module that knows the patch targets for its SDK version range. New SDK versions require adding an adapter, not rewriting the patching logic.
 
-**httpx transport fallback:** Both Anthropic and OpenAI SDKs use `httpx` internally. If no adapter matches the installed version, patching at the `httpx.Client` / `httpx.AsyncClient` transport layer intercepts outgoing API calls. The fallback:
-- Only activates for a provider if no SDK adapter matched that provider.
-- Filters by destination URL (e.g., `api.anthropic.com`, `api.openai.com`). Other HTTP traffic is ignored.
-- Response parsing is best-effort: extracts `usage` from JSON response body if present, otherwise token counts are NULL.
-- SDK adapter patches set a context flag that the httpx fallback checks to prevent double-instrumentation.
+**Missing patch target:** If a patch target is missing (SDK layout changed), `init()` logs a WARNING and leaves that SDK uninstrumented — there is no transport-level fallback.
 
 ### Patch Targets
 
@@ -652,7 +649,7 @@ Each SDK has sync, async, and streaming variants. All must be patched.
 ### Patching Rules
 
 - If an SDK is not installed, skip silently (no ImportError)
-- If a patch target does not exist (SDK version changed), log a warning and fall back to httpx transport patching
+- If a patch target does not exist (SDK version changed), log a warning and leave the SDK uninstrumented (no transport fallback)
 - Async methods must return coroutines, not sync wrappers
 - Patches are applied to the class, not to instances — covers clients created before and after `init()`
 - Each patch wraps the original method: capture start time -> call original -> capture end time + response -> emit span
@@ -732,10 +729,10 @@ cache_read_cost = 0.25       # optional
 
 Each table key is a `model_id`. `input_cost` and `output_cost` are required; all other fields are optional.
 
-- **Update command**: `agentc pricing update` fetches latest pricing from `https://raw.githubusercontent.com/<org>/agentc/main/data/pricing.json`. On fetch failure, keeps existing prices and warns.
+- **No update command**: Bundled pricing is compiled into the analyzer and loaded via `INSERT OR IGNORE` on first analyze/report; refreshing prices means shipping a new release.
 - **Unknown models**: If a model ID is not in the pricing table, `cost_usd` is `null` (not zero). The analyzer warns on unknown models.
-- **Staleness warning**: If the most recent `updated_at` for `source='bundled'` is older than 90 days, the analyzer emits a warning suggesting `agentc pricing update`.
-- **Single source of truth**: The `model_pricing` table lives in the canonical `traces.db` only. The CLI binary loads bundled pricing into `traces.db` on first access via `INSERT OR IGNORE`. The Python `init()` path does not load pricing — it writes spans with `cost_usd = NULL`. Pricing is a CLI/analyzer concern, not a capture-time concern. User overrides from `~/.agentc/pricing.toml` are loaded by the CLI on startup, merged via `INSERT OR REPLACE` (user overrides win). No auto-fetch outside explicit `agentc pricing update`.
+- **Staleness warning**: If the most recent `updated_at` for `source='bundled'` is older than 90 days, the analyzer emits a warning suggesting an upgrade to a newer release.
+- **Single source of truth**: The `model_pricing` table lives in the canonical `traces.db` only. The CLI binary loads bundled pricing into `traces.db` on first access via `INSERT OR IGNORE`. The Python `init()` path does not load pricing — it writes spans with `cost_usd = NULL`. Pricing is a CLI/analyzer concern, not a capture-time concern. User overrides from `~/.agentc/pricing.toml` are loaded by the CLI on startup, merged via `INSERT OR REPLACE` (user overrides win). No network fetch — pricing ships bundled in the analyzer binary.
 
 ---
 
@@ -850,12 +847,12 @@ The profiler is useful if it can:
 - Test: instrument a single-agent Anthropic script, verify trace output and OTLP export
 
 ### Phase 2: Multi-provider + multi-agent + analysis (weeks 4-6)
-- Python: OpenAI SDK patches via wrapt (sync + async + streaming), version detection + adapter, httpx transport fallback with URL filtering
+- Python: OpenAI SDK patches via wrapt (sync + async + streaming), version detection + adapter
 - Python: Context propagation — `traced_executor` (with `copy_context()`), `get/attach_trace_context`, `inject_trace_headers`
 - Rust: Provider normalization, per-process DB merge logic (lockfile + INSERT OR IGNORE + orphan GC), content dedup across processes
 - Rust: agentc-analyzer crate — cost computation (with cache pricing), waste pattern detection (float32 upcast for cosine similarity), dollar amount estimation per flag, aggregation
-- CLI: `agentc analyze` (with mock output format), `agentc report`, `agentc pricing update`, `agentc embed --backfill`
-- Pricing: bundled table + user overrides + fetch command + staleness warning
+- CLI: `agentc analyze` (with mock output format), `agentc report`, `agentc embed --backfill`
+- Pricing: bundled table + user overrides + staleness warning
 - Test: multi-agent pipeline with mixed providers, verify cross-agent trace linking and waste detection
 
 ### Phase 3: Benchmark + hardening (weeks 7-8)

@@ -227,6 +227,11 @@ impl SqliteCache {
             return Ok(None);
         }
 
+        // Best-effort: a recording failure must not suppress a valid hit.
+        if let Err(e) = record_hit(&guard, &candidate.cache_key_hex, now_micros) {
+            eprintln!("agentc-memo: failed to record cache hit: {e}");
+        }
+
         Ok(Some(CacheHit {
             value: CacheValue {
                 output_content_id,
@@ -255,6 +260,20 @@ impl SqliteCache {
         let guard = self.conn.lock().unwrap();
         f(&guard)
     }
+}
+
+/// Record a served cache hit: bump `hit_count` and refresh `last_hit_at`.
+///
+/// Without this the two columns never move after insert, so
+/// `memoization_stats.total_hits` / `estimated_savings_usd` are always 0 and
+/// `lru_evict`'s `ORDER BY last_hit_at ASC` degenerates to insertion order
+/// (FIFO, not LRU). Called on every served hit (exact and LSH).
+fn record_hit(conn: &Connection, cache_key_hex: &str, now_micros: i64) -> rusqlite::Result<usize> {
+    conn.execute(
+        "UPDATE memoization_cache SET hit_count = hit_count + 1, last_hit_at = ?2 \
+         WHERE cache_key_hash = ?1",
+        params![cache_key_hex, now_micros],
+    )
 }
 
 impl Cache for SqliteCache {
@@ -292,6 +311,11 @@ impl Cache for SqliteCache {
 
         if expires_at <= now_micros {
             return Ok(None);
+        }
+
+        // Best-effort: a recording failure must not suppress a valid hit.
+        if let Err(e) = record_hit(&guard, &cache_key_hex, now_micros) {
+            eprintln!("agentc-memo: failed to record cache hit: {e}");
         }
 
         Ok(Some(CacheHit {
@@ -696,5 +720,38 @@ mod tests {
             .unwrap()
         });
         assert_eq!(count, 0);
+    }
+
+    // Regression (MNT-060): a served hit must bump hit_count and refresh
+    // last_hit_at. Before the fix these columns never moved after insert, so
+    // memoization_stats reported 0 hits and lru_evict was FIFO, not LRU.
+    #[test]
+    fn lookup_records_hit_and_refreshes_last_hit_at() {
+        let cache = build_cache();
+        let key = sample_key(1);
+        cache.insert(&key, &sample_value(), 60_000_000, 100).unwrap();
+
+        let read = |c: &SqliteCache| -> (i64, i64) {
+            c.with_conn(|conn| {
+                conn.query_row(
+                    "SELECT hit_count, last_hit_at FROM memoization_cache \
+                     WHERE cache_key_hash = ?1",
+                    params![key.cache_key_hash_hex()],
+                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+                )
+                .unwrap()
+            })
+        };
+
+        assert_eq!(read(&cache).0, 0, "fresh insert starts at 0 hits");
+
+        cache.lookup(&key, 500).unwrap().expect("hit");
+        assert_eq!(read(&cache), (1, 500), "first hit: count=1, last_hit_at=500");
+
+        cache.lookup(&key, 900).unwrap().expect("hit");
+        assert_eq!(read(&cache), (2, 900), "second hit: count=2, last_hit_at=900");
+
+        // stats() must now surface the recorded hits (previously always 0).
+        assert_eq!(cache.stats().unwrap().total_hits, 2);
     }
 }

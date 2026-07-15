@@ -58,3 +58,10 @@ Manifest currently covers only Tables 5/6/7/13/14 + mdcc + figs 3/6. MISSING (ad
 
 ## Applied this session (verified-factual)
 tab:repro: llmlingua row (CSVs+module), cold-agent row (script+CSV), cachehit row (traces.db + removed the bogus `agentc shutdown`), autogen (dropped stale n200 entry; n300 entry is canonical). DATA_MANIFEST: MD 11.2%->11.4% (L19+L93, units bug); 2 dead script paths (earlier). The 8 decisions above and the full manifest regeneration remain for William.
+
+## Second (forensic) pass — recovery results (git-history traced)
+
+- **llmlingua Agentc-CC 100% row — RECOVERED (canonical, not retracted):** `bench/paper_results/agentc_hotpot_n100.csv` (commit 7a26eb9) backs it exactly — baseline 68/100, AgentcV2-CC 100/100, +32pp, BF=0/FB=32; paper's exact McNemar p=4.66e-10 = 2*(0.5)^32. First pass missed it because it's a *separately named* file (not inside llmlingua_accuracy_n100.csv). APPLIED: tab:repro llmlingua row now also cites agentc_hotpot_n100.csv. Resolves decision #7 (add to DATA_MANIFEST too). (Related bead bd-vg7.)
+- **fig4 provider HF/Anthropic — RECOVERED but RETRACTED:** `retracted/unified_agent_summary.csv` (commit 3280917) backs CC HF 34.0, MD HF 31.1, MD Anthropic 14.7, CC Anthropic abstain — but it is COLD-START (n=50, non-warmup) and quarantined; the repo's own rule bars figures from citing retracted/. So the numbers exist but from disavowed data. Decision #4 stands: re-run warm or explicitly label cold-start. (Beads bd-ude, bd-6xrq.)
+- **autogen 23.5% — NOT recoverable:** it is a per-call mean-of-ratios; per-call token data was ephemeral in traces.db (reset between phases) and never committed. Committed aggregate is 26.0% (ratio-of-sums). Decision #2 stands (bd-hig3): keep 23.5% with a "per-call mean" note, or change to 26.0%.
+- **debug_agent 8.3%/16.8% — NOT recoverable:** only backing is retracted/new_agents_ablation.csv, byte-identical across all 4 committed versions (never re-run warm). ALSO the value is the *all-on* config but the paper labels the row "StateDrop" — a second error. Decision #3 stands (bd-ec0e): re-run warm or drop.

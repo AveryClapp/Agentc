@@ -15,8 +15,9 @@
 //!
 //! Note: `apply_rewrite` merges by field: model, max_output_tokens, and messages
 //! (by count change). Content-only message mutations (StructuredTruncation) are
-//! not carried through in the multi-rule path — hence `(ContextCompress,
-//! StructuredTruncation)` is explicitly unsafe.
+//! not carried through in the multi-rule path, so StructuredTruncation is marked
+//! explicitly unsafe against every rule it could otherwise co-select with — it
+//! only ever applies solo, where its full pruned rewrite is returned directly.
 
 use crate::dag::Call;
 use crate::planner::{CostDriver, Plan, Proposal, RuleApplication};
@@ -30,11 +31,28 @@ const EXPLICIT_SAFE: &[(&str, &str)] = &[
 ];
 
 /// Explicitly unsafe pairs — cannot compose even with different drivers.
+///
+/// StructuredTruncation is a *content-only, same-count* mutation, and
+/// `apply_rewrite` only carries messages through when the message count
+/// shrinks. So in any multi-rule path ST's rewrite is silently dropped
+/// while its savings would still be credited — an overclaim. ST shares
+/// the InputTokens driver with StateDrop/PromptDedup/ContextCompress (so
+/// those are already rejected by the driver-conflict check), but it can
+/// otherwise co-select with the different-driver rules OutputBudget,
+/// DeadOutputTruncation (OutputTokens) and ModelDowngrade (ModelPrice).
+/// Marking those pairs unsafe forces ST to apply solo — the solo path
+/// returns its full pruned rewrite directly and never loses the mutation.
 const EXPLICIT_UNSAFE: &[(&str, &str)] = &[
     ("StateDrop", "PromptDedup"),
     ("PromptDedup", "StateDrop"),
     ("ContextCompress", "StructuredTruncation"),
     ("StructuredTruncation", "ContextCompress"),
+    ("StructuredTruncation", "OutputBudget"),
+    ("OutputBudget", "StructuredTruncation"),
+    ("StructuredTruncation", "DeadOutputTruncation"),
+    ("DeadOutputTruncation", "StructuredTruncation"),
+    ("StructuredTruncation", "ModelDowngrade"),
+    ("ModelDowngrade", "StructuredTruncation"),
 ];
 
 fn sort_key(rule: &str) -> usize {
@@ -425,5 +443,62 @@ mod tests {
             }
             other => panic!("expected Composed, got {:?}", other),
         }
+    }
+
+    // Regression (MNT-019): StructuredTruncation is a content-only, same-count
+    // mutation that apply_rewrite cannot carry through the multi-rule path.
+    // It must never co-select with a different-driver rule (here OutputBudget) —
+    // otherwise its savings would be credited while its pruned message is
+    // silently discarded (an overclaim). It applies solo, mutation intact.
+    #[test]
+    fn structured_truncation_never_composes_and_applies_solo() {
+        let original = make_call(); // 2 messages
+
+        // ST prunes the user message content (same message count).
+        let mut st_rewritten = original.clone();
+        st_rewritten.messages[1].content = "{\"label\":\"answer\"}".into();
+        let st_prop = (
+            "StructuredTruncation".to_string(),
+            Proposal {
+                rewritten: Plan::Rewritten {
+                    rule: "StructuredTruncation".into(),
+                    call: st_rewritten,
+                    projected_savings_usd: 0.6,
+                },
+                projected_savings_usd: 0.6,
+                cost_driver: CostDriver::InputTokens,
+                safety_check: Box::new(|_| true),
+            },
+        );
+
+        let mut ob_rewritten = original.clone();
+        ob_rewritten.parameters.max_output_tokens = Some(64);
+        let ob_prop = (
+            "OutputBudget".to_string(),
+            Proposal {
+                rewritten: Plan::Rewritten {
+                    rule: "OutputBudget".into(),
+                    call: ob_rewritten,
+                    projected_savings_usd: 0.3,
+                },
+                projected_savings_usd: 0.3,
+                cost_driver: CostDriver::OutputTokens,
+                safety_check: Box::new(|_| true),
+            },
+        );
+
+        // ST ranks higher, so it is selected first; OB is then rejected as an
+        // unsafe pairing. ST applies solo with its pruned content intact.
+        let result = compose_proposals(vec![st_prop, ob_prop], &original);
+        assert_eq!(result.rules_applied.len(), 1, "ST must not compose with OB");
+        assert_eq!(result.rules_applied[0].rule, "StructuredTruncation");
+        match &result.plan {
+            Plan::Rewritten { call, .. } => {
+                assert_eq!(call.messages[1].content, "{\"label\":\"answer\"}");
+            }
+            other => panic!("expected Rewritten, got {:?}", other),
+        }
+        // Savings reflect ST only — OB's 0.3 is not double-credited.
+        assert_eq!(result.net_savings_usd, 0.6);
     }
 }

@@ -99,13 +99,20 @@ CREATE INDEX IF NOT EXISTS idx_audit_ts ON plan_audit(ts_us);
 pub fn ensure_cost_model_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(COST_MODEL_SCHEMA)
         .context("applying cost_model schema")?;
-    // Migration: add output_token_p99 if absent (old DB). The error
-    // "duplicate column name" means the column already exists — safe to
-    // ignore.
-    let _ = conn.execute_batch(
+    // Migration: add output_token_p99 if absent (old DB). Only the
+    // "duplicate column name" error means the column already exists — that is
+    // safe to ignore. ANY OTHER error (locked DB, corruption) MUST propagate:
+    // swallowing it lets CostModel::warm_from_db later fail on the missing
+    // column, which makes build_optimizer error and the profiler fall back to
+    // Optimizer::empty() — silently disabling the entire optimizer (bd-c0l).
+    if let Err(e) = conn.execute_batch(
         "ALTER TABLE call_site_profile \
          ADD COLUMN output_token_p99 REAL NOT NULL DEFAULT 0.0",
-    );
+    ) {
+        if !e.to_string().contains("duplicate column name") {
+            return Err(e).context("adding output_token_p99 column");
+        }
+    }
     Ok(())
 }
 
@@ -135,6 +142,26 @@ mod tests {
             )
             .unwrap();
         assert_eq!(tables, 3);
+    }
+
+    #[test]
+    fn output_token_p99_column_present_after_migration() {
+        // The migration must actually add the column (and be idempotent). If a
+        // NON-duplicate error were swallowed here, warm_from_db would later
+        // fail selecting this column and silently disable the optimizer (bd-c0l).
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&conn).unwrap();
+        ensure_cost_model_schema(&conn).unwrap();
+
+        let has_col: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('call_site_profile') \
+                 WHERE name = 'output_token_p99'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_col, 1, "output_token_p99 must exist after migration");
     }
 
     #[test]

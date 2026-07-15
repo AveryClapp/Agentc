@@ -66,8 +66,9 @@ CREATE TABLE IF NOT EXISTS rule_set_stats (
 
 /// Schema for `optimizer_audit.db`:
 ///
-/// - `plan_audit` — one row per optimize_plan dispatch. Ring-buffered by
-///   audit_id (prune oldest when count > `RING_BUFFER_CAP`).
+/// - `plan_audit` — one row per optimize_plan dispatch. Append-only; a
+///   maintenance job may cap it via `audit::prune` (nothing prunes
+///   automatically — see the `audit` module docs).
 ///
 /// Uses `INTEGER PRIMARY KEY AUTOINCREMENT` so pruned rowids are not reused
 /// — prevents a confusing "audit_id 42 refers to three different plans

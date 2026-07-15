@@ -1,21 +1,28 @@
-//! `plan_audit` writer.
+//! `plan_audit` maintenance primitives.
 //!
-//! The audit table is a fixed-capacity ring buffer: every plan dispatch
-//! INSERTs one row; once the count passes [`RING_BUFFER_CAP`] the writer
-//! thread prunes the oldest `excess` rows. AUTOINCREMENT guarantees pruned
-//! IDs are never reused, so `agentc optimize inspect <audit_id>` is
-//! unambiguous for the lifetime of the DB.
+//! `plan_audit` is an append-only log: one row per plan dispatch. In production
+//! those rows are written by the profiler crate's own INSERT; this module
+//! provides the primitives ([`insert`], [`insert_batch`], [`prune`]) a caller
+//! uses to bulk-load or bound the table.
 //!
-//! The prune is a single `DELETE … WHERE audit_id < ?` with a secondary
-//! index on `audit_id` (primary key). The spec requires < 100 ms per prune
-//! at the 10,000-row threshold — exercised by the `prune_under_100ms` test.
+//! There is **no** background writer thread, and nothing invokes [`prune`]
+//! automatically, so in production the table grows unbounded. In the benchmark
+//! harness this is benign — the audit DBs are ephemeral (gitignored, reset
+//! between runs). A deployment that wants a bounded table must call [`prune`]
+//! itself from a maintenance job, passing [`RING_BUFFER_CAP`] as the ceiling.
+//! AUTOINCREMENT guarantees pruned IDs are never reused, so
+//! `agentc optimize inspect <audit_id>` stays unambiguous for the DB's lifetime.
+//!
+//! [`prune`] is a single `DELETE … WHERE audit_id < ?` against the `audit_id`
+//! primary key; it completes in < 100 ms at the 10,000-row mark — exercised by
+//! the `prune_under_100ms` test.
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, Transaction};
 
-/// Capacity of the audit ring buffer before we start pruning. Exposed as a
-/// `pub const` so downstream tests can reference it when they fill to the
-/// boundary.
+/// Recommended row ceiling for callers of [`prune`]. Nothing enforces this
+/// automatically — it is the cap a maintenance job passes to [`prune`]. Exposed
+/// as a `pub const` so downstream tests and callers can reference the boundary.
 pub const RING_BUFFER_CAP: i64 = 10_000;
 
 /// Discriminator column for `plan_audit.plan_kind`.
@@ -55,8 +62,8 @@ pub struct PlanAudit {
     pub shadow_divergence: Option<f64>,
 }
 
-/// Append one audit row. Does **not** prune — the writer thread batches the
-/// prune into a separate step so hot inserts never pay for maintenance.
+/// Append one audit row. Does **not** prune; pruning is a separate maintenance
+/// step (see [`prune`]) so hot inserts never pay for it.
 pub fn insert(conn: &Connection, audit: &PlanAudit) -> Result<i64> {
     conn.execute(
         "INSERT INTO plan_audit (\

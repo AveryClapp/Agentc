@@ -470,6 +470,33 @@ The regression-test gap that makes all reproduction-critical refactors dangerous
 test on the drivers**, `cargo test` is red and excludes the FFI crate, and no test asserts planner
 ranking order — so a flipped selection (from C3 or P12-6) is **invisible**.
 
+## Pass 9 — Adversarial Verification (2026-07-17): two paper-changing findings REFUTED
+
+Before acting on the irreversible manuscript edits, a skeptic re-checked the four scariest
+findings against source. **Two were refuted, one's remedy was refuted, one survived.** This is
+the audit correcting its own overreach — the corrections below OVERRIDE the original findings.
+
+| ID | Original claim | Verdict | Correction |
+|---|---|---|---|
+| **MNT-112 / MNT-129** | Fire counts undercount composed plans; SD's "1 of 90" is a counting artifact (SD's fires logged under CC). | **REFUTED (VERIFIED)** | `composition.rs:5` sorts **StateDrop FIRST** (sort_key=0, CC=2), so a composed SD plan logs *as StateDrop* — it cannot hide under CC. Arithmetic: hidden SD fires would make all-on `cc`≈588; it is **396 ≈ 391** (SD-off). **No hidden fires. SD is genuinely inert under composition** (58 fires → 0.06% savings alone). The "1 of 90" is a **real count.** |
+| **MNT-135** | The empty-string scorer inflates the guard's −1.3pp recovery. | **REFUTED (VERIFIED)** | `analyst_qa.py:61` `if not e: return False` already guards empty *expected*. Only an empty *answer* passes (rare for gpt-4o-mini). Leniency is **symmetric across both arms** → cancels in the paired McNemar. Directionally, empties concentrate in the *degraded* arm, so fixing the scorer would **deepen −42.7**, not shrink −1.3. "Inflates the recovery" is backwards. |
+| **MNT-130** | Guard ran at 100% shadow, not the advertised 2%. | **FACT SURVIVES; REMEDY REFUTED** | The 100% experimental rate is real and undisclosed (fix: disclose it). BUT the disable is **rate-independent** (`budget.rs:160-197`: divergence + 5-consecutive-breach; rate only sets accumulation speed). At 2% in production (≫250 calls) the same catastrophe disables. A paid re-run **at 2% with n≈150 would collect ~3-4 samples (< the 5-streak) and FAIL to disable** — a misleading false negative. **Do NOT break the freeze for a 2% re-run; disclose the rate instead.** |
+| **MNT-127** | Cost/token/accuracy (traces.db) are separate from fire counts (audit db), so the fire-count bug touches no headline number. | **SURVIVES (VERIFIED)** | `_aggregate_from_db` reads only `spans` (SUM cost/tokens); no fire-count weighting anywhere. Holds. Caveat: the fire-count bug still contaminates the fire-count *narrative* (but per the row above, even that narrative is smaller than MNT-112 claimed). |
+
+### What this changes in the plan
+
+- **P1-18 (delete the CC+SD mechanism): REFRAME, do not delete-as-artifact.** The count is real. The defect is the paper's **causal wording** (`main.tex:1358` "CC already removes the messages SD would target") which is **temporally backwards** — SD runs *before* CC — and contradicts the paper's own autogen narrative (`:1454`). Fix the explanation; keep the number. The honest mechanism is "SD is inert once its precondition is consumed," not "CC removes SD's messages."
+- **Phase 12 (P12-0/1/2/3 fire-count "correctness"): DOWNGRADED.** The premise — that fire counts are wrong and changed paper numbers — is refuted. P12-0 (emitter records all rules) is still a reasonable *observability* improvement, but it is **not urgent, not paper-integrity, and not evidence-invalidating.** Move the whole phase to post-submission / nice-to-have.
+- **P14-2 (empty-string scorer): DOWNGRADE from P0.** Not a headline-inflation bug. The scorer's general leniency is a fair methodological *note* (containment not exact-match — that's MNT-138, still valid), but it does not require a paid re-run and does not gate the guard delta. The A4 "break the freeze to re-score" decision is **moot** — the recovery is not a scoring artifact.
+- **MNT-130 remedy corrected:** the guard section needs a **one-line disclosure** ("evaluation sampled at ~100% to trigger disables within n≈150; 2% is the production steady-state"), not a re-run.
+
+### Net effect
+
+Three of the scariest, most confidently-asserted findings dissolve into **wording fixes**. The
+guard centerpiece is *stronger* than the audit feared (the recovery is real, not a scorer
+artifact). The one that survives (MNT-127) is the *reassuring* one. **This is the single biggest
+scope reduction in the review: the fire-count correctness program and one paid re-run both fall away.**
+
 ## Do Not Touch Yet
 
 | Path | Reason | Unblock evidence needed |

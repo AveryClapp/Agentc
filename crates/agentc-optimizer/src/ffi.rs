@@ -6,9 +6,11 @@
 //! internal errors: every failure falls through to `{"kind":"pass_through"}`
 //! so the caller always receives a valid [`crate::Plan`].
 //!
-//! Panic trapping is the PyO3 layer's responsibility
-//! (`std::panic::catch_unwind`), because that's the only boundary the
-//! Python interpreter actually observes.
+//! Panic trapping lives HERE, inside [`optimize_plan`]'s own
+//! `std::panic::catch_unwind`, so the fail-open guarantee (a panicking rule
+//! becomes `PassThrough`, never an exception) is testable under `cargo test`
+//! rather than only through the Python interpreter. The PyO3 binding keeps
+//! its own outer `catch_unwind` as defence in depth at the actual boundary.
 
 use std::sync::Arc;
 
@@ -19,15 +21,21 @@ use crate::planner::{Optimizer, Plan};
 /// Canonical PassThrough JSON, returned whenever anything goes sideways.
 pub const PASS_THROUGH_JSON: &str = "{\"kind\":\"pass_through\"}";
 
-/// Plan a call. Any deserialization or internal failure yields
-/// `PASS_THROUGH_JSON`.
+/// Plan a call. Any deserialization failure, internal error, **or panic**
+/// (e.g. a rule that panics inside `propose`) yields `PASS_THROUGH_JSON`.
+///
+/// The `catch_unwind` IS the fail-open guarantee — keep it. Deleting it makes
+/// `tests/fail_open.rs::rule_panic_is_converted_to_pass_through` panic.
 pub fn optimize_plan(opt: &Optimizer, call_json: &str) -> String {
-    let call: Call = match serde_json::from_str(call_json) {
-        Ok(c) => c,
-        Err(_) => return PASS_THROUGH_JSON.to_string(),
-    };
-    let plan = opt.plan(&call);
-    serde_json::to_string(&plan).unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let call: Call = match serde_json::from_str(call_json) {
+            Ok(c) => c,
+            Err(_) => return PASS_THROUGH_JSON.to_string(),
+        };
+        let plan = opt.plan(&call);
+        serde_json::to_string(&plan).unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
+    }))
+    .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
 }
 
 /// Fold the outcome of a dispatched plan into the cost model. Failures

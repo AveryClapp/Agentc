@@ -254,6 +254,28 @@ class TestSyncCreateWrapper:
         result = _wrap_create(wrapped, None, (), {"model": "test", "messages": []})
         assert result is mock_response
 
+    def test_fail_open_on_planning_error_returns_user_response(self, initialized: Path) -> None:
+        # End-to-end fail-open (bd-jvk, P7-5): if the optimizer planner blows
+        # up (here plan_call, the immediate Python caller of
+        # _native.optimize_plan, raises), the user's chat.completions.create
+        # must still return its real response — the failure never surfaces.
+        # This is the Python-side counterpart to fail_open.rs's Rust check.
+        mock_response = MockChatCompletion()
+        wrapped = MagicMock(return_value=mock_response)
+
+        with patch("agentc._patches._openai._write_root_span", side_effect=lambda d: None), patch(
+            "agentc._optimizer.plan_call", side_effect=RuntimeError("planner exploded")
+        ):
+            result = _wrap_create(
+                wrapped,
+                None,
+                (),
+                {"model": "gpt-4o", "max_tokens": 1024, "messages": [{"role": "user", "content": "hi"}]},
+            )
+
+        assert result is mock_response
+        wrapped.assert_called_once()
+
     def test_input_output_captured(self, initialized: Path) -> None:
         written: list[dict[str, Any]] = []
 

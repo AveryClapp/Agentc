@@ -119,11 +119,11 @@ fn overhead_kill_switch_returns_pass_through() {
 
 #[test]
 fn rule_panic_is_converted_to_pass_through() {
-    // `Optimizer::plan` itself does not catch_unwind — that's the FFI
-    // layer's job. Here we verify the FFI-equivalent wrapper that the
-    // profiler binding invokes: catch_unwind around `rust_plan`.
-    use std::panic::AssertUnwindSafe;
-
+    // Call the REAL binding directly — no test-side catch_unwind. The
+    // fail-open guarantee is `ffi::optimize_plan`'s own catch_unwind, so
+    // deleting THAT makes this test panic (fail). The old version wrapped
+    // its own catch_unwind around the call, so it proved std::panic works
+    // (a stdlib guarantee) rather than that Agentc traps rule panics.
     let cm = Arc::new(CostModel::new());
     heat_up(&cm, "site", 10);
     let opt = Optimizer::new(
@@ -133,8 +133,7 @@ fn rule_panic_is_converted_to_pass_through() {
     );
 
     let call_json = serde_json::to_string(&hot_call("site")).unwrap();
-    let out = std::panic::catch_unwind(AssertUnwindSafe(|| optimize_plan(&opt, &call_json)))
-        .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string());
+    let out = optimize_plan(&opt, &call_json);
 
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["kind"], "pass_through");

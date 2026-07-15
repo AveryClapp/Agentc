@@ -1,9 +1,11 @@
-//! The five rewrite rules.
+//! The nine rewrite rules.
 //!
-//! Each submodule implements one rule; the planner composes them via the
-//! shared `RewriteRule` trait (see `super::planner`). Rules never compose
-//! in a single plan — the planner ranks proposals by projected savings
-//! and picks the first that passes its safety check.
+//! Each submodule implements one rule; the planner (see `super::planner`)
+//! collects proposals via the shared `RewriteRule` trait and, by default,
+//! composes orthogonal rules into a single `Plan::Composed` (see
+//! `super::composition`). With `AGENTC_COMPOSE=0` it falls back to V1
+//! behavior: rank proposals by projected savings and pick the first that
+//! passes its safety check.
 //!
 //! Rule-specific configuration lives on each rule's struct rather than in
 //! the global `OptimizerConfig` so adding or retiring a rule doesn't

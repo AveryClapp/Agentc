@@ -1,6 +1,6 @@
 //! Agentc CLI binary.
 //!
-//! Subcommands: record, traces, export.
+//! Subcommands: record, traces, analyze, report, embed, migrate, export, cache, optimize.
 
 mod helpers;
 

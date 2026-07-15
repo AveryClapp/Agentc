@@ -1,12 +1,12 @@
 //! Agentc JIT optimizer runtime.
 //!
 //! Shipped so far:
-//! - O1 — empirical cost model + ring-buffered audit table.
+//! - O1 — empirical cost model + append-only audit table.
 //! - O2 — `Optimizer::plan` entry point, `Plan` enum, cold-path and
 //!   overhead kill switch, fail-open FFI wired via `agentc-profiler`.
-//!
-//! Rule implementations, shadow sampling, and the accuracy-budget machine
-//! ship in later beads (O3–O5).
+//! - O3–O5 — the nine rewrite rules (`rules`), shadow-mode sampling
+//!   (`shadow`), the accuracy-budget machine (`budget`), and default-on
+//!   multi-rule composition (`composition`).
 
 pub mod audit;
 pub mod budget;
@@ -40,8 +40,5 @@ pub use rules::{
     CacheHitRule, ContextCompressRule, DeadOutputTruncationRule, ModelDowngradeRoute,
     ModelDowngradeRule, OutputBudgetRule, ParallelBranchRule, PromptDedupRule, StateDropRule,
     StructuredTruncationRule,
-};
-pub use shadow::{
-    text_divergence, tool_call_divergence, ShadowSampler, ToolCall, DEFAULT_SHADOW_RATE,
 };
 pub use wiring::{build_optimizer, Wired};

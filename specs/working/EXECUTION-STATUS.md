@@ -6,6 +6,37 @@ last-updated: 2026-07-15
 
 # EXECUTION STATUS — read this FIRST after any compaction
 
+## Session 2026-07-15 — "genuinely-safe (no-published-number) set" pass
+Worked the ~24 beads that change no published number. **13 closed + committed this
+session, 2 epics closed, 2 follow-ups filed. All LOCAL (nothing pushed).**
+- **Closed:** bd-21w, bd-fr0, bd-d5d (gitignore/path hygiene); bd-3u2 (DROPIN removal);
+  bd-m6e (MNT-033 superseded); bd-yka (rust-toolchain.toml + .python-version pins);
+  bd-73t (audit ring-buffer doc = append-only reality); bd-wdk (new CONFIG.md, all env
+  vars); bd-7st (dead shadow-divergence code removed + stale module docs fixed — broad
+  156-item pub narrowing DEFERRED to bd-yqr); bd-7yft (CLI rejects unknown --rule names,
+  drift-guard test); bd-d8m (froze paper-intelligence ID namespaces); bd-94j (mypy
+  --strict = 16 errs; fixed 2 via _native.pyi stubs -> 14); bd-5nc (profiler.md +
+  memoization.md rewritten to shipped behavior, verified vs code).
+- **Epics closed (bd-516):** bd-5ze (Phase 7), bd-uod (Phase 13) — all children done.
+  bd-323l (Phase 16) left OPEN (empty = unstarted strategic work, not stale).
+- **Follow-ups filed:** bd-qc7d (14 remaining mypy errors). Also fixed 2 adjacent
+  code-doc bugs (cost.rs pricing-update string, _intercept.py _adapters docstring).
+- **Deferred with reasons (need a decision or are blocked):** bd-jz4 (un-greenwash CI =
+  flip CI red to surface real gaps? decision); bd-4xr (hot-path perf on the FROZEN
+  runtime); bd-yqr/bd-n8s (big refactors, golden-guarded, want fresh focus); bd-jml/
+  bd-skp/bd-w5y (figure pipeline — coordinated, freeze-gated, PDF renames/deletes;
+  NOTE: figures/ has NO collisions, the paper includes the correct variants; collisions
+  are only in bench/paper_figures/); bd-50d/bd-8pq (docs consolidation — Tier-1 = 7 safe
+  git mv's, but Tier-2 needs content-lifting and guard-frontier archival is blocked on
+  the deferred DATA_MANIFEST regen); bd-yrp (needs bd-vs-br canonicality call + git rm
+  --cached confirm); bd-i8v (blocked inside guard-frontier doc); bd-gb3/bd-0ri (need
+  references.bib from Overleaf + acmart install — William); bd-3y2 (batch_classifier
+  "dead" claim CONTRADICTS the cachehit experiment — do not archive it).
+
+---
+
+# EXECUTION STATUS (prior baseline) — read after the session note above
+
 **All safe-code cleanup is DONE.** The only self-actionable code work left is the
 **2 refactors** (bd-yqr, bd-n8s). Everything else open is paper/author decisions or epics.
 Submission is far off; no paid re-runs were needed. **All commits are LOCAL — nothing is pushed.**

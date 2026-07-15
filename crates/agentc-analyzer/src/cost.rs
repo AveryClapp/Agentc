@@ -92,7 +92,7 @@ fn check_pricing_staleness_at(pricing_json: &str, now_days: u64) -> Option<Strin
     if staleness_days > STALENESS_DAYS as i64 {
         Some(format!(
             "Bundled pricing is {staleness_days} days old (> {STALENESS_DAYS} days). \
-             Run `agentc pricing update` to refresh."
+             Pricing ships bundled in the analyzer; upgrade agentc to refresh it."
         ))
     } else {
         None

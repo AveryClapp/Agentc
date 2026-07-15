@@ -1,8 +1,9 @@
 """Provider-agnostic interception of LLM calls.
 
 The interceptor is intentionally thin: vendor-specific patching
-(OpenAI, Anthropic, Cohere) lives in ``python/agentc/_patches/`` or
-framework adapters in ``python/agentc/_adapters/``. This module owns
+(OpenAI, Anthropic, Cohere) lives in ``python/agentc/_patches/``;
+framework provenance adapters live in
+``python/agentc/_provenance_frameworks/``. This module owns
 the control flow that every vendor shares:
 
 1. Build a ``Call`` dict from the provider-native request.

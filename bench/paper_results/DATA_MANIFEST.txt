@@ -16,7 +16,7 @@ Table 5 (sec 6.1 -- ContextCompress, n=300, long_context_qa)
 Table 6 (sec 6.2 -- ModelDowngrade, n=127, gaia_router)
   Source:  bench/paper_results/gaia_router_warmup_n127.csv
   Canonical: bench/paper_results/gaia_router-modeldowngrade-n127-warmup.csv
-  Key result: MD-only cost savings 11.2% (11.23 mUSD); BF=7/FB=2/p=0.1797
+  Key result: MD-only cost savings 11.4% (11.23 mUSD / 98.91 baseline); BF=7/FB=2/p=0.1797
                (n.s. -- MD safe on gaia_router); MD fire rate 25.6% (65/254 calls)
   Run script: bench/run_gaia_warmup.py
 
@@ -90,7 +90,7 @@ FIGURES (regenerated with corrected numbers 2026-05-17)
 
 fig3_headline_savings.pdf
   Script: bench/paper_figures/fig3_headline_savings.py
-  Changes: CC n=100->n=300 (33.9%/34.0%); MD 35.3%->11.2% cost/~0% tok;
+  Changes: CC n=100->n=300 (33.9%/34.0%); MD 35.3%->11.4% cost/~0% tok;
            SD label added "(within-run)"; SD tok 9.6%->10.8%
 
 fig6_composition_orthogonality.pdf

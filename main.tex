@@ -1992,9 +1992,9 @@ Run oracle agent; query \texttt{traces.db} as above \\
 
 \addlinespace
 \ref{tab:llmlingua-distractor}, \ref{tab:llmlingua-wikipedia} &
-\texttt{llmlingua\_\allowbreak comparison\_\allowbreak n100.csv},
-\texttt{wikipedia\_\allowbreak qa\_\allowbreak n39.csv} &
-\texttt{python -m bench.llmlingua\_\allowbreak baseline} \\
+\texttt{llmlingua\_\allowbreak accuracy\_\allowbreak n100.csv},
+\texttt{wikipedia\_\allowbreak qa\_\allowbreak comparison.csv} &
+\texttt{python -m bench.agents.llmlingua\_\allowbreak baseline} \\
 
 \addlinespace
 \ref{tab:ccsd-composition} &
@@ -2007,21 +2007,16 @@ Run oracle agent; query \texttt{traces.db} as above \\
 \texttt{python bench/run\_\allowbreak planner\_\allowbreak ablation\_\allowbreak rerun.py} \\
 
 \addlinespace
-\ref{tab:summary} (autogen\_bridge row) &
-\texttt{autogen\_\allowbreak bridge-\allowbreak n200-\allowbreak warmup.csv} &
-\texttt{python bench/run\_autogen\_warmup\_n200.py} \\
-
-\addlinespace
 \ref{tab:summary} (cold agent row) &
-\texttt{support\_\allowbreak qa\_\allowbreak n30.csv} &
-\texttt{python -m bench.coldagent\_\allowbreak eval} \\
+\texttt{generalization\_\allowbreak evals.csv} (support\_qa row),
+\texttt{generalization\_\allowbreak activation.csv} &
+\texttt{python -m bench.run\_\allowbreak generalization\_\allowbreak evals} \\
 
 \addlinespace
 \ref{sec:eval-cachehit} &
-\texttt{batch\_\allowbreak classifier\_\allowbreak n20.csv},
-\texttt{traces.db} (\texttt{plan\_audit}) &
-Run 1: \texttt{python -m bench.cachehit\_\allowbreak eval --run 1 \&\& agentc shutdown};
-Run 2: \texttt{python -m bench.cachehit\_\allowbreak eval --run 2} \\
+\texttt{traces.db} (\texttt{plan\_audit}, \texttt{plan\_kind='cached'}) &
+Run \texttt{python -m bench.agents.batch\_\allowbreak classifier} twice; the
+in-script \texttt{agentc.shutdown()} seeds the cache between runs \\
 
 \addlinespace
 \ref{tab:summary} (research\_planner) &

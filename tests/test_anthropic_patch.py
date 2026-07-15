@@ -188,6 +188,39 @@ class TestExtractHelpers:
 class TestSyncCreateWrapper:
     """Test _wrap_create directly, bypassing wrapt mechanics."""
 
+    def test_native_anthropic_runs_shadow_guard(self, initialized: Path) -> None:
+        # Regression (bd-1cb): the accuracy guard (maybe_shadow_record) must run
+        # on the native Anthropic path, not only OpenAI. Previously it was
+        # called from _openai.py only, so Anthropic users got no auto-disable.
+        from agentc._optimizer import Plan
+
+        shadow_calls: list[Any] = []
+        plan = Plan(
+            kind="rewritten",
+            rule="ModelDowngrade",
+            call={"model": "claude-x", "messages": []},
+        )
+        mock_response = MockMessage()
+
+        with patch("agentc._patches._anthropic._write_root_span"), patch(
+            "agentc._patches._anthropic._plan_anthropic_call", return_value=(plan, "site")
+        ), patch("agentc._patches._anthropic._observe_anthropic_outcome"), patch(
+            "agentc._patches._optimizer_glue.dispatch_sync", return_value=mock_response
+        ), patch(
+            "agentc._patches._optimizer_glue.maybe_shadow_record",
+            side_effect=lambda *a, **k: shadow_calls.append(a),
+        ):
+            wrapped = MagicMock(return_value=mock_response)
+            result = _wrap_create(
+                wrapped,
+                None,
+                (),
+                {"model": "claude-x", "max_tokens": 10, "messages": [{"role": "user", "content": "hi"}]},
+            )
+
+        assert result is mock_response
+        assert len(shadow_calls) == 1, "maybe_shadow_record must run on the native Anthropic path"
+
     def test_captures_span(self, initialized: Path) -> None:
         written: list[dict[str, Any]] = []
         mock_response = MockMessage()

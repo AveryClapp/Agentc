@@ -525,12 +525,26 @@ def _response_output_text(response: Any) -> Optional[str]:
     maximal divergence and could auto-disable a working rule (bd-kq7).
     """
     try:
+        # OpenAI ChatCompletion shape: choices[0].message.content.
         choices = getattr(response, "choices", None) or []
         if choices:
             msg = getattr(choices[0], "message", None)
             if msg is not None:
                 return str(getattr(msg, "content", "") or "")
-        # Well-formed response with no choices/message → genuinely empty.
+        # Anthropic Message shape: `content` is a list of blocks, each with a
+        # `.text` (object) or `"text"` (dict). Needed so the shadow guard works
+        # on the native Anthropic path, not just OpenAI (bd-1cb).
+        content = getattr(response, "content", None)
+        if isinstance(content, list):
+            parts: list[str] = []
+            for block in content:
+                text = getattr(block, "text", None)
+                if text is None and isinstance(block, dict):
+                    text = block.get("text")
+                if text:
+                    parts.append(str(text))
+            return " ".join(parts)
+        # Well-formed response with no recognizable content → genuinely empty.
         return ""
     except BaseException:
         return None

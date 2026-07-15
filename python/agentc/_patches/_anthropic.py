@@ -267,6 +267,7 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
             from agentc._patches._optimizer_glue import (
                 apply_call_mutations_anthropic,
                 dispatch_sync,
+                maybe_shadow_record,
             )
 
             def _run_original() -> Any:
@@ -277,6 +278,10 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
                 return wrapped(*args, **new_kwargs)
 
             response = dispatch_sync(plan, run_original=_run_original, run_mutated=_run_mutated)
+            # Shadow-mode accuracy sampling: without this the guard never runs
+            # on the native Anthropic path (bd-1cb) — only the OpenAI patch
+            # called it — so Anthropic users got no auto-disable protection.
+            maybe_shadow_record(plan, call_site_id, response, _run_original)
         else:
             response = wrapped(*args, **kwargs)
     except BaseException as exc:

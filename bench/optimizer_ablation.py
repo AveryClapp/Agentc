@@ -1,4 +1,4 @@
-"""Per-rule ablation sweep over the five optimizer rewrite rules.
+"""Per-rule ablation sweep over the nine optimizer rewrite rules.
 
 For each reference agent, runs ``optimizer_bench`` under the following
 configurations:

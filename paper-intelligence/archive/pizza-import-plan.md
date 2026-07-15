@@ -13,7 +13,7 @@ This plan records what to adapt from `pizza_at_the_pentagon` into AgentC paper i
 
 Primary source inspected:
 
-`/Users/williamboudy/Desktop/pizza_at_the_pentagon/specs/paper-snapshot-writeup/`
+`<local pizza_at_the_pentagon checkout>/specs/paper-snapshot-writeup/`
 
 ## Import Decisions
 

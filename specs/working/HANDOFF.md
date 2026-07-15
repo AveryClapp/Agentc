@@ -18,7 +18,7 @@
    - `specs/README.md`, `specs/memoization.md`, `specs/optimizer.md` (supporting context)
    - `README.md` (project-level context)
 
-3. **Save key patterns to auto-memory** at `/Users/will/.claude/projects/-Users-will-Desktop-Agentc/memory/MEMORY.md` — create it if it doesn't exist. Store:
+3. **Save key patterns to auto-memory** at `~/.claude/projects/<agentc-project-slug>/memory/MEMORY.md` — create it if it doesn't exist. Store:
    - Project structure and key file paths
    - The Rust vs Python boundary decision (once confirmed)
    - User preferences (leans full Rust, wants concrete decisions, uses NTM palette prompts)

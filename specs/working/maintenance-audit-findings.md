@@ -526,3 +526,41 @@ scope reduction in the review: the fire-count correctness program and one paid r
 - `main.tex` has **never been compiled on this machine** (`acmart.cls` absent). All manuscript findings are structural, from reading source.
 - Why `ParallelBranch` never fires despite correct plumbing is **unresolved** (MNT-018). Root cause unknown.
 - The MLSys 2027 CFP is not public. Deadline (~late Oct 2026) is inferred from the 2026 cycle, not confirmed.
+
+## Pass 10 — Calibration Grade (2026-07-17): how much of the plan to trust
+
+A fresh-eyes grader independently re-verified 14 findings + both Pass-9 refutations against
+source (never the finding's citation). **13 survived; 1 cracked; both refutations sound.**
+
+### MNT-006-CORR — the crack (VERIFIED, overturns a "verified defect")
+MNT-006 claimed `figures/fig8_throughput.pdf` has "no generator anywhere - unreproducible published
+evidence." **FALSE.** `bench/paper_figures/fig_concurrency.py` produces the exact 3 panels the
+`fig:throughput` caption describes (`main.tex:872`: latency CDF / throughput+token-savings / p50-p99
+ratio), and the paper's own repro appendix cites it (`main.tex:2056`). The generator was missed because
+it doesn't follow the `figN_*.py` naming convention - the grep-and-conclude pattern the audit was
+otherwise disciplined about. **bd-w5y is not "locate a missing generator"; it is "rename/regenerate
+fig8 from fig_concurrency.py" - folded into the split-brain fix (bd-jml, MNT-035).**
+
+### MNT-040 refinement (VERIFIED)
+Two of the "four wrong numbers" (41.7/37.7% cost/token) are within rounding of the CSV; the real defect
+is the **significance flip** (+4.0pp/p=0.22 vs committed +9.0pp/p=0.0117). Deeper: the paper's +4.0pp
+matches **no committed run** (4-vs-9 is too large for a transcription error), so **bd-dka is not "fix a
+p-value" - it is "the paper row came from a superseded run; decide which is canonical."**
+
+### Reliability verdict
+The 2-in-4 Pass-9 refutation rate was NOT representative - those were the hand-picked scariest findings.
+Broad sample: **~7% carry a material error (1 crack in 14)**, and the failure mode is consistent and
+narrow: **right conclusion, occasionally wrong mechanism / overstated severity / wrong prescription**
+(MNT-113 mechanism, MNT-129 causal wording, MNT-006 "no generator", MNT-040 "all four wrong").
+**Zero defects were invented wholesale.** Expected ~10-14 of the ~140 single-pass findings carry a
+prescription/severity error; nearly all are safe because ~60 INERT beads (LICENSE, CLAUDE.md, bib, doc
+fixes) don't depend on the finding's precision.
+
+### THE GATING CONDITION (adopt before implementation)
+**Before any bead that EDITS A PAPER NUMBER or REGENERATES/INVALIDATES EVIDENCE lands, re-verify that
+finding's specific prescribed values by reading the committed CSV/source directly - not the finding's
+citation.** The audit's proven failure mode is right-conclusion/wrong-prescription, and a wrong number
+written into the manuscript is exactly the error this audit exists to prevent. The ~60 INERT beads need
+no such gate. Start the re-verify pass with bd-dka (canonical-run question) and the reframed bd-w5y.
+
+### Grades: FINDING-RELIABILITY B+ / NET-VALUE A- / READINESS B- / OVERALL B+. Verdict: GO.

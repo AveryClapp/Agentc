@@ -176,7 +176,7 @@ python bench/run_gaia_warmup.py          # ModelDowngrade,  n=127  (Table 6)
 python bench/run_refiner_warmup.py       # StateDrop,       n=50   (Table 7)
 ```
 
-The reference agents stub LLM calls when no API key is set, so the harness wires up cleanly without spending money. To generate real cost/accuracy numbers, set `OPENAI_API_KEY` (and `HF_TOKEN` for GAIA) in `.env`.
+The reference agents stub LLM calls when no API key is set, so the harness wires up cleanly without spending money. To generate real cost/accuracy numbers, copy [`.env.example`](.env.example) to `.env` and fill in the keys you need: `OPENAI_API_KEY` for the main runs, `HF_TOKEN` for GAIA, and `TOGETHER_API_KEY` (with `BENCH_OPENAI_BASE_URL`) for the cross-model / scale-up runs. `.env.example` lists what each key unlocks.
 
 ---
 

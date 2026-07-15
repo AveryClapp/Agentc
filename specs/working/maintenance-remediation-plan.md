@@ -6,12 +6,28 @@ last-updated: 2026-07-17
 
 # Maintenance Remediation Plan
 
-Execution plan for the 65 findings in [maintenance-audit-findings.md](maintenance-audit-findings.md).
+> **STATUS: this document is NARRATIVE ONLY. bd is authoritative for scope and status.**
+> The audit grew to **144 findings across 7 passes** and the plan to **15 phases**; the
+> phase-by-phase task detail below covers only Phases 0–5 (the first pass) and is retained
+> for its dependency-order and governing-rules narrative. For the full, current picture use:
+> - **Findings:** [maintenance-audit-findings.md](maintenance-audit-findings.md) (MNT-001..144, incl. the Pass-6 risk buckets + freeze policy and the Pass-7 meta-audit).
+> - **Tasks/status:** `bd list` — 15 epics, ~150 tasks. Never restate a count or status here; it will drift (this line already did — it said "65 findings" for weeks).
+> - **Freeze policy + risk buckets (INERT/ADDITIVE/BEHAVIOR-CHANGING/EVIDENCE-INVALIDATING):** findings file, Pass 6.
+
 Scope: maintenance and fixes only. No new experiments except where a claim cannot otherwise
 be backed, and no new features.
 
 Target: MLSys 2027, est. deadline late October 2026 (CFP not public as of 2026-07-17).
 Runway: ~14 weeks.
+
+## Phases 6–15 (summary; detail lives in bd + the findings file)
+
+Phase 0 Blind spots · 1 Paper claim integrity · 2 Artifact-eval · 3 Code defects ·
+4 Doc truth · 5 Evidence hygiene · 6 Build & CI · 7 Fail-open · 8 Rust schema/hot-path ·
+9 Docs consolidation · 10 Determinism · 11 Test coverage · 12 Bench correctness ·
+13 Silent failure · 14 Stats/pricing/scoring · 15 Durability & skills.
+The freeze (P0-FREEZE, bd-3w1) is foundational and now blocks every behavior-changing and
+evidence-invalidating bead. The critical path and governing rules below still hold.
 
 ## Governing Rules
 

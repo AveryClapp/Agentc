@@ -66,18 +66,25 @@ pub fn user_pricing_path() -> PathBuf {
 
 /// Parse the bundled pricing timestamp and check if it's older than 90 days.
 pub fn check_pricing_staleness() -> Option<String> {
-    let pricing: BundledPricing = serde_json::from_str(BUNDLED_PRICING_JSON).ok()?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    let now_days = now.as_secs() / 86400;
+    check_pricing_staleness_at(BUNDLED_PRICING_JSON, now_days)
+}
+
+/// Clock-injected core of [`check_pricing_staleness`]. Split out so tests can
+/// exercise the boundary logic without asserting against the wall clock — the
+/// previous test hardcoded "today is 2026-03-19" and self-detonated after 90
+/// days with no code change (MNT-091).
+fn check_pricing_staleness_at(pricing_json: &str, now_days: u64) -> Option<String> {
+    let pricing: BundledPricing = serde_json::from_str(pricing_json).ok()?;
     // Parse ISO 8601 timestamp manually (avoid adding chrono dep).
     // Format: "2026-03-19T00:00:00Z"
     let ts = &pricing.updated_at;
     let year: u64 = ts.get(0..4)?.parse().ok()?;
     let month: u64 = ts.get(5..7)?.parse().ok()?;
     let day: u64 = ts.get(8..10)?.parse().ok()?;
-
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?;
-    let now_days = now.as_secs() / 86400;
 
     let pricing_epoch_days = days_since_epoch(year as i32, month as u32, day as u32)?;
     let staleness_days = now_days as i64 - pricing_epoch_days;
@@ -621,10 +628,50 @@ output_cost = 20.00
     }
 
     #[test]
-    fn test_pricing_staleness_not_stale() {
-        // Bundled pricing is dated 2026-03-19, which is today. Should not be stale.
-        let result = check_pricing_staleness();
-        assert!(result.is_none());
+    fn test_pricing_staleness_boundary() {
+        // Clock-injected: test the boundary logic, never the wall clock.
+        // The bundled pricing date is whatever data/pricing.json says; anchor to it.
+        let pricing: BundledPricing = serde_json::from_str(BUNDLED_PRICING_JSON).unwrap();
+        let y: u64 = pricing.updated_at[0..4].parse().unwrap();
+        let m: u64 = pricing.updated_at[5..7].parse().unwrap();
+        let d: u64 = pricing.updated_at[8..10].parse().unwrap();
+        let base = days_since_epoch(y as i32, m as u32, d as u32).unwrap() as u64;
+
+        // Fresh (10 days after the pricing date) → not stale.
+        assert!(check_pricing_staleness_at(BUNDLED_PRICING_JSON, base + 10).is_none());
+        // Exactly at the threshold (90 days) → not stale (strict `>`).
+        assert!(check_pricing_staleness_at(BUNDLED_PRICING_JSON, base + STALENESS_DAYS).is_none());
+        // One day over → stale.
+        assert!(check_pricing_staleness_at(BUNDLED_PRICING_JSON, base + STALENESS_DAYS + 1).is_some());
+    }
+
+    #[test]
+    fn test_pricing_json_is_frozen() {
+        // pricing.json is EVIDENCE, not config: cost is computed at query time, so
+        // editing it would retroactively rewrite every committed cost number and
+        // change rule ranking (MNT-128). This pins the bytes (FNV-1a, dep-free and
+        // version-stable) so a "refresh" that would silently rewrite the paper's
+        // numbers fails the build instead.
+        //
+        // Pricing IS intended to change eventually — when it does, that is a NEW
+        // experiment that re-derives every cost number, and this constant is
+        // updated deliberately as part of it, never to make a red test pass.
+        const PRICING_JSON_FROZEN_FNV1A: u64 = 0xe301b941c6278602;
+        fn fnv1a(bytes: &[u8]) -> u64 {
+            let mut h: u64 = 0xcbf29ce484222325;
+            for &b in bytes {
+                h ^= b as u64;
+                h = h.wrapping_mul(0x100000001b3);
+            }
+            h
+        }
+        assert_eq!(
+            fnv1a(BUNDLED_PRICING_JSON.as_bytes()),
+            PRICING_JSON_FROZEN_FNV1A,
+            "data/pricing.json changed. It is frozen evidence (see MNT-128): cost is \
+             computed at query time, so any edit retroactively rewrites every committed \
+             cost number. Do not refresh it to make a test pass."
+        );
     }
 
     #[test]

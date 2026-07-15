@@ -43,7 +43,6 @@ name = "agentc-core"
 version = "0.1.0"
 dependencies = [
  "agentc-embed",
- "agentc-memo",
  "anyhow",
  "dirs",
  "libc",
@@ -72,6 +71,7 @@ dependencies = [
 name = "agentc-memo"
 version = "0.1.0"
 dependencies = [
+ "agentc-core",
  "agentc-embed",
  "anyhow",
  "rusqlite",

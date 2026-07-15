@@ -298,6 +298,23 @@ mod tests {
     }
 
     #[test]
+    fn same_driver_pair_not_in_tables_hits_driver_conflict_gate() {
+        // Regression (bd-gzf): the driver-conflict gate is only reached by a
+        // same-driver pair that is in NEITHER explicit table — every
+        // InputTokens pair among CC/PromptDedup/StateDrop short-circuits at the
+        // explicit tables first. (OutputBudget, DeadOutputTruncation) are both
+        // OutputTokens and in neither table, so exactly one may be selected.
+        // Deleting the driver-conflict check would let both compose.
+        let proposals = vec![
+            make_prop("OutputBudget", CostDriver::OutputTokens, 0.5),
+            make_prop("DeadOutputTruncation", CostDriver::OutputTokens, 0.3),
+        ];
+        let result = compose_proposals(proposals, &make_call());
+        assert_eq!(result.rules_applied.len(), 1, "same-driver pair must not compose");
+        assert_eq!(result.rules_applied[0].rule, "OutputBudget", "highest savings wins the slot");
+    }
+
+    #[test]
     fn call_elimination_is_always_solo() {
         let proposals = vec![
             make_prop("CacheHit", CostDriver::CallElimination, 1.0),

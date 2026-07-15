@@ -1487,11 +1487,13 @@ budget for five consecutive samples, the planner auto-disables it for that call 
 The mechanism is rule-agnostic and requires no ground-truth labels. It samples at a
 configurable rate (2\% in production), so the guard's safety costs roughly 2\% extra
 inference in the steady state, a bounded and tunable cost/safety knob; a rule that
-auto-disables thereafter incurs no further shadow cost. The per-sample bookkeeping is
+auto-disables thereafter incurs no further shadow cost. The guard's own bookkeeping is
 negligible against the call it guards: computing the divergence metric and folding it into
 the Rust budget takes 18\,$\mu$s per sampled call (17.8\,$\mu$s metric, 0.7\,$\mu$s fold;
-\path{bench/guard_overhead_bench.py}), five orders of magnitude below an LLM call, so the
-guard adds no measurable latency to the request path.
+\path{bench/guard_overhead_bench.py}), five orders of magnitude below an LLM call. The
+shadow \emph{inference} call itself, however, is a real (billed) API call issued
+synchronously on the sampled requests, so it adds that call's full latency and cost to
+those $\approx$2\% of requests; unsampled calls are unaffected, and the rate is tunable.
 
 \textbf{The guard prevents catastrophic misfires.} Re-running \texttt{analyst\_qa} with
 the guard active, StateDrop is auto-disabled after roughly ten fires and accuracy

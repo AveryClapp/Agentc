@@ -607,8 +607,13 @@ def maybe_shadow_record(
     against the optimized result, and feed it to the Rust accuracy budget
     via :func:`record_divergence`. After ``BREACH_STREAK`` consecutive
     over-budget samples the budget auto-disables the rule, so subsequent
-    calls to this site pass it through. Fail-open: never raises, never
-    blocks the user-visible call (which already returned).
+    calls to this site pass it through.
+
+    Cost note: ``run_original()`` issues a second, real and billed LLM call.
+    It runs synchronously here — after the optimized response is obtained but
+    BEFORE the wrapper returns — so on the sampled ~2% of calls it adds that
+    call's latency and cost to the user-visible request. Fail-open: it never
+    raises, but it is not free and not off the request's critical path.
     """
     import os
     import random

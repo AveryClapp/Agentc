@@ -310,6 +310,15 @@ pub fn merge_per_process_db(
         })
     })();
 
+    // If a step failed after BEGIN, the transaction is still open. A DETACH
+    // cannot run inside an open transaction, so without this the `let _ =`
+    // DETACH silently fails, `source` stays attached, and the NEXT
+    // per-process merge's ATTACH fails with "already in use" — one failure
+    // poisoning every subsequent merge in the run (bd-6sk). Roll back first.
+    if !canonical_conn.is_autocommit() {
+        let _ = canonical_conn.execute_batch("ROLLBACK;");
+    }
+
     // Always detach, even on error.
     let _ = canonical_conn.execute_batch("DETACH DATABASE source;");
 
@@ -991,6 +1000,38 @@ mod tests {
         drop(held);
         let third = FileLock::acquire(&lock_path, Duration::from_millis(100));
         assert!(third.is_ok(), "lock should be free after the holder drops");
+    }
+
+    #[test]
+    fn test_failed_merge_does_not_poison_next_attach() {
+        // Regression (bd-6sk): a merge that fails mid-transaction must leave
+        // the connection clean (rolled back + detached), so a subsequent merge
+        // on the same connection does not hit "source already in use" on ATTACH.
+        let dir = TempDir::new().unwrap();
+        let pp_path = dir.path().join("pid-1.db");
+        let canon_path = dir.path().join("traces.db");
+
+        let pp_conn = create_db(&pp_path, false).unwrap();
+        insert_span(&pp_conn, &test_span("s1", "t1")).unwrap();
+        drop(pp_conn);
+
+        let canon_conn = create_db(&canon_path, true).unwrap();
+        // Force the mid-transaction spans INSERT to fail.
+        canon_conn.execute_batch("DROP TABLE spans;").unwrap();
+
+        let result = merge_per_process_db(&canon_conn, &pp_path);
+        assert!(result.is_err(), "merge should fail with spans table missing");
+
+        // The transaction must have been rolled back...
+        assert!(canon_conn.is_autocommit(), "transaction was left open (poisoned)");
+        // ...and `source` detached, so a fresh ATTACH succeeds.
+        canon_conn
+            .execute_batch(&format!(
+                "ATTACH DATABASE '{}' AS source;",
+                pp_path.to_string_lossy().replace('\'', "''")
+            ))
+            .expect("ATTACH must succeed — source was left attached (poisoned)");
+        canon_conn.execute_batch("DETACH DATABASE source;").unwrap();
     }
 
     #[test]

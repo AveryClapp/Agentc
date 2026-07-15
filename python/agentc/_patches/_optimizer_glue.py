@@ -334,6 +334,7 @@ def build_call_dict_anthropic(
     so the optimizer sees the same unified format as OpenAI calls.
     """
     from agentc._attention import compute_attention_scores
+    from agentc._parallel import get_parallel_peer
     from agentc._provenance import as_json, consume_state_reads, tag_of
 
     messages: list[dict[str, str]] = []
@@ -380,6 +381,11 @@ def build_call_dict_anthropic(
         parameters["max_output_tokens"] = int(kwargs["max_tokens"])
 
     extra_obj: dict[str, Any] = {}
+
+    peer = get_parallel_peer()
+    if peer is not None:
+        extra_obj["parallel_peer"] = peer
+
     extra_obj["message_deps"] = input_deps
     explicit_reads = consume_state_reads()
     extra_obj["window_state_reads"] = explicit_reads

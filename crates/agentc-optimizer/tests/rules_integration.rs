@@ -508,3 +508,144 @@ fn context_compress_and_output_budget_compose() {
         ),
     }
 }
+
+// ---------------------------------------------------------------------------
+// GOLDEN ranking / selection tests (bd-xlqh). These pin planner selection and
+// OutputBudget's *0.5 projection so the C3 + driver-consolidation refactors
+// (bd-yqr, bd-n8s) cannot silently flip which rewrite wins or double a savings
+// number. If one goes RED, a refactor changed committed planner behavior —
+// re-verify against the ledger before updating the golden.
+// ---------------------------------------------------------------------------
+
+fn observe_output(cm: &CostModel, site: &str, n: u32, output_tokens: u32, cost_usd: f64) {
+    for _ in 0..n {
+        cm.observe(CostModelUpdate {
+            call_site_id: site.into(),
+            input_tokens: 100,
+            output_tokens,
+            latency_ms: 50.0,
+            cost_usd,
+            output_is_structured: false,
+            output_is_short: false,
+            now_us: Some(0),
+        });
+    }
+}
+
+fn bare_call(site: &str) -> Call {
+    Call {
+        call_site_id: site.into(),
+        trace_id: [0u8; 16],
+        span_id: [0u8; 8],
+        model: "gpt-4o".into(),
+        messages: vec![Message { role: "user".into(), content: "hello world".into() }],
+        parameters: Parameters::default(), // no max_output_tokens → uncapped baseline
+        tools: vec![],
+        input_deps: vec![],
+        occurrence_ix: 0,
+    }
+}
+
+#[test]
+fn golden_output_budget_projection_carries_the_half_factor() {
+    // MNT-145 (bd-xlqh): OutputBudget scales its output fraction by 0.5
+    // (output_budget.rs) to avoid double-counting input-side savings. A shared
+    // project_savings() helper (bd-yqr C3) that drops the 0.5 DOUBLES OB's
+    // savings and can flip plan selection. OutputBudget fires 92-97% in
+    // committed CSVs, so this is live. The golden is derived from the cap the
+    // plan actually sets, so it is robust to the p99 estimator.
+    let cm = Arc::new(CostModel::new());
+    observe_output(&cm, "site", 20, 200, 0.01); // output_token_p99 ~= 200; cost mean = 0.01
+    let opt = Optimizer::new(
+        cm,
+        vec![Box::new(OutputBudgetRule::default())],
+        OptimizerConfig::default(),
+    );
+    match opt.plan(&bare_call("site")) {
+        Plan::Rewritten { rule, call, projected_savings_usd } => {
+            assert_eq!(rule, "OutputBudget");
+            let cap = call.parameters.max_output_tokens.expect("OB must set a cap");
+            // projected = cost_mean * (baseline - cap)/baseline * 0.5, baseline = 2048.
+            let golden = 0.01f32 * (2048.0 - cap as f32) / 2048.0 * 0.5;
+            assert!(
+                (projected_savings_usd - golden).abs() < 1e-6,
+                "OB projected {projected_savings_usd} != golden {golden} (cap={cap}); \
+                 did a refactor drop OutputBudget's *0.5? (MNT-145)"
+            );
+        }
+        other => panic!("expected OutputBudget Rewritten, got {other:?}"),
+    }
+}
+
+#[test]
+fn golden_composition_selection_and_net_are_stable() {
+    // GOLDEN selection snapshot (bd-xlqh): a call where ContextCompress and
+    // OutputBudget both fire must select EXACTLY those two rules and produce a
+    // stable net_savings. If a refactor flips which rules win or changes a
+    // projection, this goes RED. (Mirrors the P11-5 composition scenario.)
+    let cm = Arc::new(CostModel::new());
+    for _ in 0..20 {
+        cm.observe(CostModelUpdate {
+            call_site_id: "site".into(),
+            input_tokens: 5000,
+            output_tokens: 200,
+            latency_ms: 200.0,
+            cost_usd: 0.05,
+            output_is_structured: false,
+            output_is_short: false,
+            now_us: Some(0),
+        });
+    }
+    let opt = Optimizer::new(
+        cm,
+        vec![
+            Box::new(ContextCompressRule::default()),
+            Box::new(OutputBudgetRule::default()),
+        ],
+        OptimizerConfig::default(),
+    );
+    let big_dead = "x ".repeat(6000);
+    let msgs = vec![
+        Message { role: "system".into(), content: "You are a helpful assistant.".into() },
+        Message { role: "user".into(), content: "What does the above context say?".into() },
+        Message { role: "user".into(), content: big_dead },
+    ];
+    let extra = json!({
+        "attention_scores": [1.0, 1.0, 0.0],
+        "message_deps": [
+            {"kind": "literal"},
+            {"kind": "user_input", "span_id": "0102030405060708"},
+            {"kind": "literal"},
+        ],
+        "follow_on_tokens": [],
+        "dead_attention_epsilon": 0.10,
+    });
+    let call = Call {
+        call_site_id: "site".into(),
+        trace_id: [0u8; 16],
+        span_id: [0u8; 8],
+        model: "gpt-4o".into(),
+        messages: msgs,
+        parameters: Parameters { extra, ..Default::default() },
+        tools: vec![],
+        input_deps: vec![],
+        occurrence_ix: 0,
+    };
+    match opt.plan(&call) {
+        Plan::Composed { rules, net_savings_usd, .. } => {
+            let mut names: Vec<_> = rules.iter().map(|r| r.rule.as_str()).collect();
+            names.sort();
+            assert_eq!(names, vec!["ContextCompress", "OutputBudget"], "selection flipped");
+            // Golden net_savings for this fixed scenario. A change here means a
+            // rule's projection moved (e.g. OB's *0.5 dropped) even if the
+            // selected rule set is unchanged — re-verify vs the ledger before
+            // updating this literal.
+            let golden = 0.07049099f32;
+            assert!(
+                (net_savings_usd - golden).abs() < 1e-5,
+                "net_savings {net_savings_usd} != golden {golden}; a rule projection changed"
+            );
+        }
+        other => panic!("expected Composed(ContextCompress, OutputBudget), got {other:?}"),
+    }
+}

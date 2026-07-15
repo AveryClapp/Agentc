@@ -54,9 +54,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: Swatinem/rust-cache@v2
       - run: pip install maturin
       - run: maturin build --release -m crates/agentc-profiler/Cargo.toml
       - run: pip install target/wheels/*.whl
-      - run: pip install -e ".[dev]"
+      # Install the full test extra (dev + openai + anthropic + frameworks +
+      # viz + fixtures + baselines). Previously `.[dev]` omitted the provider
+      # SDKs, so test_openai_patch / test_anthropic_patch importorskip'd and
+      # both provider-patch suites skipped SILENTLY on every CI run (bd-c45).
+      - run: pip install -e ".[test]"
+      # Build the CLI binary so tests/cli/test_cache_subcommands.py runs
+      # instead of skipping on a missing target/debug/agentc (bd-c45).
+      - run: cargo build -p agentc-cli
       - run: python -c "from agentc._native import write_span, create_db, query_spans_by_trace; print('native OK:', write_span.__name__)"
+      # Fail LOUDLY if the provider SDKs or CLI binary are missing, so a broken
+      # install can never again turn these suites into silent skips.
+      - run: python -c "import openai, anthropic; print('provider SDKs OK')"
+      - run: test -x target/debug/agentc && echo "CLI binary present"
       - run: pytest tests/ -v --tb=short

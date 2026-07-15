@@ -311,43 +311,54 @@ pub struct MigrationStats {
 
 /// Apply forward-compatible schema migrations to a database.
 ///
-/// Checks PRAGMA user_version and applies any needed ALTER TABLE statements.
-/// Current schema version is 1 — future versions will add migrations here.
+/// Applies migration steps sequentially, each taking the schema from version
+/// `N` to `N+1`. Only bumps `user_version` once the applied steps actually
+/// reach [`SCHEMA_VERSION`]; if no step covers a gap it returns `Err` rather
+/// than marking the database migrated when it is not (the old stub bumped
+/// `user_version` unconditionally with zero steps applied, so bumping
+/// `SCHEMA_VERSION` would silently brick every existing database).
 ///
 /// Returns `Ok(None)` if no migration was needed.
 /// Returns `Ok(Some(stats))` if migrations were applied.
-/// Returns `Err` if the version is incompatible (newer than expected).
+/// Returns `Err` if the version is newer than this build, unrecognized, or
+/// there is no migration path to [`SCHEMA_VERSION`].
 pub fn migrate_db(conn: &Connection) -> Result<Option<MigrationStats>> {
-    let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let old_version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
 
-    if version == SCHEMA_VERSION {
+    if old_version == SCHEMA_VERSION {
         return Ok(None);
     }
 
-    if version > SCHEMA_VERSION {
+    if old_version > SCHEMA_VERSION {
         bail!(
-            "Incompatible schema version {}. Expected <= {}. \
-             Run 'agentc migrate' to update your trace database.",
-            version,
+            "Database schema version {} is newer than this build supports (expected {}). \
+             Upgrade agentc.",
+            old_version,
             SCHEMA_VERSION
         );
     }
 
-    let old_version = version;
-    let migrations_applied = 0;
-
-    // Apply migrations sequentially from old_version to SCHEMA_VERSION.
-    // Currently only version 1 exists, so no migrations needed yet.
-    // Future migrations would go here:
-    // if version < 2 { conn.execute_batch("ALTER TABLE ..."); version = 2; migrations_applied += 1; }
-
-    conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
-
-    Ok(Some(MigrationStats {
+    // old_version < SCHEMA_VERSION: a real migration would be required.
+    //
+    // The v0 -> v1 "migration" is the full initial schema, which `create_db`
+    // owns; a database below v1 was never created by agentc and cannot be
+    // reconstructed here. And there are no v1 -> v(N) forward migrations
+    // defined yet (SCHEMA_VERSION == 1). Either way there is NO step to apply,
+    // so refuse loudly rather than bump `user_version` over an empty migration
+    // — the old stub did the latter, silently bricking every existing DB the
+    // moment SCHEMA_VERSION was bumped.
+    //
+    // When SCHEMA_VERSION grows, apply the sequential v(N) -> v(N+1) steps here
+    // (each creating/altering what that version adds) and bump `user_version`
+    // to SCHEMA_VERSION only after the steps reach it, returning
+    // `Ok(Some(MigrationStats { .. }))`.
+    bail!(
+        "No migration path from schema version {} to {}: the database either \
+         predates agentc's schema (v0) or a migration step is missing for a \
+         bumped SCHEMA_VERSION. It has NOT been modified.",
         old_version,
-        new_version: SCHEMA_VERSION,
-        migrations_applied,
-    }))
+        SCHEMA_VERSION
+    );
 }
 
 /// Insert model pricing. Bundled pricing uses INSERT OR IGNORE (never overwrites).
@@ -750,6 +761,42 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("Schema version mismatch"));
+    }
+
+    #[test]
+    fn test_migrate_noop_on_current_version() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.db");
+        let conn = create_db(&path, false).unwrap(); // user_version == SCHEMA_VERSION
+        assert!(migrate_db(&conn).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_migrate_refuses_unrecognized_v0_db() {
+        // A raw SQLite DB (user_version 0) was never created by agentc. migrate
+        // must REFUSE, not stamp it v1-but-empty as the old stub did (bd-77x).
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("raw.db");
+        let conn = Connection::open(&path).unwrap();
+        let before: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(before, 0);
+
+        let err = migrate_db(&conn).unwrap_err().to_string();
+        assert!(err.contains("No migration path"), "unexpected error: {err}");
+
+        // The version must NOT have been bumped — no false "migrated" marker.
+        let after: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(after, 0, "must not falsely mark an unrecognized DB as migrated");
+    }
+
+    #[test]
+    fn test_migrate_rejects_newer_version() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.db");
+        let conn = create_db(&path, false).unwrap();
+        conn.pragma_update(None, "user_version", SCHEMA_VERSION + 1).unwrap();
+        let err = migrate_db(&conn).unwrap_err().to_string();
+        assert!(err.contains("newer than this build"), "unexpected error: {err}");
     }
 
     #[cfg(unix)]

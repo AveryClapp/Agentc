@@ -38,6 +38,26 @@ def _now_us() -> int:
     return time.time_ns() // 1000
 
 
+# Marker attribute set on any exception that came out of the *user's* traced
+# function (as opposed to Agentc's own span machinery). The trace wrappers
+# use it to avoid re-executing the user's function under fail-open — that
+# would run every failing @trace call twice (bd-876).
+_USER_EXC_ATTR = "__agentc_user_raised__"
+
+
+def _mark_user_exc(exc: BaseException) -> None:
+    try:
+        setattr(exc, _USER_EXC_ATTR, True)
+    except BaseException:
+        # A handful of exotic exception types forbid attribute assignment;
+        # nothing else we can do — the wrapper's default is to propagate.
+        pass
+
+
+def _is_user_exc(exc: BaseException) -> bool:
+    return getattr(exc, _USER_EXC_ATTR, False) is True
+
+
 def _is_initialized() -> bool:
     """Check initialization without circular import."""
     from agentc._lifecycle import is_initialized
@@ -147,11 +167,18 @@ def trace(
                     return await _run_traced_async(
                         func, args, kwargs, resolved_name, resolved_agent_id
                     )
-                except BaseException:
+                except BaseException as exc:
+                    # The user's own function raised — propagate it. Re-running
+                    # it under fail-open would execute every failing @trace call
+                    # twice (duplicate LLM calls + token spend) (bd-876).
+                    if _is_user_exc(exc):
+                        raise
                     if _get_fail_open():
-                        logger.debug(
-                            "Trace error (fail_open), running function directly",
-                            exc_info=True,
+                        from agentc._degradation import log_degraded
+
+                        log_degraded(
+                            "trace_internal_error",
+                            "ran the traced function directly after a tracing-setup failure",
                         )
                         return await func(*args, **kwargs)
                     raise
@@ -169,11 +196,18 @@ def trace(
                     return _run_traced_sync(
                         func, args, kwargs, resolved_name, resolved_agent_id
                     )
-                except BaseException:
+                except BaseException as exc:
+                    # The user's own function raised — propagate it. Re-running
+                    # it under fail-open would execute every failing @trace call
+                    # twice (duplicate LLM calls + token spend) (bd-876).
+                    if _is_user_exc(exc):
+                        raise
                     if _get_fail_open():
-                        logger.debug(
-                            "Trace error (fail_open), running function directly",
-                            exc_info=True,
+                        from agentc._degradation import log_degraded
+
+                        log_degraded(
+                            "trace_internal_error",
+                            "ran the traced function directly after a tracing-setup failure",
                         )
                         return func(*args, **kwargs)
                     raise
@@ -229,6 +263,7 @@ def _run_traced_sync(
         attributes["error.type"] = type(exc).__name__
         attributes["error.message"] = str(exc)
         logger.error("Exception in span '%s': %s: %s", name, type(exc).__name__, exc)
+        _mark_user_exc(exc)
         raise
     finally:
         end_time = _now_us()
@@ -301,6 +336,7 @@ async def _run_traced_async(
         attributes["error.type"] = type(exc).__name__
         attributes["error.message"] = str(exc)
         logger.error("Exception in span '%s': %s: %s", name, type(exc).__name__, exc)
+        _mark_user_exc(exc)
         raise
     finally:
         end_time = _now_us()

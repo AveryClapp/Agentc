@@ -221,6 +221,25 @@ class TestTraceDecorator:
         assert attrs["error.type"] == "ValueError"
         assert attrs["error.message"] == "boom"
 
+    def test_raising_function_runs_exactly_once(self, initialized: Path) -> None:
+        # Regression (bd-876): with fail_open=True (the DEFAULT) a @trace
+        # function that raises must run EXACTLY once. Previously the outer
+        # wrapper could not distinguish the user's exception from an
+        # Agentc-internal one and re-ran the function — doubling every failing
+        # traced call (duplicate LLM calls + token spend).
+        calls = {"n": 0}
+        with patch("agentc._span._write_root_span"):
+
+            @agentc.trace(name="failing_once")
+            def failing() -> None:
+                calls["n"] += 1
+                raise ValueError("boom")
+
+            with pytest.raises(ValueError, match="boom"):
+                failing()
+
+        assert calls["n"] == 1
+
     def test_preserves_return_value(self, initialized: Path) -> None:
         with patch("agentc._span._write_root_span"):
 

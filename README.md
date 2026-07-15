@@ -165,11 +165,15 @@ python -m bench.build_long_context_fixture
 # 2. Run baseline vs. optimized for one agent
 python -m bench.optimizer_bench bench.agents.rag_summarizer
 
-# 3. 11-config per-rule ablation for one agent
+# 3. Per-rule ablation for one agent
 python -m bench.optimizer_ablation bench.agents.long_context_qa
 
-# 4. Reproduce paper experiments (ContextCompress + StateDrop)
-bash bench/scripts/run_paper_ablation.sh
+# 4. Reproduce the paper's headline results (WARMUP-CORRECTED drivers).
+#    These are the canonical numbers in the paper; run_paper_ablation.sh is the
+#    older cold-start harness and does NOT reproduce the paper (it lacks warmup).
+python bench/run_lcqa_warmup_n300.py     # ContextCompress, n=300  (Table 5)
+python bench/run_gaia_warmup.py          # ModelDowngrade,  n=127  (Table 6)
+python bench/run_refiner_warmup.py       # StateDrop,       n=50   (Table 7)
 ```
 
 The reference agents stub LLM calls when no API key is set, so the harness wires up cleanly without spending money. To generate real cost/accuracy numbers, set `OPENAI_API_KEY` (and `HF_TOKEN` for GAIA) in `.env`.

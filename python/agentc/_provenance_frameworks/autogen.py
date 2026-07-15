@@ -13,6 +13,7 @@ message is tagged with the current agentc span id.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Any
 
@@ -83,10 +84,16 @@ def install() -> bool:
             _originals["generate_reply"] = sync_method
             setattr(agent_cls, "generate_reply", _wrap_sync(sync_method))
 
+        # Only wrap a_generate_reply as a coroutine if it actually is one —
+        # an async wrapper around a sync method would mutate its return type
+        # to a coroutine and raise TypeError from `await <non-awaitable>`.
         async_method = getattr(agent_cls, "a_generate_reply", None)
         if async_method is not None and callable(async_method):
             _originals["a_generate_reply"] = async_method
-            setattr(agent_cls, "a_generate_reply", _wrap_async(async_method))
+            if inspect.iscoroutinefunction(async_method):
+                setattr(agent_cls, "a_generate_reply", _wrap_async(async_method))
+            else:
+                setattr(agent_cls, "a_generate_reply", _wrap_sync(async_method))
     except BaseException:
         log.debug("autogen: failed to patch ConversableAgent", exc_info=True)
         return False

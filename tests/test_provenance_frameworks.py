@@ -228,6 +228,48 @@ def test_crewai_pass_through_without_span():
         _cleanup_crewai()
 
 
+def test_crewai_sync_execute_async_is_not_awaited():
+    # Regression (MNT-063, P7-4): if execute_async is present but SYNCHRONOUS,
+    # the old adapter wrapped it in an async def — mutating its return type to
+    # a coroutine and raising TypeError from `await <non-awaitable>` inside the
+    # user's agent. iscoroutinefunction now routes it to the sync tagger.
+    import inspect
+
+    class Task:
+        def __init__(self, fn: object) -> None:
+            self._fn = fn
+
+        def execute_async(self, *args: object, **kwargs: object) -> object:
+            return self._fn(*args, **kwargs)  # type: ignore[operator]
+
+    task_mod = types.ModuleType("crewai.task")
+    task_mod.Task = Task  # type: ignore[attr-defined]
+    pkg = types.ModuleType("crewai")
+    pkg.task = task_mod  # type: ignore[attr-defined]
+    sys.modules["crewai"] = pkg
+    sys.modules["crewai.task"] = task_mod
+    try:
+        from agentc._provenance_frameworks import crewai as adapter
+
+        assert adapter.install() is True
+
+        payload = {"result": "sync-async"}
+        t = Task(lambda: payload)
+        with _active_span("abadcafeabadcafe"):
+            out = t.execute_async()
+
+        # Must be a real, tagged value — never a coroutine.
+        assert not inspect.iscoroutine(out)
+        assert out is payload
+        src = tag_of(out)
+        assert isinstance(src, LlmOutput)
+        assert src.span_id == "abadcafeabadcafe"
+    finally:
+        adapter.uninstall()
+        sys.modules.pop("crewai.task", None)
+        sys.modules.pop("crewai", None)
+
+
 # ---------------------------------------------------------------------------
 # autogen
 # ---------------------------------------------------------------------------

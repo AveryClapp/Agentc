@@ -14,6 +14,7 @@ id before it flows back to the crew.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Any
 
@@ -72,11 +73,18 @@ def install() -> bool:
             _originals[name] = sync_method
             setattr(Task, name, _wrap_sync(sync_method))
 
-        # Async path — optional across versions.
+        # Async path — optional across versions. Only wrap it as a coroutine
+        # if it actually IS one: an `async def` wrapper around a *sync*
+        # execute_async would both change its return type to a coroutine and
+        # raise TypeError from `await <non-awaitable>` inside the user's agent.
+        # If it is present but synchronous, tag its result via the sync wrapper.
         async_method = getattr(Task, "execute_async", None)
         if async_method is not None and callable(async_method):
             _originals["execute_async"] = async_method
-            setattr(Task, "execute_async", _wrap_async(async_method))
+            if inspect.iscoroutinefunction(async_method):
+                setattr(Task, "execute_async", _wrap_async(async_method))
+            else:
+                setattr(Task, "execute_async", _wrap_sync(async_method))
     except BaseException:
         log.debug("crewai: failed to patch Task", exc_info=True)
         return False

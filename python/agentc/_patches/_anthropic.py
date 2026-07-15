@@ -472,8 +472,23 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
     req_attrs = _extract_request_attrs(kwargs)
     input_msgs = _extract_input_messages(kwargs)
 
+    plan, call_site_id = _plan_anthropic_call(kwargs, parent)
+
     try:
-        response = await wrapped(*args, **kwargs)
+        if plan is not None:
+            from agentc._executor import dispatch
+            from agentc._patches._optimizer_glue import apply_call_mutations_anthropic
+
+            async def _run_original() -> Any:
+                return await wrapped(*args, **kwargs)
+
+            async def _run_mutated(mutated_call: dict[str, Any]) -> Any:
+                new_kwargs = apply_call_mutations_anthropic(kwargs, mutated_call)
+                return await wrapped(*args, **new_kwargs)
+
+            response = await dispatch(plan, run_original=_run_original, run_mutated=_run_mutated)
+        else:
+            response = await wrapped(*args, **kwargs)
     except BaseException as exc:
         end_time = _now_us()
         req_attrs["error.type"] = type(exc).__name__
@@ -494,6 +509,16 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
         raise
 
     end_time = _now_us()
+
+    if plan is not None and call_site_id is not None:
+        _observe_anthropic_outcome(
+            plan=plan,
+            response=response,
+            call_site_id=call_site_id,
+            kwargs=kwargs,
+            elapsed_s=(end_time - start_time) / 1_000_000.0,
+        )
+
     resp_attrs = _extract_response_attrs(response)
     req_attrs.update(resp_attrs)
     output_msgs = _extract_output_messages(response)

@@ -18,6 +18,8 @@ import logging
 import sys
 from typing import Any, Callable, Optional
 
+from agentc._degradation import log_degraded
+
 log = logging.getLogger(__name__)
 
 # Sticky ignored modules — frames inside these are infrastructure, not the
@@ -220,7 +222,12 @@ def build_call_dict_openai(
             if recs.shared_prefix_messages:
                 extra_obj["shared_prefix_messages"] = recs.shared_prefix_messages
     except BaseException:
-        log.debug("trace_optimizer recommendations failed; skipping", exc_info=True)
+        # Degradation, not a decision: without these keys StateDrop,
+        # DeadOutputTruncation and PrefixAlign silently stop firing.
+        log_degraded(
+            "trace_recommendations_failed",
+            "StateDrop/DeadOutputTruncation/PrefixAlign will not fire for this call (openai)",
+        )
 
     # ContextCompress reads ``parameters.extra.attention_scores`` (per
     # message) and ``parameters.extra.follow_on_tokens`` (must-keep).
@@ -231,7 +238,9 @@ def build_call_dict_openai(
     try:
         attn_scores, follow_on = compute_attention_scores(messages, trace_id_hex)
     except BaseException:
-        log.debug("compute_attention_scores raised (suppressed)", exc_info=True)
+        # Degradation, not a decision: an empty attention map means the Rust
+        # ContextCompress rule reads no scores and silently no-ops.
+        log_degraded("attention_failed", "ContextCompress will not fire for this call (openai)")
         attn_scores, follow_on = [], []
     if attn_scores:
         extra_obj["attention_scores"] = attn_scores
@@ -400,12 +409,15 @@ def build_call_dict_anthropic(
                 merged = list(set(explicit_reads) | set(recs.inferred_state_reads))
                 extra_obj["window_state_reads"] = merged
     except BaseException:
-        log.debug("trace_optimizer recommendations failed (anthropic); skipping", exc_info=True)
+        log_degraded(
+            "trace_recommendations_failed",
+            "StateDrop/DeadOutputTruncation/PrefixAlign will not fire for this call (anthropic)",
+        )
 
     try:
         attn_scores, follow_on = compute_attention_scores(messages, trace_id_hex)
     except BaseException:
-        log.debug("compute_attention_scores raised (anthropic, suppressed)", exc_info=True)
+        log_degraded("attention_failed", "ContextCompress will not fire for this call (anthropic)")
         attn_scores, follow_on = [], []
     if attn_scores:
         extra_obj["attention_scores"] = attn_scores
@@ -503,17 +515,25 @@ def build_outcome_anthropic(
     }
 
 
-def _response_output_text(response: Any) -> str:
-    """Best-effort extraction of the assistant text from a ChatCompletion."""
+def _response_output_text(response: Any) -> Optional[str]:
+    """Best-effort extraction of the assistant text from a ChatCompletion.
+
+    Returns the text ("" for a well-formed but empty completion) on success,
+    or ``None`` if extraction FAILED (unexpected shape / attribute error).
+    Callers must treat None as "unknown output", never as an empty string:
+    otherwise a swallowed error would be handed to the accuracy guard as
+    maximal divergence and could auto-disable a working rule (bd-kq7).
+    """
     try:
         choices = getattr(response, "choices", None) or []
         if choices:
             msg = getattr(choices[0], "message", None)
             if msg is not None:
                 return str(getattr(msg, "content", "") or "")
-    except BaseException:
+        # Well-formed response with no choices/message → genuinely empty.
         return ""
-    return ""
+    except BaseException:
+        return None
 
 
 _ARTICLES = {"a", "an", "the"}
@@ -629,10 +649,19 @@ def maybe_shadow_record(
         return
     try:
         original = run_original()
-        divergence = _text_divergence(
-            _response_output_text(optimized_response),
-            _response_output_text(original),
-        )
+        opt_text = _response_output_text(optimized_response)
+        orig_text = _response_output_text(original)
+        if opt_text is None or orig_text is None:
+            # Extraction failed on at least one side — we do NOT know the
+            # outputs, so feeding a divergence here would be a fabricated
+            # sample ("" vs real text scores as maximal divergence) that could
+            # auto-disable a working rule. Skip the sample (bd-kq7).
+            log_degraded(
+                "shadow_output_extraction_failed",
+                f"skipped shadow divergence sample for call_site={call_site_id}",
+            )
+            return
+        divergence = _text_divergence(opt_text, orig_text)
         from agentc._optimizer import record_divergence
         for rule in rules:
             record_divergence(call_site_id, rule, divergence)
@@ -658,17 +687,34 @@ def dispatch_sync(
         return run_original()
     if plan.kind == "cached":
         try:
-            return decode(plan.value)
+            decoded = decode(plan.value)
         except BaseException:
-            log.debug("cached plan decode failed; falling back", exc_info=True)
+            log_degraded("cache_decode_failed", "cached plan decode raised; ran the original call")
             return run_original()
+        if decoded is None:
+            # A cache "hit" that cannot be materialized (missing content, or a
+            # decoder that returns None instead of raising — e.g.
+            # _decode_cached_openai) must NOT be served to the app as a None
+            # response. Fall back to the real call so the caller always gets a
+            # completion (bd-8ln: over-reporting / None corruption).
+            log_degraded("cache_decode_empty", "cached plan decoded to None; ran the original call")
+            return run_original()
+        return decoded
     if plan.kind in ("rewritten", "composed"):
         if plan.call is None:
             return run_original()
         try:
             return run_mutated(plan.call)
         except BaseException:
-            log.debug("rewritten/composed plan failed; falling back", exc_info=True)
+            # Degradation: a systematically broken mutation (bad downgrade
+            # model, malformed rewritten Call) reverts to the original on
+            # EVERY call and reports 0% savings. The async path already warns
+            # here (agentc._executor.dispatch) — the sync path (which the
+            # benchmarks use) must too.
+            log_degraded(
+                "rewrite_dispatch_failed",
+                f"{plan.kind} plan reverted to the original call",
+            )
             return run_original()
     if plan.kind == "parallel":
         # Sync path can't gather; degrade to original.

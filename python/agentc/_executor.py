@@ -53,10 +53,16 @@ async def dispatch(
 
     if plan.kind == "cached":
         try:
-            return decode(plan.value)
+            decoded = decode(plan.value)
         except BaseException:
             log.warning("cached plan decode failed; falling back to original", exc_info=True)
             return await run_original()
+        if decoded is None:
+            # A cache hit that decodes to None must not be served as a None
+            # response — fall back to the real call (mirrors dispatch_sync; bd-8ln).
+            log.warning("cached plan decoded to None; falling back to original")
+            return await run_original()
+        return decoded
 
     if plan.kind in ("rewritten", "composed"):
         # A Composed plan carries the fully-composed Call in ``plan.call``,

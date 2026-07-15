@@ -44,14 +44,27 @@ bd-f67 (V1), bd-r1m (build), bd-utz (specs V2), bd-jy7 (README numbers), bd-vbp 
 bd-ghi (Google), bd-l7d (README quickstart), bd-3yf (clippy clean), bd-rti (dead deps).
 Plus: retired the freeze gate, wrote the rerun-ledger, hardened per the 3 reviewers.
 
-## Done in the full-cleanup execution run (Phase 3 latent — ALL closed, workspace green)
-bd-jfs (P3-3 Anthropic parallel_peer), bd-nj3 (P3-4 ST composition-excluded), bd-5r5 (P3-5 async
-Composed dispatch), bd-j8c (P3-8 eviction clears companion rows), bd-2wn (P3-6 record hits / true LRU),
-bd-lz1 (P3-7 cache stats reads real memo DB, phantom span readers deleted). Each: fix + tests +
-`cargo test`/`clippy` green + committed. No ledger entries needed (all pure-latent). bd-lcd (P3-1
-ParallelBranch USD-ratio) remains for the number-toucher phase; its stale blocking edge on bd-jfs
-was removed.
-Next lane: Phase 7 (error-handling) → Phase 13 (logging) → Phase 8 (plumbing) → Phase 11 (tests).
+## Done in the full-cleanup execution run (ALL closed, workspace green, verified)
+**Phase 3 latent (6):** bd-jfs (Anthropic parallel_peer), bd-nj3 (ST composition-excluded), bd-5r5
+(async Composed dispatch), bd-j8c (eviction clears companion rows), bd-2wn (record hits / true LRU),
+bd-lz1 (cache stats reads real memo DB, phantom span readers deleted).
+**Phase 7 (7 + autogen):** bd-ezj/bd-7b9 (Anthropic streaming no-mask + async await), bd-8jm (async
+Anthropic optimized), bd-3pt (crewai+autogen async adapters guarded), bd-jvk (fail-open test made
+non-tautological, mutation-proven; catch_unwind moved into ffi::optimize_plan), bd-4pn (README
+fail-open claim narrowed), bd-nr5 (shadow billed-inline-call disclosed: README+docstring+main.tex).
+**Phase 13 (7):** bd-ybd (degradation logging policy: agentc._degradation.log_degraded), bd-876
+(traced fn no longer double-executes), bd-tfz/bd-w3h/bd-bpp (silent-disable paths → WARNING),
+bd-kq7 (no fabricated divergence sample), bd-8ln (cached None/failed decode → real-call fallback,
+no None-to-app).
+
+All Python fixes verified via isolated harnesses (no maturin/native here); durable pytest tests
+added and run in CI. No ledger entries needed (all pure-latent / plumbing / docs). main.tex edit in
+bd-nr5 was a disclosure only (no number changed). bd-lcd (P3-1 ParallelBranch USD-ratio) still
+deferred to the number-toucher phase.
+
+Next lane: Phase 8 (DB plumbing: bd-gzm, bd-ul9, bd-77x, bd-p0i, bd-6sk, bd-c0l, bd-scy, bd-smg, bd-4xr*)
+→ Phase 11 (tests) → docs/artifact → paper-number edits → the 7 number-touchers + 2 refactors last.
+(bd-4xr is a number-toucher: RE-VERIFY overhead bench, free.)
 
 ## Invariants (from the whole audit — don't relearn the hard way)
 - Every executed change: verify before commit (run the test/build; check numbers vs CSV).

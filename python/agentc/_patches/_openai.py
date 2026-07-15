@@ -14,6 +14,7 @@ from typing import Any
 
 import wrapt
 
+from agentc._degradation import log_degraded
 from agentc._context import SpanContext, get_current_span
 from agentc._span import (
     _build_span_dict,
@@ -292,7 +293,9 @@ def _observe_openai_outcome(
                 )
             )
     except BaseException:
-        logger.debug("trace_optimizer record failed; skipping", exc_info=True)
+        # Degradation: without recording, get_recommendations stays empty and
+        # StateDrop/DeadOutputTruncation/PrefixAlign never receive their keys.
+        log_degraded("trace_record_failed", "trace optimizer will not learn from this call (openai)")
 
     # Auto-seed the memoization cache on pass-through calls so CacheHitRule
     # can serve identical subsequent calls without hitting the model.
@@ -331,7 +334,9 @@ def _observe_openai_outcome(
                 )
             )
         except BaseException:
-            logger.debug("cache auto-seed failed; skipping", exc_info=True)
+            # Degradation: without a seed the memoization cache never fills,
+            # so CacheHitRule has nothing to hit.
+            log_degraded("cache_autoseed_failed", "memoization cache not seeded for this call (openai)")
 
 
 # --- Sync wrapper ---

@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import pytest
 
-from agentc._patches._optimizer_glue import _text_divergence, build_call_dict_openai
+from agentc._patches._optimizer_glue import (
+    _text_divergence,
+    build_call_dict_openai,
+    dispatch_sync,
+)
 from agentc._provenance import (
     State,
     UserInput,
@@ -213,3 +217,55 @@ class TestEmbeddingDivergenceMode:
             score = _text_divergence("hello world", "hello world")
             assert isinstance(score, float)
             assert 0.0 <= score <= 1.0
+
+
+class TestDispatchSyncCachedFallback:
+    """Regression (bd-8ln): a cached plan whose payload cannot be decoded must
+    fall back to the real call, never return None to the app while booking a
+    cache hit."""
+
+    @staticmethod
+    def _plan(kind: str, value: object = None):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(kind=kind, value=value, call=None, rule="R")
+
+    def test_cached_decode_none_falls_back_to_original(self) -> None:
+        out = dispatch_sync(
+            self._plan("cached", value={"output_content_id": "x"}),
+            run_original=lambda: "REAL_COMPLETION",
+            run_mutated=lambda c: "MUT",
+            decode_cached=lambda v: None,  # decoder returns None instead of raising
+        )
+        assert out == "REAL_COMPLETION"
+
+    def test_cached_decode_raise_falls_back_to_original(self) -> None:
+        def _boom(_v):
+            raise RuntimeError("decode failed")
+
+        out = dispatch_sync(
+            self._plan("cached", value={"output_content_id": "x"}),
+            run_original=lambda: "REAL",
+            run_mutated=lambda c: "MUT",
+            decode_cached=_boom,
+        )
+        assert out == "REAL"
+
+    def test_cached_valid_value_is_returned(self) -> None:
+        out = dispatch_sync(
+            self._plan("cached", value={"output_content_id": "x"}),
+            run_original=lambda: "REAL",
+            run_mutated=lambda c: "MUT",
+            decode_cached=lambda v: "DECODED",
+        )
+        assert out == "DECODED"
+
+    def test_cached_falsy_but_valid_value_is_returned(self) -> None:
+        # Only None triggers fallback — a legitimately cached 0/""/False stays.
+        out = dispatch_sync(
+            self._plan("cached", value={"output_content_id": "x"}),
+            run_original=lambda: "REAL",
+            run_mutated=lambda c: "MUT",
+            decode_cached=lambda v: 0,
+        )
+        assert out == 0

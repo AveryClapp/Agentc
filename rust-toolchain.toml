@@ -1,0 +1,5 @@
+[toolchain]
+# Pin the Rust minor version so a future stable release cannot silently break the
+# artifact build. Patch releases within 1.94.x are accepted (they are compatible);
+# a new minor requires an explicit bump here. Matches the CI toolchain.
+channel = "1.94"

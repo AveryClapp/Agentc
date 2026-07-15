@@ -412,6 +412,64 @@ checked here. **The statistics core is clean. The pricing path is broken.**
 | MNT-143 | **Three tables overflow the column** (`tab:xmodel` by **185.9pt**). Root cause is a real LaTeX bug: `tabularx` **with no `X` column** silently degrades to `tabular` and enforces nothing (`main.tex:820,1249,1275`). Also 6 of 9 figures are never `\ref`'d. | verified defect |
 | MNT-144 | **Latent 16.7× cost bug.** `estimate_cost_usd`'s prefix fallback iterates the dict in **insertion order**, where `"gpt-4o"` precedes `"gpt-4o-mini"`. Any *new* gpt-4o-mini snapshot would be billed at **$2.50 instead of $0.15**. Same class as MNT-018 — guarded only by luck. | verified defect |
 
+## Pass 8 — Execution Risk (2026-07-17): stress-testing the DOING, not the plan
+
+Four red-teams reviewed the plan itself. The analysis held up (142/144 findings mapped; the
+big traps were caught). The **execution model** did not. These are risks in *doing* the work.
+
+### Branch-strategy verdict: the two-branch freeze is INCOHERENT for main.tex
+
+Code + CSVs genuinely don't co-evolve, so the freeze works for them. But `main.tex` is written
+on **both** sides: inert paper-honesty edits on `main`, and the guard re-score / emitter fix
+behind the freeze — landing in the **same abstract sentences**. At **no single git ref** does
+the artifact reviewer get {corrected paper} + {reproducing code} together: the freeze tag has the
+falsified manuscript; `main` HEAD cites a guard number that only exists post-freeze; the merge-back
+is a 3-way prose conflict git cannot auto-resolve (doubled by the `main.tex`+`main_trimmed.tex`
+rule). **REWORK:** put ALL manuscript edits on one lane; pull the guard re-score onto the
+pre-submission timeline (P14-2 Option A); ship the artifact as **code+data from the freeze tag,
+paper PDF from manuscript-HEAD** — decouple the paper's git lifecycle from the code's. Also: CI
+triggers only on `main`, so the post-submission branch gets **zero CI** until it PRs back.
+
+### MNT-145 — C3's shared savings helper would introduce a 2× bug (VERIFIED)
+
+`output_budget.rs:69` and `dead_output_truncation.rs:71` both compute `mean * fraction * 0.5`;
+the other 7 rules use `mean * fraction`. A naïve shared `project_savings(profile, fraction)`
+**doubles** OB/DOT's projected savings → can flip a composition selection → change the applied
+plan → alter a committed cost/token number. The consolidation meant to make the ParallelBranch
+units bug unwritable (P8-11/C3) would **write a new units bug** unless the 0.5 is preserved per-rule.
+This must be a note on bd-yqr. **verified defect (in the proposed fix, not current code).**
+
+### Execution ordering traps (beyond the three already wired)
+
+| Trap | Issue | Resolution |
+|---|---|---|
+| **B** | P15-1 claims-checker registers every numeral; the abstract is currently falsified → landing it blocking = **permanently red CI** blocking unrelated PRs. | Run **report-only** until Phase 1 closes, then flip to blocking. |
+| **C** | `bd-3w1` hash-pins `pricing.json`; P14-4 must correct a price that disagrees between the two tables. Pin-first blocks the fix. | **Reconcile the two price tables and land P14-4 FIRST, then pin the reconciled value.** (Note: P14-4 may edit only `_optimizer_glue.py`, not `pricing.json` — confirm which table holds the wrong haiku entry before wiring.) |
+| **A** | The two paid re-runs (T2, guard re-score) run on frozen code that still has the double-execution bug (P13-6, freeze-gated) → a transient fixture exception silently doubles spend + token counts of the NEW evidence. | Land P13-6 (and P13-4 cached-decode) on the pre-submission timeline, or watch the two runs by eye. |
+| **F** | Un-greenwashing CI (P6-4/P11-6) before P6-1/P6-2/P2-3 → multi-axis red with no attribution. | Land P6-1, P6-2, P2-3 first; only then stop excluding agentc-profiler. |
+| **priority** | P11-7 (`AGENTC_ENABLED_RULES` parse) is the highest-EV diagnostic — a mis-parse invalidates *every* ablation config — but was filed P2. | **FIXED: bumped to P0.** Run with V4 before deciding anything. |
+
+### V4-says-YES contingency (currently unwired)
+
+If ParallelBranch fires, MNT-127's firewall breaks for **one CSV** (`rag_summarizer_warmup_n200.csv`
+— the only live fan-out agent with committed data; `parallel_research`/`multiagent_research` are dead).
+The plan says "re-verify rag results" but there is **no bead and no path**: `rag_summarizer.json` has
+no generator (MNT-064) and no snapshot pin, so a clean re-run is impossible. **Realistic contingency:
+cut/caveat the rag result** (as with the guard headline), or treat re-verification as a new paid
+experiment gated on fixture-build + snapshot-pin. Not "just re-run."
+
+### Effort realism — the 5 biggest beads are WEEKS, not days
+
+1. **Format chain** (template port + bib recovery + trim-without-moving-numbers) — **2–4 weeks**, and blocked on an external unknown (MLSys 2027 CFP/template not public). The true long pole.
+2. **Guard re-run + re-score** — **1–2 weeks**, stalled behind the unresolved P14-2 author call.
+3. **Driver consolidation + reproduce-verification** — **1–2 weeks** (25-way parameter-equivalence audit; no golden test; DBs gone).
+4. **C1–C5 Rust consolidation** — **1–2 weeks**, highest silent-break risk, lands on a red FFI-excluded baseline.
+5. **P15-1 claims-checker** — **1–2 weeks to build + ongoing registration.**
+
+The regression-test gap that makes all reproduction-critical refactors dangerous: **no golden-output
+test on the drivers**, `cargo test` is red and excludes the FFI crate, and no test asserts planner
+ranking order — so a flipped selection (from C3 or P12-6) is **invisible**.
+
 ## Do Not Touch Yet
 
 | Path | Reason | Unblock evidence needed |

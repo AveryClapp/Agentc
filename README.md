@@ -11,7 +11,7 @@ Multi-agent systems cost 4-15x more tokens than single-agent baselines. Framewor
       Agentc             intercepts calls, optimizes execution
          │               decides how to do it cheaply
          ▼
-      LLM APIs           Anthropic · OpenAI · Gemini
+      LLM APIs           Anthropic · OpenAI
                          raw inference
 ```
 
@@ -23,15 +23,20 @@ Think of it like a compiler for agent workloads. Frameworks describe *what* to d
 
 The runtime, profiler, semantic memoization layer, and JIT optimizer are all implemented and pass their test suites. The `agentc` CLI ships with `record`, `traces`, `analyze`, `report`, `cache`, and `optimize` subcommands.
 
-**V2** extends the per-call optimizer with a `CompositionPlanner` that classifies rules by cost driver (InputTokens / OutputTokens / ModelPrice / CallElimination / Structural), applies orthogonal rules in dependency order, and produces `Plan::Composed` audit rows. Three new rules ship in V2: `PromptDedup`, `OutputBudget`, and `StructuredTruncation` (last two not yet independently benchmarked). Toggle with `AGENTC_COMPOSE=1` (default on).
+**V2** extends the per-call optimizer with a `CompositionPlanner` that classifies rules by cost driver (InputTokens / OutputTokens / ModelPrice / CallElimination / Structural), applies orthogonal rules in dependency order, and produces `Plan::Composed` audit rows. Four new rules ship in V2: `PromptDedup`, `OutputBudget`, `StructuredTruncation`, and `DeadOutputTruncation` (the last three not yet independently benchmarked). Toggle with `AGENTC_COMPOSE=1` (default on).
 
-**Per-rule savings (purpose-built isolation workloads):**
+**Per-rule savings (purpose-built isolation workloads; warmup-corrected, rule-only configs):**
 
-| Rule | Workload | n | Cost savings | Accuracy Δ | McNemar p |
+| Rule | Workload | n | Savings | Accuracy Δ | McNemar p |
 |---|---|---|---|---|---|
-| `ModelDowngrade` | `gaia_router` | 127 | **35.3%** | −2.4pp (±3.1pp SE) | n/a (unpaired) |
-| `ContextCompress` | `long_context_qa` | 100 | **34.8%** input-tokens | −2pp (±3.5pp SE) | n/a (unpaired) |
-| `StateDrop` | `iterative_refiner` | 50 | **6.0%** cost / 9.6% input-tokens | −2pp | — |
+| `ModelDowngrade` | `gaia_router` | 127 | **11.4%** cost | −3.9pp (±2.8pp SE) | 0.1797 (n.s.) |
+| `ContextCompress` | `long_context_qa` | 300 | **36.3%** input-tokens | +1.7pp (±2.8pp SE) | ≥0.39 (n.s.) |
+| `StateDrop` | `iterative_refiner` | 50 | **6.1%** cost / 10.8% input-tokens | 0.0pp | — |
+
+> These are the warmup-corrected canonical numbers (see `bench/paper_results/DATA_MANIFEST.txt`).
+> An earlier version of this table published a **spurious 35.3%** for `ModelDowngrade` — a
+> cold-start measurement artifact the paper documents and disavows. The all-on `long_context_qa`
+> headline is 33.9% cost / 34.0% input-tokens.
 
 **V2 composition and comparison results:**
 
@@ -39,12 +44,12 @@ The runtime, profiler, semantic memoization layer, and JIT optimizer are all imp
 |---|---|---|---|
 | CC vs LLMLingua-2, HotpotQA distractor | 100 | CC: 68%→**100%** (FB=32, BF=0); LLMLingua-2: 68%→53% | CC: 4.7×10⁻¹⁰; LL2: 0.0013 |
 | CC vs LLMLingua-2, Wikipedia natural prose | 39 | CC: 94.9%→**94.9%** (BF=0, FB=0, abstained); LL2: +2.6pp, 53.5% compression, 13.7s overhead | CC: 1.0; LL2: 1.0 |
-| CC+StateDrop composition, multirule_qa | 30 | CC: 33.1% token savings; SD: 0.1%; CC+SD: 21.7% (gate picks CC on most calls; fixture-specific ratio) — confirmatory n=20 ablation: all-on=31.3% ≈ CC-only | all p≥0.48 |
-| Planner ablation (V1 vs V2) | 50 | V1-CC+OB: −2pp (greedy wrong pick); V2-CC+OB: +0pp (gate corrects) | V2-CC: 0.0412 |
+| CC+StateDrop composition, `multirule_qa` | 30 | CC-only: 32.5% tok; SD-only: 0.1%; CC+SD: **32.8% = 100.6% of the additive ideal (super-additive)** | +3.3pp; n.s. |
+| Planner ablation (first-match vs compose) | 50 | CC-only +18pp (p=0.0039); CC+OB first-match and compose are **identical** (+14pp, p=0.0156) — planner mode does not change accuracy | 0.0039 / 0.0156 |
 | Agent diversity (rag_summarizer + autogen_bridge) | — | CC fires 30–54% of hot calls; SD fires 9–24% | — |
-| Provider generalization (Anthropic Claude, HF Llama) | 50 each | CC: 98% fire rate / 34% tok savings (HF); 0% (Anthropic single-msg); MD: 14.7% savings (Anthropic), 31.1% (HF); autogen_bridge on Llama matches OpenAI activation | — |
-| StateDrop negative control (all-state-read variant) | 20 | 0/319 SD fires when all state writes have matching reads; confirms unread-state precondition | — |
-| Optimizer overhead (1,818 plan decisions) | — | pass-through p50=**76µs**; rewrite p50=**120µs**; p99 tail from first-call load | — |
+| Provider generalization (Anthropic Claude, HF Llama) | 50 each | CC: 98% fire / 34% tok savings (HF, measured); 0% (Anthropic single-msg). MD cost reductions are cost-model *projections* (models absent from the pricing table), not billed measurements — see paper caveat | — |
+| StateDrop negative control (all-state-read variant) | 20 | 0/320 SD fires when all state writes have matching reads; confirms unread-state precondition | — |
+| Optimizer overhead (1,818 plan decisions) | — | pass-through p50=**76µs**; rewrite p50=**120µs**; p99 tail from first-call load (excludes the async audit write) | — |
 
 `ParallelBranch` ships and emits audit rows; the latency win currently comes from the user-side `parallel_map` ThreadPoolExecutor. `CacheHit` functions as a bridge between memoized and non-memoized callers; neither is a headline paper claim yet.
 
@@ -59,7 +64,7 @@ crates/                      Rust workspace (7 crates)
 └── agentc-cli               `agentc` binary
 
 python/agentc/               Python SDK
-├── _patches/                wrapt-based monkey patches: anthropic, openai, google
+├── _patches/                wrapt-based monkey patches: anthropic, openai
 ├── _provenance_frameworks/  framework adapters: langgraph, crewai, autogen
 ├── _canonicalize/           per-vendor request canonicalization
 └── _intercept.py            optimizer entry point: plan → dispatch → observe
@@ -82,7 +87,7 @@ bench/                       Evaluation harness
 
 specs/                       Technical specifications
 paper-intelligence/          Paper evidence, literature, venue, and experiment ledgers
-tests/                       Python unit tests (~250 tests)
+tests/                       Python unit tests
 ```
 
 ---
@@ -92,13 +97,13 @@ tests/                       Python unit tests (~250 tests)
 Three pieces that work together in a feedback loop.
 
 ### 1. Profiler
-Instruments any Python agent pipeline, captures every LLM call (tokens, latency, model, cost, full prompt/response, embedding), and produces structured execution traces in SQLite. Implemented in Rust via PyO3, with `wrapt`-based zero-config monkey-patching of the OpenAI, Anthropic, and Google SDKs. Spec: [specs/profiler.md](specs/profiler.md).
+Instruments any Python agent pipeline, captures every LLM call (tokens, latency, model, cost, full prompt/response, embedding), and produces structured execution traces in SQLite. Implemented in Rust via PyO3, with `wrapt`-based zero-config monkey-patching of the OpenAI and Anthropic SDKs. Spec: [specs/profiler.md](specs/profiler.md).
 
 ### 2. Semantic Memoization
 Opt-in caching that deduplicates LLM inference. Exact-prompt hash lookup on the hot path; LSH over 256-dim model2vec embeddings as a secondary tier for semantically-similar prompts. Cache state piggybacks on the profiler's canonical `traces.db`. Spec: [specs/memoization.md](specs/memoization.md).
 
 ### 3. Optimizer
-JIT runtime that intercepts LLM calls on hot call sites and applies cost-ranked rewrite rules subject to a per-rule accuracy budget. Eight rules ship across V1 and V2:
+JIT runtime that intercepts LLM calls on hot call sites and applies cost-ranked rewrite rules subject to a per-rule accuracy budget. Nine rules ship across V1 and V2:
 
 | Rule | Cost driver | What it does | Status |
 |---|---|---|---|
@@ -110,6 +115,7 @@ JIT runtime that intercepts LLM calls on hot call sites and applies cost-ranked 
 | `PromptDedup` | InputTokens | Remove near-duplicate message segments via per-call IDF | V2, benchmarked |
 | `OutputBudget` | OutputTokens | Cap `max_output_tokens` at call-site p99 to prevent runaway generation | V2, benchmarked |
 | `StructuredTruncation` | InputTokens | Project out unreferenced JSON tool-output fields | V2, not yet independently benchmarked |
+| `DeadOutputTruncation` | OutputTokens | Cap output length when the result feeds a branch that is never read | V2, not yet independently benchmarked |
 
 **V2 CompositionPlanner:** classifies rules by `CostDriver`, allows orthogonal rules (different drivers = non-overlapping `Call` fields) to apply in a single pass as `Plan::Composed`. Same-driver rules are gated unless explicitly allowlisted (e.g., `StateDrop → ContextCompress`). Controlled by `AGENTC_COMPOSE=1` (default). V1 first-match behavior available via `AGENTC_COMPOSE=0`.
 

@@ -122,9 +122,12 @@ Cold calls pass through; optimization engages after `hot_threshold` observations
 Build the Rust workspace and install the Python SDK:
 
 ```bash
-cargo build --release
+# Build the workspace. Exclude agentc-profiler from `cargo build` — it is a PyO3
+# cdylib (pyo3/extension-module) that omits libpython symbols, so it links only
+# through maturin, not a bare cargo build.
+cargo build --release --workspace --exclude agentc-profiler
 maturin develop --release            # builds the PyO3 extension into the active venv
-pip install -e ".[dev,openai]"
+pip install -e ".[test]"             # full test/bench deps; use ".[dev,openai]" for a minimal SDK env
 ```
 
 Profile any agent script:

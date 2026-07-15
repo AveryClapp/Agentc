@@ -8,6 +8,7 @@ Supports anthropic >= 0.30.0 (adapter_v030).
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import time
@@ -377,17 +378,27 @@ class _WrappedStreamManager:
         return _WrappedStream(self)
 
     def __exit__(self, *exc_info: Any) -> Any:
-        result = self._stream_mgr.__exit__(*exc_info)
+        # Read the final message BEFORE closing the stream, and only when the
+        # user's with-body did not itself raise. Reading forces the SDK's
+        # until_done() (which contains a bare assert): doing it after the
+        # stream is closed — or while the user is unwinding an early break-out
+        # — would raise an Agentc-only exception that MASKS the user's
+        # original one, the exact failure the fail-open guarantee forbids.
+        # All of this bookkeeping is best-effort and must never reach the caller.
+        output_msgs = None
+        try:
+            if exc_info[0] is None:
+                final_message = getattr(self._stream, "get_final_message", lambda: None)()
+                if final_message is not None:
+                    self._req_attrs.update(_extract_response_attrs(final_message))
+                    output_msgs = _extract_output_messages(final_message)
+        except BaseException:
+            logger.debug("Failed to read final stream message (suppressed)", exc_info=True)
 
+        # Close the underlying stream — its return value governs whether the
+        # user's exception is suppressed, so it must always run and be returned.
+        result = self._stream_mgr.__exit__(*exc_info)
         end_time = _now_us()
-        # Get final message from stream
-        final_message = getattr(self._stream, "get_final_message", lambda: None)()
-        if final_message is not None:
-            resp_attrs = _extract_response_attrs(final_message)
-            self._req_attrs.update(resp_attrs)
-            output_msgs = _extract_output_messages(final_message)
-        else:
-            output_msgs = None
 
         status = "ERROR" if exc_info[0] is not None else "OK"
         if exc_info[0] is not None:
@@ -555,16 +566,29 @@ class _AsyncWrappedStreamManager:
         return _AsyncWrappedStream(self)
 
     async def __aexit__(self, *exc_info: Any) -> Any:
-        result = await self._stream_mgr.__aexit__(*exc_info)
+        # Read the final message BEFORE closing the stream, and only when the
+        # user's async with-body did not itself raise (see the sync __exit__
+        # for why). get_final_message is a coroutine in the async SDK, so it
+        # must be awaited — the old code called it without await, leaving a
+        # coroutine object that is `not None`, so _extract_response_attrs saw
+        # {} and EVERY async streaming span captured zero response attributes.
+        output_msgs = None
+        try:
+            if exc_info[0] is None:
+                get_final = getattr(self._stream, "get_final_message", None)
+                if get_final is not None:
+                    final_message = get_final()
+                    if inspect.isawaitable(final_message):
+                        final_message = await final_message
+                    if final_message is not None:
+                        self._req_attrs.update(_extract_response_attrs(final_message))
+                        output_msgs = _extract_output_messages(final_message)
+        except BaseException:
+            logger.debug("Failed to read final async stream message (suppressed)", exc_info=True)
 
+        # Close the underlying stream — its return value governs suppression.
+        result = await self._stream_mgr.__aexit__(*exc_info)
         end_time = _now_us()
-        final_message = getattr(self._stream, "get_final_message", lambda: None)()
-        if final_message is not None:
-            resp_attrs = _extract_response_attrs(final_message)
-            self._req_attrs.update(resp_attrs)
-            output_msgs = _extract_output_messages(final_message)
-        else:
-            output_msgs = None
 
         status = "ERROR" if exc_info[0] is not None else "OK"
         if exc_info[0] is not None:

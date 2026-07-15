@@ -16,6 +16,7 @@ import agentc
 from agentc._context import SpanContext, get_current_span, set_current_span
 from agentc._lifecycle import _initialized, _shutdown_in_progress
 from agentc._patches._anthropic import (
+    _AsyncWrappedStreamManager,
     _extract_input_messages,
     _extract_request_attrs,
     _extract_response_attrs,
@@ -375,6 +376,64 @@ class TestSyncStreamWrapper:
         result = _wrap_stream(wrapped, None, (), {"model": "test", "messages": []})
         # Should return the original stream
         assert result is mock_stream
+
+    def test_stream_exit_does_not_mask_user_exception(self, initialized: Path) -> None:
+        # Regression (MNT-058, P7-1): if the user's with-body raises AND
+        # get_final_message would raise (stream closed / until_done bare
+        # assert), Agentc must not read it and must not mask the user's
+        # original exception. Its exception is the only thing the caller sees.
+        class ExplodingFinal(MockStreamContext):
+            def get_final_message(self) -> MockMessage:
+                raise AssertionError("until_done() bare assert would mask the user error")
+
+        with patch("agentc._patches._anthropic._write_root_span", side_effect=lambda d: None):
+            mock_stream = ExplodingFinal([MockStreamEvent("text")], MockMessage())
+            wrapped = MagicMock(return_value=mock_stream)
+            stream_mgr = _wrap_stream(wrapped, None, (), {"model": "m", "messages": []})
+            with pytest.raises(ValueError, match="user error"):
+                with stream_mgr as stream:  # noqa: F841
+                    raise ValueError("user error")
+
+
+class TestAsyncStreamWrapper:
+    @pytest.mark.asyncio
+    async def test_async_stream_awaits_get_final_message(self) -> None:
+        # Regression (MNT-... , P7-2): get_final_message is a coroutine in the
+        # async SDK. The old code never awaited it, so final_message was a
+        # coroutine object (not None) and _extract_response_attrs saw {} —
+        # every async streaming span lost its response attributes.
+        captured: dict[str, Any] = {}
+
+        class AsyncFinal:
+            usage = MockUsage()
+            model = "claude-sonnet-4-20250514"
+            stop_reason = "end_turn"
+
+            async def get_final_message(self) -> "AsyncFinal":
+                return self
+
+        class AsyncMgr:
+            async def __aexit__(self, *exc: Any) -> bool:
+                return False
+
+        mgr = _AsyncWrappedStreamManager.__new__(_AsyncWrappedStreamManager)
+        mgr._stream_mgr = AsyncMgr()
+        mgr._stream = AsyncFinal()
+        mgr._start_time = 0
+        mgr._req_attrs = {}
+        mgr._input_msgs = None
+        mgr._parent = None
+
+        with patch(
+            "agentc._patches._anthropic._emit_span",
+            side_effect=lambda **kw: captured.update(kw),
+        ):
+            await mgr.__aexit__(None, None, None)
+
+        # Response attrs came from the resolved message — an un-awaited
+        # coroutine has no `.model`, so this would be absent on the old code.
+        assert mgr._req_attrs.get("gen_ai.response.model") == "claude-sonnet-4-20250514"
+        assert captured.get("attrs", {}).get("gen_ai.response.model") == "claude-sonnet-4-20250514"
 
 
 class TestWithTraceContext:

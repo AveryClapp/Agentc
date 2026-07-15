@@ -436,6 +436,44 @@ mod tests {
     }
 
     #[test]
+    fn budget_disabled_rule_is_gated_off() {
+        // Regression (bd-inc): the planner's `budget.is_disabled(..) continue`
+        // is the ONLY thing that disables 8 of the 9 rules. Deleting it must
+        // fail a test. AlwaysFires fires on a hot call; once the accuracy guard
+        // auto-disables it (BREACH_STREAK consecutive over-budget samples), the
+        // same call must pass through.
+        let cm = Arc::new(CostModel::new());
+        observe(&cm, "site", 10);
+        let budget = Arc::new(Budget::new());
+        let opt = Optimizer::with_budget(
+            cm,
+            vec![Box::new(AlwaysFires { savings: 1.0 })],
+            OptimizerConfig::default(),
+            budget.clone(),
+        );
+
+        // Baseline: the rule fires.
+        assert!(
+            matches!(opt.plan(&sample_call("site")), Plan::Rewritten { .. }),
+            "rule should fire before it is disabled"
+        );
+
+        // Drive the guard to auto-disable AlwaysFires for this call site. Use
+        // the planner's own clock so the cooldown window covers the next plan().
+        let now = now_us();
+        for _ in 0..crate::budget::BREACH_STREAK {
+            budget.record_sample("site", "AlwaysFires", 1.0, 0.05, now);
+        }
+        assert!(budget.is_disabled("site", "AlwaysFires", now), "guard should have disabled it");
+
+        // The gate must now suppress the rule → pass-through.
+        assert!(
+            matches!(opt.plan(&sample_call("site")), Plan::PassThrough),
+            "a disabled rule must be gated off by the planner (planner.rs disable gate)"
+        );
+    }
+
+    #[test]
     fn hot_call_with_no_applicable_rule_returns_pass_through() {
         let cm = Arc::new(CostModel::new());
         observe(&cm, "site", 10);

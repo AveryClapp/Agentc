@@ -455,20 +455,25 @@ fn context_compress_and_output_budget_compose() {
         OptimizerConfig::default(),
     );
 
-    // 12KB dead system context + live user question, no output cap.
+    // Live user question + a 12KB dead (droppable) context message, no output
+    // cap. ContextCompress protects system + user-input messages, so the dead
+    // context must be a non-system Literal message for it to be droppable
+    // (mirrors context_compress::large_dead_prompt_fires_and_drops).
     let big_dead = "x ".repeat(6000);
     let msgs = vec![
-        Message { role: "system".into(), content: big_dead },
+        Message { role: "system".into(), content: "You are a helpful assistant.".into() },
         Message {
             role: "user".into(),
             content: "What does the above context say?".into(),
         },
+        Message { role: "user".into(), content: big_dead },
     ];
     let extra = json!({
-        "attention_scores": [0.0, 1.0],
+        "attention_scores": [1.0, 1.0, 0.0],
         "message_deps": [
             {"kind": "literal"},
             {"kind": "user_input", "span_id": "0102030405060708"},
+            {"kind": "literal"},
         ],
         "follow_on_tokens": [],
         "dead_attention_epsilon": 0.10,
@@ -485,6 +490,10 @@ fn context_compress_and_output_budget_compose() {
         occurrence_ix: 0,
     };
 
+    // V2 paper gate: this MUST compose both rules. The old version also
+    // accepted Plan::Rewritten ("solo rule is acceptable"), so it passed even
+    // if composition broke entirely and only one rule fired — no assurance at
+    // all for the paper's headline composition claim (bd-004).
     match opt.plan(&call) {
         Plan::Composed { rules, net_savings_usd, .. } => {
             let rule_names: Vec<_> = rules.iter().map(|r| r.rule.as_str()).collect();
@@ -492,10 +501,10 @@ fn context_compress_and_output_budget_compose() {
             assert!(rule_names.contains(&"OutputBudget"), "rules: {:?}", rule_names);
             assert!(net_savings_usd > 0.0);
         }
-        Plan::Rewritten { rule, .. } => {
-            // Acceptable: p99 estimator may not have warmed up sufficiently.
-            println!("Solo rule fired: {rule}");
-        }
-        other => panic!("expected Composed or Rewritten, got {:?}", other),
+        other => panic!(
+            "V2 composition gate: expected ContextCompress + OutputBudget to \
+             compose (Plan::Composed), got {:?}",
+            other
+        ),
     }
 }

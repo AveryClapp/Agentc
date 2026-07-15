@@ -355,27 +355,43 @@ mod tests {
 
     #[test]
     fn follow_on_tokens_protect_message_from_drop() {
+        // A live question, a large dead message protected by a follow-on token
+        // ("junk"), and a large dead UNPROTECTED message ("garbage"). The rule
+        // MUST fire (garbage is droppable); the protected message survives and
+        // the unprotected one is dropped. The old version nested every
+        // assertion in `if let Some(..)`, so it passed vacuously when the rule
+        // declined and asserted nothing at all (bd-004).
         let msgs = vec![
-            Message { role: "user".into(), content: "trigger".into() },
+            Message { role: "user".into(), content: "live question".into() },
             Message { role: "user".into(), content: big("junk ", 5000) },
+            Message { role: "user".into(), content: big("garbage ", 5000) },
         ];
-        // Dead scores on both, but "junk" is a follow-on token read
-        // downstream → must keep it.
         let call = call_with(
             msgs,
-            vec![0.0, 0.0],
-            vec![DepSource::Literal, DepSource::Literal],
+            vec![1.0, 0.0, 0.0],
+            vec![
+                DepSource::UserInput { span_id: [1u8; 8] },
+                DepSource::Literal,
+                DepSource::Literal,
+            ],
             vec!["junk"],
         );
         let rule = ContextCompressRule::default();
-        let prop = rule.propose(&call, &hot_profile());
-        // The rule either declines (nothing droppable) or keeps the
-        // junk-tagged one. Either is acceptable; we just assert that
-        // the junk-containing message survives.
-        if let Some(p) = prop {
-            if let Plan::Rewritten { call, .. } = p.rewritten {
-                assert!(call.messages.iter().any(|m| m.content.contains("junk")));
+        let prop = rule
+            .propose(&call, &hot_profile())
+            .expect("must fire — the unprotected 'garbage' message is droppable");
+        match &prop.rewritten {
+            Plan::Rewritten { call, .. } => {
+                assert!(
+                    call.messages.iter().any(|m| m.content.contains("junk")),
+                    "follow-on-protected message must survive"
+                );
+                assert!(
+                    !call.messages.iter().any(|m| m.content.contains("garbage")),
+                    "unprotected dead message must be dropped"
+                );
             }
+            _ => panic!("expected Rewritten"),
         }
     }
 

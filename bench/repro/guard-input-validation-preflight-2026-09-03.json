@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "experiment_kind": "guard_input_validation_preflight_bundle",
+  "created_at_utc": "2026-09-03T20:19:02Z",
+  "agentc_git_commit": "d9203575cd4afd9e904d00956dc337df632db653",
+  "runtime_change_commit": "d9203575cd4afd9e904d00956dc337df632db653",
+  "contract_sync_commit": "d9203575cd4afd9e904d00956dc337df632db653",
+  "paper_evidence": false,
+  "mocked_provider": false,
+  "network_calls": 0,
+  "verdict": {
+    "admission_passed": true,
+    "invalid_divergence_created_no_state": true,
+    "invalid_divergence_mutated_no_existing_state": true,
+    "invalid_environment_threshold_fell_back_to_rule_budget": true,
+    "validation_preceded_f64_to_f32_narrowing": true,
+    "frozen_integration_semantics_preserved": true
+  },
+  "settings": {
+    "rule": "OutputBudget",
+    "valid_control_divergence": 0.5,
+    "fallback_rule_budget": 0.01,
+    "breach_streak": 5,
+    "invalid_divergence_labels": [
+      "nan",
+      "positive_infinity",
+      "negative_infinity",
+      "negative_epsilon_before_f32_cast",
+      "above_one_before_f32_cast",
+      "negative_fraction",
+      "above_one_fraction"
+    ],
+    "invalid_environment_thresholds": [
+      "nan",
+      "inf",
+      "-inf",
+      "-1e-300",
+      "1.000000000001",
+      "-0.1",
+      "1.1"
+    ]
+  },
+  "canonical_result": {
+    "invalid_divergence_state": null,
+    "every_invalid_threshold_state": {
+      "n_samples": 5,
+      "divergence_mean": 0.5,
+      "divergence_var": 0.0,
+      "consecutive_breaches": 0,
+      "disable_reason": "shadow_divergence"
+    },
+    "normalized_result_sha256": "763ae4f4bb1b7253cf50d5803739e9fe24c0483fa58573d77b39fdc69b89b78e"
+  },
+  "precision_boundary": {
+    "native_divergence_input_type": "f64",
+    "environment_threshold_parse_type": "f64",
+    "budget_storage_type": "f32",
+    "validation_order": "Check finite and inclusive [0,1] bounds in f64 before narrowing to f32.",
+    "rounding_regressions": [
+      -1e-300,
+      1.000000000001
+    ]
+  },
+  "repeatability": {
+    "repetitions": 5,
+    "all_release_builds": true,
+    "all_runtime_commits_equal": true,
+    "all_normalized_results_equal": true,
+    "normalization": "Remove created_at_utc only.",
+    "run_created_at_utc": [
+      "2026-09-03T20:15:33.774484+00:00",
+      "2026-09-03T20:15:33.746368+00:00",
+      "2026-09-03T20:15:33.662046+00:00",
+      "2026-09-03T20:15:33.669098+00:00",
+      "2026-09-03T20:15:33.689745+00:00"
+    ],
+    "raw_run_sha256": [
+      "d6a7b3f4a13a8c816e777cbc1f5cac18a3348599b9ab056b90c1a2798a433d63",
+      "2b81f884ca452c8dbe89add726e44ca3f526e26e4dcc28d0f7b3c8d0c48db68c",
+      "5c9681ca0b42608a0c097810e7e84963d54bab22a1eebe97201ddabbc416072e",
+      "12f786faf64ccbc5bb37fa80cf3ae0a9a76e1b0e8f1f8f2fb9ba4e919ec2551a",
+      "70bb013f8d1a2d42742598786ee92d235f5e0a0e41f14ab8c9904aec85bdc556"
+    ]
+  },
+  "integration_regression": {
+    "tau2_v1.0.1": {
+      "upstream_commit": "fc0055dc4e0a316c3f83133267fbd6faaa770992",
+      "upstream_dirty_paths": [],
+      "raw_run_sha256": "fc7466c724a88d2a323536ac9a744d3de5e6a5075b7c60e156d17517eac2345e",
+      "logical_calls": 16,
+      "eligible_assistant_calls": 8,
+      "excluded_user_simulator_calls": 8,
+      "plan_kind_counts": {
+        "pass_through": 3,
+        "rewritten": 5
+      },
+      "observation_calls": 8,
+      "response_digest": "ec409ae07e72e04510204ad2459af61640f8cbbba0a33fec14aae7b887c8b92d",
+      "semantic_fields_equal_to_pre_validation_run": true,
+      "network_calls": 0
+    },
+    "sweagent_v1.1.0": {
+      "upstream_commit": "0f3acafacabc0def8cc76b4e48acb4b6cf302cb9",
+      "upstream_dirty_paths": [],
+      "raw_run_sha256": "951821b1f897aa1865ef8971e265a8aae17fb95db757fba710fd34dd6e8feef1",
+      "logical_calls": 1,
+      "eligible_calls": 1,
+      "plan_kind_counts": {
+        "pass_through": 1
+      },
+      "observation_calls": 1,
+      "response_digest": "5916abb9726a202fdd2a7309083f3f1c92bae9d59002076ce79117e25954054d",
+      "semantic_fields_equal_to_pre_validation_run": true,
+      "network_calls": 0
+    }
+  },
+  "runtime": {
+    "platform": "macOS-26.5-arm64-arm-64bit",
+    "python": "3.12.9",
+    "rustc": "1.94.1 (e408947bf 2026-03-25)",
+    "cargo": "1.94.1 (29ea6fb6a 2026-03-24)",
+    "agentc_package": "0.1.0"
+  },
+  "source_digests_sha256": {
+    "bench/guard_input_validation_preflight.py": "3bb7b86af4cb0e4ae35f4af6f8f069ae1a8a40c0653bb63bf58c0c224925de0d",
+    "crates/agentc-optimizer/src/budget.rs": "f7bd6716423c87f6223c77e1f7221ba855d9a3723c6632bf8e9827fb9d960a5c",
+    "crates/agentc-profiler/src/lib.rs": "6f4436c37f01b780eaf793fa0a86267f8fb51a6c72a7e69fa1cc2e56f7dc9490",
+    "python/agentc/_native.pyi": "084b7dba74e1bb43e832c451d4334023de2cc292307f51f92c669c93f9ce44fe",
+    "python/agentc/_optimizer.py": "80d09a5c390b616e87a7d7c198609cd52d7bc3e3585ee1fba312d8cddfc25177",
+    "specs/optimizer.md": "181a87a417300cce874a55082ceef2eee96227b7cc24333e818c649a51d16e87",
+    "tests/test_lifecycle.py": "2c19a7c74487b4ec5f75d6e0ac65459619751d81ec22660bd0f47a4649202422",
+    "python/agentc/_native.cpython-312-darwin.so": "153bf7fb923a5313f3a6158b012ec593b58f55848a1c46481018c47d74030e24"
+  },
+  "verification": {
+    "optimizer_tests": "200 passed",
+    "workspace_tests_excluding_profiler": "492 passed",
+    "lifecycle_tests": "33 passed",
+    "python_suite": "397 passed, 10 skipped",
+    "workspace_clippy_warnings_denied": "passed",
+    "profiler_cargo_check": "passed",
+    "profiler_clippy_warnings_denied": "passed",
+    "changed_python_ruff_check": "passed",
+    "release_preflight_repetitions": "5 passed",
+    "tau2_admission_preflight": "passed",
+    "sweagent_admission_preflight": "passed",
+    "repo_wide_rustfmt_check": "failed on pre-existing unrelated formatting drift; tracked by bd-t3ne",
+    "repo_wide_ruff_check": "failed on 12 pre-existing unrelated unused imports; tracked by bd-od6v",
+    "documented_mypy_gate": "failed on 18 pre-existing errors in 10 files; tracked by bd-qc7d",
+    "documented_uv_pytest_command": "can select a global Python when dev extras are absent; tracked by bd-mt1q"
+  },
+  "replay": {
+    "prerequisite": "Build and install Agentc commit d9203575cd4afd9e904d00956dc337df632db653 in release mode.",
+    "guard_command": "python bench/guard_input_validation_preflight.py --output /tmp/guard-input-validation.json",
+    "tau2_command": "/path/to/tau2-v1.0.1/.venv/bin/python bench/litellm_admission_preflight.py --workload tau2 --upstream-root /path/to/tau2-v1.0.1 --turns 8 --output /tmp/tau2-admission.json",
+    "sweagent_command": "/path/to/swe-agent-v1.1.0/.venv/bin/python bench/litellm_admission_preflight.py --workload sweagent --upstream-root /path/to/swe-agent-v1.1.0 --output /tmp/sweagent-admission.json",
+    "network_requirement": "None. The guard runner calls local runtime code directly; workload admission uses LiteLLM mock_response behind a socket guard."
+  },
+  "interpretation_limits": [
+    "This is Stage E0 engineering evidence, not provider-backed or paper-result evidence.",
+    "The guard run uses deterministic synthetic native-boundary inputs for one rule; it does not measure semantic quality, precision, recall, billed savings, or provider latency.",
+    "The persisted divergence estimate remains cumulative rather than drift-bounded; bd-nggo tracks the guard-window redesign.",
+    "Per-sample SQLite persistence overhead and mutex contention are not measured; bd-rm0w tracks that experiment.",
+    "The experiment does not resolve controller calibration, detection delay, false disables, or cumulative damage; bd-jq6c and bd-shi1.4 remain open."
+  ]
+}

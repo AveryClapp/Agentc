@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
+from pathlib import Path
 
 import pytest
 
 from bench.litellm_admission_preflight import (
     _blocked_network,
+    _configure_optimizer_environment,
     _outcome_event,
     _plan_event,
     _span_summary,
@@ -104,3 +107,23 @@ def test_network_guard_blocks_socket_connections() -> None:
             socket.create_connection(("example.com", 443))
 
     assert attempts == ["('example.com', 443)"]
+
+
+def test_optimizer_environment_uses_the_fresh_preflight_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "AGENTC_STORAGE_PATH",
+        "AGENTC_OPTIMIZE",
+        "AGENTC_ENABLED_RULES",
+        "OPENAI_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    storage_path = Path("/tmp/isolated-agentc-preflight")
+    _configure_optimizer_environment(storage_path)
+
+    assert os.environ["AGENTC_STORAGE_PATH"] == str(storage_path)
+    assert os.environ["AGENTC_OPTIMIZE"] == "1"
+    assert os.environ["AGENTC_ENABLED_RULES"] == "OutputBudget"
+    assert os.environ["OPENAI_API_KEY"] == "offline-preflight-no-network"

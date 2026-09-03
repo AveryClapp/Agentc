@@ -137,9 +137,10 @@ def _span_summary(spans: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _configure_optimizer_environment() -> None:
+def _configure_optimizer_environment(storage_path: Path) -> None:
     os.environ.update(
         {
+            "AGENTC_STORAGE_PATH": str(storage_path),
             "AGENTC_OPTIMIZE": "1",
             "AGENTC_OPTIMIZE_HOT_THRESHOLD": str(_HOT_THRESHOLD),
             "AGENTC_OPTIMIZE_MAX_OVERHEAD_MS": "1000",
@@ -289,27 +290,42 @@ def _run_tau2(turns: int, storage_path: Path) -> dict[str, Any]:
         and user_simulator.generate is user_generate_before
     )
     summary = _span_summary(spans)
-    expected_rewrites = max(0, turns - _HOT_THRESHOLD)
+    activation_count = sum(bool(event["rules"]) for event in plans)
+    plan_kind_counts = dict(
+        sorted(Counter(event["plan_kind"] for event in plans).items())
+    )
+    rule_activation_counts = dict(
+        sorted(Counter(rule for event in plans for rule in event["rules"]).items())
+    )
     assert alias_repaired and alias_restored
     assert scope_wrapped and scope_restored
     assert len(plans) == turns
     assert len(outcomes) == turns
+    assert len({event["call_site_id"] for event in plans}) == 1
     assert summary["count"] == turns * 2
     assert summary["scope_counts"] == {
         "tau2.evaluated_assistant": turns,
         "tau2.user_simulator": turns,
     }
     assert summary["eligible"] == turns and summary["excluded"] == turns
-    assert (
-        sum(event["plan_kind"] == "rewritten" for event in plans) == expected_rewrites
+    assert all(
+        event["rules"] in ([], ["OutputBudget"])
+        and (
+            event["rewritten"] is None
+            or event["rewritten"]["max_output_tokens"]
+            <= event["input"]["max_output_tokens"]
+        )
+        for event in plans
     )
-    assert all(event["rules"] == ["OutputBudget"] for event in plans[_HOT_THRESHOLD:])
     return {
         "logical_calls": turns * 2,
         "assistant_calls": turns,
         "user_simulator_calls": turns,
         "planner_calls": len(plans),
         "observation_calls": len(outcomes),
+        "activations": activation_count,
+        "plan_kind_counts": plan_kind_counts,
+        "rule_activation_counts": rule_activation_counts,
         "plan_events": plans,
         "outcome_events": outcomes,
         "spans": summary,
@@ -348,10 +364,7 @@ def _run_sweagent(storage_path: Path) -> dict[str, Any]:
             per_instance_cost_limit=0,
             completion_kwargs={"mock_response": "sweagent-offline-response"},
         )
-        tools = ToolConfig(
-            parse_function=ThoughtActionParser(),
-            enable_bash_tool=False,
-        )
+        tools = ToolConfig(parse_function=ThoughtActionParser())
         model = LiteLLMModel(config, tools)
         with _blocked_network() as network_attempts:
             outputs = model._single_query(
@@ -402,9 +415,11 @@ def _source_metadata(root: Path, workload: str) -> dict[str, Any]:
 
 def run(workload: str, upstream_root: Path, turns: int) -> dict[str, Any]:
     """Run one frozen workload admission check in the current interpreter."""
-    _configure_optimizer_environment()
     with tempfile.TemporaryDirectory(prefix=f"agentc-{workload}-admission-") as temp:
         storage_path = Path(temp) / "agentc"
+        # The native optimizer reads its store during module initialization.
+        # Set the environment path before importing Agentc in either workload.
+        _configure_optimizer_environment(storage_path)
         result = (
             _run_tau2(turns, storage_path)
             if workload == "tau2"

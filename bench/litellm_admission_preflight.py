@@ -71,6 +71,36 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _semantic_message_projection(message: Any) -> dict[str, Any]:
+    """Project a response message without volatile IDs, timing, or billing fields."""
+    if isinstance(message, dict):
+
+        def get_field(name: str, default: Any = None) -> Any:
+            return message.get(name, default)
+    else:
+
+        def get_field(name: str, default: Any = None) -> Any:
+            return getattr(message, name, default)
+
+    tool_calls = get_field("tool_calls", None)
+    if tool_calls is not None:
+        tool_calls = [
+            call.model_dump() if hasattr(call, "model_dump") else call
+            for call in tool_calls
+        ]
+    projection = {
+        "role": get_field("role", None),
+        "content": get_field("content", get_field("message", None)),
+        "tool_calls": tool_calls,
+    }
+    return {key: value for key, value in projection.items() if value is not None}
+
+
+def _semantic_response_digest(response: Any) -> str:
+    messages = response if isinstance(response, list) else [response]
+    return _digest([_semantic_message_projection(message) for message in messages])
+
+
 def _plan_rules(plan: Any) -> list[str]:
     if getattr(plan, "kind", None) == "composed":
         return [str(rule) for rule in (getattr(plan, "rules", None) or [])]
@@ -273,8 +303,8 @@ def _run_tau2(turns: int, storage_path: Path) -> dict[str, Any]:
                 )
                 response_digests.extend(
                     [
-                        _digest(assistant_response.raw_data),
-                        _digest(user_response.raw_data),
+                        _semantic_response_digest(assistant_response),
+                        _semantic_response_digest(user_response),
                     ]
                 )
         if network_attempts:
@@ -336,6 +366,7 @@ def _run_tau2(turns: int, storage_path: Path) -> dict[str, Any]:
         "scope_restored": scope_restored,
         "response_count": len(response_digests),
         "response_digest": _digest(response_digests),
+        "response_digest_method": "sha256(role,content,tool_calls); volatile transport fields excluded",
         "network_attempts": 0,
     }
 
@@ -396,7 +427,8 @@ def _run_sweagent(storage_path: Path) -> dict[str, Any]:
         "completion_patched": completion_patched,
         "completion_restored": completion_restored,
         "response_count": len(outputs),
-        "response_digest": _digest(outputs),
+        "response_digest": _semantic_response_digest(outputs),
+        "response_digest_method": "sha256(role,content,tool_calls); volatile transport fields excluded",
         "network_attempts": 0,
     }
 

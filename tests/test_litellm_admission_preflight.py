@@ -6,6 +6,7 @@ import json
 import os
 import socket
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,6 +15,7 @@ from bench.litellm_admission_preflight import (
     _configure_optimizer_environment,
     _outcome_event,
     _plan_event,
+    _semantic_response_digest,
     _span_summary,
 )
 from agentc._optimizer import Plan
@@ -127,3 +129,28 @@ def test_optimizer_environment_uses_the_fresh_preflight_store(
     assert os.environ["AGENTC_OPTIMIZE"] == "1"
     assert os.environ["AGENTC_ENABLED_RULES"] == "OutputBudget"
     assert os.environ["OPENAI_API_KEY"] == "offline-preflight-no-network"
+
+
+def test_semantic_response_digest_excludes_volatile_transport_fields() -> None:
+    first = SimpleNamespace(
+        role="assistant",
+        content="stable answer",
+        tool_calls=None,
+        raw_data={"id": "random-1", "created": 1},
+        generation_time_seconds=0.1,
+    )
+    second = SimpleNamespace(
+        role="assistant",
+        content="stable answer",
+        tool_calls=None,
+        raw_data={"id": "random-2", "created": 2},
+        generation_time_seconds=9.9,
+    )
+    changed = SimpleNamespace(
+        role="assistant",
+        content="different answer",
+        tool_calls=None,
+    )
+
+    assert _semantic_response_digest(first) == _semantic_response_digest(second)
+    assert _semantic_response_digest(first) != _semantic_response_digest(changed)

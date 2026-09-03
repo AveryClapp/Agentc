@@ -1,0 +1,544 @@
+{
+  "schema_version": 1,
+  "experiment_kind": "litellm_frozen_workload_admission_bundle",
+  "created_at_utc": "2026-09-03T18:22:09.375162+00:00",
+  "agentc_git_commit": "5b1a4d8",
+  "paper_evidence": false,
+  "mocked_provider": true,
+  "network_calls": 0,
+  "verdict": {
+    "admission_passed": true,
+    "tau2": {
+      "source": "tau2 v1.0.1",
+      "logical_calls": 16,
+      "assistant_calls_eligible": 8,
+      "user_simulator_calls_excluded": 8,
+      "planner_calls": 8,
+      "observations": 8,
+      "successful_spans": 16,
+      "warmup_pass_throughs": 3,
+      "output_budget_activations": 5,
+      "call_site_id": "tau2.utils.llm_utils:generate:409"
+    },
+    "sweagent": {
+      "source": "SWE-agent v1.1.0",
+      "logical_calls": 1,
+      "planner_calls": 1,
+      "observations": 1,
+      "successful_spans": 1,
+      "call_site_id": "sweagent.agent.models:_single_query:681"
+    }
+  },
+  "acceptance_checks": {
+    "exact_frozen_source_commits": true,
+    "clean_upstream_source_trees": true,
+    "real_upstream_call_sites": true,
+    "one_planner_per_eligible_logical_call": true,
+    "tau2_simulator_never_planned": true,
+    "sync_response_shape_preserved": true,
+    "usage_and_local_cost_estimate_observed": true,
+    "patch_and_alias_lifecycle_restored": true,
+    "deterministic_semantic_digest_replay": true,
+    "deterministic_plan_and_scope_replay": true,
+    "network_attempts": 0
+  },
+  "repeatability": {
+    "repetitions_per_workload": 2,
+    "tau2": {
+      "run_a_created_at_utc": "2026-09-03T18:22:08.761477+00:00",
+      "run_b_created_at_utc": "2026-09-03T18:22:08.764243+00:00",
+      "semantic_response_digest": "ec409ae07e72e04510204ad2459af61640f8cbbba0a33fec14aae7b887c8b92d",
+      "semantic_response_digests_equal": true,
+      "plan_events_equal": true,
+      "scope_reports_equal": true
+    },
+    "sweagent": {
+      "run_a_created_at_utc": "2026-09-03T18:22:09.375162+00:00",
+      "run_b_created_at_utc": "2026-09-03T18:22:09.385423+00:00",
+      "semantic_response_digest": "5916abb9726a202fdd2a7309083f3f1c92bae9d59002076ce79117e25954054d",
+      "semantic_response_digests_equal": true,
+      "plan_events_equal": true,
+      "scope_reports_equal": true
+    }
+  },
+  "source_digests_sha256": {
+    "bench/litellm_admission_preflight.py": "64a00db558ac8f2cbdb0199145e8df76d478450d1f9570d852c40d9945dc4488",
+    "python/agentc/_patches/_litellm.py": "68de697ca76587bc31c0c1650fb4bb63d604833e2dd1c421ffb0e8a99e9ea01e",
+    "python/agentc/_scope_adapters/tau2.py": "e2bc4e71cb9d2fcb3b0059f39bcd1b9125093f1dbd734aa541b0ba1d7caa0bb5",
+    "tau2/src/tau2/utils/llm_utils.py": "8c1f1c297e879b2a2d48ac65394cdd497bbd10f42fefa0ce770e7a65ce42bf95",
+    "tau2/src/tau2/agent/llm_agent.py": "d13412ff502859f0ef0492af0128f1b2666be32640057ba8e076d2602af084d8",
+    "tau2/src/tau2/user/user_simulator.py": "bfe1defe73bce25450b2be697c249d6cec2f3ba25a70e32e2452ba75a53a630c",
+    "sweagent/sweagent/agent/models.py": "ffce8e513d2ce9967a95acfb6c67c7654a05bbd0c9942ace8e779b9084d47596"
+  },
+  "environments": {
+    "tau2": {
+      "install": "uv sync --extra knowledge --extra dev --frozen",
+      "upstream_root_lock_committed": true,
+      "resolved": [
+        "tau2==1.0.1",
+        "litellm==1.81.11",
+        "openai==2.20.0",
+        "pydantic==2.12.4",
+        "httpx==0.28.1",
+        "agentc==0.1.0"
+      ]
+    },
+    "sweagent": {
+      "install": "uv sync --no-dev",
+      "upstream_root_lock_committed": false,
+      "resolution_note": "Source commit is frozen, but its root dependency resolution is not. These versions describe the admission environment and are not a confirmatory lock.",
+      "resolved": [
+        "sweagent==1.1.0",
+        "swe-rex==1.4.0",
+        "litellm==1.99.0",
+        "openai==2.54.0",
+        "pydantic==2.13.5",
+        "httpx==0.28.1",
+        "agentc==0.1.0"
+      ]
+    }
+  },
+  "replay": {
+    "prerequisites": [
+      "Build and install Agentc commit 5b1a4d8 into each upstream virtual environment.",
+      "Check out the exact upstream commit shown in each raw run.",
+      "Keep provider credentials absent; the runner overwrites provider variables with offline values and fails any socket attempt."
+    ],
+    "tau2_command": "/path/to/tau2/.venv/bin/python /path/to/Agentc/bench/litellm_admission_preflight.py --workload tau2 --upstream-root /path/to/tau2 --turns 8 --output /tmp/tau2-admission.json",
+    "sweagent_command": "/path/to/swe-agent/.venv/bin/python /path/to/Agentc/bench/litellm_admission_preflight.py --workload sweagent --upstream-root /path/to/swe-agent --output /tmp/sweagent-admission.json"
+  },
+  "interpretation_limits": [
+    "This artifact admits frozen call shapes into later experiments; it is not MLSys result evidence.",
+    "LiteLLM mock_response fixes output usage at synthetic values. Reported cost_usd is Agentc's local estimator, not a provider bill.",
+    "Mock latency includes local Python and LiteLLM work only and must not be compared as provider latency.",
+    "gpt-4o and a 1000 ms planning ceiling are activation controls, not the exact confirmatory routes or production overhead limit.",
+    "SWE-agent's source commit is frozen but its dependency resolution was not upstream-locked.",
+    "The frozen tau2 and SWE-agent paths are non-streaming. Route-independent LiteLLM streaming remains open as bd-ez1k.",
+    "Programmatic storage_path/native-store convergence remains open as bd-hoer; this runner explicitly sets AGENTC_STORAGE_PATH before import.",
+    "Exact frozen confirmatory model routing remains open as bd-vdj."
+  ],
+  "excluded_runs": [
+    {
+      "stage": "runner shakeout",
+      "reason": "tau2 asserted an over-specific rewrite count and SWE-agent constructed an invalid ToolConfig; neither run emitted an admitted artifact.",
+      "bugs": [
+        "bd-oqn2",
+        "bd-5rqq"
+      ]
+    },
+    {
+      "stage": "isolation diagnosis",
+      "reason": "tau2 began hot because the native optimizer read a default persisted store while init(storage_path=...) isolated only Python storage. The 8/8 activation sequence was discarded.",
+      "follow_up": "bd-hoer"
+    }
+  ],
+  "raw_runs": [
+    {
+      "agentc": {
+        "git_commit": "5b1a4d8f6cd0ab2d29e51ea7bbc646e8b4c464d7",
+        "package_version": "0.1.0"
+      },
+      "created_at_utc": "2026-09-03T18:22:08.761477+00:00",
+      "experiment_kind": "litellm_workload_admission_preflight",
+      "interpretation_limits": [
+        "Valid only for workload call-shape, actor-scope, lifecycle, and native-planner admission.",
+        "Quality, provider latency, and billed cost are not measured.",
+        "LiteLLM mock_response supplies deterministic outputs and the socket guard forbids network access.",
+        "The model and raised planning-overhead threshold are activation controls, not frozen confirmatory settings.",
+        "The frozen MLSys workloads are non-streaming; LiteLLM streaming remains outside this preflight envelope."
+      ],
+      "mocked_provider": true,
+      "network_calls": 0,
+      "paper_evidence": false,
+      "result": {
+        "activations": 5,
+        "alias_repaired": true,
+        "alias_restored": true,
+        "assistant_calls": 8,
+        "logical_calls": 16,
+        "network_attempts": 0,
+        "observation_calls": 8,
+        "outcome_events": [
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "cost_usd": 0.000225,
+            "input_tokens": 10,
+            "latency_ms": 20.863249897956848,
+            "output_tokens": 20,
+            "sequence": 1
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "cost_usd": 0.000225,
+            "input_tokens": 10,
+            "latency_ms": 1.2382082641124725,
+            "output_tokens": 20,
+            "sequence": 2
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "cost_usd": 0.000225,
+            "input_tokens": 10,
+            "latency_ms": 0.6025410257279873,
+            "output_tokens": 20,
+            "sequence": 3
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "cost_usd": 0.000225,
+            "input_tokens": 10,
+            "latency_ms": 0.922167208045721,
+            "output_tokens": 20,
+            "sequence": 4
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "cost_usd": 0.000225,
+            "input_tokens": 10,
+            "latency_ms": 0.681375153362751,
+            "output_tokens": 20,
+            "sequence": 5
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "cost_usd": 0.000225,
+            "input_tokens": 10,
+            "latency_ms": 1.3032499700784683,
+            "output_tokens": 20,
+            "sequence": 6
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "cost_usd": 0.000225,
+            "input_tokens": 10,
+            "latency_ms": 1.3404577039182186,
+            "output_tokens": 20,
+            "sequence": 7
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "cost_usd": 0.000225,
+            "input_tokens": 10,
+            "latency_ms": 1.0199998505413532,
+            "output_tokens": 20,
+            "sequence": 8
+          }
+        ],
+        "plan_events": [
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "input": {
+              "max_output_tokens": 256,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "plan_kind": "pass_through",
+            "rewritten": null,
+            "rules": [],
+            "sequence": 1
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "input": {
+              "max_output_tokens": 256,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "plan_kind": "pass_through",
+            "rewritten": null,
+            "rules": [],
+            "sequence": 2
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "input": {
+              "max_output_tokens": 256,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "plan_kind": "pass_through",
+            "rewritten": null,
+            "rules": [],
+            "sequence": 3
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "input": {
+              "max_output_tokens": 256,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "plan_kind": "rewritten",
+            "rewritten": {
+              "max_output_tokens": 64,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "rules": [
+              "OutputBudget"
+            ],
+            "sequence": 4
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "input": {
+              "max_output_tokens": 256,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "plan_kind": "rewritten",
+            "rewritten": {
+              "max_output_tokens": 64,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "rules": [
+              "OutputBudget"
+            ],
+            "sequence": 5
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "input": {
+              "max_output_tokens": 256,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "plan_kind": "rewritten",
+            "rewritten": {
+              "max_output_tokens": 64,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "rules": [
+              "OutputBudget"
+            ],
+            "sequence": 6
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "input": {
+              "max_output_tokens": 256,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "plan_kind": "rewritten",
+            "rewritten": {
+              "max_output_tokens": 64,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "rules": [
+              "OutputBudget"
+            ],
+            "sequence": 7
+          },
+          {
+            "call_site_id": "tau2.utils.llm_utils:generate:409",
+            "input": {
+              "max_output_tokens": 256,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "plan_kind": "rewritten",
+            "rewritten": {
+              "max_output_tokens": 64,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "rules": [
+              "OutputBudget"
+            ],
+            "sequence": 8
+          }
+        ],
+        "plan_kind_counts": {
+          "pass_through": 3,
+          "rewritten": 5
+        },
+        "planner_calls": 8,
+        "response_count": 16,
+        "response_digest": "ec409ae07e72e04510204ad2459af61640f8cbbba0a33fec14aae7b887c8b92d",
+        "response_digest_method": "sha256(role,content,tool_calls); volatile transport fields excluded",
+        "rule_activation_counts": {
+          "OutputBudget": 5
+        },
+        "scope_report": {
+          "eligible_calls": 8,
+          "excluded_calls": 8,
+          "schema_version": 1,
+          "scopes": [
+            {
+              "decision_reasons": {
+                "scope_eligible": 8
+              },
+              "eligible_calls": 8,
+              "excluded_calls": 0,
+              "name": "tau2.evaluated_assistant",
+              "scope_enabled": true,
+              "total_calls": 8
+            },
+            {
+              "decision_reasons": {
+                "scope_excluded": 8
+              },
+              "eligible_calls": 0,
+              "excluded_calls": 8,
+              "name": "tau2.user_simulator",
+              "scope_enabled": false,
+              "total_calls": 8
+            }
+          ],
+          "total_calls": 16
+        },
+        "scope_restored": true,
+        "scope_wrapped": true,
+        "spans": {
+          "count": 16,
+          "eligible": 8,
+          "excluded": 8,
+          "scope_counts": {
+            "tau2.evaluated_assistant": 8,
+            "tau2.user_simulator": 8
+          },
+          "status_counts": {
+            "OK": 16
+          }
+        },
+        "user_simulator_calls": 8
+      },
+      "runtime": {
+        "litellm_version": "1.81.11",
+        "platform": "macOS-26.5-arm64-arm-64bit",
+        "python": "3.12.9"
+      },
+      "schema_version": 1,
+      "settings": {
+        "enabled_rules": [
+          "OutputBudget"
+        ],
+        "hot_threshold": 3,
+        "max_output_tokens": 256,
+        "max_planning_overhead_ms": 1000,
+        "model": "gpt-4o",
+        "shadow_rate": 0,
+        "turns": 8
+      },
+      "upstream": {
+        "dirty_paths": [],
+        "distribution": "tau2",
+        "git_commit": "fc0055dc4e0a316c3f83133267fbd6faaa770992",
+        "git_exact_tag": "v1.0.1",
+        "version": "1.0.1"
+      },
+      "workload": "tau2"
+    },
+    {
+      "agentc": {
+        "git_commit": "5b1a4d8f6cd0ab2d29e51ea7bbc646e8b4c464d7",
+        "package_version": "0.1.0"
+      },
+      "created_at_utc": "2026-09-03T18:22:09.375162+00:00",
+      "experiment_kind": "litellm_workload_admission_preflight",
+      "interpretation_limits": [
+        "Valid only for workload call-shape, actor-scope, lifecycle, and native-planner admission.",
+        "Quality, provider latency, and billed cost are not measured.",
+        "LiteLLM mock_response supplies deterministic outputs and the socket guard forbids network access.",
+        "The model and raised planning-overhead threshold are activation controls, not frozen confirmatory settings.",
+        "The frozen MLSys workloads are non-streaming; LiteLLM streaming remains outside this preflight envelope."
+      ],
+      "mocked_provider": true,
+      "network_calls": 0,
+      "paper_evidence": false,
+      "result": {
+        "completion_patched": true,
+        "completion_restored": true,
+        "logical_calls": 1,
+        "network_attempts": 0,
+        "observation_calls": 1,
+        "outcome_events": [
+          {
+            "call_site_id": "sweagent.agent.models:_single_query:681",
+            "cost_usd": 0.000225,
+            "input_tokens": 10,
+            "latency_ms": 24.733833968639374,
+            "output_tokens": 20,
+            "sequence": 1
+          }
+        ],
+        "plan_events": [
+          {
+            "call_site_id": "sweagent.agent.models:_single_query:681",
+            "input": {
+              "max_output_tokens": null,
+              "message_count": 1,
+              "model": "gpt-4o"
+            },
+            "plan_kind": "pass_through",
+            "rewritten": null,
+            "rules": [],
+            "sequence": 1
+          }
+        ],
+        "planner_calls": 1,
+        "response_count": 1,
+        "response_digest": "5916abb9726a202fdd2a7309083f3f1c92bae9d59002076ce79117e25954054d",
+        "response_digest_method": "sha256(role,content,tool_calls); volatile transport fields excluded",
+        "scope_report": {
+          "eligible_calls": 1,
+          "excluded_calls": 0,
+          "schema_version": 1,
+          "scopes": [
+            {
+              "decision_reasons": {
+                "scope_eligible": 1
+              },
+              "eligible_calls": 1,
+              "excluded_calls": 0,
+              "name": "unscoped",
+              "scope_enabled": true,
+              "total_calls": 1
+            }
+          ],
+          "total_calls": 1
+        },
+        "spans": {
+          "count": 1,
+          "eligible": 1,
+          "excluded": 0,
+          "scope_counts": {
+            "unscoped": 1
+          },
+          "status_counts": {
+            "OK": 1
+          }
+        }
+      },
+      "runtime": {
+        "litellm_version": "1.99.0",
+        "platform": "macOS-26.5-arm64-arm-64bit",
+        "python": "3.12.9"
+      },
+      "schema_version": 1,
+      "settings": {
+        "enabled_rules": [
+          "OutputBudget"
+        ],
+        "hot_threshold": 3,
+        "max_output_tokens": 256,
+        "max_planning_overhead_ms": 1000,
+        "model": "gpt-4o",
+        "shadow_rate": 0,
+        "turns": 1
+      },
+      "upstream": {
+        "dirty_paths": [],
+        "distribution": "sweagent",
+        "git_commit": "0f3acafacabc0def8cc76b4e48acb4b6cf302cb9",
+        "git_exact_tag": "v1.1.0",
+        "version": "1.1.0"
+      },
+      "workload": "sweagent"
+    }
+  ]
+}

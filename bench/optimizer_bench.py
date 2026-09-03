@@ -33,6 +33,9 @@ from pathlib import Path
 from typing import Optional
 
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
 @dataclass
 class RunStats:
     """One-side (baseline or optimized) numbers."""
@@ -102,15 +105,55 @@ _PASS_FAIL_RE = re.compile(r"^(PASS|FAIL)\s+\S+", re.MULTILINE)
 _PASS_FAIL_TASK_RE = re.compile(r"^(PASS|FAIL)\s+(\S+)", re.MULTILINE)
 
 
+def _effective_env(
+    extra_env: Optional[dict[str, str]] = None,
+    *,
+    dotenv_path: Optional[Path] = None,
+) -> dict[str, str]:
+    """Build the exact environment inherited by benchmark children.
+
+    The reference agents load the repository ``.env`` themselves. Loading it
+    in the parent as well keeps provenance fields such as ``stub_mode`` aligned
+    with whether the child can make live calls. Explicit shell values win over
+    the file, and per-run overrides win over both.
+    """
+    env = os.environ.copy()
+    env_file = dotenv_path or (_REPO_ROOT / ".env")
+    if env_file.is_file():
+        for raw in env_file.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in env:
+                env[key] = value
+    if extra_env:
+        env.update(extra_env)
+    return env
+
+
+def _has_live_credentials(env: dict[str, str]) -> bool:
+    """Mirror the provider-key selection in ``bench.agents._runtime``."""
+    base_url = env.get("BENCH_OPENAI_BASE_URL", "").lower()
+    if "together" in base_url:
+        return bool(env.get("TOGETHER_API_KEY") or env.get("OPENAI_API_KEY"))
+    if "huggingface" in base_url or "hf.co" in base_url:
+        return bool(env.get("HF_TOKEN") or env.get("OPENAI_API_KEY"))
+    if "groq" in base_url:
+        return bool(env.get("GROQ_API_KEY") or env.get("OPENAI_API_KEY"))
+    return bool(env.get("OPENAI_API_KEY"))
+
+
 def _find_agentc_binary() -> str:
     """Locate the ``agentc`` CLI. Prefers ``$AGENTC_BIN``, then the
     dev-workspace build, then ``PATH``."""
     if env := os.environ.get("AGENTC_BIN"):
         return env
-    repo = Path(__file__).resolve().parent.parent
     for candidate in (
-        repo / "target" / "release" / "agentc",
-        repo / "target" / "debug" / "agentc",
+        _REPO_ROOT / "target" / "release" / "agentc",
+        _REPO_ROOT / "target" / "debug" / "agentc",
     ):
         if candidate.is_file():
             return str(candidate)
@@ -234,10 +277,8 @@ def _run_side(
     extra_env: Optional[dict[str, str]] = None,
 ) -> RunStats:
     storage_dir.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
+    env = _effective_env(extra_env)
     env["AGENTC_OPTIMIZE"] = "1" if optimize else "0"
-    if extra_env:
-        env.update(extra_env)
 
     agentc_bin = _find_agentc_binary()
     cmd = [
@@ -263,14 +304,13 @@ def _run_side(
     if proc.returncode != 0:
         sys.stderr.write(proc.stderr)
         raise RuntimeError(
-            f"agent {agent_module} failed "
-            f"(exit={proc.returncode}, optimize={optimize})"
+            f"agent {agent_module} failed (exit={proc.returncode}, optimize={optimize})"
         )
 
     n_total, n_passed = _parse_pass_fail(proc.stdout)
     per_task = _parse_per_task_pass_fail(proc.stdout)
     cost, wall, input_tokens = _aggregate_from_db(storage_dir / "traces.db")
-    stub_mode = not os.environ.get("OPENAI_API_KEY")
+    stub_mode = not _has_live_credentials(env)
     return RunStats(
         total_cost_usd=cost,
         wall_clock_s=wall,
@@ -340,9 +380,7 @@ def render_result(result: BenchResult) -> str:
     if result.shadow_divergence:
         lines.append("Shadow divergence (per rule):")
         for sd in result.shadow_divergence:
-            audit = (
-                f"{sd.audit_mean:.4f}" if sd.audit_mean is not None else "—"
-            )
+            audit = f"{sd.audit_mean:.4f}" if sd.audit_mean is not None else "—"
             lines.append(
                 f"  {sd.rule:<16}  n={sd.n_samples:<5d}  "
                 f"mean={sd.divergence_mean:.4f}  audit={audit}"

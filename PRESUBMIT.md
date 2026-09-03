@@ -4,6 +4,15 @@ This document is the submission gate for an MLSys-targeted Agentc paper. It is
 not the task tracker: mirror actionable work in `bd`, and use this file as the
 final checklist before submission.
 
+Target: **MLSys 2027 research track**. The paper deadline is **2026-10-30 at
+20:00 UTC**. Submissions are double blind, use the
+[MLSys 2025 style](https://media.mlsys.org/Conferences/MLSYS2025/mlsys2025style.zip),
+and allow ten content pages excluding references; an appendix is uploaded
+separately and is not required reading. Artifact evaluation is voluntary and
+does not affect the paper decision. See the official
+[call for papers](https://mlsys.org/Conferences/2027/CallForResearchPapers) and
+[dates](https://mlsys.org/Conferences/2027/Dates).
+
 ## Decision Rule
 
 Submit only when every P0 gate is marked pass or explicitly waived by the
@@ -23,7 +32,7 @@ Status labels:
 
 | Gate | Required outcome | Status |
 |---|---|---|
-| Target CFP verified | Confirm the target MLSys year, deadline, page limit, anonymity policy, artifact policy, and required template from the official CFP. | `OPEN` |
+| Target CFP verified | MLSys 2027 research track: deadline 2026-10-30 20:00 UTC; double blind; ten content pages excluding references; separate optional appendix; voluntary artifact evaluation; MLSys 2025 style. | `PASS` |
 | Manuscript compiles | `main.tex` or the final submission source compiles cleanly with all figures, tables, bibliography, and references resolved. | `OPEN` |
 | Bibliography present | Add and verify the tracked BibTeX file required by `\bibliography{references}`. No submission build may rely on local-only bibliography files. | `OPEN` |
 | No draft scaffolding | Remove the `DROPIN-INDEX`, temporary comments, stale TODOs, and any author-facing notes from the submitted manuscript. | `OPEN` |

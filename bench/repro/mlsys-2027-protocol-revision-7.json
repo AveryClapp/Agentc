@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "record_kind": "prospective_protocol_revision",
+  "protocol_id": "agentc-mlsys2027-v1",
+  "split_namespace": "agentc-mlsys2027-v1",
+  "revision": 7,
+  "parent_revision": 6,
+  "created_at_utc": "2026-09-03T20:22:30Z",
+  "effective_before_stage": "E1",
+  "runtime_baseline": "d920357",
+  "protocol_document": {
+    "path": "bench/repro/mlsys-2027-evaluation-protocol.md",
+    "parent_sha256": "5f3a6aa7434bec7f42cd16fa3566ebe6c24d2369da086ab07996fb7c0022a611",
+    "revision_7_sha256": "0bf933c292be204d9a9818ae2e05d2f7e14997ffc8355c0b1950971226e20c78"
+  },
+  "information_state": {
+    "stage_e0_executed": true,
+    "stage_e1_executed": false,
+    "stage_c_executed": false,
+    "stage_p_executed": false,
+    "stage_t_executed": false,
+    "pilot_outcomes_inspected": false,
+    "confirmatory_outcomes_inspected": false,
+    "calibration_data_invalidated": false,
+    "reason_calibration_not_invalidated": "No Stage C run existed. The implementation and verification used native-boundary unit and lifecycle tests, deterministic synthetic invalid inputs, and mocked no-network checks permanently labeled paper_evidence=false."
+  },
+  "changes": [
+    {
+      "id": "r7-guard-input-domain",
+      "category": "safety_controller_input_validation",
+      "beads": [
+        "bd-h7k9"
+      ],
+      "before": "The native guard accepted NaN, infinities, negative divergence, and values above one. Python divergence was narrowed from f64 to f32 before the budget saw it, and environment thresholds were parsed directly as f32, so slightly out-of-range values could round back into the accepted domain.",
+      "after": "Divergence and threshold inputs must be finite fractions in inclusive [0,1]. Python divergence and environment thresholds are validated as f64 before narrowing to f32. An invalid divergence is discarded before any state mutation; an invalid environment override falls through to the validated rule budget and then to 0.05.",
+      "runtime_commit": "d9203575cd4afd9e904d00956dc337df632db653",
+      "contract_sync_commit": "d9203575cd4afd9e904d00956dc337df632db653",
+      "evidence_commit": "29a53c3fdfc26a8a2f92a35434e3bcbfc7276f41",
+      "evidence": "bench/repro/guard-input-validation-preflight-2026-09-03.json",
+      "evidence_sha256": "18df559a42fb291a5be215a3d8b88da20c90ffa0eee6f0fb970adf0ae9bc1bad",
+      "fallback_contract": "Invalid AGENTC_SHADOW_DIVERGENCE_BUDGET -> valid firing-rule accuracy_budget -> 0.05.",
+      "stage_c_status": "bd-h7k9 retired; bd-jq6c, bd-shi1.4, bd-nggo, bd-rm0w, and bd-z5zj remain open"
+    }
+  ],
+  "e0_evidence_summary": {
+    "artifact": "bench/repro/guard-input-validation-preflight-2026-09-03.json",
+    "sha256": "18df559a42fb291a5be215a3d8b88da20c90ffa0eee6f0fb970adf0ae9bc1bad",
+    "paper_evidence": false,
+    "network_calls": 0,
+    "release_repetitions": 5,
+    "all_normalized_results_equal": true,
+    "normalized_result_sha256": "763ae4f4bb1b7253cf50d5803739e9fe24c0483fa58573d77b39fdc69b89b78e",
+    "invalid_divergence": {
+      "classes": [
+        "non_finite",
+        "negative",
+        "above_one",
+        "narrowing_sensitive"
+      ],
+      "created_state": false,
+      "mutated_existing_state": false
+    },
+    "invalid_environment_threshold": {
+      "classes": [
+        "non_finite",
+        "negative",
+        "above_one",
+        "narrowing_sensitive"
+      ],
+      "selected_fallback_rule_budget": 0.01,
+      "samples_to_disable": 5,
+      "disable_reason": "shadow_divergence"
+    },
+    "frozen_integration_regression": {
+      "tau2_plan_counts": {
+        "pass_through": 3,
+        "rewritten": 5
+      },
+      "tau2_response_digest": "ec409ae07e72e04510204ad2459af61640f8cbbba0a33fec14aae7b887c8b92d",
+      "sweagent_plan_counts": {
+        "pass_through": 1
+      },
+      "sweagent_response_digest": "5916abb9726a202fdd2a7309083f3f1c92bae9d59002076ce79117e25954054d",
+      "semantic_fields_equal_to_revision_6_runtime_runs": true
+    }
+  },
+  "unchanged_frozen_items": [
+    "claim_under_test",
+    "upstream_workload_revisions_and_input_digests",
+    "task_split_namespace_membership_and_counts",
+    "model_and_provider_pool",
+    "primary_and_secondary_arms",
+    "primary_outcomes",
+    "non_inferiority_margins",
+    "statistical_tests_and_multiplicity_control",
+    "guard_rate_grid_and_damage_contract",
+    "retry_exclusion_and_stopping_rules",
+    "pilot_and_october_1_go_no_go_gates",
+    "artifact_contract"
+  ],
+  "split_invariants": {
+    "tau2-banking-knowledge": {
+      "counts_calibration_pilot_confirmatory": [
+        20,
+        20,
+        57
+      ],
+      "ordered_id_digest": "915b4717167618cf6d2da855450fe7cb5143a7c4be710e7baed5d80d898c417b"
+    },
+    "swebench-verified": {
+      "counts_calibration_pilot_confirmatory": [
+        30,
+        30,
+        90
+      ],
+      "not_selected": 350,
+      "ordered_id_digest": "5f649dc4518274c7a605cce1a5dcbf451eb1e14cba30a6dc2a032b84731ca9e4"
+    },
+    "osworld-v2": {
+      "counts_calibration_pilot_confirmatory": [
+        22,
+        22,
+        64
+      ],
+      "ordered_id_digest": "ec2798cd66968cf6735af9e4b5deafca38c006532df96fa0c3d6d9f08c273556"
+    }
+  },
+  "closed_e0_blockers_added": [
+    "bd-h7k9"
+  ],
+  "closed_supporting_defects": [],
+  "unchanged_open_guard_blockers": [
+    "bd-jq6c",
+    "bd-shi1.4",
+    "bd-nggo",
+    "bd-rm0w",
+    "bd-z5zj"
+  ],
+  "unchanged_scoped_claim_limitations": [
+    "bd-ez1k"
+  ],
+  "non_protocol_gate_followups": [
+    {
+      "bead": "bd-mt1q",
+      "scope": "documented uv pytest invocation can escape the project interpreter when dev extras are absent"
+    },
+    {
+      "bead": "bd-od6v",
+      "scope": "repository-wide Ruff debt outside this change"
+    },
+    {
+      "bead": "bd-qc7d",
+      "scope": "repository-wide MyPy debt outside this change"
+    },
+    {
+      "bead": "bd-t3ne",
+      "scope": "repository-wide Rust formatting drift outside this change"
+    }
+  ],
+  "outcome_blindness_assertion": "Revision 7 was triggered and verified entirely by source inspection, unit and lifecycle regression tests, deterministic synthetic malformed inputs, and mocked no-network Stage E0 workload checks. No admission, calibration, pilot, or confirmatory task outcome informed the change."
+}

@@ -1,24 +1,27 @@
 # Agentc MLSys 2027 staged evaluation protocol
 
 - Protocol: `agentc-mlsys2027-v1`
-- Revision: 6
+- Revision: 7
 - Initial freeze: 2026-09-03
 - Revision 2 freeze: 2026-09-03
 - Revision 3 freeze: 2026-09-03
 - Revision 4 freeze: 2026-09-03
 - Revision 5 freeze: 2026-09-03
 - Revision 6 freeze: 2026-09-03
+- Revision 7 freeze: 2026-09-03
 - Revision 2 record: [mlsys-2027-protocol-revision-2.json](mlsys-2027-protocol-revision-2.json)
 - Revision 3 record: [mlsys-2027-protocol-revision-3.json](mlsys-2027-protocol-revision-3.json)
 - Revision 4 record: [mlsys-2027-protocol-revision-4.json](mlsys-2027-protocol-revision-4.json)
 - Revision 5 record: [mlsys-2027-protocol-revision-5.json](mlsys-2027-protocol-revision-5.json)
 - Revision 6 record: [mlsys-2027-protocol-revision-6.json](mlsys-2027-protocol-revision-6.json)
+- Revision 7 record: [mlsys-2027-protocol-revision-7.json](mlsys-2027-protocol-revision-7.json)
 - Runtime baseline before this protocol: `4250a01`
 - Revision 2 runtime baseline: `27f896f`
 - Revision 3 runtime baseline: `6339d79`
 - Revision 4 runtime baseline: `f352f78`
 - Revision 5 runtime baseline: `91e864c`
 - Revision 6 runtime baseline: `f9a8f04`
+- Revision 7 runtime baseline: `d920357`
 - Target decision date: 2026-10-01
 - Target venue deadline: 2026-10-30 20:00 UTC
 
@@ -50,7 +53,11 @@ Stage E0, before any Stage E1, C, P, or T execution or outcome inspection.
 Revision 6 was issued after per-rule divergence statistics and the consecutive-
 breach controller state were made restart-persistent and verified during Stage
 E0, before any Stage E1, C, P, or T execution or outcome inspection.
-Revisions 2 through 6 do not change the `agentc-mlsys2027-v1` split namespace,
+
+Revision 7 was issued after the native guard boundary was hardened against
+non-finite and out-of-range divergence samples and threshold overrides during
+Stage E0, before any Stage E1, C, P, or T execution or outcome inspection.
+Revisions 2 through 7 do not change the `agentc-mlsys2027-v1` split namespace,
 task membership, workloads, models, arms, outcomes, margins, inference,
 stopping rules, or gates. Their machine-readable revision records enumerate
 every runtime-contract change and the engineering evidence that triggered it.
@@ -338,6 +345,22 @@ and observation counts. This retires only the persistence blocker `bd-shi1.5`;
 it does not establish the production 2% guard operating point, damage budget,
 drift response, or paper evidence.
 
+Revision 7 constrains every divergence sample and threshold to a finite
+fraction in `[0,1]`. The native boundary validates a Python `f64` divergence
+before narrowing it to the guard's `f32` storage type and discards an invalid
+sample without creating or mutating guard state. The environment threshold is
+also parsed and validated as `f64`; an invalid override falls through to the
+firing rule's validated accuracy budget and then to `0.05` if needed. This
+prevents slightly negative or above-one values from rounding back into range.
+
+Five release-mode, zero-network Stage E0 repetitions rejected non-finite,
+ordinary out-of-range, and narrowing-sensitive divergence values, and showed
+that the same invalid threshold classes selected `OutputBudget`'s `0.01`
+fallback. Frozen tau2 and SWE-agent reruns preserved plan sequences, response
+digests, scopes, and observation counts. This retires only `bd-h7k9`; it does
+not establish controller calibration, a damage bound, drift response, or paper
+evidence.
+
 The main benefit claim is restricted to `ContextCompress`, `ModelDowngrade`,
 `OutputBudget`, and exact `CacheHit`. `StateDrop` is a safety-stress mechanism
 and becomes a benefit-eligible rule only if structure is inferred by a general
@@ -576,6 +599,10 @@ not the damage contract. The cumulative estimator is not yet drift-bounded, and
 its detection/false-disable frontier and durable-write overhead remain open
 before Stage C.
 
+Revision 7 verifies that malformed numeric inputs cannot poison or bypass the
+persisted guard state. It does not improve the five-breach controller's
+detection delay, false-disable rate, drift behavior, or cumulative damage.
+
 ## 12. Retry, exclusion, and stopping rules
 
 - Provider 429/5xx/network failures use the frozen upstream retry policy. Count
@@ -671,7 +698,6 @@ No Stage C, P, or T result is admissible while its relevant blocker is open.
 | `bd-o2qj` | pricing, dataset pin, and fixture-count integrity defects remain. |
 | `bd-jq6c`, `bd-shi1.4` | 2% guard behavior, harmful-site detection, and false disables are not yet established. |
 | `bd-nggo` | persisted divergence is cumulative rather than drift-bounded; provider/workload drift can retain stale guard evidence. |
-| `bd-h7k9` | non-finite divergence samples or thresholds can poison or bypass guard state. |
 | `bd-rm0w` | per-shadow-sample durable-write overhead and cost-DB mutex contention are not quantified. |
 | `bd-z5zj` | same-process Python and bundled-Rust SQLite ownership remains unaudited beyond the separate-process E0 probe boundary. |
 | `bd-bjs` | clean-clone fixture/bootstrap path is incomplete. |
@@ -730,5 +756,16 @@ on restart, and preserves the resulting 24-hour disable across a second
 restart. Five release repetitions produced identical normalized state and plan
 sequences; frozen tau2 and SWE-agent reruns preserved their earlier semantics.
 The 2% controller frontier, drift-bounded estimation, non-finite input
-hardening, and durable-write overhead remain explicit blockers. The evidence is
+hardening, and durable-write overhead remain explicit blockers at revision 6.
+The evidence is
 [guard-persistence-preflight-2026-09-03.json](guard-persistence-preflight-2026-09-03.json).
+
+Revision 7 retires `bd-h7k9` at Stage E0 without admitting a workload at Stage
+E1. Invalid divergence samples now leave both fresh and existing guard state
+unchanged, and invalid environment thresholds fall back to the rule budget
+after validation at `f64` precision. Five release repetitions produced
+identical normalized results; frozen tau2 and SWE-agent reruns preserved their
+previous plan sequences, response digests, scopes, and observation counts. The
+controller frontier, damage contract, drift-bounded estimator, and durable-
+write overhead remain explicit blockers. The evidence is
+[guard-input-validation-preflight-2026-09-03.json](guard-input-validation-preflight-2026-09-03.json).

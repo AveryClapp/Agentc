@@ -62,6 +62,7 @@ def test_offline_env_overrides_live_provider_configuration(tmp_path: Path) -> No
     assert env["TOGETHER_API_KEY"] == ""
     assert env["BENCH_OPENAI_BASE_URL"] == ""
     assert env["AGENTC_OPTIMIZE"] == "1"
+    assert env["AGENTC_OPTIMIZE_MAX_OVERHEAD_MS"] == "1000"
     assert env["AGENTC_OPTIMIZE_SHADOW"] == "0"
     assert env["BENCH_MAX_TASKS"] == "8"
 

@@ -41,6 +41,7 @@ _FIXTURES_ROOT = _REPO_ROOT / "bench" / "fixtures"
 _RESULT_SENTINEL = "AGENTC_ACTIVATION_PREFLIGHT_RESULT="
 _CONTEXT_COMPRESS_MIN_PROMPT_BYTES = 8 * 1024
 _CONTEXT_COMPRESS_MIN_DEAD_FRACTION = 0.30
+_PREFLIGHT_MAX_OVERHEAD_MS = 1000
 
 
 @dataclass(frozen=True)
@@ -402,6 +403,7 @@ def _offline_env(
             "AGENTC_CAPTURE_EMBEDDINGS": "0",
             "AGENTC_OPTIMIZE": "1",
             "AGENTC_OPTIMIZE_HOT_THRESHOLD": str(hot_threshold),
+            "AGENTC_OPTIMIZE_MAX_OVERHEAD_MS": str(_PREFLIGHT_MAX_OVERHEAD_MS),
             "AGENTC_OPTIMIZE_SHADOW": "0",
             "AGENTC_COMPOSE": "1",
             "BENCH_MAX_TASKS": str(tasks),
@@ -591,6 +593,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         "interpretation_limits": [
             "Valid only for optimizer wiring and request-shape screening.",
             "Quality, latency, billed cost, token counts, and model outputs are synthetic.",
+            "The planning-overhead kill switch is raised; this run cannot measure optimizer overhead.",
             "OutputBudget, ModelDowngrade, cache behavior, and downstream prompts may depend on mocked outputs.",
             "A rule firing here is a candidate for live evaluation, not evidence of safe savings.",
         ],
@@ -598,6 +601,7 @@ def _run_parent(args: argparse.Namespace) -> int:
             "tasks_per_workload": args.tasks,
             "model": args.model,
             "hot_threshold": args.hot_threshold,
+            "max_planning_overhead_ms": _PREFLIGHT_MAX_OVERHEAD_MS,
             "composition": True,
             "shadow_rate": 0.0,
             "capture_content": False,

@@ -197,7 +197,7 @@ enabled = true
 hot_threshold = 3                   # Invocations before a call site is eligible.
 cost_model_window = 50              # Rolling window for cost model fitting.
 divergence_window = 50              # Retained shadow samples per site/rule.
-plan_profile_window = 50             # Retained outcomes per site-version/plan.
+plan_profile_window = 50             # Retained executions and, separately, paired divergences.
 min_plan_evidence = 20               # Paired samples before admission.
 plan_profile_freshness_hours = 24
 max_overhead_ms = 5                 # Abort optimization if budget exceeded.
@@ -242,7 +242,7 @@ Environment overrides:
 | `AGENTC_OPTIMIZE_HOT_THRESHOLD=10` | Overrides `hot_threshold`. |
 | `AGENTC_OPTIMIZE_COST_MODEL_WINDOW=50` | Sets the exact retained sample count per cost profile. |
 | `AGENTC_OPTIMIZE_DIVERGENCE_WINDOW=50` | Sets the exact retained divergence samples per call-site/rule pair. |
-| `AGENTC_OPTIMIZE_PLAN_PROFILE_WINDOW=50` | Sets the exact retained outcomes per call-site-version/plan pair. |
+| `AGENTC_OPTIMIZE_PLAN_PROFILE_WINDOW=50` | Sets both independent exact windows: execution outcomes and paired divergences per call-site-version/plan pair. |
 | `AGENTC_OPTIMIZE_MIN_PLAN_EVIDENCE=20` | Sets the paired evidence floor for a non-reference plan. |
 | `AGENTC_OPTIMIZE_OBJECTIVE=cost` | Selects `cost` or `latency` minimization. |
 | `AGENTC_OPTIMIZE_MAX_OVERHEAD_MS=5` | Sets the plan kill-switch budget. |
@@ -345,15 +345,14 @@ def optimize_plan(call_json: str) -> str:
     Output: JSON-serialized Plan. "pass_through" for cold or no-fire cases.
     """
 
-def optimize_observe(plan_json: str, outcome_json: str) -> None:
+def optimize_observe(plan_json: str, outcome_json: str) -> str:
     """
     Feeds the cost model with the measured outcome of a plan.
+    Returns an opaque token binding the plan, runtime version, and observation.
     """
 
-def optimize_record_divergence(
-    call_site_version: str, execution_plan_id: str, divergence: float
-) -> None:
-    """Feed one sampled counterfactual into the complete-plan guard."""
+def optimize_record_divergence(observation_token: str, divergence: float) -> None:
+    """Attach one sampled counterfactual to its exact observed plan execution."""
 
 def optimize_flush() -> None:
     """Flush buffered cost-profile and guard-divergence state."""
@@ -477,38 +476,59 @@ Decision-critical evidence lives in a separate bounded profile keyed by
 
 ```rust
 pub struct PlanProfile {
-    pub call_site_version: CallSiteVersion,
-    pub execution_plan_id: ExecutionPlanId,
-    pub n_observations: u64,
+    pub key: PlanProfileKey,             // CallSiteVersion × ExecutionPlanId
+    pub n_observations: u64,              // lifetime reporting count
+    pub n_paired_observations: u64,       // lifetime reporting count
     pub window_observations: u32,
     pub paired_observations: u32,
     pub input_tokens: WelfordStats,
     pub output_tokens: WelfordStats,
     pub latency_ms: WelfordStats,
     pub cost_usd: WelfordStats,
-    pub divergence_samples: VecDeque<f32>,
-    pub provider_protocol: String,
-    pub target_model_id: String,
-    pub target_model_version: String,
+    pub output_token_p95: f64,
+    pub output_token_p99: f64,
+    pub output_is_structured: f64,
+    pub output_is_short: f64,
+    pub divergence_upper_p95: Option<f64>,
+    pub dispatch_fallback_rate: f64,
+    pub runtime_version: PlanRuntimeVersion,
     pub updated_at_us: i64,
+    pub last_paired_at_us: Option<i64>,
 }
 ```
 
-`WelfordStats` is the numerically stable mean/variance summary. Both stores
-retain exact newest-N samples and recompute each summary
-from that bounded set, including nearest-rank p95 and p99. `CostModel::get`
+`PlanProfiles::observe` returns a `PlanObservationToken` that binds the profile
+key, current runtime version, and execution sequence. The asynchronous shadow
+path must present that token to `record_divergence`; the store rejects a stale
+runtime binding, an impossible sequence, a duplicate with conflicting value,
+or a token for an unknown profile. Replaying the same comparison is idempotent.
+
+`WelfordStats` is the numerically stable mean/variance summary. A plan profile
+retains two independent exact newest-N windows: execution outcomes for cost,
+latency, output shape, and fallback; and paired comparisons for the one-sided
+conformal divergence upper quantile. At a 2% shadow rate, unpaired executions
+therefore cannot evict paired evidence before the 20-pair admission floor is
+reachable. Each summary is recomputed from its corresponding bounded set,
+including nearest-rank output-token p95 and p99. `CostModel::get`
 clones the summary while sharing the retained samples through `Arc`; planning
 therefore does not copy the window. The profiles are **empirical, not
 predictive**: an observation updates only the complete plan that actually ran.
 A routing-only profile and rewrite-only profile cannot authorize their
 combination.
 
+`PlanProfiles::get` requires the current provider protocol, target model,
+resolved target-model version, and price-table version. A mismatch returns no
+decision profile. Recording the first observation under a changed runtime
+version clears both retained windows before adding that observation while keeping
+the lifetime reporting counts. A price-table change also starts cold because the
+runtime does not silently reprice historical billed-cost samples.
+
 The cost model and plan profiles persist in `cost_model.db` (sibling of `traces.db`) with an
 in-memory cache warmed at optimizer start. `optimize_observe` updates the
 matching in-memory plan window synchronously after the provider response. The native runtime
 flushes dirty profiles every 16 observations, on explicit `optimize_flush`, and
-before lifecycle reset. Each SQLite transaction writes the summary and its
-exact retained samples together.
+before lifecycle reset. Each SQLite transaction writes the summary and both
+exact retained windows together.
 
 Rule-level projections remain candidate-generation hints:
 
@@ -699,39 +719,67 @@ CREATE TABLE IF NOT EXISTS call_site_observation (
 CREATE TABLE IF NOT EXISTS execution_plan_profile (
     call_site_version       TEXT NOT NULL,
     execution_plan_id       TEXT NOT NULL,
-    n_observations          INTEGER NOT NULL,
-    window_observations     INTEGER NOT NULL,
-    paired_observations     INTEGER NOT NULL,
-    input_tokens_mean       REAL NOT NULL,
-    output_tokens_mean      REAL NOT NULL,
-    latency_ms_mean         REAL NOT NULL,
-    cost_usd_mean           REAL NOT NULL,
-    divergence_upper_p95    REAL,
+    n_observations          INTEGER NOT NULL CHECK (n_observations >= 0),
+    n_paired_observations   INTEGER NOT NULL CHECK (n_paired_observations >= 0),
+    window_observations     INTEGER NOT NULL CHECK (window_observations >= 0),
+    paired_observations     INTEGER NOT NULL CHECK (paired_observations >= 0),
+    input_tokens_mean       REAL NOT NULL CHECK (input_tokens_mean >= 0.0),
+    input_tokens_var        REAL NOT NULL CHECK (input_tokens_var >= 0.0),
+    output_tokens_mean      REAL NOT NULL CHECK (output_tokens_mean >= 0.0),
+    output_tokens_var       REAL NOT NULL CHECK (output_tokens_var >= 0.0),
+    latency_ms_mean         REAL NOT NULL CHECK (latency_ms_mean >= 0.0),
+    latency_ms_var          REAL NOT NULL CHECK (latency_ms_var >= 0.0),
+    cost_usd_mean           REAL NOT NULL CHECK (cost_usd_mean >= 0.0),
+    cost_usd_var            REAL NOT NULL CHECK (cost_usd_var >= 0.0),
+    output_token_p95        REAL NOT NULL CHECK (output_token_p95 >= 0.0),
+    output_token_p99        REAL NOT NULL CHECK (output_token_p99 >= 0.0),
+    output_is_structured    REAL NOT NULL CHECK (output_is_structured BETWEEN 0.0 AND 1.0),
+    output_is_short         REAL NOT NULL CHECK (output_is_short BETWEEN 0.0 AND 1.0),
+    divergence_upper_p95    REAL CHECK (
+        divergence_upper_p95 IS NULL OR divergence_upper_p95 BETWEEN 0.0 AND 1.0
+    ),
+    dispatch_fallback_rate  REAL NOT NULL CHECK (dispatch_fallback_rate BETWEEN 0.0 AND 1.0),
     provider_protocol       TEXT NOT NULL,
     target_model_id         TEXT NOT NULL,
     target_model_version    TEXT NOT NULL,
-    updated_at              INTEGER NOT NULL,
+    price_table_version     TEXT NOT NULL,
+    updated_at              INTEGER NOT NULL CHECK (updated_at >= 0),
+    last_paired_at          INTEGER CHECK (last_paired_at IS NULL OR last_paired_at >= 0),
     PRIMARY KEY (call_site_version, execution_plan_id)
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS execution_plan_observation (
     call_site_version       TEXT NOT NULL,
     execution_plan_id       TEXT NOT NULL,
-    sample_sequence         INTEGER NOT NULL,
-    input_tokens            INTEGER NOT NULL,
-    output_tokens           INTEGER NOT NULL,
-    latency_ms              REAL NOT NULL,
-    cost_usd                REAL NOT NULL,
-    divergence              REAL CHECK (
-        divergence IS NULL OR (divergence >= 0.0 AND divergence <= 1.0)
-    ),
+    sample_sequence         INTEGER NOT NULL CHECK (sample_sequence > 0),
+    input_tokens            INTEGER NOT NULL CHECK (input_tokens >= 0),
+    output_tokens           INTEGER NOT NULL CHECK (output_tokens >= 0),
+    latency_ms              REAL NOT NULL CHECK (latency_ms >= 0.0),
+    cost_usd                REAL NOT NULL CHECK (cost_usd >= 0.0),
+    output_is_structured    INTEGER NOT NULL CHECK (output_is_structured IN (0, 1)),
+    output_is_short         INTEGER NOT NULL CHECK (output_is_short IN (0, 1)),
     dispatch_fallback       INTEGER NOT NULL CHECK (dispatch_fallback IN (0, 1)),
     provider_protocol       TEXT NOT NULL,
     target_model_id         TEXT NOT NULL,
     target_model_version    TEXT NOT NULL,
     price_table_version     TEXT NOT NULL,
-    observed_at             INTEGER NOT NULL,
+    observed_at             INTEGER NOT NULL CHECK (observed_at >= 0),
     PRIMARY KEY (call_site_version, execution_plan_id, sample_sequence)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_divergence_observation (
+    call_site_version          TEXT NOT NULL,
+    execution_plan_id          TEXT NOT NULL,
+    sample_sequence            INTEGER NOT NULL CHECK (sample_sequence > 0),
+    plan_observation_sequence  INTEGER NOT NULL CHECK (plan_observation_sequence > 0),
+    divergence                 REAL NOT NULL CHECK (divergence BETWEEN 0.0 AND 1.0),
+    provider_protocol          TEXT NOT NULL,
+    target_model_id            TEXT NOT NULL,
+    target_model_version       TEXT NOT NULL,
+    price_table_version        TEXT NOT NULL,
+    observed_at                INTEGER NOT NULL CHECK (observed_at >= 0),
+    PRIMARY KEY (call_site_version, execution_plan_id, sample_sequence),
+    UNIQUE (call_site_version, execution_plan_id, plan_observation_sequence)
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS execution_plan_disabled (
@@ -739,8 +787,8 @@ CREATE TABLE IF NOT EXISTS execution_plan_disabled (
     execution_plan_id       TEXT NOT NULL,
     reason                  TEXT NOT NULL,
     exposure                REAL NOT NULL CHECK (exposure >= 0.0),
-    disabled_at             INTEGER NOT NULL,
-    reenable_at             INTEGER NOT NULL,
+    disabled_at             INTEGER NOT NULL CHECK (disabled_at >= 0),
+    reenable_at             INTEGER NOT NULL CHECK (reenable_at >= disabled_at),
     PRIMARY KEY (call_site_version, execution_plan_id)
 ) STRICT, WITHOUT ROWID;
 
@@ -811,7 +859,7 @@ migration preserves its lifetime count, zeros its window statistics, and
 retains any already-persisted breach streak. Changing either configured window
 to a smaller value truncates and persists the newest samples at startup.
 
-The joint planner adds the three `execution_plan_*` tables above without
+The joint planner adds the four `execution_plan_*` tables above without
 promoting legacy `call_site_profile`, `rule_divergence`, or `rule_set_stats`
 rows into plan evidence. Those rows remain reporting and baseline state. Every
 new complete plan starts cold because the old schema cannot identify the target,
@@ -831,6 +879,8 @@ crates/
 │   │   ├── lib.rs
 │   │   ├── planner.rs               # Optimizer::plan entry point
 │   │   ├── cost_model.rs            # CallSiteProfile, WelfordStats
+│   │   ├── execution_plan.rs         # Canonical plan identity + selector
+│   │   ├── plan_profile.rs           # Exact complete-plan evidence windows
 │   │   ├── dag.rs                   # Call, DepSource, DAG context queries
 │   │   ├── budget.rs                # Accuracy budget enforcement
 │   │   ├── shadow.rs                # Shadow-mode sampling + divergence
@@ -909,6 +959,11 @@ A user's LLM call never fails because the optimizer failed.
   profile's copy-on-write sample window, recomputes its statistics, and records
   a monotonically increasing dirty generation. An older flush clears a dirty
   marker only when its captured generation is still current.
+- **Plan-profile updates lock one exact plan entry.** A runtime-version change
+  clears that entry's retained execution and paired-divergence windows before
+  the new sample is added. A flush snapshots dirty generations and atomically
+  replaces each summary and both retained windows; a post-snapshot execution
+  or paired comparison remains dirty.
 - **SQLite cost-model flushes are serialized** by the native profiler's cost-DB
   mutex. Each transaction replaces the exact retained samples and summary for
   every captured dirty site.
@@ -999,7 +1054,15 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Canonical plan identity includes target, ordered rewrites, versions, parameters, and validation policy | `execution_plan::tests::canonical_identity_*` |
 | Cost and latency objectives select the best admissible complete plan | `execution_plan::tests::selects_*` |
 | Missing, non-finite, stale, under-evidenced, or non-positive candidates abstain | `execution_plan::tests::rejects_*` |
-| Routing-only and rewrite-only evidence cannot admit their joint plan | `plan_profile::tests::complete_plan_evidence_is_not_synthesized` |
+| Reference, routing-only, rewrite-only, and joint evidence stay isolated | `plan_profile::tests::complete_plan_evidence_is_not_synthesized` |
+| Complete-plan windows survive restart and continue exact eviction | `plan_profile::tests::exact_window_survives_restart_and_continues_eviction` |
+| A 2% shadow rate can retain the 20-pair floor independently of 1,000 executions | `plan_profile::tests::paired_window_remains_usable_at_two_percent_sampling` |
+| Asynchronous pairing is idempotent and does not duplicate execution cost | `plan_profile::tests::asynchronous_pairing_is_idempotent_and_does_not_duplicate_cost` |
+| Observation tokens round-trip and reject wrong runtime or sequence bindings | `plan_profile::tests::observation_token_round_trips_and_rejects_wrong_binding` |
+| Smaller configured complete-plan windows persist at startup | `plan_profile::tests::smaller_window_is_marked_dirty_and_persisted` |
+| Provider-model version changes cold-start before samples can mix | `plan_profile::tests::changed_model_version_cold_starts_before_mixing_samples` |
+| Prompt-shape changes use a cold call-site-version key | `plan_profile::tests::changed_prompt_shape_uses_a_cold_key` |
+| Concurrent post-snapshot plan observations remain dirty | `plan_profile::tests::concurrent_post_snapshot_observation_remains_dirty` |
 | A harmful composed interaction updates only its complete-plan guard | `plan_guard::tests::composed_sample_has_single_causal_identity` |
 | A failed selected target retries the exact original request once | `tests/test_optimizer_glue.py::test_routed_failure_replays_exact_original` |
 
@@ -1069,6 +1132,8 @@ counterfactual cost.
 The optimizer crate reaches `status: active` when:
 
 - All correctness tests pass.
+- At the frozen 2% shadow rate, 1,000 executions retain 20 independently
+  persisted paired observations while the execution window remains capped at 50.
 - Joint planning beats routing-only and rewrite-only in at least two frozen
   workload/model cells without crossing the predeclared quality margin.
 - Joint planning beats independently routed-then-rewritten execution on at
@@ -1098,10 +1163,14 @@ A compressed-and-routed request can fail even when each decision is benign alone
 ### Empirical complete-plan profiles, not a learned predictor
 
 Retain the exact newest observations per call-site version and complete
-execution plan, and derive cost, latency, output-shape, and divergence summaries
-from that set. This makes drift response deterministic across process restarts
-while keeping the default state bounded to 50 samples per plan. The call-site
-aggregate remains reporting-only. **Rejected: unbounded Welford aggregates.**
+execution plan, and derive cost, latency, and output-shape summaries from that
+set. Retain the exact newest paired comparisons in a second window and derive
+divergence only from that set. This makes drift response deterministic across
+process restarts, allows sparse shadow evidence to accumulate, and keeps the
+default state bounded to 50 samples of each kind per plan. The call-site
+aggregate remains reporting-only. **Rejected: one shared plan window.** At the
+default 2% shadow rate, a 50-execution window retains about one paired sample and
+cannot reach the 20-pair admission floor. **Rejected: unbounded Welford aggregates.**
 They cannot age out provider or workload drift or recover exact quantiles.
 **Rejected: mergeable exponential decay.** It makes the configured horizon
 approximate and complicates replay. **Rejected: a learned predictor before an

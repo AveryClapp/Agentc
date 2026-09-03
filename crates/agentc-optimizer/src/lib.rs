@@ -7,6 +7,8 @@
 //! - O3–O5 — the nine rewrite rules (`rules`), shadow-mode sampling
 //!   (`shadow`), the accuracy-budget machine (`budget`), and default-on
 //!   multi-rule composition (`composition`).
+//! - Joint-planning foundation — canonical execution plans and bounded,
+//!   versioned complete-plan profiles.
 
 pub mod audit;
 pub mod budget;
@@ -17,6 +19,7 @@ pub mod dag;
 pub mod dag_context;
 pub mod execution_plan;
 pub mod ffi;
+pub mod plan_profile;
 pub mod planner;
 pub mod reporting;
 pub mod rules;
@@ -37,6 +40,12 @@ pub use execution_plan::{
     PlanIdentityError, RewriteApplication, RewriteOrdering, Selection, SelectionObjective,
     SelectionPolicy, SelectionPolicyError, SelectionReason, ValidationPolicy,
     EXECUTION_PLAN_SCHEMA_VERSION,
+};
+pub use plan_profile::{
+    load_plan_profile, CallSiteVersion, CallSiteVersionError, CallSiteVersionSpec,
+    PlanDivergenceSample, PlanObservationToken, PlanProfile, PlanProfileKey, PlanProfileSample,
+    PlanProfileUpdate, PlanProfileUpdateError, PlanProfiles, PlanRuntimeVersion,
+    CALL_SITE_VERSION_SCHEMA_VERSION, DEFAULT_PLAN_PROFILE_WINDOW,
 };
 pub use planner::{CostDriver, Optimizer, Plan, Proposal, RewriteRule, RuleApplication};
 pub use reporting::{

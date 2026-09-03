@@ -11,19 +11,42 @@ use std::error::Error;
 use std::fmt;
 
 use agentc_core::storage::{canonical_json, content_hash};
-use serde::{Deserialize, Serialize};
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 
 /// Schema version included in every new execution-plan identity.
 pub const EXECUTION_PLAN_SCHEMA_VERSION: u16 = 1;
 
 /// Stable SHA-256 identity for one complete model-and-rewrite plan.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[serde(transparent)]
 pub struct ExecutionPlanId(String);
 
 impl ExecutionPlanId {
+    /// Parse a canonical lowercase SHA-256 digest.
+    pub fn parse(value: impl Into<String>) -> Result<Self, PlanIdentityError> {
+        let value = value.into();
+        if value.len() != 64
+            || !value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(PlanIdentityError::InvalidDigest);
+        }
+        Ok(Self(value))
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionPlanId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(value).map_err(D::Error::custom)
     }
 }
 
@@ -163,6 +186,7 @@ fn require_nonempty(field: &'static str, value: &str) -> Result<(), PlanIdentity
 pub enum PlanIdentityError {
     ZeroSchemaVersion,
     EmptyField(&'static str),
+    InvalidDigest,
     Serialization(String),
 }
 
@@ -171,6 +195,8 @@ impl fmt::Display for PlanIdentityError {
         match self {
             Self::ZeroSchemaVersion => formatter.write_str("execution-plan schema version is zero"),
             Self::EmptyField(field) => write!(formatter, "execution-plan field {field} is empty"),
+            Self::InvalidDigest => formatter
+                .write_str("execution-plan ID must be a 64-character lowercase SHA-256 digest"),
             Self::Serialization(message) => {
                 write!(formatter, "execution-plan serialization failed: {message}")
             }
@@ -740,6 +766,21 @@ mod tests {
             invalid.execution_plan_id(),
             Err(PlanIdentityError::EmptyField("provider_protocol"))
         );
+    }
+
+    #[test]
+    fn plan_id_parser_and_deserializer_reject_noncanonical_digests() {
+        let valid = "a".repeat(64);
+        assert_eq!(ExecutionPlanId::parse(&valid).unwrap().as_str(), valid);
+        assert_eq!(
+            ExecutionPlanId::parse("A".repeat(64)),
+            Err(PlanIdentityError::InvalidDigest)
+        );
+        assert_eq!(
+            ExecutionPlanId::parse("abc"),
+            Err(PlanIdentityError::InvalidDigest)
+        );
+        assert!(serde_json::from_str::<ExecutionPlanId>("\"not-a-digest\"").is_err());
     }
 
     #[test]

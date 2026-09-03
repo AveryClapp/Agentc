@@ -25,6 +25,7 @@ use crate::budget::Budget;
 use crate::config::OptimizerConfig;
 use crate::cost_model::CostModel;
 use crate::dag::Call;
+use crate::plan_profile::PlanProfiles;
 use crate::planner::{Optimizer, RewriteRule};
 use crate::rules::cache_hit::CacheKeyBuilder;
 use crate::rules::{
@@ -144,6 +145,7 @@ fn provider_hint() -> String {
 pub struct Wired {
     pub optimizer: Arc<Optimizer>,
     pub cost_model: Arc<CostModel>,
+    pub plan_profiles: Arc<PlanProfiles>,
     pub budget: Arc<Budget>,
     /// Connection to `optimizer_audit.db`. The FFI layer wraps it in a
     /// `Mutex` and uses it for synchronous `plan_audit` inserts.
@@ -164,6 +166,7 @@ fn set_write_pragmas(conn: &Connection) -> Result<()> {
 /// Side effects:
 /// - Creates `cost_model.db` and `optimizer_audit.db` if missing.
 /// - Hydrates the in-memory cost model from `call_site_profile`.
+/// - Hydrates exact execution-plan outcome and paired-divergence windows.
 /// - Hydrates divergence/streak state and the disable cache from their tables.
 ///
 /// The memoization cache shares `traces.db` with the profiler — that's
@@ -186,6 +189,14 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
     let _ = cost_model
         .flush_dirty(&mut cost_conn)
         .context("persist resized cost-model windows")?;
+
+    let plan_profiles = Arc::new(PlanProfiles::with_window(config.plan_profile_window));
+    let _ = plan_profiles
+        .warm_from_db(&cost_conn)
+        .context("warm execution-plan profiles")?;
+    let _ = plan_profiles
+        .flush_dirty(&mut cost_conn)
+        .context("persist resized execution-plan windows")?;
 
     let budget = Arc::new(Budget::with_window(config.divergence_window));
     let _ = budget.warm_from_db(&cost_conn).context("warm budget")?;
@@ -285,6 +296,7 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
     Ok(Wired {
         optimizer,
         cost_model,
+        plan_profiles,
         budget,
         audit_conn,
     })

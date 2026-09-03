@@ -1,7 +1,7 @@
 # Agentc MLSys 2027 staged evaluation protocol
 
 - Protocol: `agentc-mlsys2027-v1`
-- Revision: 8
+- Revision: 10
 - Initial freeze: 2026-09-03
 - Revision 2 freeze: 2026-09-03
 - Revision 3 freeze: 2026-09-03
@@ -11,6 +11,7 @@
 - Revision 7 freeze: 2026-09-03
 - Revision 8 freeze: 2026-09-03
 - Revision 9 freeze: 2026-09-03
+- Revision 10 freeze: 2026-09-03
 - Revision 2 record: [mlsys-2027-protocol-revision-2.json](mlsys-2027-protocol-revision-2.json)
 - Revision 3 record: [mlsys-2027-protocol-revision-3.json](mlsys-2027-protocol-revision-3.json)
 - Revision 4 record: [mlsys-2027-protocol-revision-4.json](mlsys-2027-protocol-revision-4.json)
@@ -19,6 +20,7 @@
 - Revision 7 record: [mlsys-2027-protocol-revision-7.json](mlsys-2027-protocol-revision-7.json)
 - Revision 8 record: [mlsys-2027-protocol-revision-8.json](mlsys-2027-protocol-revision-8.json)
 - Revision 9 record: [mlsys-2027-protocol-revision-9.json](mlsys-2027-protocol-revision-9.json)
+- Revision 10 record: [mlsys-2027-protocol-revision-10.json](mlsys-2027-protocol-revision-10.json)
 - Runtime baseline before this protocol: `4250a01`
 - Revision 2 runtime baseline: `27f896f`
 - Revision 3 runtime baseline: `6339d79`
@@ -28,6 +30,7 @@
 - Revision 7 runtime baseline: `d920357`
 - Revision 8 runtime baseline: `b73d703`
 - Revision 9 contract baseline: `75dcc97`
+- Revision 10 implementation baseline: `0fac352`
 - Target decision date: 2026-10-01
 - Target venue deadline: 2026-10-30 20:00 UTC
 
@@ -77,12 +80,21 @@ the frozen task universe, split membership, model pool, quality margins,
 statistical tests, and stopping rules. No previous experiment is evidence for
 the new joint-planning claim.
 
-Revisions 2 through 9 do not change the `agentc-mlsys2027-v1` split namespace,
+Revision 10 was issued when implementation exposed a contradiction between the
+50-observation plan window, the 2% production shadow rate, and the 20-pair
+admission floor. It replaces that shared window with independent newest-50
+execution-outcome and newest-50 paired-divergence windows and binds asynchronous
+comparisons to the exact observed plan execution. This correction occurred
+before any Stage E1, C, P, or T execution or outcome inspection and changes no
+threshold, task, model, outcome, statistical test, or stopping rule.
+
+Revisions 2 through 10 do not change the `agentc-mlsys2027-v1` split namespace,
 task membership, workloads, models, outcomes, margins, inference, or stopping
 rules. Revision 9 deliberately changes the arms and gates before
-calibration; its machine-readable record enumerates the change. Earlier
-revision records enumerate the runtime-contract changes and engineering
-evidence that triggered them.
+calibration; Revision 10 corrects only the evidence-retention and correlation
+mechanism. Their machine-readable records enumerate the changes. Earlier
+revision records enumerate the runtime-contract changes and engineering evidence
+that triggered them.
 
 ## 1. Change control and blinding
 
@@ -282,8 +294,9 @@ All measured builds are release builds. Unless an arm states otherwise:
 - `hot_threshold=3` observations per semantic call site;
 - `cost_model_window=50`;
 - `divergence_window=50` exact newest samples per call-site/rule pair;
-- `plan_profile_window=50` exact newest observations per call-site-version and
-  complete execution-plan identity;
+- `plan_profile_window=50` exact newest execution outcomes and, independently,
+  exact newest paired divergences per call-site-version and complete
+  execution-plan identity;
 - `min_plan_evidence=20` paired counterfactual observations before a
   non-reference plan is eligible for user-visible selection;
 - `plan_profile_freshness=24h`;
@@ -463,10 +476,11 @@ then lower threshold. If no point qualifies, that plan family is disabled for
 the benefit experiment and the guard gate fails for that pair; no threshold is
 chosen from pilot or confirmatory outcomes.
 
-A plan is admitted only after at least 20 paired observations and when its
-one-sided conformal upper 95th-percentile divergence does not exceed the selected
-threshold. Complete-plan evidence is not synthesized from constituent model or
-rewrite profiles.
+A plan is admitted only after at least 20 observations in its retained paired
+window and when its one-sided conformal upper 95th-percentile divergence does
+not exceed the selected threshold. Complete-plan evidence is not synthesized
+from constituent model or rewrite profiles. Unpaired executions advance only
+the execution-outcome window and cannot evict paired safety evidence.
 
 ## 7. Frozen model and provider coverage
 
@@ -906,3 +920,12 @@ per-rule guard are implementation baselines, not evidence that complete-plan
 profiling or interaction-aware selection works. Beads `bd-323l.6.1` through
 `bd-323l.6.7` track the executable contract, and the working decision record is
 [joint-execution-planning-contract.md](../../specs/working/joint-execution-planning-contract.md).
+
+Revision 10 repairs the exact-plan evidence store at Stage E0 without admitting
+a workload at Stage E1. Each complete plan now persists an exact newest-50
+execution window and a separate exact newest-50 paired-divergence window. A
+deterministic 1,000-execution replay at the frozen 2% sampling rate retains all
+20 required pairs while capping ordinary outcomes at 50; restart, shrink,
+runtime-version cold-start, idempotent asynchronous pairing, and concurrent
+flush-generation tests also pass. These are engineering checks labeled
+`paper_evidence=false`, not support for the joint-planning efficacy claim.

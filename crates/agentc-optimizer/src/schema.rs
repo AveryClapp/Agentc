@@ -11,6 +11,10 @@ use rusqlite::Connection;
 ///
 /// - `call_site_profile` — one summary row per `call_site_id`.
 /// - `call_site_observation` — the exact retained samples for each profile.
+/// - `execution_plan_profile` — one summary per exact call-site-version/plan.
+/// - `execution_plan_observation` — exact retained complete-plan samples.
+/// - `execution_plan_divergence_observation` — independent paired samples.
+/// - `execution_plan_disabled` — durable plan-level guard state.
 /// - `rule_divergence` — one summary row per `(call_site, rule)`.
 /// - `rule_divergence_observation` — exact retained divergence samples.
 /// - `optimizer_disabled` — per-`(call_site, rule)` disable entries with a
@@ -49,6 +53,82 @@ CREATE TABLE IF NOT EXISTS call_site_observation (
     output_is_short       INTEGER NOT NULL CHECK (output_is_short IN (0, 1)),
     observed_at           INTEGER NOT NULL,
     PRIMARY KEY (call_site_id, sample_sequence)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_profile (
+    call_site_version       TEXT NOT NULL,
+    execution_plan_id       TEXT NOT NULL,
+    n_observations          INTEGER NOT NULL CHECK (n_observations >= 0),
+    n_paired_observations   INTEGER NOT NULL CHECK (n_paired_observations >= 0),
+    window_observations     INTEGER NOT NULL CHECK (window_observations >= 0),
+    paired_observations     INTEGER NOT NULL CHECK (paired_observations >= 0),
+    input_tokens_mean       REAL NOT NULL CHECK (input_tokens_mean >= 0.0),
+    input_tokens_var        REAL NOT NULL CHECK (input_tokens_var >= 0.0),
+    output_tokens_mean      REAL NOT NULL CHECK (output_tokens_mean >= 0.0),
+    output_tokens_var       REAL NOT NULL CHECK (output_tokens_var >= 0.0),
+    latency_ms_mean         REAL NOT NULL CHECK (latency_ms_mean >= 0.0),
+    latency_ms_var          REAL NOT NULL CHECK (latency_ms_var >= 0.0),
+    cost_usd_mean           REAL NOT NULL CHECK (cost_usd_mean >= 0.0),
+    cost_usd_var            REAL NOT NULL CHECK (cost_usd_var >= 0.0),
+    output_token_p95        REAL NOT NULL CHECK (output_token_p95 >= 0.0),
+    output_token_p99        REAL NOT NULL CHECK (output_token_p99 >= 0.0),
+    output_is_structured    REAL NOT NULL CHECK (output_is_structured BETWEEN 0.0 AND 1.0),
+    output_is_short         REAL NOT NULL CHECK (output_is_short BETWEEN 0.0 AND 1.0),
+    divergence_upper_p95    REAL CHECK (
+        divergence_upper_p95 IS NULL OR divergence_upper_p95 BETWEEN 0.0 AND 1.0
+    ),
+    dispatch_fallback_rate  REAL NOT NULL CHECK (dispatch_fallback_rate BETWEEN 0.0 AND 1.0),
+    provider_protocol       TEXT NOT NULL,
+    target_model_id         TEXT NOT NULL,
+    target_model_version    TEXT NOT NULL,
+    price_table_version     TEXT NOT NULL,
+    updated_at              INTEGER NOT NULL CHECK (updated_at >= 0),
+    last_paired_at          INTEGER CHECK (last_paired_at IS NULL OR last_paired_at >= 0),
+    PRIMARY KEY (call_site_version, execution_plan_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_observation (
+    call_site_version       TEXT NOT NULL,
+    execution_plan_id       TEXT NOT NULL,
+    sample_sequence         INTEGER NOT NULL CHECK (sample_sequence > 0),
+    input_tokens            INTEGER NOT NULL CHECK (input_tokens >= 0),
+    output_tokens           INTEGER NOT NULL CHECK (output_tokens >= 0),
+    latency_ms              REAL NOT NULL CHECK (latency_ms >= 0.0),
+    cost_usd                REAL NOT NULL CHECK (cost_usd >= 0.0),
+    output_is_structured    INTEGER NOT NULL CHECK (output_is_structured IN (0, 1)),
+    output_is_short         INTEGER NOT NULL CHECK (output_is_short IN (0, 1)),
+    dispatch_fallback       INTEGER NOT NULL CHECK (dispatch_fallback IN (0, 1)),
+    provider_protocol       TEXT NOT NULL,
+    target_model_id         TEXT NOT NULL,
+    target_model_version    TEXT NOT NULL,
+    price_table_version     TEXT NOT NULL,
+    observed_at             INTEGER NOT NULL CHECK (observed_at >= 0),
+    PRIMARY KEY (call_site_version, execution_plan_id, sample_sequence)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_divergence_observation (
+    call_site_version          TEXT NOT NULL,
+    execution_plan_id          TEXT NOT NULL,
+    sample_sequence            INTEGER NOT NULL CHECK (sample_sequence > 0),
+    plan_observation_sequence  INTEGER NOT NULL CHECK (plan_observation_sequence > 0),
+    divergence                 REAL NOT NULL CHECK (divergence BETWEEN 0.0 AND 1.0),
+    provider_protocol          TEXT NOT NULL,
+    target_model_id            TEXT NOT NULL,
+    target_model_version       TEXT NOT NULL,
+    price_table_version        TEXT NOT NULL,
+    observed_at                INTEGER NOT NULL CHECK (observed_at >= 0),
+    PRIMARY KEY (call_site_version, execution_plan_id, sample_sequence),
+    UNIQUE (call_site_version, execution_plan_id, plan_observation_sequence)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_disabled (
+    call_site_version       TEXT NOT NULL,
+    execution_plan_id       TEXT NOT NULL,
+    reason                  TEXT NOT NULL,
+    exposure                REAL NOT NULL CHECK (exposure >= 0.0),
+    disabled_at             INTEGER NOT NULL CHECK (disabled_at >= 0),
+    reenable_at             INTEGER NOT NULL CHECK (reenable_at >= disabled_at),
+    PRIMARY KEY (call_site_version, execution_plan_id)
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS rule_divergence (
@@ -199,6 +279,26 @@ pub fn ensure_cost_model_schema(conn: &Connection) -> Result<()> {
         [],
     )
     .context("removing orphaned retained divergence samples")?;
+    conn.execute(
+        "DELETE FROM execution_plan_observation \
+         WHERE NOT EXISTS (\
+            SELECT 1 FROM execution_plan_profile AS profile \
+            WHERE profile.call_site_version = execution_plan_observation.call_site_version \
+              AND profile.execution_plan_id = execution_plan_observation.execution_plan_id\
+         )",
+        [],
+    )
+    .context("removing orphaned plan observations")?;
+    conn.execute(
+        "DELETE FROM execution_plan_divergence_observation \
+         WHERE NOT EXISTS (\
+            SELECT 1 FROM execution_plan_profile AS profile \
+            WHERE profile.call_site_version = execution_plan_divergence_observation.call_site_version \
+              AND profile.execution_plan_id = execution_plan_divergence_observation.execution_plan_id\
+         )",
+        [],
+    )
+    .context("removing orphaned plan-divergence observations")?;
     Ok(())
 }
 
@@ -232,13 +332,42 @@ mod tests {
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' \
                  AND name IN ('call_site_profile','call_site_observation',\
-                              'rule_divergence','rule_divergence_observation',\
-                              'optimizer_disabled','rule_set_stats')",
+                              'execution_plan_profile','execution_plan_observation',\
+                              'execution_plan_divergence_observation',\
+                              'execution_plan_disabled','rule_divergence',\
+                              'rule_divergence_observation','optimizer_disabled',\
+                              'rule_set_stats')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(tables, 6);
+        assert_eq!(tables, 10);
+    }
+
+    #[test]
+    fn legacy_site_aggregates_are_not_promoted_to_plan_evidence() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO call_site_profile (\
+                call_site_id, n_observations, window_observations, \
+                input_tokens_mean, input_tokens_var, output_tokens_mean, output_tokens_var, \
+                latency_ms_mean, latency_ms_var, cost_usd_mean, cost_usd_var, \
+                output_token_p95, output_token_p99, output_is_structured, output_is_short, \
+                updated_at\
+             ) VALUES ('legacy', 100, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, \
+                       0.0, 0.0, 0.0, 0.0, 1)",
+            [],
+        )
+        .unwrap();
+
+        ensure_cost_model_schema(&conn).unwrap();
+        let plan_profiles: i64 = conn
+            .query_row("SELECT COUNT(*) FROM execution_plan_profile", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(plan_profiles, 0);
     }
 
     #[test]

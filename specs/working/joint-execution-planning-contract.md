@@ -155,12 +155,15 @@ provider traffic from Rust.
 
 ### Profile
 
-The decision key is `(CallSiteVersion, ExecutionPlanId)`. Its newest-50 default
-window records actual target model, input and output tokens, billed cost, latency,
-dispatch/fallback state, output shape, counterfactual divergence when sampled,
-provider/model version, prompt-shape version, and observation time. Lifetime
-counts exist only for reporting. All decision statistics derive from the exact
-retained window and survive restart.
+The decision key is `(CallSiteVersion, ExecutionPlanId)`. Each key has two
+independent newest-50 default windows. The execution window records input and
+output tokens, billed cost, latency, dispatch/fallback state, output shape,
+runtime version, and observation time. The paired window records complete-plan
+counterfactual divergence, its correlated execution sequence, runtime version,
+and observation time. Sparse shadow sampling therefore cannot be aged out by
+ordinary unpaired executions before it reaches the admission floor. Lifetime
+execution and paired counts exist only for reporting. Every decision statistic
+derives from its exact retained window, and both windows survive restart.
 
 Solo observations do not populate a joint profile. A routing-only observation of
 model `M` and a rewrite-only observation of rule `R` provide no direct evidence
@@ -203,7 +206,8 @@ After admission, the selected result is returned and the reference is sampled at
 the configured rate. A plan-level controller consumes complete-plan divergence;
 it does not charge the same composed result independently to every constituent
 rule. Provider/model or prompt-shape version changes invalidate admission
-immediately. A 24-hour exact window ages out ordinary behavioral drift.
+immediately. The count-bounded windows track recent behavior; the separate
+24-hour freshness horizon rejects a profile when no current evidence has arrived.
 
 The runtime calls its online quantity **divergence exposure**, not task damage:
 
@@ -222,7 +226,8 @@ production call.
 | Setting | Value |
 |---|---:|
 | Hot call-site observations | 3 |
-| Exact plan-profile window | 50 |
+| Exact plan execution-outcome window | 50 |
+| Exact plan paired-divergence window | 50 |
 | Minimum paired plan evidence | 20 |
 | Profile freshness horizon | 24 h |
 | Default objective | billed USD |

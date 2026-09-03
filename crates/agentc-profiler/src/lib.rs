@@ -23,6 +23,7 @@ use agentc_optimizer::{
     config::OptimizerConfig,
     cost_model::CostModel,
     ffi::{optimize_observe as rust_observe, optimize_plan as rust_plan, PASS_THROUGH_JSON},
+    plan_profile::PlanProfiles,
     planner::{Optimizer, Plan},
     Budget, SampleOutcome, Wired,
 };
@@ -671,6 +672,7 @@ fn canonicalize_parameters_bytes<'py>(
 ///
 /// - A fully-wired `Optimizer` with all five rewrite rules.
 /// - The `CostModel` and `Budget` warmed from `cost_model.db` on init.
+/// - Complete-plan profiles warmed from their exact retained windows.
 /// - A `Mutex<Connection>` for `optimizer_audit.db`. We write `plan_audit`
 ///   rows synchronously from the hot path; SQLite WAL mode keeps the
 ///   per-row latency well under a millisecond.
@@ -684,6 +686,7 @@ fn canonicalize_parameters_bytes<'py>(
 struct OptimizerState {
     optimizer: Arc<Optimizer>,
     cost_model: Arc<CostModel>,
+    plan_profiles: Arc<PlanProfiles>,
     #[allow(dead_code)]
     budget: Arc<Budget>,
     audit: Option<Mutex<Connection>>,
@@ -694,8 +697,8 @@ struct OptimizerState {
 
 static OPTIMIZER: OnceLock<RwLock<Option<Arc<OptimizerState>>>> = OnceLock::new();
 
-/// Flush the cost model to `cost_model.db` every N observes. 16 is a
-/// compromise between losing too many in-flight samples on a crash and
+/// Flush cost and complete-plan profiles to `cost_model.db` every N observes.
+/// 16 is a compromise between losing too many in-flight samples on a crash and
 /// hammering SQLite for every observe; bench runs do ~100 observes, so 16
 /// → ~6 flushes per run.
 const COST_MODEL_FLUSH_EVERY: u64 = 16;
@@ -713,7 +716,13 @@ fn build_optimizer_state(
     config: OptimizerConfig,
 ) -> OptimizerState {
     match build_optimizer(&storage, config.clone()) {
-        Ok(Wired { optimizer, cost_model, budget, audit_conn }) => {
+        Ok(Wired {
+            optimizer,
+            cost_model,
+            plan_profiles,
+            budget,
+            audit_conn,
+        }) => {
             // Reopen cost DB for periodic flush — the `Wired::audit_conn`
             // is for the audit table; `cost_model.db` is a separate file.
             let cost_db = Connection::open(storage.join("cost_model.db"))
@@ -722,6 +731,7 @@ fn build_optimizer_state(
             OptimizerState {
                 optimizer,
                 cost_model,
+                plan_profiles,
                 budget,
                 audit: Some(Mutex::new(audit_conn)),
                 cost_db,
@@ -732,11 +742,13 @@ fn build_optimizer_state(
         Err(e) => {
             eprintln!("[agentc-profiler] optimizer wiring failed: {e}");
             let cost_model = Arc::new(CostModel::with_window(config.cost_model_window));
+            let plan_profiles = Arc::new(PlanProfiles::with_window(config.plan_profile_window));
             let budget = Arc::new(Budget::with_window(config.divergence_window));
             let optimizer = Arc::new(Optimizer::empty(cost_model.clone(), config));
             OptimizerState {
                 optimizer,
                 cost_model,
+                plan_profiles,
                 budget,
                 audit: None,
                 cost_db: None,
@@ -774,6 +786,9 @@ fn flush_optimizer_state(state: &OptimizerState) {
             if let Ok(mut conn) = mu.lock() {
                 if let Err(e) = state.cost_model.flush_dirty(&mut conn) {
                     eprintln!("[agentc-profiler] cost_model flush failed: {e}");
+                }
+                if let Err(e) = state.plan_profiles.flush_dirty(&mut conn) {
+                    eprintln!("[agentc-profiler] plan_profiles flush failed: {e}");
                 }
                 if let Err(e) = state.budget.flush_divergence(&mut conn) {
                     eprintln!("[agentc-profiler] divergence flush failed: {e}");
@@ -976,6 +991,9 @@ fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) {
                         if let Err(e) = state.cost_model.flush_dirty(&mut conn) {
                             eprintln!("[agentc-profiler] cost_model flush failed: {e}");
                         }
+                        if let Err(e) = state.plan_profiles.flush_dirty(&mut conn) {
+                            eprintln!("[agentc-profiler] plan_profiles flush failed: {e}");
+                        }
                     }
                 }));
             }
@@ -1063,9 +1081,9 @@ fn optimize_record_divergence(py: Python<'_>, call_site_id: &str, rule: &str, di
     });
 }
 
-/// Force-flush cost profiles and guard divergence to `cost_model.db`. Called
-/// from Python at process shutdown so final partial state isn't lost. No-op
-/// when the optimizer wasn't successfully wired.
+/// Force-flush cost profiles, plan profiles, and guard divergence to
+/// `cost_model.db`. Called from Python at process shutdown so final partial
+/// state isn't lost. No-op when the optimizer wasn't successfully wired.
 #[pyfunction]
 fn optimize_flush(py: Python<'_>) {
     py.allow_threads(|| {

@@ -24,6 +24,8 @@ _init_lock = threading.Lock()
 _config: Config | None = None
 _prev_sigterm: Any = None
 _prev_sigint: Any = None
+_storage_env_previous: tuple[bool, str | None] | None = None
+_storage_env_installed: str | None = None
 
 
 def is_initialized() -> bool:
@@ -34,6 +36,47 @@ def is_initialized() -> bool:
 def get_config() -> Config | None:
     """Get the current config, or None if not initialized."""
     return _config
+
+
+def _configure_native_storage(storage_path: os.PathLike[str]) -> None:
+    """Make one resolved path authoritative for every native subsystem."""
+    global _storage_env_previous, _storage_env_installed
+    key = "AGENTC_STORAGE_PATH"
+    resolved = str(storage_path)
+    _storage_env_previous = (key in os.environ, os.environ.get(key))
+    _storage_env_installed = resolved
+    os.environ[key] = resolved
+    try:
+        from agentc import _native
+
+        native_path = _native.optimize_configure(resolved)
+        if native_path != resolved:
+            raise RuntimeError(
+                "native optimizer storage mismatch: "
+                f"configured={resolved!r}, native={native_path!r}"
+            )
+    except BaseException:
+        _restore_storage_environment()
+        raise
+
+
+def _restore_storage_environment() -> None:
+    """Restore the caller's storage environment unless it changed meanwhile."""
+    global _storage_env_previous, _storage_env_installed
+    previous = _storage_env_previous
+    installed = _storage_env_installed
+    _storage_env_previous = None
+    _storage_env_installed = None
+    if previous is None or installed is None:
+        return
+    key = "AGENTC_STORAGE_PATH"
+    if os.environ.get(key) != installed:
+        return
+    existed, value = previous
+    if existed and value is not None:
+        os.environ[key] = value
+    else:
+        os.environ.pop(key, None)
 
 
 def init(
@@ -70,6 +113,12 @@ def init(
             fail_open=fail_open,
             storage_path=storage_path,
         )
+        config = Config(
+            capture_content=config.capture_content,
+            capture_embeddings=config.capture_embeddings,
+            fail_open=config.fail_open,
+            storage_path=config.storage_path.resolve(),
+        )
 
         # Create directories
         config.storage_path.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -88,33 +137,49 @@ def init(
             config.capture_embeddings,
         )
 
-        # Store config
-        _config = config
+        # Native trace merging, memoization, and optimizer wiring otherwise
+        # resolve storage independently from the process environment. Install
+        # the resolved lifecycle path before any of those components start.
+        _configure_native_storage(config.storage_path)
 
-        # Each initialization defines one run-level eligibility report.
-        from agentc._optimization_scope import _reset_optimization_scope_report
+        try:
+            # Store config
+            _config = config
 
-        _reset_optimization_scope_report()
+            # Each initialization defines one run-level eligibility report.
+            from agentc._optimization_scope import _reset_optimization_scope_report
 
-        # Start background writer
-        from agentc._writer import start as start_writer
+            _reset_optimization_scope_report()
 
-        start_writer()
+            # Start background writer
+            from agentc._writer import start as start_writer
 
-        # Start cross-call trace optimizer (StateReadWindowPropagation, etc.)
-        from agentc._trace_optimizer import init_trace_optimizer
+            start_writer()
 
-        init_trace_optimizer()
+            # Start cross-call trace optimizer (StateReadWindowPropagation, etc.)
+            from agentc._trace_optimizer import init_trace_optimizer
 
-        # Apply SDK patches
-        _apply_patches()
+            init_trace_optimizer()
 
-        # Register shutdown handlers (signal handlers require main thread)
-        _register_shutdown_handlers()
+            # Apply SDK patches
+            _apply_patches()
 
-        # Mark as initialized
-        _initialized.set()
-        _shutdown_in_progress.clear()
+            # Register shutdown handlers (signal handlers require main thread)
+            _register_shutdown_handlers()
+
+            # Mark as initialized
+            _initialized.set()
+            _shutdown_in_progress.clear()
+        except BaseException:
+            try:
+                from agentc import _native
+
+                _native.optimize_reset()
+            except BaseException:
+                logger.debug("native optimizer reset failed during init", exc_info=True)
+            _restore_storage_environment()
+            _config = None
+            raise
 
     logger.info(
         "agentc initialized (capture_content=%s, capture_embeddings=%s, storage_path=%s, fail_open=%s)",
@@ -172,6 +237,13 @@ def shutdown(timeout_ms: int = 5000) -> None:
         _remove_patches()
         logger.info("agentc shutdown complete")
     finally:
+        try:
+            from agentc import _native
+
+            _native.optimize_reset()
+        except BaseException:
+            logger.debug("native optimizer reset failed (suppressed)", exc_info=True)
+        _restore_storage_environment()
         _initialized.clear()
         _config = None
 

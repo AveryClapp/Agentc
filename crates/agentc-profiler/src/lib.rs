@@ -8,7 +8,7 @@
 
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -664,8 +664,10 @@ fn canonicalize_parameters_bytes<'py>(
     Ok(PyBytes::new_bound(py, &bytes))
 }
 
-/// Process-global optimizer. Lazily constructed on first FFI call. The
-/// state holds:
+/// Process-global optimizer slot. Direct FFI callers initialize it lazily;
+/// the Python lifecycle explicitly replaces and resets it so repeated
+/// ``init(storage_path=...)`` calls cannot share warm state across stores.
+/// Each installed state holds:
 ///
 /// - A fully-wired `Optimizer` with all five rewrite rules.
 /// - The `CostModel` and `Budget` warmed from `cost_model.db` on init.
@@ -686,9 +688,10 @@ struct OptimizerState {
     audit: Option<Mutex<Connection>>,
     cost_db: Option<Mutex<Connection>>,
     observe_counter: std::sync::atomic::AtomicU64,
+    storage_dir: std::path::PathBuf,
 }
 
-static OPTIMIZER: OnceLock<OptimizerState> = OnceLock::new();
+static OPTIMIZER: OnceLock<RwLock<Option<Arc<OptimizerState>>>> = OnceLock::new();
 
 /// Flush the cost model to `cost_model.db` every N observes. 16 is a
 /// compromise between losing too many in-flight samples on a crash and
@@ -700,42 +703,121 @@ fn resolve_storage_dir() -> std::path::PathBuf {
     agentc_core::merge::agentc_data_dir()
 }
 
-fn optimizer_state() -> &'static OptimizerState {
-    OPTIMIZER.get_or_init(|| {
-        let config = OptimizerConfig::from_env();
-        let storage = resolve_storage_dir();
+fn optimizer_slot() -> &'static RwLock<Option<Arc<OptimizerState>>> {
+    OPTIMIZER.get_or_init(|| RwLock::new(None))
+}
 
-        match build_optimizer(&storage, config.clone()) {
-            Ok(Wired { optimizer, cost_model, budget, audit_conn }) => {
-                // Reopen cost DB for periodic flush — the `Wired::audit_conn`
-                // is for the audit table; `cost_model.db` is a separate file.
-                let cost_db = Connection::open(storage.join("cost_model.db"))
-                    .ok()
-                    .map(Mutex::new);
-                OptimizerState {
-                    optimizer,
-                    cost_model,
-                    budget,
-                    audit: Some(Mutex::new(audit_conn)),
-                    cost_db,
-                    observe_counter: std::sync::atomic::AtomicU64::new(0),
-                }
-            }
-            Err(e) => {
-                eprintln!("[agentc-profiler] optimizer wiring failed: {e}");
-                let cost_model = Arc::new(CostModel::new());
-                let optimizer = Arc::new(Optimizer::empty(cost_model.clone(), config));
-                OptimizerState {
-                    optimizer,
-                    cost_model,
-                    budget: Arc::new(Budget::new()),
-                    audit: None,
-                    cost_db: None,
-                    observe_counter: std::sync::atomic::AtomicU64::new(0),
-                }
+fn build_optimizer_state(
+    storage: std::path::PathBuf,
+    config: OptimizerConfig,
+) -> OptimizerState {
+    match build_optimizer(&storage, config.clone()) {
+        Ok(Wired { optimizer, cost_model, budget, audit_conn }) => {
+            // Reopen cost DB for periodic flush — the `Wired::audit_conn`
+            // is for the audit table; `cost_model.db` is a separate file.
+            let cost_db = Connection::open(storage.join("cost_model.db"))
+                .ok()
+                .map(Mutex::new);
+            OptimizerState {
+                optimizer,
+                cost_model,
+                budget,
+                audit: Some(Mutex::new(audit_conn)),
+                cost_db,
+                observe_counter: std::sync::atomic::AtomicU64::new(0),
+                storage_dir: storage,
             }
         }
+        Err(e) => {
+            eprintln!("[agentc-profiler] optimizer wiring failed: {e}");
+            let cost_model = Arc::new(CostModel::new());
+            let optimizer = Arc::new(Optimizer::empty(cost_model.clone(), config));
+            OptimizerState {
+                optimizer,
+                cost_model,
+                budget: Arc::new(Budget::new()),
+                audit: None,
+                cost_db: None,
+                observe_counter: std::sync::atomic::AtomicU64::new(0),
+                storage_dir: storage,
+            }
+        }
+    }
+}
+
+fn optimizer_state() -> Arc<OptimizerState> {
+    if let Ok(slot) = optimizer_slot().read() {
+        if let Some(state) = slot.as_ref() {
+            return Arc::clone(state);
+        }
+    }
+
+    let mut slot = optimizer_slot()
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(state) = slot.as_ref() {
+        return Arc::clone(state);
+    }
+    let state = Arc::new(build_optimizer_state(
+        resolve_storage_dir(),
+        OptimizerConfig::from_env(),
+    ));
+    *slot = Some(Arc::clone(&state));
+    state
+}
+
+fn flush_optimizer_state(state: &OptimizerState) {
+    if let Some(mu) = state.cost_db.as_ref() {
+        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            if let Ok(mut conn) = mu.lock() {
+                if let Err(e) = state.cost_model.flush_dirty(&mut conn) {
+                    eprintln!("[agentc-profiler] cost_model flush failed: {e}");
+                }
+            }
+        }));
+    }
+}
+
+/// Configure a fresh optimizer at the lifecycle's resolved storage path.
+/// Replaces any prior process-local optimizer after flushing its dirty state.
+#[pyfunction]
+fn optimize_configure(py: Python<'_>, storage_path: &str) -> String {
+    let storage = std::path::PathBuf::from(storage_path);
+    py.allow_threads(|| {
+        let mut slot = optimizer_slot()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(previous) = slot.as_ref() {
+            flush_optimizer_state(previous);
+        }
+        let state = Arc::new(build_optimizer_state(
+            storage,
+            OptimizerConfig::from_env(),
+        ));
+        let resolved = state.storage_dir.to_string_lossy().into_owned();
+        *slot = Some(state);
+        resolved
     })
+}
+
+/// Return the storage path owned by the current native optimizer.
+#[pyfunction]
+fn optimize_storage_path() -> String {
+    optimizer_state().storage_dir.to_string_lossy().into_owned()
+}
+
+/// Drop the lifecycle-owned optimizer so a later init may choose another path.
+#[pyfunction]
+fn optimize_reset(py: Python<'_>) {
+    py.allow_threads(|| {
+        let previous = optimizer_slot()
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(state) = previous {
+            flush_optimizer_state(&state);
+        }
+    });
 }
 
 fn now_us_i64() -> i64 {
@@ -768,7 +850,7 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
         // Best-effort audit. The plan is always returned regardless of
         // whether the audit row lands.
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            write_plan_audit(state, call_json, &plan_json, overhead_us);
+            write_plan_audit(&state, call_json, &plan_json, overhead_us);
         }));
 
         plan_json
@@ -882,7 +964,7 @@ fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) {
             .observe_counter
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             + 1;
-        if n % COST_MODEL_FLUSH_EVERY == 0 {
+        if n.is_multiple_of(COST_MODEL_FLUSH_EVERY) {
             if let Some(mu) = state.cost_db.as_ref() {
                 let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
                     if let Ok(mut conn) = mu.lock() {
@@ -953,13 +1035,7 @@ fn optimize_record_divergence(py: Python<'_>, call_site_id: &str, rule: &str, di
 fn optimize_flush(py: Python<'_>) {
     py.allow_threads(|| {
         let state = optimizer_state();
-        if let Some(mu) = state.cost_db.as_ref() {
-            let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                if let Ok(mut conn) = mu.lock() {
-                    let _ = state.cost_model.flush_dirty(&mut conn);
-                }
-            }));
-        }
+        flush_optimizer_state(&state);
     });
 }
 
@@ -981,6 +1057,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(embed_text_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(canonicalize_prompt_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(canonicalize_parameters_bytes, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_configure, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_storage_path, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_reset, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_plan, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_observe, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_record_divergence, m)?)?;

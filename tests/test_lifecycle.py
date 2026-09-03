@@ -88,6 +88,7 @@ class TestInit:
         assert is_initialized()
         assert tmp_storage.exists()
         assert (tmp_storage / "active").exists()
+        assert Path(agentc._native.optimize_storage_path()) == tmp_storage
 
     def test_directory_permissions(self, tmp_storage: Path) -> None:
         agentc.init(storage_path=str(tmp_storage))
@@ -128,6 +129,69 @@ class TestInit:
         assert not is_initialized()
         agentc.init(storage_path=str(tmp_storage))
         assert is_initialized()
+
+    def test_explicit_storage_temporarily_overrides_environment(
+        self,
+        tmp_storage: Path,
+        tmp_path: Path,
+    ) -> None:
+        previous = str(tmp_path / "caller-storage")
+        with patch.dict(os.environ, {"AGENTC_STORAGE_PATH": previous}):
+            agentc.init(storage_path=str(tmp_storage))
+            assert os.environ["AGENTC_STORAGE_PATH"] == str(tmp_storage)
+            assert Path(agentc._native.optimize_storage_path()) == tmp_storage
+            agentc.shutdown()
+            assert os.environ["AGENTC_STORAGE_PATH"] == previous
+
+    def test_reinit_does_not_leak_optimizer_warm_state(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from agentc._optimizer import observe_outcome, plan_call
+
+        first_storage = tmp_path / "first"
+        second_storage = tmp_path / "second"
+        call = {
+            "call_site_id": "storage-isolation-site",
+            "trace_id": "0" * 32,
+            "span_id": "0" * 16,
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "warm"}],
+            "parameters": {"max_output_tokens": 256},
+            "tools": [],
+            "input_deps": [],
+            "occurrence_ix": 0,
+        }
+        outcome = {
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "latency_ms": 1.0,
+            "cost_usd": 0.001,
+            "output_is_structured": False,
+            "output_is_short": True,
+            "call_site_id": "storage-isolation-site",
+        }
+        controls = {
+            "AGENTC_ENABLED_RULES": "OutputBudget",
+            "AGENTC_OPTIMIZE_HOT_THRESHOLD": "3",
+            "AGENTC_OPTIMIZE_MAX_OVERHEAD_MS": "1000",
+            "AGENTC_OPTIMIZE_SHADOW": "0",
+        }
+
+        with patch.dict(os.environ, controls):
+            agentc.init(storage_path=str(first_storage))
+            for _ in range(3):
+                observe_outcome(plan_call(call), outcome)
+            assert plan_call(call).kind == "rewritten"
+            agentc.shutdown()
+
+            agentc.init(storage_path=str(second_storage))
+            assert Path(agentc._native.optimize_storage_path()) == second_storage
+            assert plan_call(call).kind == "pass_through"
+            agentc.shutdown()
+
+        assert (first_storage / "cost_model.db").exists()
+        assert (second_storage / "cost_model.db").exists()
 
 
 class TestShutdown:

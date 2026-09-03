@@ -147,6 +147,22 @@ def canonicalize_parameters_bytes(params_json: bytes) -> bytes:
     """Canonicalize parameters via the Rust mirror adapter."""
     ...
 
+def optimize_configure(storage_path: str) -> str:
+    """Build a fresh native optimizer rooted at ``storage_path``.
+
+    Flushes and replaces any optimizer configured by an earlier Agentc
+    lifecycle, and returns the path owned by the new native state.
+    """
+    ...
+
+def optimize_storage_path() -> str:
+    """Return the storage path owned by the current native optimizer."""
+    ...
+
+def optimize_reset() -> None:
+    """Flush and drop the current optimizer so a later init can reconfigure."""
+    ...
+
 def optimize_plan(call_json: str) -> str:
     """Run the optimizer for one intercepted Call and return a JSON Plan.
 

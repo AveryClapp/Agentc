@@ -674,8 +674,9 @@ fn canonicalize_parameters_bytes<'py>(
 /// - A `Mutex<Connection>` for `optimizer_audit.db`. We write `plan_audit`
 ///   rows synchronously from the hot path; SQLite WAL mode keeps the
 ///   per-row latency well under a millisecond.
-/// - An `AtomicU64` observe counter so we can periodically flush the
-///   cost-model `dirty` set without spawning a thread.
+/// - An `AtomicU64` observe counter so we can periodically flush dirty cost
+///   profiles without spawning a thread. Shadow divergence is persisted on
+///   each sampled comparison and flushed again at lifecycle boundaries.
 ///
 /// On any wiring failure (e.g. corrupted `cost_model.db`) we fall back to
 /// an empty optimizer — the user's LLM call must never break because the
@@ -772,6 +773,9 @@ fn flush_optimizer_state(state: &OptimizerState) {
             if let Ok(mut conn) = mu.lock() {
                 if let Err(e) = state.cost_model.flush_dirty(&mut conn) {
                     eprintln!("[agentc-profiler] cost_model flush failed: {e}");
+                }
+                if let Err(e) = state.budget.flush_divergence(&mut conn) {
+                    eprintln!("[agentc-profiler] divergence flush failed: {e}");
                 }
             }
         }));
@@ -1006,21 +1010,35 @@ fn optimize_record_divergence(py: Python<'_>, call_site_id: &str, rule: &str, di
                 threshold,
                 now,
             );
-            if let SampleOutcome::Disable { disabled_at_us, reenable_at_us } = outcome {
+            let disable = match outcome {
+                SampleOutcome::Disable {
+                    disabled_at_us,
+                    reenable_at_us,
+                } => Some((disabled_at_us, reenable_at_us)),
+                _ => None,
+            };
+            if disable.is_some() {
                 eprintln!(
                     "[agentc] shadow guard auto-disabled rule={rule} site={call_site_id} \
                      (divergence={divergence:.3} > budget={threshold:.3})"
                 );
-                if let Some(mu) = state.cost_db.as_ref() {
-                    if let Ok(conn) = mu.lock() {
-                        let _ = state.budget.persist_disable(
+            }
+            if let Some(mu) = state.cost_db.as_ref() {
+                if let Ok(mut conn) = mu.lock() {
+                    if let Some((disabled_at_us, reenable_at_us)) = disable {
+                        if let Err(e) = state.budget.persist_disable(
                             &conn,
                             call_site_id,
                             rule,
                             "shadow_divergence",
                             disabled_at_us,
                             reenable_at_us,
-                        );
+                        ) {
+                            eprintln!("[agentc-profiler] disable persistence failed: {e}");
+                        }
+                    }
+                    if let Err(e) = state.budget.flush_divergence(&mut conn) {
+                        eprintln!("[agentc-profiler] divergence flush failed: {e}");
                     }
                 }
             }
@@ -1028,9 +1046,9 @@ fn optimize_record_divergence(py: Python<'_>, call_site_id: &str, rule: &str, di
     });
 }
 
-/// Force-flush the cost model to `cost_model.db`. Called from Python at
-/// process shutdown so the final partial batch isn't lost. No-op when the
-/// optimizer wasn't successfully wired.
+/// Force-flush cost profiles and guard divergence to `cost_model.db`. Called
+/// from Python at process shutdown so final partial state isn't lost. No-op
+/// when the optimizer wasn't successfully wired.
 #[pyfunction]
 fn optimize_flush(py: Python<'_>) {
     py.allow_threads(|| {

@@ -214,9 +214,8 @@ def shutdown(timeout_ms: int = 5000) -> None:
     try:
         # Drain the span queue (writer logs its own counters on stop).
         _flush_queue(timeout_ms)
-        # Force-flush the cost model so the final partial batch (anything
-        # below COST_MODEL_FLUSH_EVERY since the last periodic flush) lands
-        # in cost_model.db before the process exits.
+        # Force-flush cost profiles and guard divergence so final partial
+        # state lands in cost_model.db before the process exits.
         try:
             from agentc import _native
 

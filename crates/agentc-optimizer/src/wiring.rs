@@ -164,7 +164,7 @@ fn set_write_pragmas(conn: &Connection) -> Result<()> {
 /// Side effects:
 /// - Creates `cost_model.db` and `optimizer_audit.db` if missing.
 /// - Hydrates the in-memory cost model from `call_site_profile`.
-/// - Hydrates the in-memory disable cache from `optimizer_disabled`.
+/// - Hydrates divergence/streak state and the disable cache from their tables.
 ///
 /// The memoization cache shares `traces.db` with the profiler — that's
 /// where `@memoize` already writes — so a CacheHit served by the rule and
@@ -189,6 +189,9 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
 
     let budget = Arc::new(Budget::new());
     let _ = budget.warm_from_db(&cost_conn).context("warm budget")?;
+    let _ = budget
+        .warm_divergence_from_db(&cost_conn)
+        .context("warm divergence state")?;
 
     let audit_path = storage_dir.join("optimizer_audit.db");
     let audit_conn = Connection::open(&audit_path)
@@ -354,5 +357,44 @@ mod tests {
             )
             .unwrap();
         assert_eq!(retained, 3);
+    }
+
+    #[test]
+    fn build_optimizer_hydrates_divergence_and_breach_streak() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let initial = build_optimizer(dir.path(), OptimizerConfig::default()).unwrap();
+        for expected in 1..=4 {
+            assert_eq!(
+                initial
+                    .budget
+                    .record_sample("restart.site", "OutputBudget", 0.5, 0.1, expected),
+                crate::budget::SampleOutcome::Breached {
+                    consecutive: expected as u32,
+                }
+            );
+        }
+        let mut connection = Connection::open(dir.path().join("cost_model.db")).unwrap();
+        initial
+            .budget
+            .flush_divergence(&mut connection)
+            .unwrap();
+        drop(initial);
+
+        let restarted = build_optimizer(dir.path(), OptimizerConfig::default()).unwrap();
+        let entry = restarted
+            .budget
+            .get_entry("restart.site", "OutputBudget")
+            .unwrap();
+        assert_eq!(entry.stats.n, 4);
+        assert_eq!(entry.consecutive_breaches, 4);
+        assert_eq!(
+            restarted
+                .budget
+                .record_sample("restart.site", "OutputBudget", 0.5, 0.1, 5),
+            crate::budget::SampleOutcome::Disable {
+                disabled_at_us: 5,
+                reenable_at_us: 5 + crate::budget::COOLDOWN_US,
+            }
+        );
     }
 }

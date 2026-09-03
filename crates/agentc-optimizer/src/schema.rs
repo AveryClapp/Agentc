@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS rule_divergence (
     n_samples             INTEGER NOT NULL,
     divergence_mean       REAL NOT NULL,
     divergence_var        REAL NOT NULL,
+    consecutive_breaches  INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (call_site_id, rule)
 ) STRICT, WITHOUT ROWID;
 
@@ -127,6 +128,12 @@ pub fn ensure_cost_model_schema(conn: &Connection) -> Result<()> {
         "ALTER TABLE call_site_profile \
          ADD COLUMN window_observations INTEGER NOT NULL DEFAULT 0",
         "window_observations",
+    )?;
+    add_column_if_missing(
+        conn,
+        "ALTER TABLE rule_divergence \
+         ADD COLUMN consecutive_breaches INTEGER NOT NULL DEFAULT 0",
+        "consecutive_breaches",
     )?;
 
     conn.execute(
@@ -258,6 +265,36 @@ mod tests {
             )
             .unwrap();
         assert_eq!(migrated, (17, 0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn legacy_divergence_rows_gain_zero_breach_streak() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE rule_divergence (\
+                call_site_id TEXT NOT NULL, rule TEXT NOT NULL, \
+                n_samples INTEGER NOT NULL, divergence_mean REAL NOT NULL, \
+                divergence_var REAL NOT NULL, \
+                PRIMARY KEY (call_site_id, rule)\
+             ) STRICT, WITHOUT ROWID; \
+             INSERT INTO rule_divergence \
+                (call_site_id, rule, n_samples, divergence_mean, divergence_var) \
+             VALUES ('legacy', 'RuleA', 3, 0.2, 0.01)",
+        )
+        .unwrap();
+
+        ensure_cost_model_schema(&conn).unwrap();
+        ensure_cost_model_schema(&conn).unwrap();
+
+        let migrated: (i64, f64, i64) = conn
+            .query_row(
+                "SELECT n_samples, divergence_mean, consecutive_breaches \
+                 FROM rule_divergence WHERE call_site_id = 'legacy' AND rule = 'RuleA'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(migrated, (3, 0.2, 0));
     }
 
     #[test]

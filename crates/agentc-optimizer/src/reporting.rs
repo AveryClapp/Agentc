@@ -2,7 +2,7 @@
 //!
 //! This module is the operator-facing view over the two optimizer DBs:
 //!
-//! - `cost_model.db` — per-call-site Welford stats, rolling rule divergence,
+//! - `cost_model.db` — per-call-site cost stats, cumulative rule divergence,
 //!   and the `optimizer_disabled` override table.
 //! - `optimizer_audit.db` — ring-buffered history of every plan dispatched
 //!   (last 10,000).

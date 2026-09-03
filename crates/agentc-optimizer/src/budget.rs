@@ -1,7 +1,7 @@
 //! Per-rule accuracy budget enforcement.
 //!
 //! Every rule declares a maximum tolerated shadow-mode divergence
-//! (e.g. `ModelDowngrade = 0.03`). We keep one rolling divergence
+//! (e.g. `ModelDowngrade = 0.03`). We keep one cumulative divergence
 //! estimate per `(call_site_id, rule)` pair, fed by [`crate::shadow`].
 //! When the observed divergence exceeds the budget for `BREACH_STREAK`
 //! consecutive samples the rule is written into `optimizer_disabled`
@@ -10,10 +10,9 @@
 //!
 //! Design notes:
 //!
-//! - The in-memory state is an ordinary `DashMap`. We don't persist
-//!   per-(site, rule) divergence on every sample — that would make
-//!   shadow-mode a write amplifier for cost_model.db. Persistence is a
-//!   snapshot on flush (same pattern as the cost model).
+//! - The in-memory state is an ordinary `DashMap`. Samples mark one
+//!   `(site, rule)` entry dirty; [`Budget::flush_divergence`] snapshots dirty
+//!   generations into `cost_model.db` without clearing a concurrent update.
 //! - "Auto-disable" is a row in `optimizer_disabled`; the planner reads
 //!   that row on each call via [`Budget::is_disabled`]. No background
 //!   thread needs to touch state at re-enable time — we just compare
@@ -40,13 +39,16 @@ pub const COOLDOWN_US: i64 = 24 * 60 * 60 * 1_000_000;
 /// In-memory accuracy-budget state plus the `optimizer_disabled` row
 /// cache.
 ///
-/// One instance per optimizer process; shared via `Arc` between the
-/// planner and the cost-model writer thread.
+/// One instance per optimizer process; shared via `Arc` between planning,
+/// shadow-result recording, and lifecycle persistence paths.
 pub struct Budget {
-    /// `(call_site_id, rule)` → rolling Welford + consecutive breach
-    /// count. `DashMap` so the planner and the observe-writer thread
-    /// can update in parallel.
+    /// `(call_site_id, rule)` → cumulative Welford + consecutive breach
+    /// count. `DashMap` permits independent site/rule pairs to update in
+    /// parallel.
     divergence: Arc<DashMap<(String, String), BudgetEntry>>,
+    /// Dirty generation per divergence entry. A flush only clears the exact
+    /// generation it persisted, so a concurrent sample remains pending.
+    dirty: Arc<RwLock<HashMap<(String, String), u64>>>,
     /// Snapshot cache of `optimizer_disabled` rows, keyed the same way.
     /// Populated at startup and on every successful disable; consulted
     /// by [`Budget::is_disabled`] without a round-trip to SQLite.
@@ -57,6 +59,7 @@ pub struct Budget {
 pub struct BudgetEntry {
     pub stats: WelfordStats,
     pub consecutive_breaches: u32,
+    generation: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -65,9 +68,8 @@ pub struct DisabledEntry {
     pub reenable_at_us: i64,
 }
 
-/// Outcome of [`Budget::record_sample`]. The caller (usually the
-/// writer thread handling an `observe`) uses this to decide whether to
-/// emit a disable row.
+/// Outcome of [`Budget::record_sample`]. The native boundary uses this to
+/// decide whether to persist a disable row.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SampleOutcome {
     WithinBudget,
@@ -90,6 +92,7 @@ impl Budget {
     pub fn new() -> Self {
         Self {
             divergence: Arc::new(DashMap::new()),
+            dirty: Arc::new(RwLock::new(HashMap::new())),
             disabled: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -129,6 +132,43 @@ impl Budget {
         Ok(n)
     }
 
+    /// Warm per-`(call_site_id, rule)` divergence and breach-streak state.
+    /// Call once at startup after [`crate::schema::ensure_cost_model_schema`].
+    pub fn warm_divergence_from_db(&self, conn: &Connection) -> Result<usize> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT call_site_id, rule, n_samples, divergence_mean, \
+                        divergence_var, consecutive_breaches \
+                 FROM rule_divergence",
+            )
+            .context("prepare divergence warmup")?;
+        let rows = stmt
+            .query_map([], |row| {
+                let n_samples = row.get::<_, i64>(2)? as u64;
+                Ok((
+                    (row.get::<_, String>(0)?, row.get::<_, String>(1)?),
+                    BudgetEntry {
+                        stats: WelfordStats::from_persisted(
+                            n_samples,
+                            row.get(3)?,
+                            row.get(4)?,
+                        ),
+                        consecutive_breaches: row.get::<_, i64>(5)? as u32,
+                        generation: 0,
+                    },
+                ))
+            })
+            .context("query rule_divergence")?;
+
+        let mut count = 0;
+        for row in rows {
+            let (key, entry) = row.context("decode rule_divergence")?;
+            self.divergence.insert(key, entry);
+            count += 1;
+        }
+        Ok(count)
+    }
+
     /// Returns true iff the `(site, rule)` pair is currently disabled
     /// (i.e. a row exists and `now_us < reenable_at_us`). `now_us` is
     /// caller-supplied so tests can pin time.
@@ -151,7 +191,7 @@ impl Budget {
         false
     }
 
-    /// Fold one shadow-mode divergence sample into the rolling state
+    /// Fold one shadow-mode divergence sample into the cumulative state
     /// and return whether the budget is breached.
     ///
     /// Consecutive-breach logic: a within-budget sample **resets** the
@@ -166,40 +206,123 @@ impl Budget {
         now_us: i64,
     ) -> SampleOutcome {
         let key = (call_site_id.to_string(), rule.to_string());
-        let mut entry = self.divergence.entry(key.clone()).or_default();
-        entry.stats.update(divergence as f64);
-        let over_budget = (divergence as f64) > (budget as f64);
-        if over_budget {
-            entry.consecutive_breaches = entry.consecutive_breaches.saturating_add(1);
-            if entry.consecutive_breaches >= BREACH_STREAK {
-                let reenable_at = now_us.saturating_add(COOLDOWN_US);
-                self.disabled.write().insert(
-                    key,
-                    DisabledEntry {
-                        disabled_at_us: now_us,
-                        reenable_at_us: reenable_at,
-                    },
-                );
-                // Reset the streak so a post-cooldown re-enable starts
-                // from a clean slate.
+        let (outcome, disabled, generation) = {
+            let mut entry = self.divergence.entry(key.clone()).or_default();
+            entry.stats.update(divergence as f64);
+            entry.generation = entry.generation.saturating_add(1);
+
+            if (divergence as f64) > (budget as f64) {
+                entry.consecutive_breaches = entry.consecutive_breaches.saturating_add(1);
+                if entry.consecutive_breaches >= BREACH_STREAK {
+                    let reenable_at_us = now_us.saturating_add(COOLDOWN_US);
+                    // A post-cooldown re-enable starts from a clean streak.
+                    entry.consecutive_breaches = 0;
+                    (
+                        SampleOutcome::Disable {
+                            disabled_at_us: now_us,
+                            reenable_at_us,
+                        },
+                        Some(DisabledEntry {
+                            disabled_at_us: now_us,
+                            reenable_at_us,
+                        }),
+                        entry.generation,
+                    )
+                } else {
+                    (
+                        SampleOutcome::Breached {
+                            consecutive: entry.consecutive_breaches,
+                        },
+                        None,
+                        entry.generation,
+                    )
+                }
+            } else {
                 entry.consecutive_breaches = 0;
-                return SampleOutcome::Disable {
-                    disabled_at_us: now_us,
-                    reenable_at_us: reenable_at,
-                };
+                (SampleOutcome::WithinBudget, None, entry.generation)
             }
-            return SampleOutcome::Breached {
-                consecutive: entry.consecutive_breaches,
-            };
+        };
+
+        if let Some(disabled_entry) = disabled {
+            self.disabled.write().insert(key.clone(), disabled_entry);
         }
-        entry.consecutive_breaches = 0;
-        SampleOutcome::WithinBudget
+        self.dirty.write().insert(key, generation);
+        outcome
     }
 
-    /// Insert/refresh a disable row in SQLite. Called by the writer
-    /// thread in response to a [`SampleOutcome::Disable`]; we do not
-    /// couple [`record_sample`] to SQLite so the planner's observe path
-    /// stays lock-minimal.
+    /// Persist every dirty divergence row in one transaction.
+    ///
+    /// Only the generation represented by the committed snapshot is cleared;
+    /// a sample arriving during the flush remains dirty for the next flush.
+    pub fn flush_divergence(&self, conn: &mut Connection) -> Result<usize> {
+        self.flush_divergence_with_hook(conn, || {})
+    }
+
+    fn flush_divergence_with_hook<F>(&self, conn: &mut Connection, before_clear: F) -> Result<usize>
+    where
+        F: FnOnce(),
+    {
+        let dirty_generations: Vec<((String, String), u64)> = self
+            .dirty
+            .read()
+            .iter()
+            .map(|(key, generation)| (key.clone(), *generation))
+            .collect();
+        if dirty_generations.is_empty() {
+            return Ok(0);
+        }
+
+        let snapshots: Vec<((String, String), u64, BudgetEntry)> = dirty_generations
+            .into_iter()
+            .filter_map(|(key, generation)| {
+                self.divergence
+                    .get(&key)
+                    .map(|entry| (key, generation, entry.clone()))
+            })
+            .collect();
+        let transaction = conn
+            .transaction()
+            .context("begin divergence-state flush")?;
+        for ((call_site_id, rule), _, entry) in &snapshots {
+            transaction
+                .execute(
+                    "INSERT INTO rule_divergence (\
+                        call_site_id, rule, n_samples, divergence_mean, \
+                        divergence_var, consecutive_breaches\
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+                     ON CONFLICT(call_site_id, rule) DO UPDATE SET \
+                        n_samples = excluded.n_samples, \
+                        divergence_mean = excluded.divergence_mean, \
+                        divergence_var = excluded.divergence_var, \
+                        consecutive_breaches = excluded.consecutive_breaches",
+                    params![
+                        call_site_id,
+                        rule,
+                        entry.stats.n as i64,
+                        entry.stats.mean,
+                        entry.stats.variance(),
+                        entry.consecutive_breaches as i64,
+                    ],
+                )
+                .with_context(|| format!("persist divergence for {call_site_id}/{rule}"))?;
+        }
+        transaction
+            .commit()
+            .context("commit divergence-state flush")?;
+
+        before_clear();
+        let mut dirty = self.dirty.write();
+        for (key, generation, _) in &snapshots {
+            if dirty.get(key).copied() == Some(*generation) {
+                dirty.remove(key);
+            }
+        }
+        Ok(snapshots.len())
+    }
+
+    /// Insert/refresh a disable row in SQLite. Called by the native boundary
+    /// in response to a [`SampleOutcome::Disable`]; we do not couple
+    /// [`record_sample`] to SQLite so direct users can control persistence.
     pub fn persist_disable(
         &self,
         conn: &Connection,
@@ -252,6 +375,11 @@ impl Budget {
         self.divergence
             .get(&(call_site_id.to_string(), rule.to_string()))
             .map(|e| e.value().clone())
+    }
+
+    /// Number of divergence entries awaiting persistence.
+    pub fn dirty_len(&self) -> usize {
+        self.dirty.read().len()
     }
 
     /// Snapshot the cached disable row (for inspect/CLI output).
@@ -409,7 +537,7 @@ mod tests {
     }
 
     #[test]
-    fn rolling_welford_tracks_divergence_distribution() {
+    fn cumulative_welford_tracks_divergence_distribution() {
         let b = Budget::new();
         for _ in 0..10 {
             b.record_sample("site", "RuleA", 0.02, 0.05, 0);
@@ -417,5 +545,110 @@ mod tests {
         let entry = b.get_entry("site", "RuleA").unwrap();
         assert_eq!(entry.stats.n, 10);
         assert!((entry.stats.mean - 0.02).abs() < 1e-9);
+    }
+
+    #[test]
+    fn divergence_and_breach_streak_survive_restart() {
+        let mut connection = fresh_conn();
+        let first = Budget::new();
+        for expected in 1..=4 {
+            assert_eq!(
+                first.record_sample("site", "RuleA", 0.10, 0.03, expected),
+                SampleOutcome::Breached {
+                    consecutive: expected as u32,
+                }
+            );
+        }
+        assert_eq!(first.dirty_len(), 1);
+        assert_eq!(first.flush_divergence(&mut connection).unwrap(), 1);
+        assert_eq!(first.dirty_len(), 0);
+
+        let restarted = Budget::new();
+        assert_eq!(restarted.warm_divergence_from_db(&connection).unwrap(), 1);
+        let warm = restarted.get_entry("site", "RuleA").unwrap();
+        assert_eq!(warm.stats.n, 4);
+        assert!((warm.stats.mean - 0.10).abs() < 1e-7);
+        assert_eq!(warm.consecutive_breaches, 4);
+        assert_eq!(restarted.dirty_len(), 0);
+
+        let outcome = restarted.record_sample("site", "RuleA", 0.10, 0.03, 5);
+        assert_eq!(
+            outcome,
+            SampleOutcome::Disable {
+                disabled_at_us: 5,
+                reenable_at_us: 5 + COOLDOWN_US,
+            }
+        );
+        assert!(restarted.is_disabled("site", "RuleA", 5));
+        restarted.flush_divergence(&mut connection).unwrap();
+
+        let persisted: (i64, f64, i64) = connection
+            .query_row(
+                "SELECT n_samples, divergence_mean, consecutive_breaches \
+                 FROM rule_divergence WHERE call_site_id = 'site' AND rule = 'RuleA'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(persisted.0, 5);
+        assert!((persisted.1 - 0.10).abs() < 1e-7);
+        assert_eq!(persisted.2, 0);
+    }
+
+    #[test]
+    fn within_budget_sample_resets_restarted_streak() {
+        let mut connection = fresh_conn();
+        let first = Budget::new();
+        for _ in 0..4 {
+            first.record_sample("site", "RuleA", 0.10, 0.03, 0);
+        }
+        first.flush_divergence(&mut connection).unwrap();
+
+        let restarted = Budget::new();
+        restarted.warm_divergence_from_db(&connection).unwrap();
+        assert_eq!(
+            restarted.record_sample("site", "RuleA", 0.01, 0.03, 0),
+            SampleOutcome::WithinBudget
+        );
+        restarted.flush_divergence(&mut connection).unwrap();
+
+        let second_restart = Budget::new();
+        second_restart
+            .warm_divergence_from_db(&connection)
+            .unwrap();
+        assert_eq!(
+            second_restart
+                .get_entry("site", "RuleA")
+                .unwrap()
+                .consecutive_breaches,
+            0
+        );
+        assert_eq!(
+            second_restart.record_sample("site", "RuleA", 0.10, 0.03, 0),
+            SampleOutcome::Breached { consecutive: 1 }
+        );
+    }
+
+    #[test]
+    fn flush_keeps_post_snapshot_sample_dirty() {
+        let mut connection = fresh_conn();
+        let budget = Budget::new();
+        budget.record_sample("site", "RuleA", 0.10, 0.03, 1);
+
+        budget
+            .flush_divergence_with_hook(&mut connection, || {
+                budget.record_sample("site", "RuleA", 0.20, 0.03, 2);
+            })
+            .unwrap();
+        assert_eq!(budget.dirty_len(), 1);
+        budget.flush_divergence(&mut connection).unwrap();
+        assert_eq!(budget.dirty_len(), 0);
+
+        let restarted = Budget::new();
+        restarted.warm_divergence_from_db(&connection).unwrap();
+        let entry = restarted.get_entry("site", "RuleA").unwrap();
+        assert_eq!(entry.stats.n, 2);
+        assert!((entry.stats.mean - 0.15).abs() < 1e-7);
+        assert_eq!(entry.consecutive_breaches, 2);
     }
 }

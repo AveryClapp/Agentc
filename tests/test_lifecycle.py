@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import sqlite3
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -192,6 +193,50 @@ class TestInit:
 
         assert (first_storage / "cost_model.db").exists()
         assert (second_storage / "cost_model.db").exists()
+
+    def test_guard_breach_streak_survives_reinit(self, tmp_storage: Path) -> None:
+        controls = {
+            "AGENTC_ENABLED_RULES": "OutputBudget",
+            "AGENTC_SHADOW_DIVERGENCE_BUDGET": "0.1",
+        }
+        with patch.dict(os.environ, controls):
+            agentc.init(storage_path=str(tmp_storage))
+            for _ in range(4):
+                agentc._native.optimize_record_divergence(
+                    "restart-guard-site", "OutputBudget", 0.5
+                )
+            agentc.shutdown()
+
+            with sqlite3.connect(tmp_storage / "cost_model.db") as connection:
+                first = connection.execute(
+                    "SELECT n_samples, divergence_mean, consecutive_breaches "
+                    "FROM rule_divergence "
+                    "WHERE call_site_id = ? AND rule = ?",
+                    ("restart-guard-site", "OutputBudget"),
+                ).fetchone()
+            assert first == pytest.approx((4, 0.5, 4))
+
+            agentc.init(storage_path=str(tmp_storage))
+            agentc._native.optimize_record_divergence(
+                "restart-guard-site", "OutputBudget", 0.5
+            )
+            agentc.shutdown()
+
+        with sqlite3.connect(tmp_storage / "cost_model.db") as connection:
+            divergence = connection.execute(
+                "SELECT n_samples, divergence_mean, consecutive_breaches "
+                "FROM rule_divergence "
+                "WHERE call_site_id = ? AND rule = ?",
+                ("restart-guard-site", "OutputBudget"),
+            ).fetchone()
+            disabled = connection.execute(
+                "SELECT reason FROM optimizer_disabled "
+                "WHERE call_site_id = ? AND rule = ?",
+                ("restart-guard-site", "OutputBudget"),
+            ).fetchone()
+
+        assert divergence == pytest.approx((5, 0.5, 0))
+        assert disabled == ("shadow_divergence",)
 
 
 class TestShutdown:

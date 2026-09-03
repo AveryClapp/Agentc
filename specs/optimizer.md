@@ -297,7 +297,7 @@ def optimize_record_divergence(
     """Feed one sampled counterfactual result into the accuracy budget."""
 
 def optimize_flush() -> None:
-    """Flush buffered cost-model state without dropping the optimizer."""
+    """Flush buffered cost-profile and guard-divergence state."""
 ```
 
 All plan execution happens in Python — the SDK receives the `Plan` back from Rust and dispatches the (possibly rewritten) LLM call(s) itself. Rust never calls out to the user's LLM provider.
@@ -509,12 +509,20 @@ On a hot call, the optimizer:
 
 ### Accuracy budget
 
-Every rule declares a per-call-site accuracy budget (e.g., `ModelDowngrade = 0.03` → 3% maximum shadow divergence). The optimizer maintains a rolling divergence estimate per `(call_site, rule)` pair, fed by shadow-mode sampling (`shadow_rate`, default 2% of optimized calls).
+Every rule declares a per-call-site accuracy budget (e.g., `ModelDowngrade = 0.03` → 3% maximum shadow divergence). The optimizer maintains a cumulative divergence estimate and consecutive-breach streak per `(call_site, rule)` pair, fed by shadow-mode sampling (`shadow_rate`, default 2% of optimized calls).
 
 Budget enforcement:
 
 - **Pre-fire:** The rule's safety check rejects proposals whose projected divergence (from the cost model) exceeds the budget.
-- **Post-fire:** If the rolling observed divergence exceeds the budget for `k` consecutive samples (default `k = 5`), the optimizer auto-disables the rule on that call site. A disabled `(call_site, rule)` row lives in `optimizer_disabled` with the reason; it is re-enabled after a 24-hour cooldown so that transient issues don't poison the cache permanently.
+- **Post-fire:** If observed divergence exceeds the budget for `k` consecutive samples (default `k = 5`), the optimizer auto-disables the rule on that call site. A disabled `(call_site, rule)` row lives in `optimizer_disabled` with the reason; it is re-enabled after a 24-hour cooldown so that transient issues don't poison the cache permanently.
+
+Each completed shadow comparison immediately upserts `n_samples`, cumulative
+mean and variance, and `consecutive_breaches` into `rule_divergence`. When a
+sample reaches `k`, the runtime persists the matching `optimizer_disabled` row
+before returning from `optimize_record_divergence`. Optimizer startup hydrates
+both tables before serving plans, so neither accumulated evidence nor an
+active disable is lost across process restarts. `optimize_flush` and lifecycle
+reset flush dirty divergence again as a final fail-open boundary.
 
 Shadow mode:
 
@@ -586,6 +594,7 @@ CREATE TABLE IF NOT EXISTS rule_divergence (
     n_samples             INTEGER NOT NULL,
     divergence_mean       REAL NOT NULL,
     divergence_var        REAL NOT NULL,
+    consecutive_breaches  INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (call_site_id, rule)
 ) STRICT, WITHOUT ROWID;
 
@@ -627,8 +636,10 @@ CREATE INDEX IF NOT EXISTS idx_audit_call_site ON plan_audit(call_site_id, ts_us
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON plan_audit(ts_us);
 ```
 
-Schema migration adds `window_observations` and the retained-sample table to
-existing databases. An unbounded legacy summary cannot be reconstructed into an
+Schema migration adds `window_observations`, the retained-sample table, and
+`rule_divergence.consecutive_breaches` to existing databases. Existing
+divergence rows receive a zero streak because the prior schema did not retain
+that state. An unbounded legacy cost summary cannot be reconstructed into an
 exact window: migration preserves its lifetime `n_observations`, zeros its
 statistical fields, and requires fresh retained observations before the planner
 considers the site hot. Changing to a smaller configured window truncates and
@@ -729,6 +740,10 @@ A user's LLM call never fails because the optimizer failed.
 - **SQLite cost-model flushes are serialized** by the native profiler's cost-DB
   mutex. Each transaction replaces the exact retained samples and summary for
   every captured dirty site.
+- **Guard updates lock one site/rule entry.** Each shadow sample updates its
+  cumulative estimate and breach streak, records a dirty generation, and then
+  uses the native cost-DB mutex to persist it. A flush clears only the captured
+  generation, so a concurrent post-snapshot sample remains dirty.
 - **Audit writes are synchronous and serialized** by a separate audit-DB mutex.
 - **Shadow execution runs in a background `asyncio.Task`** or thread (depending on the SDK), so it never blocks the primary return. If the shadow task doesn't complete within 2× the primary latency, it's dropped.
 
@@ -798,6 +813,15 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Smaller runtime window is persisted on restart | `cost_model::tests::smaller_window_is_applied_and_persisted_on_restart` |
 | Legacy unbounded profiles restart cold while preserving lifetime count | `schema::tests::legacy_unbounded_profile_is_cold_started_without_losing_lifetime_count` |
 | Concurrent post-snapshot update remains dirty and survives restart | `cost_model::tests::flush_keeps_dirty_marker_for_post_snapshot_observation` |
+| Divergence mean and breach streak survive restart | `budget::tests::divergence_and_breach_streak_survive_restart` |
+| A within-budget sample resets a hydrated streak | `budget::tests::within_budget_sample_resets_restarted_streak` |
+| A concurrent post-snapshot divergence remains dirty | `budget::tests::flush_keeps_post_snapshot_sample_dirty` |
+| The fifth breach after restart disables durably | `tests/test_lifecycle.py::TestInit::test_guard_breach_streak_survives_reinit` |
+
+`bench/guard_persistence_preflight.py` is the deterministic Stage E0 replay for
+the restart boundary. It records four breaches, restarts, records the fifth,
+and verifies both immediate SQLite state and a second-restart pass-through. It
+uses no provider calls and is permanently labeled `paper_evidence=false`.
 
 ### Performance targets
 
@@ -896,7 +920,7 @@ failure modes where direct empirical arithmetic suffices.
 
 ### Per-rule accuracy budget with shadow mode
 
-Each rule has its own divergence budget (e.g., `ModelDowngrade = 0.03`); the optimizer tracks rolling divergence per `(call_site, rule)` and auto-disables on breach. Shadow-mode sampling at 2% provides the ground truth. **Rejected: global accuracy budget.** A single budget muddles attribution — you can't tell which rule burned the budget. **Rejected: pre-flight validator (cheap LLM re-checks the output).** Doubles latency on every call; contradicts the ≤ 1 ms overhead goal.
+Each rule has its own divergence budget (e.g., `ModelDowngrade = 0.03`); the optimizer tracks cumulative divergence and a consecutive-breach streak per `(call_site, rule)` and auto-disables on breach. It persists both fields so restart boundaries do not reset evidence. Shadow-mode sampling at 2% provides the ground truth. **Rejected: volatile guard state.** A process restart would erase the evidence immediately before a disable. **Rejected: global accuracy budget.** A single budget muddles attribution — you can't tell which rule burned the budget. **Rejected: pre-flight validator (cheap LLM re-checks the output).** Doubles latency on every call; contradicts the ≤ 1 ms overhead goal.
 
 ### `CacheHit` as a rewrite rule, not a bypass
 

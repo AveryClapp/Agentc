@@ -238,6 +238,43 @@ class TestInit:
         assert divergence == pytest.approx((5, 0.5, 0))
         assert disabled == ("shadow_divergence",)
 
+    def test_guard_divergence_window_survives_reinit(self, tmp_storage: Path) -> None:
+        controls = {
+            "AGENTC_ENABLED_RULES": "OutputBudget",
+            "AGENTC_OPTIMIZE_DIVERGENCE_WINDOW": "3",
+            "AGENTC_SHADOW_DIVERGENCE_BUDGET": "1.0",
+        }
+        with patch.dict(os.environ, controls):
+            agentc.init(storage_path=str(tmp_storage))
+            for divergence in [0.9, 0.9, 0.9, 0.1, 0.1, 0.1]:
+                agentc._native.optimize_record_divergence(
+                    "windowed-guard-site", "OutputBudget", divergence
+                )
+            agentc.shutdown()
+
+            agentc.init(storage_path=str(tmp_storage))
+            agentc._native.optimize_record_divergence(
+                "windowed-guard-site", "OutputBudget", 0.1
+            )
+            agentc.shutdown()
+
+        with sqlite3.connect(tmp_storage / "cost_model.db") as connection:
+            summary = connection.execute(
+                "SELECT n_samples, window_samples, divergence_mean, "
+                "consecutive_breaches FROM rule_divergence "
+                "WHERE call_site_id = ? AND rule = ?",
+                ("windowed-guard-site", "OutputBudget"),
+            ).fetchone()
+            retained = connection.execute(
+                "SELECT COUNT(*), MIN(sample_sequence), MAX(sample_sequence) "
+                "FROM rule_divergence_observation "
+                "WHERE call_site_id = ? AND rule = ?",
+                ("windowed-guard-site", "OutputBudget"),
+            ).fetchone()
+
+        assert summary == pytest.approx((7, 3, 0.1, 0))
+        assert retained == (3, 5, 7)
+
     def test_invalid_guard_divergence_does_not_create_state(
         self, tmp_storage: Path
     ) -> None:

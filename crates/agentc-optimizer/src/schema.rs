@@ -11,7 +11,8 @@ use rusqlite::Connection;
 ///
 /// - `call_site_profile` — one summary row per `call_site_id`.
 /// - `call_site_observation` — the exact retained samples for each profile.
-/// - `rule_divergence` — one row per `(call_site, rule)` divergence estimate.
+/// - `rule_divergence` — one summary row per `(call_site, rule)`.
+/// - `rule_divergence_observation` — exact retained divergence samples.
 /// - `optimizer_disabled` — per-`(call_site, rule)` disable entries with a
 ///   TTL (`reenable_at`).
 ///
@@ -54,10 +55,20 @@ CREATE TABLE IF NOT EXISTS rule_divergence (
     call_site_id          TEXT NOT NULL,
     rule                  TEXT NOT NULL,
     n_samples             INTEGER NOT NULL,
+    window_samples        INTEGER NOT NULL,
     divergence_mean       REAL NOT NULL,
     divergence_var        REAL NOT NULL,
     consecutive_breaches  INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (call_site_id, rule)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS rule_divergence_observation (
+    call_site_id          TEXT NOT NULL,
+    rule                  TEXT NOT NULL,
+    sample_sequence       INTEGER NOT NULL,
+    divergence            REAL NOT NULL CHECK (divergence >= 0.0 AND divergence <= 1.0),
+    observed_at           INTEGER NOT NULL,
+    PRIMARY KEY (call_site_id, rule, sample_sequence)
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS optimizer_disabled (
@@ -135,6 +146,12 @@ pub fn ensure_cost_model_schema(conn: &Connection) -> Result<()> {
          ADD COLUMN consecutive_breaches INTEGER NOT NULL DEFAULT 0",
         "consecutive_breaches",
     )?;
+    add_column_if_missing(
+        conn,
+        "ALTER TABLE rule_divergence \
+         ADD COLUMN window_samples INTEGER NOT NULL DEFAULT 0",
+        "window_samples",
+    )?;
 
     conn.execute(
         "UPDATE call_site_profile SET \
@@ -161,6 +178,27 @@ pub fn ensure_cost_model_schema(conn: &Connection) -> Result<()> {
         [],
     )
     .context("removing orphaned retained samples")?;
+    conn.execute(
+        "UPDATE rule_divergence SET \
+            window_samples = 0, divergence_mean = 0.0, divergence_var = 0.0 \
+         WHERE NOT EXISTS (\
+            SELECT 1 FROM rule_divergence_observation AS observation \
+            WHERE observation.call_site_id = rule_divergence.call_site_id \
+              AND observation.rule = rule_divergence.rule\
+         )",
+        [],
+    )
+    .context("cold-starting legacy cumulative divergence summaries")?;
+    conn.execute(
+        "DELETE FROM rule_divergence_observation \
+         WHERE NOT EXISTS (\
+            SELECT 1 FROM rule_divergence AS summary \
+            WHERE summary.call_site_id = rule_divergence_observation.call_site_id \
+              AND summary.rule = rule_divergence_observation.rule\
+         )",
+        [],
+    )
+    .context("removing orphaned retained divergence samples")?;
     Ok(())
 }
 
@@ -194,12 +232,13 @@ mod tests {
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' \
                  AND name IN ('call_site_profile','call_site_observation',\
-                              'rule_divergence','optimizer_disabled','rule_set_stats')",
+                              'rule_divergence','rule_divergence_observation',\
+                              'optimizer_disabled','rule_set_stats')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(tables, 5);
+        assert_eq!(tables, 6);
     }
 
     #[test]
@@ -268,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_divergence_rows_gain_zero_breach_streak() {
+    fn legacy_divergence_rows_cold_start_window_and_gain_zero_breach_streak() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE rule_divergence (\
@@ -286,15 +325,24 @@ mod tests {
         ensure_cost_model_schema(&conn).unwrap();
         ensure_cost_model_schema(&conn).unwrap();
 
-        let migrated: (i64, f64, i64) = conn
+        let migrated: (i64, i64, f64, f64, i64) = conn
             .query_row(
-                "SELECT n_samples, divergence_mean, consecutive_breaches \
+                "SELECT n_samples, window_samples, divergence_mean, \
+                        divergence_var, consecutive_breaches \
                  FROM rule_divergence WHERE call_site_id = 'legacy' AND rule = 'RuleA'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .unwrap();
-        assert_eq!(migrated, (3, 0.2, 0));
+        assert_eq!(migrated, (3, 0, 0.0, 0.0, 0));
     }
 
     #[test]

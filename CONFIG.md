@@ -35,6 +35,7 @@ profiler four) in `~/.agentc/config.toml`.
 | `AGENTC_OPTIMIZE` | `true` | Master optimizer switch. `0/false` → always `PassThrough`. |
 | `AGENTC_OPTIMIZE_HOT_THRESHOLD` | `3` | Observations before a call site is "hot" enough to optimize. |
 | `AGENTC_OPTIMIZE_COST_MODEL_WINDOW` | `50` | Rolling per-call-site cost-model sample window. |
+| `AGENTC_OPTIMIZE_DIVERGENCE_WINDOW` | `50` | Exact newest shadow samples retained per call-site/rule divergence estimate. |
 | `AGENTC_OPTIMIZE_MAX_OVERHEAD_MS` | `5` (release) / `50` (debug) | Plan-overhead kill-switch budget. |
 | `AGENTC_OPTIMIZE_SHADOW` | `0.02` | Bernoulli shadow-sampling rate. A sampled call issues a second, **real and billed** un-rewritten call inline to measure divergence. |
 | `AGENTC_COMPOSE` | `true` | V2 composition (`1`) vs V1 first-match (`0`). |
@@ -44,8 +45,9 @@ profiler four) in `~/.agentc/config.toml`.
 | `AGENTC_ENABLED_RULES` | unset = all | Comma-separated rule whitelist (ablation use). |
 | `AGENTC_BIN` | auto-discovered | Path to a prebuilt `agentc` binary for the micro-benchmark. |
 
-`AGENTC_SHADOW_DIVERGENCE_MODE` and `AGENTC_SHADOW_DIVERGENCE_BUDGET` are the two
-knobs behind the paper's accuracy-guard result.
+`AGENTC_SHADOW_DIVERGENCE_MODE`, `AGENTC_SHADOW_DIVERGENCE_BUDGET`, and
+`AGENTC_OPTIMIZE_DIVERGENCE_WINDOW` define the accuracy-guard measurement
+surface.
 
 ## Secrets and provider selection
 

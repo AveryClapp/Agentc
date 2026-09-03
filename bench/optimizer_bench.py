@@ -57,7 +57,7 @@ class RunStats:
 class ShadowDivergence:
     """Per-rule shadow-mode divergence aggregated across all call sites.
 
-    ``mean`` and ``n_samples`` come from ``rule_divergence`` in the
+    ``mean`` and ``n_samples`` describe the retained estimator window in the
     optimized side's ``cost_model.db``. ``audit_mean`` is the mean of
     ``plan_audit.shadow_divergence`` for the same rule — redundant when
     everything is working, but useful to catch a drift between the
@@ -204,9 +204,10 @@ def _read_shadow_divergence(storage_dir: Path) -> list[ShadowDivergence]:
     conn = sqlite3.connect(str(cost_db))
     try:
         for rule, n, mean in conn.execute(
-            "SELECT rule, SUM(n_samples), "
-            "       CASE WHEN SUM(n_samples) > 0 "
-            "            THEN SUM(divergence_mean * n_samples) / SUM(n_samples) "
+            "SELECT rule, SUM(window_samples), "
+            "       CASE WHEN SUM(window_samples) > 0 "
+            "            THEN SUM(divergence_mean * window_samples) "
+            "                 / SUM(window_samples) "
             "            ELSE 0.0 END "
             "FROM rule_divergence GROUP BY rule"
         ):

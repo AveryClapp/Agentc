@@ -8,6 +8,8 @@
 
 use std::env;
 
+pub const DEFAULT_DIVERGENCE_WINDOW: u32 = 50;
+
 /// Planner-visible tunables. Rule-specific settings live in separate
 /// config structs in their owning modules.
 #[derive(Debug, Clone, PartialEq)]
@@ -19,6 +21,10 @@ pub struct OptimizerConfig {
     /// Rolling sample window for cost-model fitting. Also the confidence
     /// saturation point.
     pub cost_model_window: u32,
+    /// Exact newest-N shadow samples retained for each rule/site divergence
+    /// estimate. The raw consecutive-breach controller is independent of this
+    /// diagnostic window.
+    pub divergence_window: u32,
     /// Kill-switch: a plan whose work exceeds this budget is discarded in
     /// favor of `PassThrough`.
     pub max_overhead_ms: f32,
@@ -44,6 +50,7 @@ impl Default for OptimizerConfig {
             enabled: true,
             hot_threshold: 3,
             cost_model_window: 50,
+            divergence_window: DEFAULT_DIVERGENCE_WINDOW,
             max_overhead_ms,
             shadow_rate: 0.02,
             compose: true,
@@ -60,6 +67,7 @@ impl OptimizerConfig {
     /// | `AGENTC_OPTIMIZE` | `enabled` (0/false disables; 1/true enables) |
     /// | `AGENTC_OPTIMIZE_HOT_THRESHOLD` | `hot_threshold` |
     /// | `AGENTC_OPTIMIZE_COST_MODEL_WINDOW` | `cost_model_window` |
+    /// | `AGENTC_OPTIMIZE_DIVERGENCE_WINDOW` | `divergence_window` |
     /// | `AGENTC_OPTIMIZE_MAX_OVERHEAD_MS` | `max_overhead_ms` |
     /// | `AGENTC_OPTIMIZE_SHADOW` | `shadow_rate` |
     /// | `AGENTC_COMPOSE` | `compose` (0/false = V1 first-match; 1/true = V2 compose) |
@@ -78,6 +86,12 @@ impl OptimizerConfig {
             .and_then(|s| s.parse().ok())
         {
             self.cost_model_window = v;
+        }
+        if let Some(v) = env::var("AGENTC_OPTIMIZE_DIVERGENCE_WINDOW")
+            .ok()
+            .and_then(|s| s.parse().ok())
+        {
+            self.divergence_window = v;
         }
         if let Some(v) = env::var("AGENTC_OPTIMIZE_MAX_OVERHEAD_MS")
             .ok()
@@ -122,6 +136,7 @@ mod tests {
         assert!(c.enabled);
         assert_eq!(c.hot_threshold, 3);
         assert_eq!(c.cost_model_window, 50);
+        assert_eq!(c.divergence_window, 50);
         // Debug builds use 50 ms; release builds use 5 ms.
         #[cfg(debug_assertions)]
         assert!((c.max_overhead_ms - 50.0).abs() < 1e-6);

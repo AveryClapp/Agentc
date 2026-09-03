@@ -187,11 +187,14 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
         .flush_dirty(&mut cost_conn)
         .context("persist resized cost-model windows")?;
 
-    let budget = Arc::new(Budget::new());
+    let budget = Arc::new(Budget::with_window(config.divergence_window));
     let _ = budget.warm_from_db(&cost_conn).context("warm budget")?;
     let _ = budget
         .warm_divergence_from_db(&cost_conn)
         .context("warm divergence state")?;
+    let _ = budget
+        .flush_divergence(&mut cost_conn)
+        .context("persist resized divergence windows")?;
 
     let audit_path = storage_dir.join("optimizer_audit.db");
     let audit_conn = Connection::open(&audit_path)
@@ -386,6 +389,7 @@ mod tests {
             .get_entry("restart.site", "OutputBudget")
             .unwrap();
         assert_eq!(entry.stats.n, 4);
+        assert_eq!(entry.n_samples, 4);
         assert_eq!(entry.consecutive_breaches, 4);
         assert_eq!(
             restarted
@@ -396,5 +400,50 @@ mod tests {
                 reenable_at_us: 5 + crate::budget::COOLDOWN_US,
             }
         );
+    }
+
+    #[test]
+    fn configured_divergence_window_controls_restart_hydration_and_persistence() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let initial_config = OptimizerConfig {
+            divergence_window: 5,
+            ..OptimizerConfig::default()
+        };
+        let initial = build_optimizer(dir.path(), initial_config).unwrap();
+        for (now, divergence) in [0.1, 0.2, 0.3, 0.4, 0.5].into_iter().enumerate() {
+            initial.budget.record_sample(
+                "configured.divergence.window",
+                "OutputBudget",
+                divergence,
+                1.0,
+                now as i64,
+            );
+        }
+        let mut connection = Connection::open(dir.path().join("cost_model.db")).unwrap();
+        initial.budget.flush_divergence(&mut connection).unwrap();
+        drop(initial);
+
+        let resized_config = OptimizerConfig {
+            divergence_window: 3,
+            ..OptimizerConfig::default()
+        };
+        let resized = build_optimizer(dir.path(), resized_config).unwrap();
+        let entry = resized
+            .budget
+            .get_entry("configured.divergence.window", "OutputBudget")
+            .unwrap();
+        assert_eq!(entry.n_samples, 5);
+        assert_eq!(entry.stats.n, 3);
+        assert!((entry.stats.mean - 0.4).abs() < 1e-7);
+        let retained: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM rule_divergence_observation \
+                 WHERE call_site_id = 'configured.divergence.window' \
+                   AND rule = 'OutputBudget'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(retained, 3);
     }
 }

@@ -177,6 +177,7 @@ Accuracy:     baseline 82.0% → optimized 81.2% (within budget)
 enabled = true
 hot_threshold = 3                   # Invocations before a call site is eligible.
 cost_model_window = 50              # Rolling window for cost model fitting.
+divergence_window = 50              # Retained shadow samples per site/rule.
 max_overhead_ms = 5                 # Abort optimization if budget exceeded.
 shadow_rate = 0.02                  # 2% of optimized calls run shadow execution.
 
@@ -211,6 +212,7 @@ Environment overrides:
 | `AGENTC_OPTIMIZE=0` | Disables the optimizer. Profiling still runs. |
 | `AGENTC_OPTIMIZE_HOT_THRESHOLD=10` | Overrides `hot_threshold`. |
 | `AGENTC_OPTIMIZE_COST_MODEL_WINDOW=50` | Sets the exact retained sample count per cost profile. |
+| `AGENTC_OPTIMIZE_DIVERGENCE_WINDOW=50` | Sets the exact retained divergence samples per call-site/rule pair. |
 | `AGENTC_OPTIMIZE_MAX_OVERHEAD_MS=5` | Sets the plan kill-switch budget. |
 | `AGENTC_OPTIMIZE_SHADOW=0.1` | Overrides `shadow_rate`. |
 | `AGENTC_COMPOSE=0` | Disables orthogonal rule composition. |
@@ -509,20 +511,26 @@ On a hot call, the optimizer:
 
 ### Accuracy budget
 
-Every rule declares a per-call-site accuracy budget (e.g., `ModelDowngrade = 0.03` → 3% maximum shadow divergence). The optimizer maintains a cumulative divergence estimate and consecutive-breach streak per `(call_site, rule)` pair, fed by shadow-mode sampling (`shadow_rate`, default 2% of optimized calls).
+Every rule declares a per-call-site accuracy budget (e.g., `ModelDowngrade =
+0.03` → 3% maximum shadow divergence). The optimizer retains the exact newest
+`divergence_window` samples and a consecutive-breach streak per `(call_site,
+rule)` pair, fed by shadow-mode sampling (`shadow_rate`, default 2% of optimized
+calls). `n_samples` remains a lifetime operator count; the mean and variance
+describe only the bounded retained window.
 
 Budget enforcement:
 
 - **Pre-fire:** The rule's safety check rejects proposals whose projected divergence (from the cost model) exceeds the budget.
 - **Post-fire:** If observed divergence exceeds the budget for `k` consecutive samples (default `k = 5`), the optimizer auto-disables the rule on that call site. A disabled `(call_site, rule)` row lives in `optimizer_disabled` with the reason; it is re-enabled after a 24-hour cooldown so that transient issues don't poison the cache permanently.
 
-Each completed shadow comparison immediately upserts `n_samples`, cumulative
-mean and variance, and `consecutive_breaches` into `rule_divergence`. When a
-sample reaches `k`, the runtime persists the matching `optimizer_disabled` row
-before returning from `optimize_record_divergence`. Optimizer startup hydrates
-both tables before serving plans, so neither accumulated evidence nor an
-active disable is lost across process restarts. `optimize_flush` and lifecycle
-reset flush dirty divergence again as a final fail-open boundary.
+Each completed shadow comparison immediately writes `n_samples`,
+`window_samples`, retained-window mean and variance, `consecutive_breaches`,
+and the exact newest samples in one SQLite transaction. When a sample reaches
+`k`, the runtime persists the matching `optimizer_disabled` row before
+returning from `optimize_record_divergence`. Optimizer startup hydrates and
+recomputes the exact window before serving plans, so neither retained evidence
+nor an active disable is lost across process restarts. `optimize_flush` and
+lifecycle reset flush dirty divergence again as a final fail-open boundary.
 
 Divergence and thresholds are finite fractions in `[0,1]`. The native boundary
 discards an invalid divergence without creating or mutating guard state. An
@@ -597,10 +605,20 @@ CREATE TABLE IF NOT EXISTS rule_divergence (
     call_site_id          TEXT NOT NULL,
     rule                  TEXT NOT NULL,
     n_samples             INTEGER NOT NULL,
+    window_samples        INTEGER NOT NULL,
     divergence_mean       REAL NOT NULL,
     divergence_var        REAL NOT NULL,
     consecutive_breaches  INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (call_site_id, rule)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS rule_divergence_observation (
+    call_site_id          TEXT NOT NULL,
+    rule                  TEXT NOT NULL,
+    sample_sequence       INTEGER NOT NULL,
+    divergence            REAL NOT NULL CHECK (divergence >= 0.0 AND divergence <= 1.0),
+    observed_at           INTEGER NOT NULL,
+    PRIMARY KEY (call_site_id, rule, sample_sequence)
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS optimizer_disabled (
@@ -641,14 +659,14 @@ CREATE INDEX IF NOT EXISTS idx_audit_call_site ON plan_audit(call_site_id, ts_us
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON plan_audit(ts_us);
 ```
 
-Schema migration adds `window_observations`, the retained-sample table, and
-`rule_divergence.consecutive_breaches` to existing databases. Existing
-divergence rows receive a zero streak because the prior schema did not retain
-that state. An unbounded legacy cost summary cannot be reconstructed into an
-exact window: migration preserves its lifetime `n_observations`, zeros its
-statistical fields, and requires fresh retained observations before the planner
-considers the site hot. Changing to a smaller configured window truncates and
-persists the newest samples at startup.
+Schema migration adds `window_observations`, both retained-sample tables,
+`rule_divergence.window_samples`, and
+`rule_divergence.consecutive_breaches` to existing databases. A divergence row
+from before breach persistence receives a zero streak. An unbounded legacy
+cost or divergence summary cannot be reconstructed into an exact window:
+migration preserves its lifetime count, zeros its window statistics, and
+retains any already-persisted breach streak. Changing either configured window
+to a smaller value truncates and persists the newest samples at startup.
 
 `plan_audit` supports pruning to a 10,000-row cap through `audit::prune`.
 Pruning is an explicit maintenance operation; the runtime does not silently
@@ -745,10 +763,12 @@ A user's LLM call never fails because the optimizer failed.
 - **SQLite cost-model flushes are serialized** by the native profiler's cost-DB
   mutex. Each transaction replaces the exact retained samples and summary for
   every captured dirty site.
-- **Guard updates lock one site/rule entry.** Each shadow sample updates its
-  cumulative estimate and breach streak, records a dirty generation, and then
-  uses the native cost-DB mutex to persist it. A flush clears only the captured
-  generation, so a concurrent post-snapshot sample remains dirty.
+- **Guard updates lock one site/rule entry.** Each shadow sample mutates a
+  copy-on-write retained window, recomputes its statistics, updates the raw
+  breach streak, records a dirty generation, and then uses the native cost-DB
+  mutex to persist the summary and exact samples atomically. A flush clears
+  only the captured generation, so a concurrent post-snapshot sample remains
+  dirty.
 - **Audit writes are synchronous and serialized** by a separate audit-DB mutex.
 - **Shadow execution runs in a background `asyncio.Task`** or thread (depending on the SDK), so it never blocks the primary return. If the shadow task doesn't complete within 2× the primary latency, it's dropped.
 
@@ -819,6 +839,11 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Legacy unbounded profiles restart cold while preserving lifetime count | `schema::tests::legacy_unbounded_profile_is_cold_started_without_losing_lifetime_count` |
 | Concurrent post-snapshot update remains dirty and survives restart | `cost_model::tests::flush_keeps_dirty_marker_for_post_snapshot_observation` |
 | Divergence mean and breach streak survive restart | `budget::tests::divergence_and_breach_streak_survive_restart` |
+| Divergence statistics retain exactly the newest configured N samples | `budget::tests::retained_window_ages_out_old_divergence_distribution` |
+| Exact divergence window survives restart and continues eviction | `budget::tests::retained_window_survives_restart_and_continues_eviction` |
+| Smaller divergence window is persisted on restart | `budget::tests::smaller_window_is_applied_and_persisted_on_restart` |
+| Legacy cumulative divergence stats restart cold while preserving lifetime count and streak | `schema::tests::legacy_divergence_rows_cold_start_window_and_gain_zero_breach_streak` |
+| Inspect does not report a cold-started zero-sample row as measured zero divergence | `reporting::tests::inspect_ignores_cold_started_divergence_without_retained_samples` |
 | A within-budget sample resets a hydrated streak | `budget::tests::within_budget_sample_resets_restarted_streak` |
 | A concurrent post-snapshot divergence remains dirty | `budget::tests::flush_keeps_post_snapshot_sample_dirty` |
 | The fifth breach after restart disables durably | `tests/test_lifecycle.py::TestInit::test_guard_breach_streak_survives_reinit` |
@@ -827,6 +852,13 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 the restart boundary. It records four breaches, restarts, records the fifth,
 and verifies both immediate SQLite state and a second-restart pass-through. It
 uses no provider calls and is permanently labeled `paper_evidence=false`.
+
+`crates/agentc-optimizer/examples/divergence_window_preflight.rs` is the
+deterministic Stage E0 replay for estimator drift and restart equivalence. It
+ages a 50-sample old distribution completely out, reloads the exact retained
+rows, persists a smaller configured window, and exercises conservative legacy
+migration without provider calls. It is permanently labeled
+`paper_evidence=false`.
 
 ### Performance targets
 
@@ -925,7 +957,19 @@ failure modes where direct empirical arithmetic suffices.
 
 ### Per-rule accuracy budget with shadow mode
 
-Each rule has its own divergence budget (e.g., `ModelDowngrade = 0.03`); the optimizer tracks cumulative divergence and a consecutive-breach streak per `(call_site, rule)` and auto-disables on breach. It persists both fields so restart boundaries do not reset evidence. Shadow-mode sampling at 2% provides the ground truth. **Rejected: volatile guard state.** A process restart would erase the evidence immediately before a disable. **Rejected: global accuracy budget.** A single budget muddles attribution — you can't tell which rule burned the budget. **Rejected: pre-flight validator (cheap LLM re-checks the output).** Doubles latency on every call; contradicts the ≤ 1 ms overhead goal.
+Each rule has its own divergence budget (e.g., `ModelDowngrade = 0.03`). The
+optimizer retains the exact newest `divergence_window` samples and the raw
+consecutive-breach streak per `(call_site, rule)`, and persists both so restart
+boundaries reproduce the same estimator and disable decision. Shadow-mode
+sampling at 2% provides the ground truth. **Rejected: an unbounded Welford
+aggregate.** It cannot age out provider or workload drift. **Rejected:
+exponential decay.** It saves rows but makes the horizon approximate and exact
+restart replay harder to audit. **Rejected: volatile guard state.** A process
+restart would erase the evidence immediately before a disable. **Rejected:
+global accuracy budget.** A single budget muddles attribution—you cannot tell
+which rule burned the budget. **Rejected: pre-flight validator (cheap LLM
+re-checks the output).** It doubles latency on every call and contradicts the
+≤ 1 ms overhead goal.
 
 ### `CacheHit` as a rewrite rule, not a bypass
 

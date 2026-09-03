@@ -1,8 +1,8 @@
 //! Per-rule accuracy budget enforcement.
 //!
 //! Every rule declares a maximum tolerated shadow-mode divergence
-//! (e.g. `ModelDowngrade = 0.03`). We keep one cumulative divergence
-//! estimate per `(call_site_id, rule)` pair, fed by [`crate::shadow`].
+//! (e.g. `ModelDowngrade = 0.03`). We keep one exact newest-N divergence
+//! window per `(call_site_id, rule)` pair, fed by [`crate::shadow`].
 //! When the observed divergence exceeds the budget for `BREACH_STREAK`
 //! consecutive samples the rule is written into `optimizer_disabled`
 //! with a 24-hour cooldown; queries check the cooldown before letting
@@ -18,7 +18,7 @@
 //!   thread needs to touch state at re-enable time — we just compare
 //!   `now_us` against `reenable_at`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -26,6 +26,7 @@ use dashmap::DashMap;
 use parking_lot::RwLock;
 use rusqlite::{params, Connection};
 
+use crate::config::DEFAULT_DIVERGENCE_WINDOW;
 use crate::cost_model::WelfordStats;
 
 /// Number of *consecutive* over-budget samples before the rule is
@@ -42,9 +43,8 @@ pub const COOLDOWN_US: i64 = 24 * 60 * 60 * 1_000_000;
 /// One instance per optimizer process; shared via `Arc` between planning,
 /// shadow-result recording, and lifecycle persistence paths.
 pub struct Budget {
-    /// `(call_site_id, rule)` → cumulative Welford + consecutive breach
-    /// count. `DashMap` permits independent site/rule pairs to update in
-    /// parallel.
+    /// `(call_site_id, rule)` → retained window + consecutive breach count.
+    /// `DashMap` permits independent site/rule pairs to update in parallel.
     divergence: Arc<DashMap<(String, String), BudgetEntry>>,
     /// Dirty generation per divergence entry. A flush only clears the exact
     /// generation it persisted, so a concurrent sample remains pending.
@@ -53,13 +53,25 @@ pub struct Budget {
     /// Populated at startup and on every successful disable; consulted
     /// by [`Budget::is_disabled`] without a round-trip to SQLite.
     disabled: Arc<RwLock<HashMap<(String, String), DisabledEntry>>>,
+    window_size: usize,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct BudgetEntry {
+    /// Lifetime valid samples, including samples that aged out of `stats`.
+    pub n_samples: u64,
+    /// Statistics over only the exact retained newest-N samples.
     pub stats: WelfordStats,
     pub consecutive_breaches: u32,
+    samples: Arc<VecDeque<DivergenceSample>>,
     generation: u64,
+}
+
+#[derive(Debug, Clone)]
+struct DivergenceSample {
+    sequence: u64,
+    divergence: f32,
+    observed_at_us: i64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -91,10 +103,17 @@ impl Default for Budget {
 
 impl Budget {
     pub fn new() -> Self {
+        Self::with_window(DEFAULT_DIVERGENCE_WINDOW)
+    }
+
+    /// Construct a guard retaining exactly the newest `window_size` valid
+    /// divergence samples per `(call_site_id, rule)`. Zero is treated as one.
+    pub fn with_window(window_size: u32) -> Self {
         Self {
             divergence: Arc::new(DashMap::new()),
             dirty: Arc::new(RwLock::new(HashMap::new())),
             disabled: Arc::new(RwLock::new(HashMap::new())),
+            window_size: window_size.max(1) as usize,
         }
     }
 
@@ -133,37 +152,60 @@ impl Budget {
         Ok(n)
     }
 
-    /// Warm per-`(call_site_id, rule)` divergence and breach-streak state.
+    /// Warm per-`(call_site_id, rule)` divergence windows and breach streaks.
     /// Call once at startup after [`crate::schema::ensure_cost_model_schema`].
     pub fn warm_divergence_from_db(&self, conn: &Connection) -> Result<usize> {
         let mut stmt = conn
             .prepare(
-                "SELECT call_site_id, rule, n_samples, divergence_mean, \
-                        divergence_var, consecutive_breaches \
+                "SELECT call_site_id, rule, n_samples, window_samples, \
+                        divergence_mean, divergence_var, consecutive_breaches \
                  FROM rule_divergence",
             )
             .context("prepare divergence warmup")?;
         let rows = stmt
             .query_map([], |row| {
-                let n_samples = row.get::<_, i64>(2)? as u64;
                 Ok((
                     (row.get::<_, String>(0)?, row.get::<_, String>(1)?),
-                    BudgetEntry {
-                        stats: WelfordStats::from_persisted(
-                            n_samples,
-                            row.get(3)?,
-                            row.get(4)?,
-                        ),
-                        consecutive_breaches: row.get::<_, i64>(5)? as u32,
-                        generation: 0,
-                    },
+                    row.get::<_, i64>(2)? as u64,
+                    row.get::<_, i64>(3)? as usize,
+                    row.get::<_, f64>(4)?,
+                    row.get::<_, f64>(5)?,
+                    row.get::<_, i64>(6)? as u32,
                 ))
             })
             .context("query rule_divergence")?;
+        let persisted = rows
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .context("decode rule_divergence")?;
+        drop(stmt);
 
-        let mut count = 0;
-        for row in rows {
-            let (key, entry) = row.context("decode rule_divergence")?;
+        let mut count = 0usize;
+        for (key, persisted_lifetime, persisted_window, persisted_mean, persisted_var, streak) in
+            persisted
+        {
+            let mut samples = load_divergence_samples(conn, &key.0, &key.1)?;
+            let mut truncated = false;
+            while samples.len() > self.window_size {
+                samples.pop_front();
+                truncated = true;
+            }
+            let stats = divergence_stats(&samples);
+            let n_samples = persisted_lifetime.max(samples.len() as u64);
+            let summary_changed = persisted_window != samples.len()
+                || persisted_mean.to_bits() != stats.mean.to_bits()
+                || persisted_var.to_bits() != stats.variance().to_bits()
+                || persisted_lifetime != n_samples;
+            let generation = u64::from(truncated || summary_changed);
+            let entry = BudgetEntry {
+                n_samples,
+                stats,
+                consecutive_breaches: streak,
+                samples: Arc::new(samples),
+                generation,
+            };
+            if generation != 0 {
+                self.dirty.write().insert(key.clone(), generation);
+            }
             self.divergence.insert(key, entry);
             count += 1;
         }
@@ -192,8 +234,8 @@ impl Budget {
         false
     }
 
-    /// Fold one shadow-mode divergence sample into the cumulative state
-    /// and return whether the budget is breached.
+    /// Fold one shadow-mode divergence sample into the retained window and
+    /// return whether the raw sample breaches the budget.
     ///
     /// Consecutive-breach logic: a within-budget sample **resets** the
     /// streak. A breach at `consecutive >= BREACH_STREAK` emits a
@@ -213,7 +255,26 @@ impl Budget {
         let key = (call_site_id.to_string(), rule.to_string());
         let (outcome, disabled, generation) = {
             let mut entry = self.divergence.entry(key.clone()).or_default();
-            entry.stats.update(divergence as f64);
+            let sequence = entry
+                .samples
+                .back()
+                .map(|sample| sample.sequence)
+                .unwrap_or(entry.n_samples)
+                .max(entry.n_samples)
+                .saturating_add(1);
+            entry.n_samples = entry.n_samples.saturating_add(1);
+            entry.stats = {
+                let samples = Arc::make_mut(&mut entry.samples);
+                samples.push_back(DivergenceSample {
+                    sequence,
+                    divergence,
+                    observed_at_us: now_us,
+                });
+                while samples.len() > self.window_size {
+                    samples.pop_front();
+                }
+                divergence_stats(samples)
+            };
             entry.generation = entry.generation.saturating_add(1);
 
             if (divergence as f64) > (budget as f64) {
@@ -285,30 +346,9 @@ impl Budget {
                     .map(|entry| (key, generation, entry.clone()))
             })
             .collect();
-        let transaction = conn
-            .transaction()
-            .context("begin divergence-state flush")?;
+        let transaction = conn.transaction().context("begin divergence-state flush")?;
         for ((call_site_id, rule), _, entry) in &snapshots {
-            transaction
-                .execute(
-                    "INSERT INTO rule_divergence (\
-                        call_site_id, rule, n_samples, divergence_mean, \
-                        divergence_var, consecutive_breaches\
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
-                     ON CONFLICT(call_site_id, rule) DO UPDATE SET \
-                        n_samples = excluded.n_samples, \
-                        divergence_mean = excluded.divergence_mean, \
-                        divergence_var = excluded.divergence_var, \
-                        consecutive_breaches = excluded.consecutive_breaches",
-                    params![
-                        call_site_id,
-                        rule,
-                        entry.stats.n as i64,
-                        entry.stats.mean,
-                        entry.stats.variance(),
-                        entry.consecutive_breaches as i64,
-                    ],
-                )
+            persist_divergence_entry(&transaction, call_site_id, rule, entry)
                 .with_context(|| format!("persist divergence for {call_site_id}/{rule}"))?;
         }
         transaction
@@ -398,6 +438,91 @@ impl Budget {
             .get(&(call_site_id.to_string(), rule.to_string()))
             .copied()
     }
+}
+
+fn divergence_stats(samples: &VecDeque<DivergenceSample>) -> WelfordStats {
+    let mut stats = WelfordStats::default();
+    for sample in samples {
+        stats.update(sample.divergence as f64);
+    }
+    stats
+}
+
+fn load_divergence_samples(
+    conn: &Connection,
+    call_site_id: &str,
+    rule: &str,
+) -> Result<VecDeque<DivergenceSample>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT sample_sequence, divergence, observed_at \
+             FROM rule_divergence_observation \
+             WHERE call_site_id = ?1 AND rule = ?2 ORDER BY sample_sequence",
+        )
+        .context("prepare retained divergence load")?;
+    let samples = stmt
+        .query_map(params![call_site_id, rule], |row| {
+            Ok(DivergenceSample {
+                sequence: row.get::<_, i64>(0)? as u64,
+                divergence: row.get::<_, f64>(1)? as f32,
+                observed_at_us: row.get(2)?,
+            })
+        })
+        .context("query retained divergence samples")?
+        .collect::<rusqlite::Result<VecDeque<_>>>()
+        .context("decode retained divergence samples")?;
+    Ok(samples)
+}
+
+fn persist_divergence_entry(
+    conn: &Connection,
+    call_site_id: &str,
+    rule: &str,
+    entry: &BudgetEntry,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM rule_divergence_observation \
+         WHERE call_site_id = ?1 AND rule = ?2",
+        params![call_site_id, rule],
+    )?;
+    {
+        let mut stmt = conn.prepare(
+            "INSERT INTO rule_divergence_observation (\
+                call_site_id, rule, sample_sequence, divergence, observed_at\
+             ) VALUES (?1, ?2, ?3, ?4, ?5)",
+        )?;
+        for sample in entry.samples.iter() {
+            stmt.execute(params![
+                call_site_id,
+                rule,
+                sample.sequence as i64,
+                sample.divergence as f64,
+                sample.observed_at_us,
+            ])?;
+        }
+    }
+    conn.execute(
+        "INSERT INTO rule_divergence (\
+            call_site_id, rule, n_samples, window_samples, divergence_mean, \
+            divergence_var, consecutive_breaches\
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
+         ON CONFLICT(call_site_id, rule) DO UPDATE SET \
+            n_samples = excluded.n_samples, \
+            window_samples = excluded.window_samples, \
+            divergence_mean = excluded.divergence_mean, \
+            divergence_var = excluded.divergence_var, \
+            consecutive_breaches = excluded.consecutive_breaches",
+        params![
+            call_site_id,
+            rule,
+            entry.n_samples as i64,
+            entry.stats.n as i64,
+            entry.stats.mean,
+            entry.stats.variance(),
+            entry.consecutive_breaches as i64,
+        ],
+    )?;
+    Ok(())
 }
 
 fn is_unit_fraction(value: f32) -> bool {
@@ -491,6 +616,7 @@ mod tests {
             );
         }
         let after = b.get_entry("site", "RuleA").unwrap();
+        assert_eq!(after.n_samples, before.n_samples);
         assert_eq!(after.stats.n, before.stats.n);
         assert_eq!(after.stats.mean.to_bits(), before.stats.mean.to_bits());
         assert_eq!(after.stats.m2.to_bits(), before.stats.m2.to_bits());
@@ -599,14 +725,32 @@ mod tests {
     }
 
     #[test]
-    fn cumulative_welford_tracks_divergence_distribution() {
+    fn retained_stats_track_divergence_distribution() {
         let b = Budget::new();
         for _ in 0..10 {
             b.record_sample("site", "RuleA", 0.02, 0.05, 0);
         }
         let entry = b.get_entry("site", "RuleA").unwrap();
+        assert_eq!(entry.n_samples, 10);
         assert_eq!(entry.stats.n, 10);
         assert!((entry.stats.mean - 0.02).abs() < 1e-9);
+    }
+
+    #[test]
+    fn retained_window_ages_out_old_divergence_distribution() {
+        let b = Budget::with_window(3);
+        for divergence in [0.9, 0.9, 0.9, 0.1, 0.1, 0.1] {
+            b.record_sample("site", "RuleA", divergence, 1.0, 0);
+        }
+        let entry = b.get_entry("site", "RuleA").unwrap();
+        assert_eq!(entry.n_samples, 6);
+        assert_eq!(entry.stats.n, 3);
+        assert!((entry.stats.mean - 0.1).abs() < 1e-7);
+        assert_eq!(entry.samples.len(), 3);
+        assert!(entry
+            .samples
+            .iter()
+            .all(|sample| (sample.divergence - 0.1).abs() < f32::EPSILON));
     }
 
     #[test]
@@ -628,6 +772,7 @@ mod tests {
         let restarted = Budget::new();
         assert_eq!(restarted.warm_divergence_from_db(&connection).unwrap(), 1);
         let warm = restarted.get_entry("site", "RuleA").unwrap();
+        assert_eq!(warm.n_samples, 4);
         assert_eq!(warm.stats.n, 4);
         assert!((warm.stats.mean - 0.10).abs() < 1e-7);
         assert_eq!(warm.consecutive_breaches, 4);
@@ -644,17 +789,92 @@ mod tests {
         assert!(restarted.is_disabled("site", "RuleA", 5));
         restarted.flush_divergence(&mut connection).unwrap();
 
-        let persisted: (i64, f64, i64) = connection
+        let persisted: (i64, i64, f64, i64, i64) = connection
             .query_row(
-                "SELECT n_samples, divergence_mean, consecutive_breaches \
+                "SELECT n_samples, window_samples, divergence_mean, \
+                        consecutive_breaches, \
+                        (SELECT COUNT(*) FROM rule_divergence_observation \
+                         WHERE call_site_id = 'site' AND rule = 'RuleA') \
                  FROM rule_divergence WHERE call_site_id = 'site' AND rule = 'RuleA'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .unwrap();
         assert_eq!(persisted.0, 5);
-        assert!((persisted.1 - 0.10).abs() < 1e-7);
-        assert_eq!(persisted.2, 0);
+        assert_eq!(persisted.1, 5);
+        assert!((persisted.2 - 0.10).abs() < 1e-7);
+        assert_eq!(persisted.3, 0);
+        assert_eq!(persisted.4, 5);
+    }
+
+    #[test]
+    fn retained_window_survives_restart_and_continues_eviction() {
+        let mut connection = fresh_conn();
+        let first = Budget::with_window(3);
+        for (now, divergence) in [0.1, 0.2, 0.3, 0.4].into_iter().enumerate() {
+            first.record_sample("site", "RuleA", divergence, 1.0, now as i64);
+        }
+        first.flush_divergence(&mut connection).unwrap();
+
+        let restarted = Budget::with_window(3);
+        restarted.warm_divergence_from_db(&connection).unwrap();
+        let warm = restarted.get_entry("site", "RuleA").unwrap();
+        assert_eq!(warm.n_samples, 4);
+        assert_eq!(warm.stats.n, 3);
+        assert!((warm.stats.mean - 0.3).abs() < 1e-7);
+
+        restarted.record_sample("site", "RuleA", 0.5, 1.0, 5);
+        restarted.flush_divergence(&mut connection).unwrap();
+        let second_restart = Budget::with_window(3);
+        second_restart.warm_divergence_from_db(&connection).unwrap();
+        let after = second_restart.get_entry("site", "RuleA").unwrap();
+        assert_eq!(after.n_samples, 5);
+        assert_eq!(after.stats.n, 3);
+        assert!((after.stats.mean - 0.4).abs() < 1e-7);
+        let sequences: Vec<u64> = after.samples.iter().map(|sample| sample.sequence).collect();
+        assert_eq!(sequences, vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn smaller_window_is_applied_and_persisted_on_restart() {
+        let mut connection = fresh_conn();
+        let initial = Budget::with_window(5);
+        for (now, divergence) in [0.1, 0.2, 0.3, 0.4, 0.5].into_iter().enumerate() {
+            initial.record_sample("site", "RuleA", divergence, 1.0, now as i64);
+        }
+        initial.flush_divergence(&mut connection).unwrap();
+
+        let resized = Budget::with_window(3);
+        resized.warm_divergence_from_db(&connection).unwrap();
+        let profile = resized.get_entry("site", "RuleA").unwrap();
+        assert_eq!(profile.n_samples, 5);
+        assert_eq!(profile.stats.n, 3);
+        assert!((profile.stats.mean - 0.4).abs() < 1e-7);
+        assert_eq!(resized.dirty_len(), 1);
+        resized.flush_divergence(&mut connection).unwrap();
+
+        let retained: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM rule_divergence_observation \
+                 WHERE call_site_id = 'site' AND rule = 'RuleA'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(retained, 3);
+        let second_restart = Budget::with_window(3);
+        second_restart.warm_divergence_from_db(&connection).unwrap();
+        assert_eq!(second_restart.dirty_len(), 0);
+        let persisted = second_restart.get_entry("site", "RuleA").unwrap();
+        assert!((persisted.stats.mean - 0.4).abs() < 1e-7);
     }
 
     #[test]
@@ -709,6 +929,7 @@ mod tests {
         let restarted = Budget::new();
         restarted.warm_divergence_from_db(&connection).unwrap();
         let entry = restarted.get_entry("site", "RuleA").unwrap();
+        assert_eq!(entry.n_samples, 2);
         assert_eq!(entry.stats.n, 2);
         assert!((entry.stats.mean - 0.15).abs() < 1e-7);
         assert_eq!(entry.consecutive_breaches, 2);

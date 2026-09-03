@@ -186,9 +186,10 @@ def optimize_record_divergence(call_site_id: str, rule: str, divergence: float) 
     """Record a shadow-mode divergence sample for a rule at a call site.
 
     Feeds the accuracy budget: five consecutive over-threshold samples for
-    `rule` at `call_site_id` disable the rule there. The cumulative estimate
-    and current breach streak persist across lifecycle restarts. Non-finite or
-    out-of-range divergence is discarded without mutating guard state.
+    `rule` at `call_site_id` disable the rule there. The divergence estimate
+    uses the configured exact newest-N window; its lifetime count, retained
+    samples, and current breach streak persist across lifecycle restarts.
+    Non-finite or out-of-range divergence is discarded without mutating state.
     Internally fail-open — any error is dropped.
     """
     ...

@@ -732,11 +732,12 @@ fn build_optimizer_state(
         Err(e) => {
             eprintln!("[agentc-profiler] optimizer wiring failed: {e}");
             let cost_model = Arc::new(CostModel::with_window(config.cost_model_window));
+            let budget = Arc::new(Budget::with_window(config.divergence_window));
             let optimizer = Arc::new(Optimizer::empty(cost_model.clone(), config));
             OptimizerState {
                 optimizer,
                 cost_model,
-                budget: Arc::new(Budget::new()),
+                budget,
                 audit: None,
                 cost_db: None,
                 observe_counter: std::sync::atomic::AtomicU64::new(0),

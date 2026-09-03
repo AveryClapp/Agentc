@@ -23,7 +23,6 @@ import csv
 import sqlite3
 import sys
 from pathlib import Path
-from datetime import datetime
 
 REPO = Path(__file__).resolve().parent.parent
 PAPER_RESULTS = REPO / "bench" / "paper_results"
@@ -104,7 +103,7 @@ def get_auto_disables():
 def get_divergence_stats():
     """Query rule_divergence table for observed shadow divergence per rule.
 
-    Returns dict mapping (call_site_id, rule) -> (n_samples, divergence_mean).
+    Returns (call_site_id, rule) -> (window_samples, divergence_mean).
     """
     if not COST_MODEL_DB.exists():
         return {}
@@ -113,11 +112,11 @@ def get_divergence_stats():
     try:
         conn = sqlite3.connect(str(COST_MODEL_DB))
         cursor = conn.execute(
-            "SELECT call_site_id, rule, n_samples, divergence_mean "
+            "SELECT call_site_id, rule, window_samples, divergence_mean "
             "FROM rule_divergence"
         )
-        for call_site, rule, n_samples, div_mean in cursor:
-            stats[(call_site, rule)] = (n_samples, div_mean)
+        for call_site, rule, window_samples, div_mean in cursor:
+            stats[(call_site, rule)] = (window_samples, div_mean)
         conn.close()
     except sqlite3.OperationalError:
         pass
@@ -174,7 +173,6 @@ def main():
     # Check for auto-disables in ~/.agentc/cost_model.db
     auto_disables = get_auto_disables()
     divergences = get_divergence_stats()
-    budgets = get_accuracy_budgets()
 
     print("Auto-Disable Events (from optimizer_disabled table):")
     print("-" * 70)
@@ -203,7 +201,7 @@ def main():
         print(f"Accuracy-degrading configs: {n_degrading}/{n_guard_runs}")
 
     print(f"Guard auto-disable events: {n_auto_disables}")
-    print(f"Of which accuracy-degrading: (N/A - no auto-disables recorded)")
+    print("Of which accuracy-degrading: (N/A - no auto-disables recorded)")
     print(f"Possible false positives: {n_false_positives}")
 
     if not auto_disables and not divergences:

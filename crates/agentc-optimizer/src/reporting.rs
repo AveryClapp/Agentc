@@ -2,7 +2,7 @@
 //!
 //! This module is the operator-facing view over the two optimizer DBs:
 //!
-//! - `cost_model.db` — per-call-site cost stats, cumulative rule divergence,
+//! - `cost_model.db` — per-call-site cost stats, rolling rule divergence,
 //!   and the `optimizer_disabled` override table.
 //! - `optimizer_audit.db` — ring-buffered history of every plan dispatched
 //!   (last 10,000).
@@ -159,10 +159,10 @@ pub fn build_report(
 
     // Attach rule divergence means from cost_model.db when available. The
     // per-rule divergence row is keyed by `(call_site_id, rule)`, so we
-    // average across sites weighted by n_samples.
+    // average across sites weighted by the retained window sample count.
     if let Some(conn) = cost_conn {
         let mut div_stmt = conn
-            .prepare("SELECT rule, n_samples, divergence_mean FROM rule_divergence")
+            .prepare("SELECT rule, window_samples, divergence_mean FROM rule_divergence")
             .context("prepare rule_divergence read")?;
         let it = div_stmt
             .query_map([], |r| {
@@ -415,7 +415,8 @@ pub fn build_inspect(
 fn load_max_divergence(conn: &Connection, call_site_id: &str) -> Result<Option<f64>> {
     let got: Option<f64> = conn
         .query_row(
-            "SELECT MAX(divergence_mean) FROM rule_divergence WHERE call_site_id = ?1",
+            "SELECT MAX(divergence_mean) FROM rule_divergence \
+             WHERE call_site_id = ?1 AND window_samples > 0",
             params![call_site_id],
             |r| r.get(0),
         )
@@ -775,6 +776,7 @@ pub fn render_disable_summary(d: &DisableSummary) -> String {
 mod tests {
     use super::*;
     use crate::audit::{insert_batch, PlanAudit, PlanKind};
+    use crate::budget::Budget;
     use crate::cost_model::{CostModel, CostModelUpdate};
     use crate::schema::{ensure_audit_schema, ensure_cost_model_schema};
 
@@ -953,6 +955,21 @@ mod tests {
     }
 
     #[test]
+    fn inspect_ignores_cold_started_divergence_without_retained_samples() {
+        let c = fresh_cost();
+        c.execute(
+            "INSERT INTO rule_divergence (\
+                call_site_id, rule, n_samples, window_samples, divergence_mean, \
+                divergence_var, consecutive_breaches\
+             ) VALUES ('legacy', 'OutputBudget', 100, 0, 0.0, 0.0, 4)",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(load_max_divergence(&c, "legacy").unwrap(), None);
+    }
+
+    #[test]
     fn inspect_aggregates_firing_rates_and_savings() {
         let c = fresh_cost();
         let mut a = fresh_audit();
@@ -1050,6 +1067,41 @@ mod tests {
             .unwrap();
         assert_eq!(inspect.total_invocations, 5);
         assert_eq!(inspect.confidence, 1.0);
+    }
+
+    #[test]
+    fn report_weights_divergence_by_retained_samples_not_lifetime_count() {
+        let mut cost = fresh_cost();
+        let mut audit_conn = fresh_audit();
+        let budget = Budget::with_window(2);
+        for _ in 0..100 {
+            budget.record_sample("old-high-volume", "OutputBudget", 0.0, 1.0, 0);
+        }
+        for _ in 0..2 {
+            budget.record_sample("new-low-volume", "OutputBudget", 1.0, 1.0, 0);
+        }
+        budget.flush_divergence(&mut cost).unwrap();
+        insert_batch(
+            &mut audit_conn,
+            &[audit(
+                1,
+                "old-high-volume",
+                PlanKind::Rewritten,
+                Some("OutputBudget"),
+                Some(0.01),
+                1,
+            )],
+        )
+        .unwrap();
+
+        let report = build_report(&audit_conn, Some(&cost), 10_000, 24).unwrap();
+        let divergence = report
+            .rules
+            .iter()
+            .find(|row| row.rule == "OutputBudget")
+            .unwrap();
+        assert_eq!(divergence.divergence_samples, 4);
+        assert_eq!(divergence.divergence_mean, Some(0.5));
     }
 
     #[test]

@@ -256,6 +256,10 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
     """Wrapper for Messages.create (sync, non-streaming)."""
     if not _is_initialized():
         return wrapped(*args, **kwargs)
+    from agentc._interception_context import interception_is_nested
+
+    if interception_is_nested():
+        return wrapped(*args, **kwargs)
 
     parent = get_current_span()
     start_time = _now_us()
@@ -348,6 +352,10 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
 def _wrap_stream(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
     """Wrapper for Messages.stream (sync streaming)."""
     if not _is_initialized():
+        return wrapped(*args, **kwargs)
+    from agentc._interception_context import interception_is_nested
+
+    if interception_is_nested():
         return wrapped(*args, **kwargs)
 
     parent = get_current_span()
@@ -478,6 +486,10 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
     """Wrapper for AsyncMessages.create (async, non-streaming)."""
     if not _is_initialized():
         return await wrapped(*args, **kwargs)
+    from agentc._interception_context import interception_is_nested
+
+    if interception_is_nested():
+        return await wrapped(*args, **kwargs)
 
     parent = get_current_span()
     start_time = _now_us()
@@ -566,6 +578,10 @@ def _wrap_stream_async(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> A
     also return a context manager directly, not a coroutine.
     """
     if not _is_initialized():
+        return wrapped(*args, **kwargs)
+    from agentc._interception_context import interception_is_nested
+
+    if interception_is_nested():
         return wrapped(*args, **kwargs)
 
     parent = get_current_span()

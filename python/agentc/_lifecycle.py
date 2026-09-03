@@ -185,10 +185,12 @@ def _apply_patches() -> None:
     Each adapter no-ops if its framework isn't importable, so this is
     safe to call unconditionally."""
     from agentc._patches._anthropic import patch as patch_anthropic
+    from agentc._patches._litellm import patch as patch_litellm
     from agentc._patches._openai import patch as patch_openai
     from agentc._provenance_frameworks import install_all
     from agentc._scope_adapters import install_all as install_scope_adapters
 
+    patch_litellm()
     patch_anthropic()
     patch_openai()
     try:
@@ -216,6 +218,7 @@ def _apply_patches() -> None:
 def _remove_patches() -> None:
     """Remove SDK monkey-patches and framework provenance adapters."""
     from agentc._patches._anthropic import unpatch as unpatch_anthropic
+    from agentc._patches._litellm import unpatch as unpatch_litellm
     from agentc._patches._openai import unpatch as unpatch_openai
     from agentc._provenance_frameworks import uninstall_all
     from agentc._scope_adapters import uninstall_all as uninstall_scope_adapters
@@ -223,6 +226,7 @@ def _remove_patches() -> None:
     uninstall_scope_adapters()
     unpatch_anthropic()
     unpatch_openai()
+    unpatch_litellm()
     try:
         uninstall_all()
     except BaseException:

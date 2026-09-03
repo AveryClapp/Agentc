@@ -349,6 +349,10 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
     """Wrapper for Completions.create (sync)."""
     if not _is_initialized():
         return wrapped(*args, **kwargs)
+    from agentc._interception_context import interception_is_nested
+
+    if interception_is_nested():
+        return wrapped(*args, **kwargs)
 
     parent = get_current_span()
     start_time = _now_us()
@@ -625,6 +629,10 @@ class _StreamingIterator:
 async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
     """Wrapper for AsyncCompletions.create (async)."""
     if not _is_initialized():
+        return await wrapped(*args, **kwargs)
+    from agentc._interception_context import interception_is_nested
+
+    if interception_is_nested():
         return await wrapped(*args, **kwargs)
 
     parent = get_current_span()

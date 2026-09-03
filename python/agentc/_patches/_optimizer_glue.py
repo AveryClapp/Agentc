@@ -44,6 +44,8 @@ _SKIP_MODULE_PREFIXES = (
     "wrapt",
     "anthropic.",
     "anthropic",
+    "litellm.",
+    "litellm",
 )
 
 

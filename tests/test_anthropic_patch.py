@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import agentc
-from agentc._context import SpanContext, get_current_span, set_current_span
+from agentc._context import SpanContext, set_current_span
 from agentc._lifecycle import _initialized, _shutdown_in_progress
 from agentc._patches._anthropic import (
     _AsyncWrappedStreamManager,
@@ -22,8 +22,6 @@ from agentc._patches._anthropic import (
     _extract_response_attrs,
     _wrap_create,
     _wrap_stream,
-    _WrappedStreamManager,
-    _emit_span,
     patch as patch_anthropic,
     unpatch as unpatch_anthropic,
 )
@@ -565,7 +563,25 @@ class TestPatchUnpatch:
         patch_anthropic()
         try:
             import anthropic.resources.messages as msgs
+
             assert hasattr(msgs.Messages.create, "__wrapped__")
+        finally:
+            unpatch_anthropic()
+            mod._patched = False
+
+    def test_patch_applies_to_beta_class_used_by_osworld(self) -> None:
+        """patch() wraps ``client.beta.messages`` as used by OSWorld V2."""
+        pytest.importorskip("anthropic")
+        beta_msgs = pytest.importorskip("anthropic.resources.beta.messages")
+        import agentc._patches._anthropic as mod
+
+        mod._patched = False
+        patch_anthropic()
+        try:
+            assert hasattr(beta_msgs.Messages.create, "__wrapped__")
+            assert hasattr(beta_msgs.AsyncMessages.create, "__wrapped__")
+            assert hasattr(beta_msgs.Messages.stream, "__wrapped__")
+            assert hasattr(beta_msgs.AsyncMessages.stream, "__wrapped__")
         finally:
             unpatch_anthropic()
             mod._patched = False
@@ -577,7 +593,10 @@ class TestPatchUnpatch:
         mod._patched = False
         import anthropic.resources.messages as msgs
 
+        beta_msgs = pytest.importorskip("anthropic.resources.beta.messages")
+
         original = msgs.Messages.create
+        beta_original = beta_msgs.Messages.create
         patch_anthropic()
         unpatch_anthropic()
         mod._patched = False
@@ -586,6 +605,7 @@ class TestPatchUnpatch:
         current = msgs.Messages.create
         # Either restored to original or it's the unwrapped version
         assert not hasattr(current, "__wrapped__") or current is original
+        assert beta_msgs.Messages.create is beta_original
 
     def test_skip_if_not_installed(self) -> None:
         """If anthropic not installed, patch is skipped silently."""

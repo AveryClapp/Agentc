@@ -125,3 +125,14 @@ cost in both arms. Every answer was already below the proposed 64-token cap, so
 the rule activated without realizing savings. The file is labeled engineering
 smoke and records the unrandomized order, debug build, disabled shadow sampling,
 and other reasons it is not paper evidence.
+
+### OSWorld request-shape preflight
+
+The [OSWorld request preflight](osworld-request-preflight-2026-09-03.json)
+replays the native request structure used by the frozen OSWorld V2
+`AnthropicAgent` without contacting Anthropic or launching a desktop. It verifies
+that Agentc intercepts `client.beta.messages.create`, blocks structural rewrites
+on opaque multimodal/tool histories, permits `OutputBudget`, and returns the
+original system, message, tool, beta-header, and thinking objects by identity.
+It also records the output-quantile overshoot discovered during the screen as
+`bd-pbus`. This is Stage E0 integration evidence only, not a benchmark result.

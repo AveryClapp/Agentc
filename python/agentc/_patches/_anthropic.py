@@ -8,15 +8,15 @@ Supports anthropic >= 0.30.0 (adapter_v030).
 
 from __future__ import annotations
 
+import importlib
 import inspect
 import json
 import logging
-import time
 from typing import Any
 
 import wrapt
 
-from agentc._context import SpanContext, get_current_span, set_current_span
+from agentc._context import SpanContext, get_current_span
 from agentc._span import (
     _build_span_dict,
     _generate_span_id,
@@ -678,7 +678,44 @@ class _AsyncWrappedStream:
 
 # --- Patch/unpatch ---
 
-_original_methods: dict[str, Any] = {}
+# Exact pre-Agentc descriptors, retained so beta and stable SDK resources can
+# be restored independently. Beta resources are optional on older supported
+# Anthropic releases.
+_original_methods: dict[str, tuple[Any, str, Any]] = {}
+
+
+def _patch_targets() -> list[tuple[str, str, str, Any]]:
+    """Return stable and beta SDK targets without importing them eagerly."""
+    return [
+        ("anthropic.resources.messages", "Messages", "create", _wrap_create),
+        (
+            "anthropic.resources.messages",
+            "AsyncMessages",
+            "create",
+            _wrap_create_async,
+        ),
+        ("anthropic.resources.messages", "Messages", "stream", _wrap_stream),
+        (
+            "anthropic.resources.messages",
+            "AsyncMessages",
+            "stream",
+            _wrap_stream_async,
+        ),
+        ("anthropic.resources.beta.messages", "Messages", "create", _wrap_create),
+        (
+            "anthropic.resources.beta.messages",
+            "AsyncMessages",
+            "create",
+            _wrap_create_async,
+        ),
+        ("anthropic.resources.beta.messages", "Messages", "stream", _wrap_stream),
+        (
+            "anthropic.resources.beta.messages",
+            "AsyncMessages",
+            "stream",
+            _wrap_stream_async,
+        ),
+    ]
 
 
 def patch() -> None:
@@ -698,42 +735,46 @@ def patch() -> None:
     version = getattr(anthropic, "__version__", "0.0.0")
     logger.info("Patching anthropic SDK (version %s, adapter: v030)", version)
 
-    try:
-        # Sync Messages.create
-        wrapt.wrap_function_wrapper(
-            "anthropic.resources.messages",
-            "Messages.create",
-            _wrap_create,
-        )
+    for module_name, class_name, method_name, wrapper in _patch_targets():
+        key = f"{module_name}:{class_name}.{method_name}"
+        if key in _original_methods:
+            continue
 
-        # Async AsyncMessages.create
-        wrapt.wrap_function_wrapper(
-            "anthropic.resources.messages",
-            "AsyncMessages.create",
-            _wrap_create_async,
-        )
+        try:
+            module = importlib.import_module(module_name)
+            cls = getattr(module, class_name)
+            original = getattr(cls, method_name)
+        except (ImportError, AttributeError):
+            logger.debug("Anthropic SDK target unavailable: %s", key, exc_info=True)
+            continue
 
-        # Sync Messages.stream
-        wrapt.wrap_function_wrapper(
-            "anthropic.resources.messages",
-            "Messages.stream",
-            _wrap_stream,
-        )
+        # Some SDK versions may re-export the same resource class at multiple
+        # paths. Wrapping a class method once covers every alias.
+        if any(
+            patched_cls is cls and patched_method == method_name
+            for patched_cls, patched_method, _ in _original_methods.values()
+        ):
+            continue
 
-        # Async AsyncMessages.stream
-        wrapt.wrap_function_wrapper(
-            "anthropic.resources.messages",
-            "AsyncMessages.stream",
-            _wrap_stream_async,
-        )
+        try:
+            wrapt.wrap_function_wrapper(
+                module_name,
+                f"{class_name}.{method_name}",
+                wrapper,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to patch Anthropic SDK target %s", key, exc_info=True
+            )
+            continue
 
-        _patched = True
-        logger.debug("Anthropic SDK patched (4 methods)")
+        _original_methods[key] = (cls, method_name, original)
 
-    except AttributeError as exc:
-        logger.warning("Patch target not found: %s. Falling back to httpx transport.", exc)
-    except Exception:
-        logger.warning("Failed to patch Anthropic SDK", exc_info=True)
+    _patched = bool(_original_methods)
+    if _patched:
+        logger.debug("Anthropic SDK patched (%d methods)", len(_original_methods))
+    else:
+        logger.warning("No supported Anthropic SDK patch targets were found")
 
 
 def unpatch() -> None:
@@ -743,25 +784,14 @@ def unpatch() -> None:
     if not _patched:
         return
 
-    try:
-        import anthropic.resources.messages as msgs
+    for key, (cls, method_name, original) in reversed(list(_original_methods.items())):
+        try:
+            setattr(cls, method_name, original)
+        except Exception:
+            logger.warning(
+                "Failed to unpatch Anthropic SDK target %s", key, exc_info=True
+            )
 
-        # wrapt replaces the attribute on the class — unwrap by checking __wrapped__
-        for cls_name, method_name in [
-            ("Messages", "create"),
-            ("Messages", "stream"),
-            ("AsyncMessages", "create"),
-            ("AsyncMessages", "stream"),
-        ]:
-            cls = getattr(msgs, cls_name, None)
-            if cls is None:
-                continue
-            method = getattr(cls, method_name, None)
-            if method is not None and hasattr(method, "__wrapped__"):
-                setattr(cls, method_name, method.__wrapped__)
-
-        _patched = False
-        logger.info("Anthropic SDK unpatched")
-
-    except Exception:
-        logger.warning("Failed to unpatch Anthropic SDK", exc_info=True)
+    _original_methods.clear()
+    _patched = False
+    logger.info("Anthropic SDK unpatched")

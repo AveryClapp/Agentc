@@ -7,6 +7,11 @@
 
 use serde::{Deserialize, Serialize};
 
+/// `Parameters.extra` marker set by provider adapters when the native request
+/// carries message fields that the string-only DAG cannot round-trip (for
+/// example images, tool-use blocks, cache controls, or vendor message models).
+pub const NATIVE_MESSAGES_OPAQUE_KEY: &str = "agentc_native_messages_opaque";
+
 /// One message in a `Call`'s `messages` list. We treat `role` opaquely so
 /// `system`/`user`/`assistant`/`tool` all round-trip without an enum per
 /// vendor convention.
@@ -88,6 +93,23 @@ pub struct Call {
     pub input_deps: Vec<DepSource>,
     #[serde(default)]
     pub occurrence_ix: u32,
+}
+
+impl Call {
+    /// Whether message reconstruction from this DAG would be lossy.
+    ///
+    /// Provider adapters retain the original native objects on the Python
+    /// side. The planner uses this marker to admit only rules that leave those
+    /// objects untouched; message-reading/mutating rules conservatively
+    /// abstain until the DAG can represent the full vendor shape.
+    pub fn has_opaque_native_messages(&self) -> bool {
+        self.parameters
+            .extra
+            .as_object()
+            .and_then(|extra| extra.get(NATIVE_MESSAGES_OPAQUE_KEY))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    }
 }
 
 /// Measured result of executing a [`Plan`]. Fed into
@@ -229,6 +251,26 @@ mod tests {
         let back: Outcome = serde_json::from_str(&json).unwrap();
         assert_eq!(back.input_tokens, outcome.input_tokens);
         assert!(back.output_is_short);
+    }
+
+    #[test]
+    fn opaque_native_message_marker_is_conservative() {
+        let mut call = Call {
+            call_site_id: "site".into(),
+            trace_id: [0u8; 16],
+            span_id: [0u8; 8],
+            model: "model".into(),
+            messages: vec![],
+            parameters: Parameters::default(),
+            tools: vec![],
+            input_deps: vec![],
+            occurrence_ix: 0,
+        };
+        assert!(!call.has_opaque_native_messages());
+        call.parameters.extra = serde_json::json!({NATIVE_MESSAGES_OPAQUE_KEY: true});
+        assert!(call.has_opaque_native_messages());
+        call.parameters.extra = serde_json::json!({NATIVE_MESSAGES_OPAQUE_KEY: "true"});
+        assert!(!call.has_opaque_native_messages());
     }
 
     #[test]

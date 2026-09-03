@@ -11,12 +11,14 @@ import pytest
 
 from agentc._patches._optimizer_glue import (
     _text_divergence,
+    apply_call_mutations_anthropic,
+    apply_call_mutations_openai,
+    build_call_dict_anthropic,
     build_call_dict_openai,
     dispatch_sync,
     maybe_shadow_record,
 )
 from agentc._provenance import (
-    State,
     UserInput,
     clear,
     consume_state_reads,
@@ -37,6 +39,15 @@ def _reset_provenance():
 def _build(messages: list[dict]) -> dict:
     return build_call_dict_openai(
         {"model": "gpt-4o-mini", "messages": messages},
+        call_site_id="test:site:1",
+        trace_id_hex="00" * 16,
+        span_id_hex="00" * 8,
+    )
+
+
+def _build_anthropic(kwargs: dict) -> dict:
+    return build_call_dict_anthropic(
+        kwargs,
         call_site_id="test:site:1",
         trace_id_hex="00" * 16,
         span_id_hex="00" * 8,
@@ -166,26 +177,257 @@ def test_state_drop_payload_shape_matches_rule_contract():
 
 
 # ---------------------------------------------------------------------------
+# Native structured-message preservation (bd-voua)
+# ---------------------------------------------------------------------------
+
+
+def test_openai_multimodal_parameter_rewrite_preserves_native_blocks() -> None:
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Inspect this screenshot."},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "data:image/png;base64,AAAA"},
+                },
+            ],
+        }
+    ]
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "click",
+                "parameters": {"type": "object"},
+            },
+        }
+    ]
+    kwargs = {
+        "model": "gpt-5.4-2026-03-05",
+        "messages": messages,
+        "tools": tools,
+    }
+    mutated = build_call_dict_openai(
+        kwargs,
+        call_site_id="osworld:agent:1",
+        trace_id_hex="00" * 16,
+        span_id_hex="00" * 8,
+    )
+    extra = mutated["parameters"]["extra"]
+    assert extra["agentc_native_messages_opaque"] is True
+    assert mutated["messages"][0]["content"] == "Inspect this screenshot. [image_url]"
+    assert "AAAA" not in repr(mutated)
+
+    # Even a malformed/version-skewed plan that carries a structural mutation
+    # cannot make the Python adapter rebuild an opaque vendor message.
+    mutated["messages"] = []
+    mutated["parameters"]["max_output_tokens"] = 64
+    new_kwargs = apply_call_mutations_openai(kwargs, mutated)
+
+    assert new_kwargs["messages"] is messages
+    assert new_kwargs["messages"] == kwargs["messages"]
+    assert new_kwargs["tools"] is tools
+    assert new_kwargs["max_completion_tokens"] == 64
+    assert "max_tokens" not in new_kwargs
+
+
+def test_anthropic_osworld_shape_survives_parameter_and_model_rewrite() -> None:
+    system = [
+        {
+            "type": "text",
+            "text": "Operate the computer safely.",
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": "AAAA",
+                    },
+                },
+                {"type": "text", "text": "What should I click?"},
+            ],
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_01",
+                    "name": "computer",
+                    "input": {"action": "screenshot"},
+                }
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_01",
+                    "content": [
+                        {"type": "text", "text": "Success"},
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": "BBBB",
+                            },
+                        },
+                    ],
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        },
+    ]
+    tools = [
+        {
+            "name": "computer",
+            "type": "computer_20250124",
+            "display_width_px": 1280,
+            "display_height_px": 720,
+            "display_number": 1,
+        }
+    ]
+    betas = ["computer-use-2025-01-24", "prompt-caching-2024-07-31"]
+    extra_body = {"thinking": {"type": "enabled", "budget_tokens": 2048}}
+    kwargs = {
+        "model": "claude-sonnet-4-5-20250929",
+        "system": system,
+        "messages": messages,
+        "max_tokens": 1024,
+        "tools": tools,
+        "betas": betas,
+        "extra_body": extra_body,
+    }
+    mutated = _build_anthropic(kwargs)
+    assert mutated["parameters"]["extra"]["agentc_native_messages_opaque"] is True
+
+    mutated["model"] = "claude-haiku-4-5-20251001"
+    mutated["messages"] = []
+    mutated["parameters"]["max_output_tokens"] = 128
+    new_kwargs = apply_call_mutations_anthropic(kwargs, mutated)
+
+    assert new_kwargs["system"] is system
+    assert new_kwargs["messages"] is messages
+    assert new_kwargs["tools"] is tools
+    assert new_kwargs["betas"] is betas
+    assert new_kwargs["extra_body"] is extra_body
+    assert new_kwargs["system"] == kwargs["system"]
+    assert new_kwargs["messages"] == kwargs["messages"]
+    assert new_kwargs["model"] == "claude-haiku-4-5-20251001"
+    assert new_kwargs["max_tokens"] == 128
+
+
+def test_plain_text_messages_remain_structurally_rewritable() -> None:
+    kwargs = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "drop me"},
+            {"role": "user", "content": "keep me"},
+        ],
+    }
+    mutated = build_call_dict_openai(
+        kwargs,
+        call_site_id="plain:agent:1",
+        trace_id_hex="00" * 16,
+        span_id_hex="00" * 8,
+    )
+    assert "agentc_native_messages_opaque" not in mutated["parameters"]["extra"]
+    mutated["messages"] = [mutated["messages"][0], mutated["messages"][2]]
+
+    new_kwargs = apply_call_mutations_openai(kwargs, mutated)
+
+    assert new_kwargs["messages"] == [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "keep me"},
+    ]
+    assert new_kwargs["messages"] is not kwargs["messages"]
+
+
+@pytest.mark.parametrize(
+    ("model", "original_cap", "expected_field"),
+    [
+        ("gpt-4o-mini", {"max_tokens": 256}, "max_tokens"),
+        (
+            "gpt-5.4-2026-03-05",
+            {"max_completion_tokens": 256},
+            "max_completion_tokens",
+        ),
+        ("gpt-5.4-2026-03-05", {}, "max_completion_tokens"),
+        ("gpt-4o-mini", {}, "max_tokens"),
+    ],
+)
+def test_openai_output_budget_uses_one_compatible_cap_field(
+    model: str,
+    original_cap: dict[str, int],
+    expected_field: str,
+) -> None:
+    kwargs = {
+        "model": model,
+        "messages": [{"role": "user", "content": "answer briefly"}],
+        **original_cap,
+    }
+    mutated = build_call_dict_openai(
+        kwargs,
+        call_site_id="caps:agent:1",
+        trace_id_hex="00" * 16,
+        span_id_hex="00" * 8,
+    )
+    mutated["parameters"]["max_output_tokens"] = 64
+
+    new_kwargs = apply_call_mutations_openai(kwargs, mutated)
+
+    other_field = (
+        "max_tokens"
+        if expected_field == "max_completion_tokens"
+        else "max_completion_tokens"
+    )
+    assert new_kwargs[expected_field] == 64
+    assert other_field not in new_kwargs
+
+
+# ---------------------------------------------------------------------------
 # _text_divergence — embedding mode
 # ---------------------------------------------------------------------------
+
 
 class TestEmbeddingDivergenceMode:
     """Tests for AGENTC_SHADOW_DIVERGENCE_MODE=embedding."""
 
-    def test_identical_strings_score_near_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_identical_strings_score_near_zero(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("AGENTC_SHADOW_DIVERGENCE_MODE", "embedding")
         score = _text_divergence("The answer is Paris.", "The answer is Paris.")
-        assert score < 0.05, f"identical strings gave divergence {score:.4f}; expected < 0.05"
+        assert score < 0.05, (
+            f"identical strings gave divergence {score:.4f}; expected < 0.05"
+        )
 
-    def test_unrelated_strings_score_high(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_unrelated_strings_score_high(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("AGENTC_SHADOW_DIVERGENCE_MODE", "embedding")
         score = _text_divergence(
             "The capital of France is Paris.",
             "Photosynthesis converts sunlight into chemical energy in plants.",
         )
-        assert score > 0.2, f"unrelated strings gave low divergence {score:.4f}; expected > 0.2"
+        assert score > 0.2, (
+            f"unrelated strings gave low divergence {score:.4f}; expected > 0.2"
+        )
 
-    def test_paraphrase_lower_than_raw_lexical(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_paraphrase_lower_than_raw_lexical(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """The motivating case: 'The answer is Paris' vs 'Paris is the answer'
         should score LOWER divergence in embedding mode than in lexical mode,
         because the embedding captures semantic equivalence."""
@@ -203,7 +445,9 @@ class TestEmbeddingDivergenceMode:
             "for a semantically equivalent paraphrase"
         )
 
-    def test_fallback_when_native_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_fallback_when_native_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """When _native.embed_text_bytes raises, the mode falls back to
         'normalized' (containment) rather than crashing."""
         import unittest.mock
@@ -306,7 +550,9 @@ class TestShadowGuardPythonEntry:
 
         optimized = self._resp("Paris is the capital of France")
         original = self._resp("Photosynthesis converts sunlight in plants")
-        maybe_shadow_record(self._plan(), "site", optimized, run_original=lambda: original)
+        maybe_shadow_record(
+            self._plan(), "site", optimized, run_original=lambda: original
+        )
 
         assert len(recorded) == 1
         site, rule, div = recorded[0]

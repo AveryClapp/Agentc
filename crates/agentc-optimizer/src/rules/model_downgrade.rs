@@ -141,6 +141,10 @@ impl RewriteRule for ModelDowngradeRule {
     fn accuracy_budget(&self) -> f32 {
         self.accuracy_budget
     }
+
+    fn preserves_native_messages(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
@@ -189,6 +193,12 @@ mod tests {
         let mut c = call();
         c.model = "some-other".into();
         assert!(!rule.applies(&c, &hot_profile(20)));
+    }
+
+    #[test]
+    fn declares_native_message_preservation() {
+        let rule = ModelDowngradeRule::new(routes(), Arc::new(Budget::new()));
+        assert!(rule.preserves_native_messages());
     }
 
     #[test]

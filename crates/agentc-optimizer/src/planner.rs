@@ -133,6 +133,16 @@ pub trait RewriteRule: Send + Sync {
     /// Maximum tolerated shadow-mode divergence. Consulted by the
     /// accuracy-budget machinery (bead O4).
     fn accuracy_budget(&self) -> f32;
+
+    /// Whether this rule is safe when the provider adapter says the native
+    /// message shape cannot be represented losslessly by [`Call::messages`].
+    ///
+    /// The conservative default is false. A rule may opt in only when it does
+    /// not inspect, hash, remove, replace, or reorder messages; model- and
+    /// parameter-only rewrites are the intended examples.
+    fn preserves_native_messages(&self) -> bool {
+        false
+    }
 }
 
 /// Top-level optimizer. Constructed once per process; `plan()` is safe to
@@ -238,6 +248,9 @@ impl Optimizer {
         let mut proposals: Vec<(String, Proposal)> = Vec::with_capacity(self.rules.len());
         for rule in &self.rules {
             if self.budget.is_disabled(&call.call_site_id, rule.name(), now_us) {
+                continue;
+            }
+            if call.has_opaque_native_messages() && !rule.preserves_native_messages() {
                 continue;
             }
             if !rule.applies(call, &profile) {
@@ -373,6 +386,36 @@ mod tests {
         }
     }
 
+    struct NativeMessagePreservingRule;
+    impl RewriteRule for NativeMessagePreservingRule {
+        fn name(&self) -> &'static str {
+            "NativeMessagePreservingRule"
+        }
+        fn applies(&self, _: &Call, _: &CallSiteProfile) -> bool {
+            true
+        }
+        fn propose(&self, call: &Call, _: &CallSiteProfile) -> Option<Proposal> {
+            let mut rewritten = call.clone();
+            rewritten.parameters.max_output_tokens = Some(64);
+            Some(Proposal {
+                rewritten: Plan::Rewritten {
+                    rule: self.name().to_string(),
+                    call: rewritten,
+                    projected_savings_usd: 0.5,
+                },
+                projected_savings_usd: 0.5,
+                cost_driver: CostDriver::OutputTokens,
+                safety_check: Box::new(|_| true),
+            })
+        }
+        fn accuracy_budget(&self) -> f32 {
+            0.01
+        }
+        fn preserves_native_messages(&self) -> bool {
+            true
+        }
+    }
+
     struct UnsafeRule;
     impl RewriteRule for UnsafeRule {
         fn name(&self) -> &'static str {
@@ -497,6 +540,46 @@ mod tests {
                 assert!((projected_savings_usd - 0.5).abs() < 1e-6);
             }
             _ => panic!("expected Rewritten, got {:?}", plan),
+        }
+    }
+
+    #[test]
+    fn opaque_native_messages_gate_message_unsafe_rules() {
+        let cm = Arc::new(CostModel::new());
+        observe(&cm, "site", 10);
+        let opt = Optimizer::new(
+            cm,
+            vec![Box::new(AlwaysFires { savings: 0.5 })],
+            OptimizerConfig::default(),
+        );
+        let mut call = sample_call("site");
+        call.parameters.extra = serde_json::json!({
+            crate::dag::NATIVE_MESSAGES_OPAQUE_KEY: true,
+        });
+
+        assert!(matches!(opt.plan(&call), Plan::PassThrough));
+    }
+
+    #[test]
+    fn opaque_native_messages_allow_parameter_only_rules() {
+        let cm = Arc::new(CostModel::new());
+        observe(&cm, "site", 10);
+        let opt = Optimizer::new(
+            cm,
+            vec![Box::new(NativeMessagePreservingRule)],
+            OptimizerConfig::default(),
+        );
+        let mut call = sample_call("site");
+        call.parameters.extra = serde_json::json!({
+            crate::dag::NATIVE_MESSAGES_OPAQUE_KEY: true,
+        });
+
+        match opt.plan(&call) {
+            Plan::Rewritten { call, .. } => {
+                assert_eq!(call.parameters.max_output_tokens, Some(64));
+                assert!(call.has_opaque_native_messages());
+            }
+            other => panic!("expected parameter-only rewrite, got {other:?}"),
         }
     }
 

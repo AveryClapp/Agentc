@@ -92,6 +92,10 @@ impl RewriteRule for DeadOutputTruncationRule {
     fn accuracy_budget(&self) -> f32 {
         self.accuracy_budget
     }
+
+    fn preserves_native_messages(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
@@ -147,6 +151,11 @@ mod tests {
     #[test]
     fn does_not_fire_without_dead_branch_flag() {
         assert!(!DeadOutputTruncationRule::default().applies(&live_call(), &hot_profile()));
+    }
+
+    #[test]
+    fn declares_native_message_preservation() {
+        assert!(DeadOutputTruncationRule::default().preserves_native_messages());
     }
 
     #[test]

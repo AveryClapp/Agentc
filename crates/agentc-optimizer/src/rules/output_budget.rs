@@ -91,6 +91,10 @@ impl RewriteRule for OutputBudgetRule {
     fn accuracy_budget(&self) -> f32 {
         self.accuracy_budget
     }
+
+    fn preserves_native_messages(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
@@ -133,6 +137,11 @@ mod tests {
     }
 
     #[test]
+    fn declares_native_message_preservation() {
+        assert!(OutputBudgetRule::default().preserves_native_messages());
+    }
+
+    #[test]
     fn does_not_fire_when_p99_is_zero() {
         assert!(!OutputBudgetRule::default().applies(&unbounded_call(), &hot_profile_with_p99(0.0)));
     }
@@ -165,7 +174,7 @@ mod tests {
                 let cap = call.parameters.max_output_tokens.unwrap();
                 // f32 arithmetic: 200 * 1.2 may land at 240 or 241 depending on
                 // the platform's rounding for 1.2_f32 (= 1.2000000476...).
-                assert!(cap >= 240 && cap <= 242, "cap={cap}, expected ~240");
+                assert!((240..=242).contains(&cap), "cap={cap}, expected ~240");
             }
             _ => panic!("expected Rewritten"),
         }

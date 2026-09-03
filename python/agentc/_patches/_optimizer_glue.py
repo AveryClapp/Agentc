@@ -22,6 +22,13 @@ from agentc._degradation import log_degraded
 
 log = logging.getLogger(__name__)
 
+# Cross-language marker mirrored by
+# `agentc_optimizer::dag::NATIVE_MESSAGES_OPAQUE_KEY`. The Rust DAG stores
+# message content as strings, so provider-native blocks and protocol metadata
+# must remain on the Python side and may only flow through shape-preserving
+# rules.
+_NATIVE_MESSAGES_OPAQUE_KEY = "agentc_native_messages_opaque"
+
 # Sticky ignored modules — frames inside these are infrastructure, not the
 # call site we want to attribute optimization decisions to. The wrapper
 # `bench.agents._runtime.call_llm` is *not* skipped: if a user routes all
@@ -118,6 +125,103 @@ def estimate_cost_usd(model: str, input_tokens: int, output_tokens: int) -> floa
     return (input_tokens * in_per_mtok + output_tokens * out_per_mtok) / 1_000_000.0
 
 
+def _content_text_projection(content: Any) -> str:
+    """Return a bounded textual projection for the string-only optimizer DAG.
+
+    The projection is for profiling only. Non-text blocks are represented by
+    their type rather than serialized, which avoids copying image payloads or
+    pretending the DAG can reconstruct them.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if hasattr(content, "model_dump"):
+        content = content.model_dump()
+    if isinstance(content, dict):
+        content = [content]
+    elif isinstance(content, tuple):
+        content = list(content)
+    elif not isinstance(content, list):
+        if isinstance(content, (bool, int, float)):
+            return str(content)
+        return f"[{type(content).__name__}]"
+
+    parts: list[str] = []
+    for block in content:
+        if hasattr(block, "model_dump"):
+            block = block.model_dump()
+        if not isinstance(block, dict):
+            parts.append(f"[{type(block).__name__}]")
+            continue
+        text = block.get("text")
+        if isinstance(text, str):
+            parts.append(text)
+            continue
+        nested = block.get("content")
+        if isinstance(nested, (str, list)):
+            projected = _content_text_projection(nested)
+            if projected:
+                parts.append(projected)
+                continue
+        block_type = str(block.get("type") or "content_block")
+        parts.append(f"[{block_type}]")
+    return " ".join(parts)
+
+
+def _project_native_message(message: Any) -> tuple[str, Any, str, bool]:
+    """Return ``(role, raw_content, text_projection, is_opaque)``.
+
+    Only a literal mapping with exactly ``role`` and string ``content`` can be
+    reconstructed losslessly by the current DAG. Everything else—including
+    SDK models, images, tool metadata, names, and nullable content—is opaque.
+    """
+    if isinstance(message, dict):
+        data = message
+    elif hasattr(message, "model_dump"):
+        dumped = message.model_dump()
+        data = dumped if isinstance(dumped, dict) else {}
+    else:
+        data = {
+            "role": getattr(message, "role", "user"),
+            "content": getattr(message, "content", ""),
+        }
+
+    role = data.get("role", "user")
+    raw_content = data.get("content", "")
+    lossless_plain_text = (
+        isinstance(message, dict)
+        and set(data) == {"role", "content"}
+        and isinstance(role, str)
+        and isinstance(raw_content, str)
+    )
+    return (
+        str(role),
+        raw_content,
+        _content_text_projection(raw_content),
+        not lossless_plain_text,
+    )
+
+
+def _call_has_opaque_native_messages(call: dict[str, Any]) -> bool:
+    parameters = call.get("parameters") or {}
+    extra = parameters.get("extra") if isinstance(parameters, dict) else None
+    return bool(
+        isinstance(extra, dict) and extra.get(_NATIVE_MESSAGES_OPAQUE_KEY) is True
+    )
+
+
+def _openai_output_cap_field(kwargs: dict[str, Any], model: str) -> str:
+    """Choose the caller-compatible OpenAI output-token parameter name."""
+    if "max_completion_tokens" in kwargs:
+        return "max_completion_tokens"
+    if "max_tokens" in kwargs:
+        return "max_tokens"
+    if model.startswith(("gpt-5", "o1", "o3", "o4")):
+        return "max_completion_tokens"
+    return "max_tokens"
+
+
 def build_call_dict_openai(
     kwargs: dict[str, Any],
     *,
@@ -134,27 +238,12 @@ def build_call_dict_openai(
     # provenance tags. Stringifying via ``str(...)`` would create a
     # fresh object whose ``id()`` no longer matches the tagged input.
     raw_contents: list[Any] = []
+    native_messages_opaque = False
     for msg in kwargs.get("messages", []) or []:
-        if isinstance(msg, dict):
-            raw = msg.get("content", "")
-            messages.append({
-                "role": str(msg.get("role", "user")),
-                "content": str(raw),
-            })
-        elif hasattr(msg, "model_dump"):
-            d = msg.model_dump()
-            raw = d.get("content", "")
-            messages.append({
-                "role": str(d.get("role", "user")),
-                "content": str(raw),
-            })
-        else:
-            raw = getattr(msg, "content", "")
-            messages.append({
-                "role": str(getattr(msg, "role", "user")),
-                "content": str(raw),
-            })
+        role, raw, projection, is_opaque = _project_native_message(msg)
+        messages.append({"role": role, "content": projection})
         raw_contents.append(raw)
+        native_messages_opaque = native_messages_opaque or is_opaque
 
     input_deps = [as_json(tag_of(content)) for content in raw_contents]
 
@@ -165,7 +254,10 @@ def build_call_dict_openai(
         parameters["top_p"] = float(kwargs["top_p"])
     if "max_tokens" in kwargs and kwargs["max_tokens"] is not None:
         parameters["max_output_tokens"] = int(kwargs["max_tokens"])
-    elif "max_completion_tokens" in kwargs and kwargs["max_completion_tokens"] is not None:
+    elif (
+        "max_completion_tokens" in kwargs
+        and kwargs["max_completion_tokens"] is not None
+    ):
         parameters["max_output_tokens"] = int(kwargs["max_completion_tokens"])
     stop = kwargs.get("stop")
     if stop is not None:
@@ -178,10 +270,12 @@ def build_call_dict_openai(
     for tool in kwargs.get("tools", []) or []:
         if isinstance(tool, dict):
             fn = tool.get("function", {})
-            tools.append({
-                "name": str(fn.get("name", tool.get("name", "tool"))),
-                "schema": fn.get("parameters", {}),
-            })
+            tools.append(
+                {
+                    "name": str(fn.get("name", tool.get("name", "tool"))),
+                    "schema": fn.get("parameters", {}),
+                }
+            )
 
     existing_extra = parameters.get("extra")
     extra_obj: dict[str, Any] = (
@@ -204,6 +298,9 @@ def build_call_dict_openai(
     # window — matches the spec's "reads since the last call" semantic.
     explicit_reads = consume_state_reads()
     extra_obj["window_state_reads"] = explicit_reads
+
+    if native_messages_opaque:
+        extra_obj[_NATIVE_MESSAGES_OPAQUE_KEY] = True
 
     # Merge TraceOptimizer inferred state reads (StateReadWindowPropagation).
     # Keys inferred from prior LlmOutput tokens are added here so StateDrop
@@ -240,7 +337,9 @@ def build_call_dict_openai(
     except BaseException:
         # Degradation, not a decision: an empty attention map means the Rust
         # ContextCompress rule reads no scores and silently no-ops.
-        log_degraded("attention_failed", "ContextCompress will not fire for this call (openai)")
+        log_degraded(
+            "attention_failed", "ContextCompress will not fire for this call (openai)"
+        )
         attn_scores, follow_on = [], []
     if attn_scores:
         extra_obj["attention_scores"] = attn_scores
@@ -276,7 +375,7 @@ def apply_call_mutations_openai(
     if "model" in mutated_call:
         new_kwargs["model"] = mutated_call["model"]
     msgs = mutated_call.get("messages")
-    if msgs is not None:
+    if msgs is not None and not _call_has_opaque_native_messages(mutated_call):
         new_kwargs["messages"] = [
             {"role": m.get("role", "user"), "content": m.get("content", "")}
             for m in msgs
@@ -287,7 +386,17 @@ def apply_call_mutations_openai(
     if "top_p" in params:
         new_kwargs["top_p"] = params["top_p"]
     if "max_output_tokens" in params:
-        new_kwargs["max_tokens"] = int(params["max_output_tokens"])
+        cap_field = _openai_output_cap_field(
+            kwargs,
+            str(mutated_call.get("model") or kwargs.get("model") or ""),
+        )
+        other_field = (
+            "max_tokens"
+            if cap_field == "max_completion_tokens"
+            else "max_completion_tokens"
+        )
+        new_kwargs.pop(other_field, None)
+        new_kwargs[cap_field] = int(params["max_output_tokens"])
     return new_kwargs
 
 
@@ -348,36 +457,25 @@ def build_call_dict_anthropic(
 
     messages: list[dict[str, str]] = []
     raw_contents: list[Any] = []
+    native_messages_opaque = False
 
     # Anthropic system param → leading system message
-    system_str = kwargs.get("system")
-    if system_str:
-        messages.append({"role": "system", "content": str(system_str)})
-        raw_contents.append(system_str)
+    system_content = kwargs.get("system")
+    if system_content:
+        messages.append(
+            {
+                "role": "system",
+                "content": _content_text_projection(system_content),
+            }
+        )
+        raw_contents.append(system_content)
+        native_messages_opaque = not isinstance(system_content, str)
 
     for msg in kwargs.get("messages", []) or []:
-        if isinstance(msg, dict):
-            raw = msg.get("content", "")
-            # Anthropic content can be a list of blocks — flatten to text
-            if isinstance(raw, list):
-                raw = " ".join(
-                    b.get("text", "") if isinstance(b, dict) else str(b)
-                    for b in raw
-                )
-            messages.append({"role": str(msg.get("role", "user")), "content": str(raw)})
-        elif hasattr(msg, "model_dump"):
-            d = msg.model_dump()
-            raw = d.get("content", "")
-            if isinstance(raw, list):
-                raw = " ".join(
-                    b.get("text", "") if isinstance(b, dict) else str(b)
-                    for b in raw
-                )
-            messages.append({"role": str(d.get("role", "user")), "content": str(raw)})
-        else:
-            raw = getattr(msg, "content", "")
-            messages.append({"role": str(getattr(msg, "role", "user")), "content": str(raw)})
+        role, raw, projection, is_opaque = _project_native_message(msg)
+        messages.append({"role": role, "content": projection})
         raw_contents.append(raw)
+        native_messages_opaque = native_messages_opaque or is_opaque
 
     input_deps = [as_json(tag_of(content)) for content in raw_contents]
 
@@ -399,6 +497,9 @@ def build_call_dict_anthropic(
     explicit_reads = consume_state_reads()
     extra_obj["window_state_reads"] = explicit_reads
 
+    if native_messages_opaque:
+        extra_obj[_NATIVE_MESSAGES_OPAQUE_KEY] = True
+
     try:
         from agentc._trace_optimizer import get_trace_optimizer
 
@@ -417,7 +518,10 @@ def build_call_dict_anthropic(
     try:
         attn_scores, follow_on = compute_attention_scores(messages, trace_id_hex)
     except BaseException:
-        log_degraded("attention_failed", "ContextCompress will not fire for this call (anthropic)")
+        log_degraded(
+            "attention_failed",
+            "ContextCompress will not fire for this call (anthropic)",
+        )
         attn_scores, follow_on = [], []
     if attn_scores:
         extra_obj["attention_scores"] = attn_scores
@@ -454,7 +558,7 @@ def apply_call_mutations_anthropic(
         new_kwargs["model"] = mutated_call["model"]
 
     msgs = mutated_call.get("messages")
-    if msgs is not None:
+    if msgs is not None and not _call_has_opaque_native_messages(mutated_call):
         anthro_msgs = []
         system_text = None
         for m in msgs:
@@ -569,6 +673,7 @@ def _cosine_distance_from_bytes(ba: bytes, bb: bytes) -> float:
     Returns 1.0 (maximally distant) if either vector is zero-norm.
     """
     import struct
+
     n = len(ba) // 4
     va = struct.unpack_from(f"{n}f", ba)
     vb = struct.unpack_from(f"{n}f", bb)
@@ -589,16 +694,20 @@ def _text_divergence(a: str, b: str) -> float:
     The 'embedding' mode falls back to 'normalized' if the embedder is
     unavailable at runtime, keeping the guard fail-open."""
     import os
+
     mode = os.environ.get("AGENTC_SHADOW_DIVERGENCE_MODE", "lexical").strip().lower()
     if mode == "embedding":
         try:
             from agentc._native import embed_text_bytes
+
             ba = embed_text_bytes(a)
             bb = embed_text_bytes(b)
             if ba is not None and bb is not None:
                 return _cosine_distance_from_bytes(bytes(ba), bytes(bb))
         except BaseException:
-            log.debug("embedding divergence failed; falling back to normalized", exc_info=True)
+            log.debug(
+                "embedding divergence failed; falling back to normalized", exc_info=True
+            )
         # Fallback: treat as normalized mode (fail-open)
         mode = "normalized"
     if mode == "normalized":
@@ -677,6 +786,7 @@ def maybe_shadow_record(
             return
         divergence = _text_divergence(opt_text, orig_text)
         from agentc._optimizer import record_divergence
+
         for rule in rules:
             record_divergence(call_site_id, rule, divergence)
     except BaseException:
@@ -703,7 +813,10 @@ def dispatch_sync(
         try:
             decoded = decode(plan.value)
         except BaseException:
-            log_degraded("cache_decode_failed", "cached plan decode raised; ran the original call")
+            log_degraded(
+                "cache_decode_failed",
+                "cached plan decode raised; ran the original call",
+            )
             return run_original()
         if decoded is None:
             # A cache "hit" that cannot be materialized (missing content, or a
@@ -711,7 +824,10 @@ def dispatch_sync(
             # _decode_cached_openai) must NOT be served to the app as a None
             # response. Fall back to the real call so the caller always gets a
             # completion (bd-8ln: over-reporting / None corruption).
-            log_degraded("cache_decode_empty", "cached plan decoded to None; ran the original call")
+            log_degraded(
+                "cache_decode_empty",
+                "cached plan decoded to None; ran the original call",
+            )
             return run_original()
         return decoded
     if plan.kind in ("rewritten", "composed"):

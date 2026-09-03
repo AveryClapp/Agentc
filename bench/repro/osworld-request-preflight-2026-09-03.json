@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "experiment_kind": "offline_osworld_request_admission_preflight",
+  "paper_evidence": false,
+  "created_at_utc": "2026-09-03T17:13:25Z",
+  "base_commit": "581b5511da00a3118bf3a7aab158d085d08fbaf0",
+  "implementation_revision": "commit containing this artifact",
+  "network_calls": 0,
+  "upstream": {
+    "repository": "https://github.com/xlang-ai/OSWorld-V2",
+    "commit": "d578d2d4e0dc82b43e270fdaa7fa89d9708cd154",
+    "request_source": "mm_agents/anthropic/main.py:715",
+    "request_api": "client.beta.messages.create"
+  },
+  "implementation_sha256": {
+    "python/agentc/_patches/_anthropic.py": "9515ac9fb544122fda2d4af343611eaa3992276e121098298ef171cfe8c5c2d9",
+    "python/agentc/_patches/_optimizer_glue.py": "87821b00abfa47393eab626ac54325d2c933a1e4178abeed26453fee843e47e6",
+    "crates/agentc-optimizer/src/dag.rs": "2774ce91336765057fefebbd58d23ff5a23a67316ae51a5ae1ad69956053d25b",
+    "crates/agentc-optimizer/src/planner.rs": "d8cdefd3c9a658b962476de69c84df91fe08b255902ee1dcc501bd871473df21",
+    "crates/agentc-optimizer/src/rules/output_budget.rs": "a929a182e6025ec63f7c35d85dfd1f6cc4407f6f40f592eff3d4bb7060bf0eef"
+  },
+  "sdk_compatibility": [
+    {
+      "anthropic_version": "0.100.0",
+      "status": "pass",
+      "scope": "project-lock focused tests, beta-wrapper execution, and native-planner preflight"
+    },
+    {
+      "anthropic_version": "1.3.0",
+      "status": "pass",
+      "scope": "49 focused Anthropic patch and optimizer-adapter tests"
+    }
+  ],
+  "request_shape": {
+    "top_level_fields": [
+      "betas",
+      "extra_body",
+      "max_tokens",
+      "messages",
+      "model",
+      "system",
+      "tools"
+    ],
+    "content_block_types": [
+      "image",
+      "text",
+      "tool_result",
+      "tool_use"
+    ],
+    "cache_control_present": true,
+    "computer_tool_present": true,
+    "thinking_configuration_present": true
+  },
+  "beta_interceptor": {
+    "wrapper_executed": true,
+    "planner_entries": 1,
+    "underlying_dispatches": 1,
+    "structured_object_identity_preserved": true
+  },
+  "native_planner": {
+    "debug_build": true,
+    "hot_threshold": 3,
+    "max_planning_overhead_ms": 1000,
+    "enabled_rules": [
+      "ContextCompress",
+      "OutputBudget",
+      "PromptDedup",
+      "StateDrop"
+    ],
+    "warm_plan_kinds": [
+      "pass_through",
+      "pass_through",
+      "pass_through"
+    ],
+    "hot_plan_kind": "rewritten",
+    "hot_rule": "OutputBudget",
+    "output_cap_before": 1024,
+    "output_cap_after": 143,
+    "unsafe_structural_rules_fired": false
+  },
+  "conformance": {
+    "opaque_native_message_marker": true,
+    "system_identity_preserved": true,
+    "messages_identity_preserved": true,
+    "tools_identity_preserved": true,
+    "betas_identity_preserved": true,
+    "extra_body_identity_preserved": true,
+    "image_payload_copied_into_optimizer_dag": false
+  },
+  "verification": {
+    "python_full_suite": "365 passed",
+    "rust_optimizer_suite": "182 passed across unit and integration targets",
+    "rust_workspace_excluding_pyo3_extension": "pass",
+    "optimizer_clippy_all_targets_deny_warnings": "pass",
+    "ruff_changed_files": "pass"
+  },
+  "known_findings": [
+    {
+      "bead": "bd-pbus",
+      "finding": "Three identical 80-token observations produce an estimated p99 near 118.4 and a 143-token cap because the current incremental quantile tracker overshoots the observed maximum."
+    }
+  ],
+  "interpretation_limits": [
+    "This is a no-network Stage E0 engineering preflight, not an OSWorld task run.",
+    "Provider validation, environment reset, task scoring, latency, billed cost, and outcome quality were not exercised.",
+    "The planning-overhead ceiling was raised for a debug build, so no overhead claim is admissible.",
+    "The 143-token cap is recorded as observed behavior, not endorsed as a calibrated operating point.",
+    "Passing this screen removes request-shape and beta-SDK interception blockers only; every Stage E1 admission condition remains mandatory."
+  ]
+}

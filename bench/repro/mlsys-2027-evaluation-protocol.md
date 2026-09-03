@@ -1,18 +1,21 @@
 # Agentc MLSys 2027 staged evaluation protocol
 
 - Protocol: `agentc-mlsys2027-v1`
-- Revision: 4
+- Revision: 5
 - Initial freeze: 2026-09-03
 - Revision 2 freeze: 2026-09-03
 - Revision 3 freeze: 2026-09-03
 - Revision 4 freeze: 2026-09-03
+- Revision 5 freeze: 2026-09-03
 - Revision 2 record: [mlsys-2027-protocol-revision-2.json](mlsys-2027-protocol-revision-2.json)
 - Revision 3 record: [mlsys-2027-protocol-revision-3.json](mlsys-2027-protocol-revision-3.json)
 - Revision 4 record: [mlsys-2027-protocol-revision-4.json](mlsys-2027-protocol-revision-4.json)
+- Revision 5 record: [mlsys-2027-protocol-revision-5.json](mlsys-2027-protocol-revision-5.json)
 - Runtime baseline before this protocol: `4250a01`
 - Revision 2 runtime baseline: `27f896f`
 - Revision 3 runtime baseline: `6339d79`
 - Revision 4 runtime baseline: `f352f78`
+- Revision 5 runtime baseline: `91e864c`
 - Target decision date: 2026-10-01
 - Target venue deadline: 2026-10-30 20:00 UTC
 
@@ -35,11 +38,15 @@ outcome inspection.
 
 Revision 4 was issued after the storage-isolation defect was repaired and
 tested in the same process during Stage E0, before any Stage E1, C, P, or T
-execution or outcome inspection. Revisions 2, 3, and 4 do not change the
-`agentc-mlsys2027-v1` split namespace, task membership, workloads, models, arms,
-outcomes, margins, inference, stopping rules, or gates. Their machine-readable
-revision records enumerate every runtime-contract change and the engineering
-evidence that triggered it.
+execution or outcome inspection.
+
+Revision 5 was issued after the persisted cost model was changed from
+all-history summaries to an exact bounded sample window and verified during
+Stage E0, before any Stage E1, C, P, or T execution or outcome inspection.
+Revisions 2 through 5 do not change the `agentc-mlsys2027-v1` split namespace,
+task membership, workloads, models, arms, outcomes, margins, inference,
+stopping rules, or gates. Their machine-readable revision records enumerate
+every runtime-contract change and the engineering evidence that triggered it.
 
 ## 1. Change control and blinding
 
@@ -290,14 +297,24 @@ declaration. The Python adapter must then return the original native system,
 message, tool, beta-header, cache-control, multimodal, and thinking objects; a
 text projection may be used for profiling but never for reconstruction.
 
-For fresh profiles, revision 2 treats `output_token_p99` as the all-history
-observed maximum. This is a conservative upper bound on the nearest-rank p99 of
-the intended 50-sample window, whose p99 is its maximum. The p95 field is a
-bounded moving proxy, not an exact order statistic. Stage C remains blocked on
-`bd-bwgu`, because `cost_model_window=50` does not yet age observations out of
-the persisted statistics. The interim estimator is admissible only for E0
-integration work; a bounded-window implementation requires another numbered
-revision before Stage C.
+Revision 5 supersedes revision 2's interim all-history output maximum and
+moving p95 proxy. Each semantic call site now retains the exact newest
+`cost_model_window=50` observations and recomputes input, output, latency, cost,
+output-shape, nearest-rank p95, and nearest-rank p99 statistics from that set.
+The summary and retained samples are written in one SQLite transaction and
+rehydrated together. `n_observations` remains a lifetime operator count;
+`window_observations` drives hot gating, confidence, and rolling statistics.
+Changing to a smaller window keeps and persists the newest samples. A legacy
+aggregate-only profile cannot be reconstructed exactly, so migration preserves
+its lifetime count, clears its statistical window, and requires fresh samples
+before rewrites resume.
+
+Five release-mode, zero-network Stage E0 repetitions aged a 50-sample old
+distribution entirely out after 50 new observations, persisted exactly 50
+rows, and reloaded an identical profile. Deterministic migration, window resize,
+copy-on-write snapshot, concurrent observation, and flush-interleaving tests
+also pass. This retires `bd-bwgu` as a Stage C blocker without admitting a
+workload or supplying paper evidence.
 
 The main benefit claim is restricted to `ContextCompress`, `ModelDowngrade`,
 `OutputBudget`, and exact `CacheHit`. `StateDrop` is a safety-stress mechanism
@@ -625,10 +642,11 @@ No Stage C, P, or T result is admissible while its relevant blocker is open.
 | `bd-3q3l` | the composition proxy destroys its own provenance tags and cannot validate provenance-dependent rewrites. |
 | `bd-vdj` | exact current model routes and snapshot pins are absent from runtime wiring. |
 | `bd-o2qj` | pricing, dataset pin, and fixture-count integrity defects remain. |
-| `bd-bwgu` | `cost_model_window=50` does not yet bound or age the persisted historical statistics; Stage C quantile and drift calibration are blocked. |
 | `bd-jq6c`, `bd-shi1.4`, `bd-shi1.5` | 2% guard behavior, false disables, and persistent evidence are not yet established. |
 | `bd-bjs` | clean-clone fixture/bootstrap path is incomplete. |
 | `bd-7s4.1` | CI does not execute the benchmark harness tests. |
+| `bd-zqeq` | composed rule-set savings windows are bounded in process but not persisted; this blocks a restart-persistent composition-payoff claim, not the call-site window verified in revision 5. |
+| `bd-6bon` | the operator report mixes a retained-sample cost window with a wall-clock audit window; it cannot supply paper aggregates until aligned, while the protocol's raw per-task ledger remains authoritative. |
 
 Closing a blocker requires its own tests and evidence. A closed Bead alone does
 not admit a workload; the Stage E1 conformance result does.
@@ -663,3 +681,13 @@ the normalized results matched exactly. Launchers still use a unique resolved
 store per `(stage, workload, model, arm, repetition)` and archive both resolved
 paths. The evidence is
 [storage-isolation-preflight-2026-09-03.json](storage-isolation-preflight-2026-09-03.json).
+
+Revision 5 retires `bd-bwgu` at Stage E0 without admitting a workload at Stage
+E1. Every call-site cost and shape statistic now uses the exact newest bounded
+sample set, survives restart, and ages out old distributions deterministically.
+Five release repetitions produced identical correctness and persistence
+results; frozen tau2 and SWE-agent no-network admission reruns preserved their
+previous plan sequences, response digests, scopes, and observation counts.
+Rule-set restart persistence and the operator report's mixed time/sample window
+remain explicitly scoped by `bd-zqeq` and `bd-6bon`. The evidence is
+[cost-model-window-preflight-2026-09-03.json](cost-model-window-preflight-2026-09-03.json).

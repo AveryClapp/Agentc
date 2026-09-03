@@ -1,15 +1,18 @@
 # Agentc MLSys 2027 staged evaluation protocol
 
 - Protocol: `agentc-mlsys2027-v1`
-- Revision: 3
+- Revision: 4
 - Initial freeze: 2026-09-03
 - Revision 2 freeze: 2026-09-03
 - Revision 3 freeze: 2026-09-03
+- Revision 4 freeze: 2026-09-03
 - Revision 2 record: [mlsys-2027-protocol-revision-2.json](mlsys-2027-protocol-revision-2.json)
 - Revision 3 record: [mlsys-2027-protocol-revision-3.json](mlsys-2027-protocol-revision-3.json)
+- Revision 4 record: [mlsys-2027-protocol-revision-4.json](mlsys-2027-protocol-revision-4.json)
 - Runtime baseline before this protocol: `4250a01`
 - Revision 2 runtime baseline: `27f896f`
 - Revision 3 runtime baseline: `6339d79`
+- Revision 4 runtime baseline: `f352f78`
 - Target decision date: 2026-10-01
 - Target venue deadline: 2026-10-30 20:00 UTC
 
@@ -28,7 +31,11 @@ during Stage E0, before any Stage C, P, or T execution or outcome inspection.
 
 Revision 3 was issued after actor-scope, LiteLLM-boundary, and storage-isolation
 defects were found during Stage E0, before any Stage E1, C, P, or T execution or
-outcome inspection. Revisions 2 and 3 do not change the
+outcome inspection.
+
+Revision 4 was issued after the storage-isolation defect was repaired and
+tested in the same process during Stage E0, before any Stage E1, C, P, or T
+execution or outcome inspection. Revisions 2, 3, and 4 do not change the
 `agentc-mlsys2027-v1` split namespace, task membership, workloads, models, arms,
 outcomes, margins, inference, stopping rules, or gates. Their machine-readable
 revision records enumerate every runtime-contract change and the engineering
@@ -260,9 +267,19 @@ required cells but blocks any framework-neutral LiteLLM streaming claim until
 
 Every Stage E1, C, P, or T launcher must export its fresh
 `AGENTC_STORAGE_PATH` before importing Agentc and pass the same path to
-`agentc.init` when using programmatic initialization. This is required even
-after `bd-hoer` closes. Until then, `bd-hoer` blocks Stage C because the public
-`storage_path` argument alone does not prove native cost-model isolation.
+`agentc.init` when using programmatic initialization. This defense-in-depth
+launcher requirement remains after `bd-hoer` closes.
+
+Revision 4 makes programmatic storage ownership explicit in the runtime:
+`agentc.init(storage_path=...)` resolves one absolute path, installs that path
+for initialization, configures the native optimizer to the same path, and
+restores the caller's prior environment on shutdown. Shutdown and subsequent
+initialization reset process-global native optimizer state. Two repeated
+same-process E0 runs warmed store A through three observations and one rewrite,
+then showed that the first call in fresh store B passed through with no cost
+profile rows. Python and native paths matched in both stores and a conflicting
+environment path was never created. This closes `bd-hoer` as a Stage C blocker;
+it does not admit a workload at Stage E1.
 
 Revision 2 adds a conservative provider-shape gate. When the string-only DAG
 cannot round-trip a native message exactly, the adapter marks the message list
@@ -603,7 +620,6 @@ No Stage C, P, or T result is admissible while its relevant blocker is open.
 | Bead | Blocked evidence |
 |---|---|
 | `bd-323l.5` | the broader compatibility/overhead matrix and additive-value experiment above native provider or serving optimizations remain incomplete; this blocks the competitive-position gate, not E1 interception of the frozen tau2/SWE-agent non-streaming paths. |
-| `bd-hoer` | `agentc.init(storage_path=...)` alone can diverge from the native optimizer store; Stage C is blocked until the paths converge and a cross-store leakage regression passes. |
 | `bd-ez1k` | route-independent LiteLLM streaming is incomplete; this does not block the frozen non-streaming cells but blocks any framework-neutral streaming claim. |
 | `bd-8uxj` | shared helper call-site identity collapses distinct RAG stages; semantic call-site identity needs a general solution. |
 | `bd-3q3l` | the composition proxy destroys its own provenance tags and cannot validate provenance-dependent rewrites. |
@@ -637,3 +653,13 @@ sequences, and scope reports repeated exactly across runs. The synthetic tau2
 sequence of three warmup pass-throughs followed by five `OutputBudget`
 activations is only an integration control. The evidence is
 [litellm-admission-preflight-2026-09-03.json](litellm-admission-preflight-2026-09-03.json).
+
+Revision 4 retires `bd-hoer` at Stage E0 without admitting a workload at Stage
+E1. The runtime now gives Python lifecycle state and the native optimizer one
+explicit storage owner, resets native state across same-process shutdown and
+reinitialization, and restores the caller's environment. Two repeated
+zero-network runs proved that a warm store A did not make a fresh store B hot;
+the normalized results matched exactly. Launchers still use a unique resolved
+store per `(stage, workload, model, arm, repetition)` and archive both resolved
+paths. The evidence is
+[storage-isolation-preflight-2026-09-03.json](storage-isolation-preflight-2026-09-03.json).

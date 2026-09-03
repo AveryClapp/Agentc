@@ -9,12 +9,12 @@
 //! the per-entry lock for the brief duration of a Welford update. Readers
 //! (the planner) can snapshot a profile without blocking the writer.
 //!
-//! Persistence into `cost_model.db` is `apply_to_db` on-demand: the writer
-//! thread folds a batch of updates into the in-memory map, then flushes
-//! dirty rows back through a single UPSERT. Cold-start: the map is empty;
+//! Persistence into `cost_model.db` is caller-driven: observations update the
+//! in-memory map, and lifecycle or periodic flushes write dirty profiles and
+//! their retained samples in one transaction. Cold-start: the map is empty;
 //! `warm_from_db` hydrates it at optimizer startup.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -22,6 +22,8 @@ use anyhow::{Context, Result};
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use rusqlite::{params, Connection, OptionalExtension};
+
+const DEFAULT_COST_MODEL_WINDOW: usize = 50;
 
 /// Numerically stable online mean + variance.
 ///
@@ -93,16 +95,33 @@ impl WelfordStats {
     }
 }
 
+#[derive(Debug, Clone)]
+struct CostSample {
+    sequence: u64,
+    input_tokens: u32,
+    output_tokens: u32,
+    latency_ms: f64,
+    cost_usd: f64,
+    output_is_structured: bool,
+    output_is_short: bool,
+    observed_at_us: i64,
+}
+
 /// Per-call-site rolling profile. Mirrors the `call_site_profile` schema.
 ///
 /// `confidence` saturates at `cost_model_window` observations — the rule
-/// engine treats `n_observations < hot_threshold` as "cold" and skips rule
-/// evaluation, so the confidence field is advisory for display, not
-/// load-bearing in ranking decisions.
+/// engine treats `window_observations < hot_threshold` as "cold" and skips
+/// rule evaluation, so the confidence field is advisory for display, not
+/// load-bearing in ranking decisions. `n_observations` remains a lifetime
+/// invocation count for operator reporting; every statistic below is derived
+/// only from the retained window.
 #[derive(Debug, Clone, Default)]
 pub struct CallSiteProfile {
     pub call_site_id: String,
+    /// Lifetime observations, including samples that have aged out.
     pub n_observations: u32,
+    /// Samples currently retained by `cost_model_window`.
+    pub window_observations: u32,
     pub input_tokens: WelfordStats,
     pub output_tokens: WelfordStats,
     pub latency_ms: WelfordStats,
@@ -112,6 +131,8 @@ pub struct CallSiteProfile {
     pub output_is_structured: f32,
     pub output_is_short: f32,
     pub updated_at_us: i64,
+    samples: Arc<VecDeque<CostSample>>,
+    generation: u64,
 }
 
 impl CallSiteProfile {
@@ -128,14 +149,33 @@ impl CallSiteProfile {
         if window == 0 {
             return 0.0;
         }
-        (self.n_observations as f32 / window as f32).min(1.0)
+        (self.window_observations as f32 / window as f32).min(1.0)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct RollingStats {
+    samples: VecDeque<f64>,
+    stats: WelfordStats,
+}
+
+impl RollingStats {
+    fn update(&mut self, value: f64, window_size: usize) {
+        self.samples.push_back(value);
+        while self.samples.len() > window_size {
+            self.samples.pop_front();
+        }
+        self.stats = WelfordStats::default();
+        for sample in &self.samples {
+            self.stats.update(*sample);
+        }
     }
 }
 
 /// One observation of a completed LLM call. The planner calls
 /// `CostModel::observe(update)` after the user-visible response lands; the
 /// in-memory cache is updated immediately and the row marked dirty so the
-/// writer thread can persist it on its next flush.
+/// native runtime can persist it on its next periodic or lifecycle flush.
 #[derive(Debug, Clone)]
 pub struct CostModelUpdate {
     pub call_site_id: String,
@@ -158,15 +198,16 @@ fn now_micros() -> i64 {
         .unwrap_or(0)
 }
 
-/// In-memory cost model backed by a `DashMap`. A `RwLock`-wrapped set of
-/// dirty keys lets the writer thread `flush_dirty` without scanning the
-/// entire map.
+/// In-memory cost model backed by a `DashMap`. A `RwLock`-wrapped set of dirty
+/// generations lets `flush_dirty` persist changed profiles without scanning
+/// the entire map or clearing an update that raced with the flush.
 pub struct CostModel {
     map: Arc<DashMap<String, CallSiteProfile>>,
-    dirty: Arc<RwLock<HashMap<String, ()>>>,
+    dirty: Arc<RwLock<HashMap<String, u64>>>,
+    window_size: usize,
     /// Per-(call_site_id, sorted-rule-set) savings distribution.
     /// Key format: `(call_site_id, "RuleA|RuleB|...")` (rules sorted ascending).
-    rule_set_map: Arc<DashMap<(String, String), WelfordStats>>,
+    rule_set_map: Arc<DashMap<(String, String), RollingStats>>,
 }
 
 impl Default for CostModel {
@@ -177,9 +218,17 @@ impl Default for CostModel {
 
 impl CostModel {
     pub fn new() -> Self {
+        Self::with_window(DEFAULT_COST_MODEL_WINDOW as u32)
+    }
+
+    /// Construct a cost model retaining exactly the most recent `window_size`
+    /// samples per call site. Zero is treated as one so malformed runtime
+    /// configuration cannot create a permanently empty profile.
+    pub fn with_window(window_size: u32) -> Self {
         Self {
             map: Arc::new(DashMap::new()),
             dirty: Arc::new(RwLock::new(HashMap::new())),
+            window_size: window_size.max(1) as usize,
             rule_set_map: Arc::new(DashMap::new()),
         }
     }
@@ -191,11 +240,11 @@ impl CostModel {
         let key = (call_site_id.to_string(), sorted.join("|"));
         self.rule_set_map
             .entry(key)
-            .and_modify(|w| w.update(savings_usd))
+            .and_modify(|rolling| rolling.update(savings_usd, self.window_size))
             .or_insert_with(|| {
-                let mut w = WelfordStats::default();
-                w.update(savings_usd);
-                w
+                let mut rolling = RollingStats::default();
+                rolling.update(savings_usd, self.window_size);
+                rolling
             });
     }
 
@@ -204,7 +253,7 @@ impl CostModel {
         let mut sorted = rules.to_vec();
         sorted.sort();
         let key = (call_site_id.to_string(), sorted.join("|"));
-        self.rule_set_map.get(&key).map(|e| e.clone())
+        self.rule_set_map.get(&key).map(|entry| entry.stats.clone())
     }
 
     /// Read-side snapshot. Clones the profile so the caller does not hold
@@ -233,15 +282,15 @@ impl CostModel {
     pub fn observe(&self, update: CostModelUpdate) {
         let now = update.now_us.unwrap_or_else(now_micros);
         let key = update.call_site_id.clone();
-        self.map
-            .entry(key.clone())
-            .and_modify(|p| apply_update(p, &update, now))
-            .or_insert_with(|| {
-                let mut p = CallSiteProfile::new(update.call_site_id.clone());
-                apply_update(&mut p, &update, now);
-                p
-            });
-        self.dirty.write().insert(key, ());
+        let generation = {
+            let mut profile = self
+                .map
+                .entry(key.clone())
+                .or_insert_with(|| CallSiteProfile::new(update.call_site_id.clone()));
+            apply_update(&mut profile, &update, now, self.window_size);
+            profile.generation
+        };
+        self.dirty.write().insert(key, generation);
     }
 
     /// Hydrate the in-memory cache from `cost_model.db`. Called once at
@@ -250,7 +299,7 @@ impl CostModel {
     pub fn warm_from_db(&self, conn: &Connection) -> Result<usize> {
         let mut stmt = conn
             .prepare(
-                "SELECT call_site_id, n_observations, \
+                "SELECT call_site_id, n_observations, window_observations, \
                         input_tokens_mean, input_tokens_var, \
                         output_tokens_mean, output_tokens_var, \
                         latency_ms_mean, latency_ms_var, \
@@ -261,11 +310,30 @@ impl CostModel {
                  FROM call_site_profile",
             )
             .context("prepare warm_from_db")?;
+        let persisted = stmt
+            .query_map([], row_to_profile)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        drop(stmt);
+
         let mut count = 0usize;
-        let iter = stmt.query_map([], row_to_profile)?;
-        for row in iter {
-            let p = row?;
-            self.map.insert(p.call_site_id.clone(), p);
+        for mut profile in persisted {
+            let persisted_window = profile.window_observations as usize;
+            profile.samples = Arc::new(load_samples(conn, &profile.call_site_id)?);
+            let mut truncated = false;
+            while profile.samples.len() > self.window_size {
+                Arc::make_mut(&mut profile.samples).pop_front();
+                truncated = true;
+            }
+            recompute_window(&mut profile);
+            let needs_rewrite =
+                truncated || persisted_window != profile.window_observations as usize;
+            if needs_rewrite {
+                profile.generation = 1;
+                self.dirty
+                    .write()
+                    .insert(profile.call_site_id.clone(), profile.generation);
+            }
+            self.map.insert(profile.call_site_id.clone(), profile);
             count += 1;
         }
         Ok(count)
@@ -274,82 +342,184 @@ impl CostModel {
     /// Persist every dirty row via UPSERT. Clears the dirty set on success.
     /// On partial failure the dirty set retains the un-persisted keys.
     pub fn flush_dirty(&self, conn: &mut Connection) -> Result<usize> {
-        let dirty_keys: Vec<String> = {
+        self.flush_dirty_with_hook(conn, || {})
+    }
+
+    fn flush_dirty_with_hook<F>(&self, conn: &mut Connection, before_clear: F) -> Result<usize>
+    where
+        F: FnOnce(),
+    {
+        let dirty_generations: Vec<(String, u64)> = {
             let guard = self.dirty.read();
-            guard.keys().cloned().collect()
+            guard
+                .iter()
+                .map(|(key, generation)| (key.clone(), *generation))
+                .collect()
         };
-        if dirty_keys.is_empty() {
+        if dirty_generations.is_empty() {
             return Ok(0);
         }
+        let snapshots: Vec<(String, u64, CallSiteProfile)> = dirty_generations
+            .into_iter()
+            .filter_map(|(key, generation)| {
+                self.map
+                    .get(&key)
+                    .map(|profile| (key, generation, profile.clone()))
+            })
+            .collect();
+
         let tx = conn.transaction().context("begin cost-model flush")?;
-        for key in &dirty_keys {
-            let Some(p) = self.map.get(key).map(|e| e.clone()) else {
-                continue;
-            };
-            upsert_profile(&tx, &p).with_context(|| format!("upsert {key}"))?;
+        for (key, _, profile) in &snapshots {
+            persist_profile(&tx, profile).with_context(|| format!("persist {key}"))?;
         }
         tx.commit().context("commit cost-model flush")?;
-        // Only clear keys we actually saw; concurrent updates during the
-        // flush stay dirty for next flush.
+
+        before_clear();
         let mut guard = self.dirty.write();
-        for key in &dirty_keys {
-            guard.remove(key);
+        for (key, generation, _) in &snapshots {
+            if guard.get(key).copied() == Some(*generation) {
+                guard.remove(key);
+            }
         }
-        Ok(dirty_keys.len())
+        Ok(snapshots.len())
     }
 }
 
-fn apply_update(profile: &mut CallSiteProfile, update: &CostModelUpdate, now_us: i64) {
+fn apply_update(
+    profile: &mut CallSiteProfile,
+    update: &CostModelUpdate,
+    now_us: i64,
+    window_size: usize,
+) {
+    let samples = Arc::make_mut(&mut profile.samples);
+    let sequence = samples
+        .back()
+        .map(|sample| sample.sequence)
+        .unwrap_or(profile.n_observations as u64)
+        .saturating_add(1);
     profile.n_observations = profile.n_observations.saturating_add(1);
-    profile.input_tokens.update(update.input_tokens as f64);
-    profile.output_tokens.update(update.output_tokens as f64);
-    profile.latency_ms.update(update.latency_ms);
-    profile.cost_usd.update(update.cost_usd);
+    samples.push_back(CostSample {
+        sequence,
+        input_tokens: update.input_tokens,
+        output_tokens: update.output_tokens,
+        latency_ms: update.latency_ms,
+        cost_usd: update.cost_usd,
+        output_is_structured: update.output_is_structured,
+        output_is_short: update.output_is_short,
+        observed_at_us: now_us,
+    });
+    while samples.len() > window_size {
+        samples.pop_front();
+    }
+    recompute_window(profile);
+    profile.generation = profile.generation.saturating_add(1);
+}
 
-    // Moving fraction for is_structured / is_short. EWMA with equal weight
-    // on all samples collapses to the running mean — use the Welford-derived
-    // mean instead to stay single-pass.
-    let n = profile.n_observations as f64;
-    let add_mean = |old: f32, x: bool| -> f32 {
-        let cur = old as f64;
-        let next = cur + (if x { 1.0 } else { 0.0 } - cur) / n;
-        next as f32
-    };
-    profile.output_is_structured = add_mean(profile.output_is_structured, update.output_is_structured);
-    profile.output_is_short = add_mean(profile.output_is_short, update.output_is_short);
+fn recompute_window(profile: &mut CallSiteProfile) {
+    profile.window_observations = profile.samples.len() as u32;
+    profile.input_tokens = WelfordStats::default();
+    profile.output_tokens = WelfordStats::default();
+    profile.latency_ms = WelfordStats::default();
+    profile.cost_usd = WelfordStats::default();
 
-    // Output token p95 is not Welford-able without retaining additional
-    // order-statistic state. Keep a bounded asymmetric moving proxy until
-    // the persisted rolling-window work in bd-bwgu lands. Using the distance
-    // to the observation makes each update a convex step, so the estimate
-    // cannot escape the range of values seen by a fresh profile.
-    let target_p = 0.95f64;
-    let cur_p95 = profile.output_token_p95 as f64;
-    let obs = update.output_tokens as f64;
-    let step = 0.01_f64.max(1.0 / n); // smaller corrections for older streams
-    let next_p95 = if profile.n_observations == 1 {
-        obs
-    } else if obs > cur_p95 {
-        cur_p95 + step * target_p * (obs - cur_p95)
-    } else {
-        cur_p95 - step * (1.0 - target_p) * (cur_p95 - obs)
-    };
-    profile.output_token_p95 = next_p95.max(0.0) as f32;
+    let mut output_tokens = Vec::with_capacity(profile.samples.len());
+    let mut structured = 0usize;
+    let mut short = 0usize;
+    for sample in profile.samples.iter() {
+        profile.input_tokens.update(sample.input_tokens as f64);
+        profile.output_tokens.update(sample.output_tokens as f64);
+        profile.latency_ms.update(sample.latency_ms);
+        profile.cost_usd.update(sample.cost_usd);
+        output_tokens.push(sample.output_tokens);
+        structured += usize::from(sample.output_is_structured);
+        short += usize::from(sample.output_is_short);
+    }
 
-    // With the configured 50-sample window, nearest-rank empirical p99 is
-    // the window maximum. The window is not yet retained (bd-bwgu), so use
-    // the all-history maximum as a conservative upper bound. It may reduce
-    // savings after an old outlier, but it cannot undercut an observed
-    // completion or overshoot a fresh profile's observed maximum.
-    profile.output_token_p99 = profile.output_token_p99.max(obs as f32);
+    if profile.samples.is_empty() {
+        profile.output_token_p95 = 0.0;
+        profile.output_token_p99 = 0.0;
+        profile.output_is_structured = 0.0;
+        profile.output_is_short = 0.0;
+        return;
+    }
 
-    profile.updated_at_us = now_us;
+    output_tokens.sort_unstable();
+    profile.output_token_p95 = nearest_rank(&output_tokens, 95) as f32;
+    profile.output_token_p99 = nearest_rank(&output_tokens, 99) as f32;
+    profile.output_is_structured = structured as f32 / profile.samples.len() as f32;
+    profile.output_is_short = short as f32 / profile.samples.len() as f32;
+    profile.updated_at_us = profile
+        .samples
+        .back()
+        .map(|sample| sample.observed_at_us)
+        .unwrap_or(profile.updated_at_us);
+}
+
+fn nearest_rank(sorted: &[u32], percentile: usize) -> u32 {
+    debug_assert!(!sorted.is_empty());
+    let rank = (percentile * sorted.len()).div_ceil(100);
+    sorted[rank.saturating_sub(1).min(sorted.len() - 1)]
+}
+
+fn load_samples(conn: &Connection, call_site_id: &str) -> Result<VecDeque<CostSample>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT sample_sequence, input_tokens, output_tokens, latency_ms, \
+                    cost_usd, output_is_structured, output_is_short, observed_at \
+             FROM call_site_observation \
+             WHERE call_site_id = ?1 ORDER BY sample_sequence",
+        )
+        .context("prepare retained-sample load")?;
+    let samples = stmt
+        .query_map(params![call_site_id], |row| {
+            Ok(CostSample {
+                sequence: row.get::<_, i64>(0)? as u64,
+                input_tokens: row.get::<_, i64>(1)? as u32,
+                output_tokens: row.get::<_, i64>(2)? as u32,
+                latency_ms: row.get(3)?,
+                cost_usd: row.get(4)?,
+                output_is_structured: row.get::<_, i64>(5)? != 0,
+                output_is_short: row.get::<_, i64>(6)? != 0,
+                observed_at_us: row.get(7)?,
+            })
+        })?
+        .collect::<rusqlite::Result<VecDeque<_>>>()?;
+    Ok(samples)
+}
+
+fn persist_profile(conn: &Connection, profile: &CallSiteProfile) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM call_site_observation WHERE call_site_id = ?1",
+        params![profile.call_site_id],
+    )?;
+    {
+        let mut stmt = conn.prepare(
+            "INSERT INTO call_site_observation (\
+                call_site_id, sample_sequence, input_tokens, output_tokens, \
+                latency_ms, cost_usd, output_is_structured, output_is_short, observed_at\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        )?;
+        for sample in profile.samples.iter() {
+            stmt.execute(params![
+                profile.call_site_id,
+                sample.sequence as i64,
+                sample.input_tokens as i64,
+                sample.output_tokens as i64,
+                sample.latency_ms,
+                sample.cost_usd,
+                i64::from(sample.output_is_structured),
+                i64::from(sample.output_is_short),
+                sample.observed_at_us,
+            ])?;
+        }
+    }
+    upsert_profile(conn, profile)
 }
 
 fn upsert_profile(conn: &Connection, p: &CallSiteProfile) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO call_site_profile (\
-            call_site_id, n_observations, \
+            call_site_id, n_observations, window_observations, \
             input_tokens_mean, input_tokens_var, \
             output_tokens_mean, output_tokens_var, \
             latency_ms_mean, latency_ms_var, \
@@ -357,9 +527,10 @@ fn upsert_profile(conn: &Connection, p: &CallSiteProfile) -> rusqlite::Result<()
             output_token_p95, output_token_p99, \
             output_is_structured, output_is_short, \
             updated_at\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16) \
          ON CONFLICT(call_site_id) DO UPDATE SET \
             n_observations = excluded.n_observations, \
+            window_observations = excluded.window_observations, \
             input_tokens_mean = excluded.input_tokens_mean, \
             input_tokens_var = excluded.input_tokens_var, \
             output_tokens_mean = excluded.output_tokens_mean, \
@@ -376,6 +547,7 @@ fn upsert_profile(conn: &Connection, p: &CallSiteProfile) -> rusqlite::Result<()
         params![
             p.call_site_id,
             p.n_observations as i64,
+            p.window_observations as i64,
             p.input_tokens.mean,
             p.input_tokens.variance(),
             p.output_tokens.mean,
@@ -398,7 +570,7 @@ fn upsert_profile(conn: &Connection, p: &CallSiteProfile) -> rusqlite::Result<()
 /// the CLI's `agentc optimize inspect`.
 pub fn load_profile(conn: &Connection, call_site_id: &str) -> Result<Option<CallSiteProfile>> {
     conn.query_row(
-        "SELECT call_site_id, n_observations, \
+        "SELECT call_site_id, n_observations, window_observations, \
                 input_tokens_mean, input_tokens_var, \
                 output_tokens_mean, output_tokens_var, \
                 latency_ms_mean, latency_ms_var, \
@@ -417,32 +589,36 @@ pub fn load_profile(conn: &Connection, call_site_id: &str) -> Result<Option<Call
 fn row_to_profile(r: &rusqlite::Row<'_>) -> rusqlite::Result<CallSiteProfile> {
     let call_site_id: String = r.get(0)?;
     let n_i: i64 = r.get(1)?;
-    let n = n_i as u64;
-    let in_mean: f64 = r.get(2)?;
-    let in_var: f64 = r.get(3)?;
-    let out_mean: f64 = r.get(4)?;
-    let out_var: f64 = r.get(5)?;
-    let lat_mean: f64 = r.get(6)?;
-    let lat_var: f64 = r.get(7)?;
-    let cost_mean: f64 = r.get(8)?;
-    let cost_var: f64 = r.get(9)?;
-    let p95: f64 = r.get(10)?;
-    let p99: f64 = r.get(11)?;
-    let is_struct: f64 = r.get(12)?;
-    let is_short: f64 = r.get(13)?;
-    let updated_at: i64 = r.get(14)?;
+    let window_i: i64 = r.get(2)?;
+    let window_n = window_i as u64;
+    let in_mean: f64 = r.get(3)?;
+    let in_var: f64 = r.get(4)?;
+    let out_mean: f64 = r.get(5)?;
+    let out_var: f64 = r.get(6)?;
+    let lat_mean: f64 = r.get(7)?;
+    let lat_var: f64 = r.get(8)?;
+    let cost_mean: f64 = r.get(9)?;
+    let cost_var: f64 = r.get(10)?;
+    let p95: f64 = r.get(11)?;
+    let p99: f64 = r.get(12)?;
+    let is_struct: f64 = r.get(13)?;
+    let is_short: f64 = r.get(14)?;
+    let updated_at: i64 = r.get(15)?;
     Ok(CallSiteProfile {
         call_site_id,
         n_observations: n_i as u32,
-        input_tokens: WelfordStats::from_persisted(n, in_mean, in_var),
-        output_tokens: WelfordStats::from_persisted(n, out_mean, out_var),
-        latency_ms: WelfordStats::from_persisted(n, lat_mean, lat_var),
-        cost_usd: WelfordStats::from_persisted(n, cost_mean, cost_var),
+        window_observations: window_i as u32,
+        input_tokens: WelfordStats::from_persisted(window_n, in_mean, in_var),
+        output_tokens: WelfordStats::from_persisted(window_n, out_mean, out_var),
+        latency_ms: WelfordStats::from_persisted(window_n, lat_mean, lat_var),
+        cost_usd: WelfordStats::from_persisted(window_n, cost_mean, cost_var),
         output_token_p95: p95 as f32,
         output_token_p99: p99 as f32,
         output_is_structured: is_struct as f32,
         output_is_short: is_short as f32,
         updated_at_us: updated_at,
+        samples: Arc::new(VecDeque::new()),
+        generation: 0,
     })
 }
 
@@ -559,6 +735,7 @@ mod tests {
         cm.observe(an_update("app.a", 100));
         let p = cm.get("app.a").unwrap();
         assert_eq!(p.n_observations, 2);
+        assert_eq!(p.window_observations, 2);
         assert!((p.output_tokens.mean - 75.0).abs() < 1e-9);
         assert_eq!(cm.dirty_len(), 1);
     }
@@ -575,6 +752,22 @@ mod tests {
     }
 
     #[test]
+    fn planner_snapshots_share_samples_and_observations_use_copy_on_write() {
+        let cm = CostModel::new();
+        cm.observe(an_update("site", 10));
+        let first = cm.get("site").unwrap();
+        let second = cm.get("site").unwrap();
+        assert!(Arc::ptr_eq(&first.samples, &second.samples));
+
+        cm.observe(an_update("site", 30));
+        let current = cm.get("site").unwrap();
+        assert!(!Arc::ptr_eq(&first.samples, &current.samples));
+        assert_eq!(first.window_observations, 1);
+        assert_eq!(current.window_observations, 2);
+        assert_eq!(current.output_tokens.mean, 20.0);
+    }
+
+    #[test]
     fn cost_model_flush_persists_rows() {
         let cm = CostModel::new();
         for i in 0..5 {
@@ -585,7 +778,14 @@ mod tests {
         assert_eq!(n, 1);
         let loaded = load_profile(&conn, "app.site").unwrap().unwrap();
         assert_eq!(loaded.n_observations, 5);
+        assert_eq!(loaded.window_observations, 5);
         assert!((loaded.output_tokens.mean - 70.0).abs() < 1e-9);
+        let retained: i64 = conn
+            .query_row("SELECT COUNT(*) FROM call_site_observation", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(retained, 5);
         assert_eq!(cm.dirty_len(), 0);
     }
 
@@ -602,6 +802,7 @@ mod tests {
         assert_eq!(loaded, 1);
         let p = fresh.get("persisted.site").unwrap();
         assert_eq!(p.n_observations, 1);
+        assert_eq!(p.window_observations, 1);
         // After warm_from_db the cache is NOT marked dirty — we just loaded
         // the exact rows already in the DB.
         assert_eq!(fresh.dirty_len(), 0);
@@ -610,9 +811,9 @@ mod tests {
     #[test]
     fn confidence_saturates_at_window() {
         let mut p = CallSiteProfile::new("site");
-        p.n_observations = 50;
+        p.window_observations = 50;
         assert!((p.confidence(100) - 0.5).abs() < 1e-6);
-        p.n_observations = 1_000;
+        p.window_observations = 1_000;
         assert_eq!(p.confidence(100), 1.0);
         assert_eq!(p.confidence(0), 0.0);
     }
@@ -640,7 +841,7 @@ mod tests {
     }
 
     #[test]
-    fn p99_retains_observed_outlier_as_safe_upper_bound() {
+    fn p99_ages_out_observed_outlier() {
         let cm = CostModel::new();
         for _ in 0..100 {
             cm.observe(an_update("site", 80));
@@ -650,8 +851,122 @@ mod tests {
             cm.observe(an_update("site", 80));
         }
         let p = cm.get("site").unwrap();
-        assert_eq!(p.output_token_p99, 1_000.0);
+        assert_eq!(p.n_observations, 201);
+        assert_eq!(p.window_observations, 50);
+        assert_eq!(p.output_token_p99, 80.0);
         assert!(p.output_token_p95 <= p.output_token_p99);
+    }
+
+    #[test]
+    fn rolling_window_recomputes_every_stat_after_distribution_shift() {
+        let cm = CostModel::with_window(3);
+        for _ in 0..3 {
+            cm.observe(CostModelUpdate {
+                call_site_id: "shift".to_string(),
+                input_tokens: 1_000,
+                output_tokens: 1_000,
+                latency_ms: 1_000.0,
+                cost_usd: 1.0,
+                output_is_structured: false,
+                output_is_short: false,
+                now_us: Some(1),
+            });
+        }
+        for _ in 0..3 {
+            cm.observe(CostModelUpdate {
+                call_site_id: "shift".to_string(),
+                input_tokens: 10,
+                output_tokens: 10,
+                latency_ms: 10.0,
+                cost_usd: 0.01,
+                output_is_structured: true,
+                output_is_short: true,
+                now_us: Some(2),
+            });
+        }
+
+        let profile = cm.get("shift").unwrap();
+        assert_eq!(profile.n_observations, 6);
+        assert_eq!(profile.window_observations, 3);
+        assert_eq!(profile.input_tokens.mean, 10.0);
+        assert_eq!(profile.output_tokens.mean, 10.0);
+        assert_eq!(profile.latency_ms.mean, 10.0);
+        assert_eq!(profile.cost_usd.mean, 0.01);
+        assert_eq!(profile.output_tokens.variance(), 0.0);
+        assert_eq!(profile.output_token_p95, 10.0);
+        assert_eq!(profile.output_token_p99, 10.0);
+        assert_eq!(profile.output_is_structured, 1.0);
+        assert_eq!(profile.output_is_short, 1.0);
+    }
+
+    #[test]
+    fn retained_window_survives_restart_and_continues_eviction() {
+        let mut conn = fresh_conn();
+        let cm = CostModel::with_window(3);
+        for output in [10, 20, 30, 40] {
+            cm.observe(an_update("persisted.window", output));
+        }
+        cm.flush_dirty(&mut conn).unwrap();
+
+        let restarted = CostModel::with_window(3);
+        restarted.warm_from_db(&conn).unwrap();
+        let warm = restarted.get("persisted.window").unwrap();
+        assert_eq!(warm.n_observations, 4);
+        assert_eq!(warm.window_observations, 3);
+        assert_eq!(warm.output_tokens.mean, 30.0);
+        assert_eq!(warm.output_token_p99, 40.0);
+
+        restarted.observe(an_update("persisted.window", 50));
+        restarted.flush_dirty(&mut conn).unwrap();
+        let after_second_restart = CostModel::with_window(3);
+        after_second_restart.warm_from_db(&conn).unwrap();
+        let warm = after_second_restart.get("persisted.window").unwrap();
+        assert_eq!(warm.n_observations, 5);
+        assert_eq!(warm.window_observations, 3);
+        assert_eq!(warm.output_tokens.mean, 40.0);
+        assert_eq!(warm.output_token_p95, 50.0);
+
+        let persisted: (i64, i64, i64, i64) = conn
+            .query_row(
+                "SELECT COUNT(*), MIN(sample_sequence), MAX(sample_sequence), \
+                        (SELECT window_observations FROM call_site_profile \
+                         WHERE call_site_id = 'persisted.window') \
+                 FROM call_site_observation \
+                 WHERE call_site_id = 'persisted.window'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(persisted, (3, 3, 5, 3));
+    }
+
+    #[test]
+    fn smaller_window_is_applied_and_persisted_on_restart() {
+        let mut conn = fresh_conn();
+        let original = CostModel::with_window(5);
+        for output in 1..=5 {
+            original.observe(an_update("resized.window", output));
+        }
+        original.flush_dirty(&mut conn).unwrap();
+
+        let resized = CostModel::with_window(3);
+        resized.warm_from_db(&conn).unwrap();
+        let profile = resized.get("resized.window").unwrap();
+        assert_eq!(profile.n_observations, 5);
+        assert_eq!(profile.window_observations, 3);
+        assert_eq!(profile.output_tokens.mean, 4.0);
+        assert_eq!(resized.dirty_len(), 1);
+        resized.flush_dirty(&mut conn).unwrap();
+
+        let retained: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM call_site_observation \
+                 WHERE call_site_id = 'resized.window'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(retained, 3);
     }
 
     #[test]
@@ -697,6 +1012,29 @@ mod tests {
         }
         let p = cm.get("concurrent.site").unwrap();
         assert_eq!(p.n_observations, 800);
+        assert_eq!(p.window_observations, 50);
+    }
+
+    #[test]
+    fn flush_keeps_dirty_marker_for_post_snapshot_observation() {
+        let cm = CostModel::with_window(2);
+        cm.observe(an_update("racing.site", 10));
+        let mut conn = fresh_conn();
+
+        cm.flush_dirty_with_hook(&mut conn, || {
+            cm.observe(an_update("racing.site", 30));
+        })
+        .unwrap();
+        assert_eq!(cm.dirty_len(), 1);
+        cm.flush_dirty(&mut conn).unwrap();
+        assert_eq!(cm.dirty_len(), 0);
+
+        let restarted = CostModel::with_window(2);
+        restarted.warm_from_db(&conn).unwrap();
+        let profile = restarted.get("racing.site").unwrap();
+        assert_eq!(profile.n_observations, 2);
+        assert_eq!(profile.window_observations, 2);
+        assert_eq!(profile.output_tokens.mean, 20.0);
     }
 
     #[test]
@@ -722,5 +1060,18 @@ mod tests {
         cm.observe_rule_set("s", &["A", "B"], 0.2);
         let stats = cm.get_rule_set_stats("s", &["A", "B"]).unwrap();
         assert_eq!(stats.n, 2);
+    }
+
+    #[test]
+    fn rule_set_statistics_use_the_same_bounded_window() {
+        let cm = CostModel::with_window(2);
+        cm.observe_rule_set("s", &["A"], 100.0);
+        cm.observe_rule_set("s", &["A"], 2.0);
+        cm.observe_rule_set("s", &["A"], 4.0);
+
+        let stats = cm.get_rule_set_stats("s", &["A"]).unwrap();
+        assert_eq!(stats.n, 2);
+        assert_eq!(stats.mean, 3.0);
+        assert_eq!(stats.variance(), 1.0);
     }
 }

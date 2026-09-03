@@ -3,7 +3,8 @@
 //!
 //! Contract (from `specs/optimizer.md` § Architecture > Layered flow):
 //! 1. If the optimizer is disabled, return [`Plan::PassThrough`].
-//! 2. Look up the `CallSiteProfile`. If `n_observations < hot_threshold`,
+//! 2. Look up the `CallSiteProfile`. If the retained window has fewer than
+//!    `hot_threshold` observations,
 //!    return [`Plan::PassThrough`].
 //! 3. Ask every enabled rule if it applies. Collect proposals.
 //! 4. Sort by `projected_savings_usd` descending.
@@ -228,7 +229,7 @@ impl Optimizer {
             .cost_model
             .get(&call.call_site_id)
             .unwrap_or_else(|| CallSiteProfile::new(call.call_site_id.clone()));
-        if profile.n_observations < self.config.hot_threshold {
+        if profile.window_observations < self.config.hot_threshold {
             return Plan::PassThrough;
         }
 

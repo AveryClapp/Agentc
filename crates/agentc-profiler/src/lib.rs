@@ -730,7 +730,7 @@ fn build_optimizer_state(
         }
         Err(e) => {
             eprintln!("[agentc-profiler] optimizer wiring failed: {e}");
-            let cost_model = Arc::new(CostModel::new());
+            let cost_model = Arc::new(CostModel::with_window(config.cost_model_window));
             let optimizer = Arc::new(Optimizer::empty(cost_model.clone(), config));
             OptimizerState {
                 optimizer,

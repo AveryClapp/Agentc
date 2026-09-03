@@ -9,17 +9,19 @@ use rusqlite::Connection;
 
 /// Schema for `cost_model.db`:
 ///
-/// - `call_site_profile` — one row per `call_site_id`, rolling Welford stats.
+/// - `call_site_profile` — one summary row per `call_site_id`.
+/// - `call_site_observation` — the exact retained samples for each profile.
 /// - `rule_divergence` — one row per `(call_site, rule)` divergence estimate.
 /// - `optimizer_disabled` — per-`(call_site, rule)` disable entries with a
 ///   TTL (`reenable_at`).
 ///
-/// STRICT typing is used per the spec; the tables are plain rowid tables so
-/// the Welford stats can be updated in place.
+/// STRICT typing is used per the spec. The single-row profile table keeps its
+/// text primary key, while composite-key tables use `WITHOUT ROWID`.
 pub const COST_MODEL_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS call_site_profile (
     call_site_id          TEXT PRIMARY KEY NOT NULL,
     n_observations        INTEGER NOT NULL,
+    window_observations   INTEGER NOT NULL,
     input_tokens_mean     REAL NOT NULL,
     input_tokens_var      REAL NOT NULL,
     output_tokens_mean    REAL NOT NULL,
@@ -34,6 +36,19 @@ CREATE TABLE IF NOT EXISTS call_site_profile (
     output_is_short       REAL NOT NULL,
     updated_at            INTEGER NOT NULL
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS call_site_observation (
+    call_site_id          TEXT NOT NULL,
+    sample_sequence       INTEGER NOT NULL,
+    input_tokens          INTEGER NOT NULL,
+    output_tokens         INTEGER NOT NULL,
+    latency_ms            REAL NOT NULL,
+    cost_usd              REAL NOT NULL,
+    output_is_structured  INTEGER NOT NULL CHECK (output_is_structured IN (0, 1)),
+    output_is_short       INTEGER NOT NULL CHECK (output_is_short IN (0, 1)),
+    observed_at           INTEGER NOT NULL,
+    PRIMARY KEY (call_site_id, sample_sequence)
+) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS rule_divergence (
     call_site_id          TEXT NOT NULL,
@@ -94,24 +109,58 @@ CREATE INDEX IF NOT EXISTS idx_audit_ts ON plan_audit(ts_us);
 
 /// Apply `cost_model.db` DDL to a connection. Idempotent.
 ///
-/// Also runs column-addition migrations for databases created before
-/// `output_token_p99` was added. SQLite silently errors on duplicate column
-/// names; we treat that as "already migrated".
+/// Also runs column-addition migrations and cold-starts legacy unbounded
+/// summaries. Their lifetime invocation count is preserved, but their
+/// statistics cannot be converted into an exact retained window and therefore
+/// must not influence rewrites after migration.
 pub fn ensure_cost_model_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(COST_MODEL_SCHEMA)
         .context("applying cost_model schema")?;
-    // Migration: add output_token_p99 if absent (old DB). Only the
-    // "duplicate column name" error means the column already exists — that is
-    // safe to ignore. ANY OTHER error (locked DB, corruption) MUST propagate:
-    // swallowing it lets CostModel::warm_from_db later fail on the missing
-    // column, which makes build_optimizer error and the profiler fall back to
-    // Optimizer::empty() — silently disabling the entire optimizer (bd-c0l).
-    if let Err(e) = conn.execute_batch(
+    add_column_if_missing(
+        conn,
         "ALTER TABLE call_site_profile \
          ADD COLUMN output_token_p99 REAL NOT NULL DEFAULT 0.0",
-    ) {
-        if !e.to_string().contains("duplicate column name") {
-            return Err(e).context("adding output_token_p99 column");
+        "output_token_p99",
+    )?;
+    add_column_if_missing(
+        conn,
+        "ALTER TABLE call_site_profile \
+         ADD COLUMN window_observations INTEGER NOT NULL DEFAULT 0",
+        "window_observations",
+    )?;
+
+    conn.execute(
+        "UPDATE call_site_profile SET \
+            window_observations = 0, \
+            input_tokens_mean = 0.0, input_tokens_var = 0.0, \
+            output_tokens_mean = 0.0, output_tokens_var = 0.0, \
+            latency_ms_mean = 0.0, latency_ms_var = 0.0, \
+            cost_usd_mean = 0.0, cost_usd_var = 0.0, \
+            output_token_p95 = 0.0, output_token_p99 = 0.0, \
+            output_is_structured = 0.0, output_is_short = 0.0 \
+         WHERE NOT EXISTS (\
+            SELECT 1 FROM call_site_observation AS observation \
+            WHERE observation.call_site_id = call_site_profile.call_site_id\
+         )",
+        [],
+    )
+    .context("cold-starting legacy unbounded profiles")?;
+    conn.execute(
+        "DELETE FROM call_site_observation \
+         WHERE NOT EXISTS (\
+            SELECT 1 FROM call_site_profile AS profile \
+            WHERE profile.call_site_id = call_site_observation.call_site_id\
+         )",
+        [],
+    )
+    .context("removing orphaned retained samples")?;
+    Ok(())
+}
+
+fn add_column_if_missing(conn: &Connection, statement: &str, column: &str) -> Result<()> {
+    if let Err(error) = conn.execute_batch(statement) {
+        if !error.to_string().contains("duplicate column name") {
+            return Err(error).with_context(|| format!("adding {column} column"));
         }
     }
     Ok(())
@@ -137,12 +186,13 @@ mod tests {
         let tables: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' \
-                 AND name IN ('call_site_profile','rule_divergence','optimizer_disabled')",
+                 AND name IN ('call_site_profile','call_site_observation',\
+                              'rule_divergence','optimizer_disabled','rule_set_stats')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(tables, 3);
+        assert_eq!(tables, 5);
     }
 
     #[test]
@@ -163,6 +213,51 @@ mod tests {
             )
             .unwrap();
         assert_eq!(has_col, 1, "output_token_p99 must exist after migration");
+    }
+
+    #[test]
+    fn legacy_unbounded_profile_is_cold_started_without_losing_lifetime_count() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE call_site_profile (\
+                call_site_id TEXT PRIMARY KEY NOT NULL, \
+                n_observations INTEGER NOT NULL, \
+                input_tokens_mean REAL NOT NULL, input_tokens_var REAL NOT NULL, \
+                output_tokens_mean REAL NOT NULL, output_tokens_var REAL NOT NULL, \
+                latency_ms_mean REAL NOT NULL, latency_ms_var REAL NOT NULL, \
+                cost_usd_mean REAL NOT NULL, cost_usd_var REAL NOT NULL, \
+                output_token_p95 REAL NOT NULL, output_token_p99 REAL NOT NULL, \
+                output_is_structured REAL NOT NULL, output_is_short REAL NOT NULL, \
+                updated_at INTEGER NOT NULL\
+             ) STRICT",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO call_site_profile (\
+                call_site_id, n_observations, \
+                input_tokens_mean, input_tokens_var, \
+                output_tokens_mean, output_tokens_var, \
+                latency_ms_mean, latency_ms_var, cost_usd_mean, cost_usd_var, \
+                output_token_p95, output_token_p99, output_is_structured, \
+                output_is_short, updated_at\
+             ) VALUES ('legacy', 17, 100.0, 1.0, 200.0, 4.0, \
+                       300.0, 9.0, 0.1, 0.01, 250.0, 500.0, 0.5, 0.5, 1)",
+            [],
+        )
+        .unwrap();
+
+        ensure_cost_model_schema(&conn).unwrap();
+
+        let migrated: (i64, i64, f64, f64) = conn
+            .query_row(
+                "SELECT n_observations, window_observations, \
+                        output_tokens_mean, output_token_p99 \
+                 FROM call_site_profile WHERE call_site_id = 'legacy'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(migrated, (17, 0, 0.0, 0.0));
     }
 
     #[test]

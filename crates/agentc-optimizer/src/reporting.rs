@@ -226,12 +226,13 @@ pub fn build_report(
 }
 
 /// Baseline = observed spend (from cost_model) + savings booked by rules.
-/// The cost model holds mean cost per call; scaling by `n_observations`
+/// The cost model holds mean cost per call; scaling by `window_observations`
 /// recovers a total-spend estimate over the rolling window.
 fn compute_baseline_spend(conn: &Connection, savings: f64) -> Result<f64> {
     let observed: f64 = conn
         .query_row(
-            "SELECT COALESCE(SUM(cost_usd_mean * n_observations), 0.0) FROM call_site_profile",
+            "SELECT COALESCE(SUM(cost_usd_mean * window_observations), 0.0) \
+             FROM call_site_profile",
             [],
             |r| r.get(0),
         )
@@ -1021,6 +1022,34 @@ mod tests {
         assert_eq!(md.fire_rate, 0.0);
         // savings_fraction: 3 * 0.005 = 0.015 total; per-call 0.0015; observed 0.01 → baseline 0.0115 → 13%
         assert!(i.savings_fraction > 0.0);
+    }
+
+    #[test]
+    fn reporting_separates_lifetime_invocations_from_window_spend() {
+        let mut cost = fresh_cost();
+        let audit = fresh_audit();
+        let cm = CostModel::with_window(2);
+        for i in 1..=5 {
+            cm.observe(CostModelUpdate {
+                call_site_id: "windowed.site".to_string(),
+                input_tokens: 100,
+                output_tokens: 50,
+                latency_ms: 200.0,
+                cost_usd: i as f64 / 100.0,
+                output_is_structured: false,
+                output_is_short: true,
+                now_us: Some(i),
+            });
+        }
+        cm.flush_dirty(&mut cost).unwrap();
+
+        let report = build_report(&audit, Some(&cost), 10_000, 24).unwrap();
+        assert!((report.baseline_spend_usd - 0.09).abs() < 1e-12);
+        let inspect = build_inspect(&cost, &audit, "windowed.site", 2, 10_000)
+            .unwrap()
+            .unwrap();
+        assert_eq!(inspect.total_invocations, 5);
+        assert_eq!(inspect.confidence, 1.0);
     }
 
     #[test]

@@ -174,13 +174,18 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
         .with_context(|| format!("create storage dir {:?}", storage_dir))?;
 
     let cost_path = storage_dir.join("cost_model.db");
-    let cost_conn = Connection::open(&cost_path)
-        .with_context(|| format!("open {:?}", cost_path))?;
+    let mut cost_conn =
+        Connection::open(&cost_path).with_context(|| format!("open {:?}", cost_path))?;
     set_write_pragmas(&cost_conn).context("set cost_model pragmas")?;
     ensure_cost_model_schema(&cost_conn).context("ensure cost_model schema")?;
 
-    let cost_model = Arc::new(CostModel::new());
-    let _ = cost_model.warm_from_db(&cost_conn).context("warm cost_model")?;
+    let cost_model = Arc::new(CostModel::with_window(config.cost_model_window));
+    let _ = cost_model
+        .warm_from_db(&cost_conn)
+        .context("warm cost_model")?;
+    let _ = cost_model
+        .flush_dirty(&mut cost_conn)
+        .context("persist resized cost-model windows")?;
 
     let budget = Arc::new(Budget::new());
     let _ = budget.warm_from_db(&cost_conn).context("warm budget")?;
@@ -290,6 +295,7 @@ fn tracing_warn(msg: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cost_model::CostModelUpdate;
 
     #[test]
     fn writable_dbs_are_wal_mode() {
@@ -304,5 +310,49 @@ mod tests {
             let mode: String = conn.query_row("PRAGMA journal_mode", [], |r| r.get(0)).unwrap();
             assert_eq!(mode.to_lowercase(), "wal", "{name} must be WAL mode");
         }
+    }
+
+    #[test]
+    fn configured_window_controls_restart_hydration_and_persistence() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let initial_config = OptimizerConfig {
+            cost_model_window: 5,
+            ..OptimizerConfig::default()
+        };
+        let initial = build_optimizer(dir.path(), initial_config).unwrap();
+        for output_tokens in 1..=5 {
+            initial.cost_model.observe(CostModelUpdate {
+                call_site_id: "configured.window".to_string(),
+                input_tokens: 10,
+                output_tokens,
+                latency_ms: 1.0,
+                cost_usd: 0.01,
+                output_is_structured: false,
+                output_is_short: true,
+                now_us: Some(output_tokens as i64),
+            });
+        }
+        let mut connection = Connection::open(dir.path().join("cost_model.db")).unwrap();
+        initial.cost_model.flush_dirty(&mut connection).unwrap();
+        drop(initial);
+
+        let resized_config = OptimizerConfig {
+            cost_model_window: 3,
+            ..OptimizerConfig::default()
+        };
+        let resized = build_optimizer(dir.path(), resized_config).unwrap();
+        let profile = resized.cost_model.get("configured.window").unwrap();
+        assert_eq!(profile.n_observations, 5);
+        assert_eq!(profile.window_observations, 3);
+        assert_eq!(profile.output_tokens.mean, 4.0);
+        let retained: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM call_site_observation \
+                 WHERE call_site_id = 'configured.window'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(retained, 3);
     }
 }

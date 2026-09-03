@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "experiment_kind": "same_process_storage_isolation_preflight_bundle",
+  "created_at_utc": "2026-09-03T18:43:38.989378+00:00",
+  "agentc_git_commit": "10c66cdf9b1636c7eef14c4340ffa7d96fd97ed0",
+  "runtime_change_commit": "f352f78bcdb17c1a8eb4f312fd6983222ed3c6a3",
+  "paper_evidence": false,
+  "mocked_provider": false,
+  "network_calls": 0,
+  "verdict": {
+    "admission_passed": true,
+    "same_process_reinitialization_isolated": true,
+    "programmatic_path_owned_python_and_native_state": true,
+    "caller_environment_restored": true,
+    "cross_store_warmup_leakage_observed": false
+  },
+  "acceptance_checks": {
+    "first_store_python_native_path_match": true,
+    "first_store_active_environment_match": true,
+    "first_store_warm_then_rewrite": true,
+    "first_store_cost_profile_rows": 1,
+    "first_store_audit_rows": 4,
+    "second_store_python_native_path_match": true,
+    "second_store_active_environment_match": true,
+    "second_store_first_call_pass_through": true,
+    "second_store_cost_profile_rows": 0,
+    "second_store_audit_rows": 1,
+    "decoy_environment_store_created": false,
+    "environment_restored_after_each_shutdown": true,
+    "normalized_repetitions_equal": true
+  },
+  "result": {
+    "first_store": {
+      "python_native_match": true,
+      "active_environment_match": true,
+      "plan_sequence": [
+        "pass_through",
+        "pass_through",
+        "pass_through",
+        "rewritten"
+      ],
+      "cost_profile_rows": 1,
+      "audit_rows": 4
+    },
+    "second_store": {
+      "python_native_match": true,
+      "active_environment_match": true,
+      "first_plan_kind": "pass_through",
+      "cost_profile_rows": 0,
+      "audit_rows": 1
+    },
+    "environment_restored_after_first": true,
+    "environment_restored_after_second": true,
+    "decoy_store_created": false
+  },
+  "repeatability": {
+    "repetitions": 2,
+    "run_a_created_at_utc": "2026-09-03T18:43:37.947728+00:00",
+    "run_b_created_at_utc": "2026-09-03T18:43:38.989378+00:00",
+    "run_a_sha256": "844ced6232bbbc16cabb79ae2bb833a2c14baff52ee9bcbb96f831f41322211f",
+    "run_b_sha256": "fbf8146afc6dd1cc7f4cfb27d3b543263e2a492143aed0aa34eb99c41759f94d",
+    "comparison": "Exact equality after removing created_at_utc; all semantic, runtime, settings, and result fields matched."
+  },
+  "settings": {
+    "enabled_rules": [
+      "OutputBudget"
+    ],
+    "hot_threshold": 3,
+    "max_planning_overhead_ms": 1000,
+    "warm_observations_in_first_store": 3
+  },
+  "runtime": {
+    "platform": "macOS-26.5-arm64-arm-64bit",
+    "python": "3.12.9",
+    "rustc": "1.94.1 (e408947bf 2026-03-25)",
+    "cargo": "1.94.1 (29ea6fb6a 2026-03-24)",
+    "agentc_package": "0.1.0"
+  },
+  "source_digests_sha256": {
+    "bench/storage_isolation_preflight.py": "c04022bc1483e28397ff22bcb3ea261eceec6e1086600bb37f613fb036703923",
+    "python/agentc/_lifecycle.py": "724c32c7501436fc5035edc01e3faad0566b836153c9d71c8d4e506dcc986cc1",
+    "crates/agentc-profiler/src/lib.rs": "e13c88dcd2488871fdcd08e88d4c5bb55777a35dedb609c7a72d3465ec1f27c9",
+    "python/agentc/_native.pyi": "44d522957d6986873a86317a7fae0063d0f0bba490c1dde08190b5320948ed07",
+    "tests/test_lifecycle.py": "66f33f46f85f290c4b511786e2b81f517130f3e1bf499e4e6ac4c899ba32ec3b"
+  },
+  "verification": {
+    "python_suite": "398 passed",
+    "profiler_cargo_check": "passed",
+    "profiler_clippy_warnings_denied": "passed",
+    "runner_ruff_check": "passed",
+    "runner_repetitions": "2 passed"
+  },
+  "replay": {
+    "prerequisite": "Build and install Agentc commit 10c66cdf9b1636c7eef14c4340ffa7d96fd97ed0 into an isolated Python environment.",
+    "command": "python bench/storage_isolation_preflight.py --output /tmp/storage-isolation.json",
+    "network_requirement": "None. The runner invokes the native optimizer directly and never calls a provider."
+  },
+  "interpretation_limits": [
+    "This is Stage E0 engineering evidence, not provider-backed or paper result evidence.",
+    "The experiment proves same-process lifecycle isolation and storage-path ownership only.",
+    "Calls and outcomes are direct synthetic optimizer inputs; no LLM or provider is invoked.",
+    "The raised planning ceiling is an activation control, not the production setting.",
+    "Experiment launchers must still provision a unique resolved storage path per arm and repetition."
+  ]
+}

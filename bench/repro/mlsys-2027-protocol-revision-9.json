@@ -11,11 +11,11 @@
   "protocol_document": {
     "path": "bench/repro/mlsys-2027-evaluation-protocol.md",
     "parent_sha256": "dc6e9f4b832c3f63d421cb799956ed0e9aa9988b3392950cc12ff527db3bef51",
-    "revision_9_sha256": "ffe1dd795ea3077439724c90da0756442e7b9168252509aa22b41f4f29e51ecd"
+    "revision_9_sha256": "028a4950037d2f9067a61fecf78c92121b5afdd5bef0f7f4b0ec1e690c5c02d4"
   },
   "thesis_contract": {
     "path": "specs/working/joint-execution-planning-contract.md",
-    "sha256": "caa78ae8191a0113b7909a9e359d17bb695af1d747eb006d90ad793437c3be0b",
+    "sha256": "695eb021889bf0fee1ac506ecd793f0f31a13cc62b5729406111d82cb151cdd3",
     "bead": "bd-323l.2"
   },
   "information_state": {
@@ -70,7 +70,7 @@
         "bd-323l.6.5"
       ],
       "before": "Primary value arms compared all-on rule composition with trace-only, best-single-rule, and naive rule sequence.",
-      "after": "Primary arms compare fixed strong, fixed cheap, routing-only, rewrite-only on fixed strong, independently route-then-rewrite, and joint guarded planning. The main comparison is against the best admissible non-joint arm at the frozen quality margin."
+      "after": "Primary arms compare fixed strong, fixed cheap, routing-only, rewrite-only on fixed strong, best static joint, route-then-rewrite, rewrite-then-route, the current greedy composer, and joint guarded planning. The main comparison is a selection-valid contrast against the best admissible non-joint arm at the frozen quality margin."
     },
     {
       "id": "r9-observable-risk-language",

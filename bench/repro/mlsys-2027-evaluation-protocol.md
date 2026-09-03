@@ -522,17 +522,24 @@ analysis and never rewrites the contemporaneous billed-cost result.
    every semantic rewrite is disabled.
 5. `rewrite_only_fixed_strong`: Agentc selects semantic rewrites while the model
    remains fixed to the strong target.
-6. `independent_route_then_rewrite`: the routing policy and the current
-   orthogonality composer are calibrated separately, then applied in that fixed
-   order without complete-plan interaction profiles.
-7. `joint_guarded`: Agentc profiles and selects complete target-plus-rewrite
+6. `best_static_joint`: one complete target-plus-rewrite configuration is
+   selected on Stage C and held fixed for the entire pilot or confirmatory split.
+7. `route_then_rewrite`: a separately trained router sees the original request,
+   then an independently calibrated rewrite policy executes on its selected
+   target without complete-plan interaction profiles.
+8. `rewrite_then_route`: the independently calibrated rewrite policy executes
+   first and the router sees the transformed request.
+9. `current_greedy`: the existing projected-savings and cost-driver
+   CompositionPlanner runs with its static `ModelDowngrade` proposal.
+10. `joint_guarded`: Agentc profiles and selects complete target-plus-rewrite
    plans under the frozen evidence, divergence, freshness, exploration, and
    exposure constraints, with production counterfactual rate 2%.
 
 The main system comparison is `joint_guarded` against the best admissible result
-among arms 1--6 at the workload's frozen non-inferiority margin. The interaction
+among arms 1--9 at the workload's frozen non-inferiority margin. The interaction
 claim additionally requires direct wins over `routing_only`,
-`rewrite_only_fixed_strong`, and `independent_route_then_rewrite`.
+`rewrite_only_fixed_strong`, `best_static_joint`, both sequential orders, and
+`current_greedy`.
 
 ### 8.2 Secondary ablations
 
@@ -541,8 +548,8 @@ claim additionally requires direct wins over `routing_only`,
 - `joint_guarded` with shadow rates `0`, `0.01`, `0.05`, `0.10`, and `1.0`
   for the safety experiment, not the primary value estimate;
 - cold-start and persisted-warm-state variants;
-- complete-plan interaction profiles disabled, which reduces the planner to
-  `independent_route_then_rewrite`.
+- complete-plan interaction profiles disabled, with both sequential orders
+  reported rather than selecting an order on test outcomes.
 
 Primary arms use five paired repetitions per task. Secondary ablations use
 three paired repetitions unless Stage C power analysis requires more; fewer is
@@ -637,9 +644,12 @@ aggregate.
   If the scheduled confirmatory sample has less than 80% power for the margin or
   value threshold, the campaign is `NO-GO`; do not enlarge the test set after
   looking at pilot/test effects.
-- The 15 hypotheses obtained from five workload/model cells times the three
-  unified-system contrasts form the confirmatory family. Control family-wise
-  error with Holm's method. All other comparisons are labeled secondary with
+- The five hypotheses obtained from five workload/model cells compare
+  `joint_guarded` with the best admissible non-joint control selected on Stage C.
+  The paired bootstrap repeats that control selection in every resample, so the
+  interval is selection-valid rather than conditioning on the observed winner.
+  Control family-wise error across the five cells with Holm's method. Named
+  pairwise controls and all other comparisons are secondary with
   Benjamini-Hochberg false-discovery control within each workload.
 
 ## 11. Guard experiment and damage contract
@@ -783,7 +793,7 @@ package satisfies every row:
 | Gate | Pass condition |
 |---|---|
 | Natural usefulness | At least two of three workloads achieve at least 10% lower billed cost or 15% lower end-to-end latency, and their quality intervals clear the frozen margins. |
-| Joint-planning value | In at least two workload/model cells, `joint_guarded` beats both `routing_only` and `rewrite_only_fixed_strong`; it also beats `independent_route_then_rewrite` on a primary efficiency outcome without crossing the quality margin. |
+| Joint-planning value | In at least two workload/model cells, the selection-valid 95% lower bound for `joint_guarded` versus the best of `routing_only`, `rewrite_only_fixed_strong`, `best_static_joint`, both sequential orders, and `current_greedy` is positive without crossing the quality margin; at least one cell has a held-out model/rewrite rank reversal or other predeclared material non-separability. |
 | Safety at 2% | At least 90% harmful sites caught within `D_max=5.0`; benign disables at most 5%; at least 80% gross savings retained; restart and drift cases pass. |
 | Competitive position | At matched quality, Agentc beats a mechanism-matched baseline on a primary outcome in at least two workloads, or demonstrates a measured integration/composition capability that baseline cannot provide. |
 | Statistical validity | Frozen tasks, five paired primary repetitions, selection-disjoint calibration, intervals, multiplicity correction, and complete intention-to-treat results. |

@@ -245,13 +245,19 @@ become:
 2. `fixed_cheap` -- reference request on the cheap model;
 3. `routing_only` -- model selection with all semantic rewrites disabled;
 4. `rewrite_only_fixed_strong` -- Agentc rewrites with model fixed strong;
-5. `independent_route_then_rewrite` -- separately trained router followed by the
-   existing orthogonality composer;
-6. `joint_guarded` -- complete-plan profiling and constrained joint selection.
+5. `best_static_joint` -- one target-plus-rewrite configuration selected on
+   calibration data and held fixed for the entire test split;
+6. `route_then_rewrite` -- a separately trained router runs on the original
+   request, followed by an independently calibrated rewrite policy;
+7. `rewrite_then_route` -- the rewrite policy runs first and the router sees the
+   transformed request;
+8. `current_greedy` -- the existing projected-savings and cost-driver
+   CompositionPlanner, including its static `ModelDowngrade` proposal;
+9. `joint_guarded` -- complete-plan profiling and constrained joint selection.
 
 All arms receive identical task membership, model pool, request budget, and
 calibration opportunity. The confirmatory comparison is `joint_guarded` against
-the best admissible result among arms 1--5, not only against the unmodified
+the best admissible result among arms 1--8, not only against the unmodified
 agent. An efficiency win counts only when the workload-specific 95% quality
 interval clears its frozen non-inferiority margin:
 
@@ -259,11 +265,13 @@ interval clears its frozen non-inferiority margin:
 - SWE-bench Verified resolve rate: `-0.02`;
 - OSWorld normalized score: `-0.02`.
 
-The main interaction claim requires `joint_guarded` to beat both `routing_only`
-and `rewrite_only_fixed_strong` and to outperform
-`independent_route_then_rewrite` on at least one primary efficiency outcome in
-two workload/model cells without crossing the quality margin. Report every
-attempted cell, including zero-opportunity and abstention-dominant cells.
+The main interaction claim requires a selection-valid 95% lower bound above zero
+for `joint_guarded` versus the best arm among `routing_only`,
+`rewrite_only_fixed_strong`, `best_static_joint`, both sequential orders, and
+`current_greedy` in two workload/model cells without crossing the quality
+margin. At least one such cell must exhibit a held-out model/rewrite rank reversal
+or another predeclared material departure from additive isolated effects. Report
+every attempted cell, including zero-opportunity and abstention-dominant cells.
 
 ## Novelty boundary
 

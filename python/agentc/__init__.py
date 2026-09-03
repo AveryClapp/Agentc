@@ -6,8 +6,6 @@ Programmatic usage via `agentc.init()` and `@agentc.trace`.
 
 from __future__ import annotations
 
-from typing import Any
-
 # Import the native Rust extension module.
 from agentc._native import __version__  # noqa: F401
 from agentc._native import create_db  # noqa: F401
@@ -40,6 +38,8 @@ from agentc._optimizer import observe_outcome  # noqa: F401
 from agentc._optimizer import plan_call  # noqa: F401
 from agentc._executor import dispatch  # noqa: F401
 from agentc._intercept import intercept  # noqa: F401
+from agentc._optimization_scope import optimization_scope  # noqa: F401
+from agentc._optimization_scope import optimization_scope_report  # noqa: F401
 
 # Provenance / state tagging surface used by ParallelBranch and StateDrop.
 from agentc._provenance import State  # noqa: F401
@@ -73,6 +73,8 @@ __all__ = [
     "observe_outcome",
     "dispatch",
     "intercept",
+    "optimization_scope",
+    "optimization_scope_report",
     "parallel_map",
     "State",
     "state_read",

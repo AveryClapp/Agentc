@@ -5,9 +5,9 @@ Run: maturin develop && pytest tests/test_lifecycle.py -v
 
 from __future__ import annotations
 
+import json
 import os
 import signal
-import tempfile
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 
 import agentc
-from agentc._config import Config, resolve_config
+from agentc._config import resolve_config
 from agentc._lifecycle import (
     _initialized,
     _shutdown_in_progress,
@@ -97,8 +97,6 @@ class TestInit:
 
     def test_creates_per_process_db(self, tmp_storage: Path) -> None:
         agentc.init(storage_path=str(tmp_storage))
-        pid = os.getpid()
-        db_path = tmp_storage / "active" / f"pid-{pid}.db"
         # create_db is a stub currently, but the path should be accessible
         assert (tmp_storage / "active").exists()
 
@@ -159,13 +157,32 @@ class TestShutdown:
         agentc.shutdown(timeout_ms=1000)
         assert not is_initialized()
 
+    def test_shutdown_writes_optimization_scope_manifest_fragment(
+        self,
+        tmp_storage: Path,
+    ) -> None:
+        from agentc._optimization_scope import decide_optimization
+
+        agentc.init(storage_path=str(tmp_storage))
+        with agentc.optimization_scope("tau2.user_simulator", optimize=False):
+            assert not decide_optimization().eligible
+        agentc.shutdown()
+
+        report_path = (
+            tmp_storage / "optimization-scopes" / f"pid-{os.getpid()}.json"
+        )
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        assert report["total_calls"] == 1
+        assert report["excluded_calls"] == 1
+        assert report["scopes"][0]["name"] == "tau2.user_simulator"
+
 
 class TestSignalHandlers:
     def test_atexit_registered(self, tmp_storage: Path) -> None:
         """atexit handler is registered during init."""
         import atexit
 
-        original_count = len(atexit._exithandlers) if hasattr(atexit, "_exithandlers") else 0
+        assert hasattr(atexit, "register")
         agentc.init(storage_path=str(tmp_storage))
         # We can't easily count atexit handlers in Python 3.12+
         # but we verify init doesn't raise

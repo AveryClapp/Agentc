@@ -91,6 +91,11 @@ def init(
         # Store config
         _config = config
 
+        # Each initialization defines one run-level eligibility report.
+        from agentc._optimization_scope import _reset_optimization_scope_report
+
+        _reset_optimization_scope_report()
+
         # Start background writer
         from agentc._writer import start as start_writer
 
@@ -153,6 +158,15 @@ def shutdown(timeout_ms: int = 5000) -> None:
             _native.optimize_flush()
         except BaseException:
             logger.debug("optimize_flush failed (suppressed)", exc_info=True)
+        try:
+            from agentc._optimization_scope import _write_optimization_scope_report
+
+            _write_optimization_scope_report(_config.storage_path)
+        except BaseException:
+            logger.debug(
+                "optimization-scope report write failed (suppressed)",
+                exc_info=True,
+            )
         # Merge happens on the writer thread (bd-2os.2) and on CLI reads —
         # nothing to do here.
         _remove_patches()
@@ -173,9 +187,23 @@ def _apply_patches() -> None:
     from agentc._patches._anthropic import patch as patch_anthropic
     from agentc._patches._openai import patch as patch_openai
     from agentc._provenance_frameworks import install_all
+    from agentc._scope_adapters import install_all as install_scope_adapters
 
     patch_anthropic()
     patch_openai()
+    try:
+        installed_scopes = install_scope_adapters()
+        active_scopes = [name for name, ok in installed_scopes.items() if ok]
+        if active_scopes:
+            logger.debug(
+                "optimization-scope adapters installed: %s",
+                ", ".join(active_scopes),
+            )
+    except BaseException:
+        logger.debug(
+            "optimization-scope adapter install failed (suppressed)",
+            exc_info=True,
+        )
     try:
         installed = install_all()
         active = [name for name, ok in installed.items() if ok]
@@ -190,7 +218,9 @@ def _remove_patches() -> None:
     from agentc._patches._anthropic import unpatch as unpatch_anthropic
     from agentc._patches._openai import unpatch as unpatch_openai
     from agentc._provenance_frameworks import uninstall_all
+    from agentc._scope_adapters import uninstall_all as uninstall_scope_adapters
 
+    uninstall_scope_adapters()
     unpatch_anthropic()
     unpatch_openai()
     try:

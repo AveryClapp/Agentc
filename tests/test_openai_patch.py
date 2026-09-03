@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import agentc
-from agentc._context import SpanContext, get_current_span, set_current_span
+from agentc._context import SpanContext, set_current_span
 from agentc._lifecycle import _initialized, _shutdown_in_progress
 from agentc._patches._openai import (
     _extract_input_messages,
@@ -22,7 +22,6 @@ from agentc._patches._openai import (
     _extract_output_messages,
     _inject_stream_options,
     _wrap_create,
-    _StreamingIterator,
     patch as patch_openai,
     unpatch as unpatch_openai,
 )
@@ -193,6 +192,31 @@ class TestStreamOptionsInjection:
 
 
 class TestSyncCreateWrapper:
+    def test_excluded_scope_preserves_request_and_span(self, initialized: Path) -> None:
+        from agentc import optimization_scope
+
+        written: list[dict[str, Any]] = []
+        mock_response = MockChatCompletion()
+        request = {
+            "model": "user-simulator-model",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        wrapped = MagicMock(return_value=mock_response)
+
+        with optimization_scope("tau2.user_simulator", optimize=False), patch(
+            "agentc._patches._openai._write_root_span",
+            side_effect=lambda span: written.append(span),
+        ), patch("agentc._optimizer.plan_call") as planner:
+            result = _wrap_create(wrapped, None, (), request)
+
+        assert result is mock_response
+        planner.assert_not_called()
+        wrapped.assert_called_once_with(**request)
+        attrs = json.loads(written[0]["attributes"])
+        assert attrs["agentc.optimization.scope"] == "tau2.user_simulator"
+        assert attrs["agentc.optimization.eligible"] is False
+        assert attrs["agentc.optimization.decision_reason"] == "scope_excluded"
+
     def test_captures_span(self, initialized: Path) -> None:
         written: list[dict[str, Any]] = []
         mock_response = MockChatCompletion()

@@ -27,23 +27,14 @@ from typing import Any, Awaitable, Callable, Optional
 
 from agentc._executor import dispatch
 from agentc._optimizer import Plan, observe_outcome, plan_call
+from agentc._optimization_scope import (
+    OPT_OUT_HEADER,
+    OPT_OUT_VALUE,
+    decide_optimization,
+    is_opted_out,
+)
 
 log = logging.getLogger(__name__)
-
-OPT_OUT_HEADER = "agentc-optimize"
-OPT_OUT_VALUE = "false"
-
-
-def is_opted_out(extra_headers: Optional[dict[str, Any]]) -> bool:
-    """True iff the request carries the per-call opt-out header."""
-    if not extra_headers:
-        return False
-    for k, v in extra_headers.items():
-        if k.lower() != OPT_OUT_HEADER:
-            continue
-        if isinstance(v, str) and v.strip().lower() == OPT_OUT_VALUE:
-            return True
-    return False
 
 
 async def intercept(
@@ -72,7 +63,8 @@ async def intercept(
                        return a rich response object; cache stores the
                        output payload only).
     """
-    if is_opted_out(extra_headers):
+    decision = decide_optimization(extra_headers)
+    if not decision.eligible:
         return await run_original()
 
     try:

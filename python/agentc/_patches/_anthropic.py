@@ -182,6 +182,7 @@ def _emit_span(
 def _plan_anthropic_call(
     kwargs: dict[str, Any],
     parent: SpanContext | None,
+    decision: Any | None = None,
 ) -> tuple[Any, str | None]:
     """Build a Call dict and ask the optimizer for a Plan (Anthropic).
 
@@ -190,8 +191,8 @@ def _plan_anthropic_call(
     OpenAI patch.
     """
     try:
-        from agentc._intercept import is_opted_out
         from agentc._optimizer import plan_call
+        from agentc._optimization_scope import decide_optimization
         from agentc._patches._optimizer_glue import (
             build_call_dict_anthropic,
             derive_call_site_id,
@@ -200,7 +201,9 @@ def _plan_anthropic_call(
         logger.debug("optimizer modules unavailable (anthropic); skipping", exc_info=True)
         return None, None
 
-    if is_opted_out(kwargs.get("extra_headers")):
+    if decision is None:
+        decision = decide_optimization(kwargs.get("extra_headers"))
+    if not decision.eligible:
         return None, None
 
     try:
@@ -260,7 +263,11 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
     req_attrs = _extract_request_attrs(kwargs)
     input_msgs = _extract_input_messages(kwargs)
 
-    plan, call_site_id = _plan_anthropic_call(kwargs, parent)
+    from agentc._optimization_scope import decide_optimization
+
+    decision = decide_optimization(kwargs.get("extra_headers"))
+    req_attrs.update(decision.span_attributes())
+    plan, call_site_id = _plan_anthropic_call(kwargs, parent, decision)
 
     try:
         if plan is not None:
@@ -477,7 +484,11 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
     req_attrs = _extract_request_attrs(kwargs)
     input_msgs = _extract_input_messages(kwargs)
 
-    plan, call_site_id = _plan_anthropic_call(kwargs, parent)
+    from agentc._optimization_scope import decide_optimization
+
+    decision = decide_optimization(kwargs.get("extra_headers"))
+    req_attrs.update(decision.span_attributes())
+    plan, call_site_id = _plan_anthropic_call(kwargs, parent, decision)
 
     try:
         if plan is not None:

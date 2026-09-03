@@ -186,6 +186,32 @@ class TestExtractHelpers:
 class TestSyncCreateWrapper:
     """Test _wrap_create directly, bypassing wrapt mechanics."""
 
+    def test_excluded_scope_preserves_request_and_span(self, initialized: Path) -> None:
+        from agentc import optimization_scope
+
+        written: list[dict[str, Any]] = []
+        mock_response = MockMessage()
+        request = {
+            "model": "user-simulator-model",
+            "max_tokens": 100,
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        wrapped = MagicMock(return_value=mock_response)
+
+        with optimization_scope("tau2.user_simulator", optimize=False), patch(
+            "agentc._patches._anthropic._write_root_span",
+            side_effect=lambda span: written.append(span),
+        ), patch("agentc._optimizer.plan_call") as planner:
+            result = _wrap_create(wrapped, None, (), request)
+
+        assert result is mock_response
+        planner.assert_not_called()
+        wrapped.assert_called_once_with(**request)
+        attrs = json.loads(written[0]["attributes"])
+        assert attrs["agentc.optimization.scope"] == "tau2.user_simulator"
+        assert attrs["agentc.optimization.eligible"] is False
+        assert attrs["agentc.optimization.decision_reason"] == "scope_excluded"
+
     def test_native_anthropic_runs_shadow_guard(self, initialized: Path) -> None:
         # Regression (bd-1cb): the accuracy guard (maybe_shadow_record) must run
         # on the native Anthropic path, not only OpenAI. Previously it was

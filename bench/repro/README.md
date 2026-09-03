@@ -62,3 +62,50 @@ MODEL=Qwen/Qwen3-235B-A22B-Instruct-2507-tput BASE=https://api.together.xyz/v1 \
   decision (rule kept vs disabled) is robust, recovery completeness is not.
 - Qwen3-235B served via Together throughput tier can occasionally stall a request;
   re-run the affected single cell if a run hangs with no progress.
+
+## Offline optimizer activation preflight
+
+`bench.activation_preflight` screens real benchmark request shapes before any
+paid run. It executes the normal SDK patch and native optimizer while replacing
+OpenAI dispatch with a deterministic local response. Provider credentials and
+compatible-endpoint settings are masked in every worker. The JSON retains only
+prompt sizes, content digests, call-site IDs, plans, and rule counts.
+
+This is explicitly **not paper evidence**: model output, quality, token usage,
+latency, and cost are synthetic; the optimizer overhead ceiling is also raised
+to remove debug-build timing noise. Use it to decide which workload/rule pairs
+merit a live paired evaluation, not to claim savings or semantic safety.
+
+```bash
+# Requires the native extension, OpenAI SDK, and the desired local fixtures.
+maturin develop -m crates/agentc-profiler/Cargo.toml
+python -m pip install -e '.[openai]'
+
+PREFLIGHT_STORAGE="$(mktemp -d /tmp/agentc-activation-preflight.XXXXXX)"
+python -m bench.activation_preflight \
+  --tasks 8 \
+  --storage-root "$PREFLIGHT_STORAGE" \
+  --output bench/repro/activation-preflight-2026-09-03.json
+```
+
+The committed [activation-preflight-2026-09-03.json](activation-preflight-2026-09-03.json)
+records the source commit and SHA-256 of every local fixture. The exact run used
+generated, gitignored fixtures; `bd-bjs` tracks the still-missing clean-clone
+bootstrap path, including the RAG fixture generator.
+
+The initial screen produced the following post-warm-up rule counts. An asterisk
+marks output-dependent behavior that the local response can trigger but cannot
+validate.
+
+| Workload | Class | ContextCompress gates (size / dead fraction) | Rules |
+|---|---|---:|---|
+| HotpotQA | natural request | 3/8 / 0/8 | OutputBudget 5* |
+| Wikipedia QA | natural request | 12/16 / 0/16 | OutputBudget 10* |
+| SWE-bench planner | task-prompt proxy | 0/8 / 8/8 | OutputBudget 5* |
+| RAG summarizer | engineered reference | 0/24 / 24/24 | ParallelBranch 14; OutputBudget 7* |
+| Long-context QA | purpose-built control | 8/8 / 8/8 | ContextCompress 5; OutputBudget 5* |
+| Multi-rule QA | purpose-built control | 24/24 / 24/24 | ContextCompress 11; StateDrop 7; OutputBudget 18* |
+
+The RAG row is diagnostic rather than clean evidence: chunk-summary and combine
+calls currently share one optimizer call-site profile. `bd-8uxj` tracks that
+benchmark-validity defect.

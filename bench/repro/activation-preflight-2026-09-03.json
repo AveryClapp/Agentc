@@ -1,0 +1,4175 @@
+{
+  "created_at_utc": "2026-09-03T16:19:19.247526+00:00",
+  "experiment_kind": "offline_optimizer_activation_preflight",
+  "git_commit": "7a56fa9490070f84ab823eef384f6b0ff74b481c",
+  "interpretation_limits": [
+    "Valid only for optimizer wiring and request-shape screening.",
+    "Quality, latency, billed cost, token counts, and model outputs are synthetic.",
+    "The planning-overhead kill switch is raised; this run cannot measure optimizer overhead.",
+    "OutputBudget, ModelDowngrade, cache behavior, and downstream prompts may depend on mocked outputs.",
+    "A rule firing here is a candidate for live evaluation, not evidence of safe savings."
+  ],
+  "mocked_provider": true,
+  "network_calls": 0,
+  "paper_evidence": false,
+  "schema_version": 1,
+  "settings": {
+    "capture_content": false,
+    "composition": true,
+    "context_compress_screen": {
+      "dead_attention_epsilon": "read from each intercepted call",
+      "min_dead_attention_fraction": 0.3,
+      "min_prompt_bytes_exclusive": 8192
+    },
+    "hot_threshold": 3,
+    "max_planning_overhead_ms": 1000,
+    "model": "gpt-4o-mini-2024-07-18",
+    "shadow_rate": 0.0,
+    "storage_root": "/private/tmp/agentc-preflight-final-20260903.ynXmL1",
+    "tasks_per_workload": 8,
+    "token_estimator": "ceil(utf8_prompt_bytes/4) + 4*message_count + 2"
+  },
+  "workloads": [
+    {
+      "audit": {
+        "first_rule_counts": {
+          "OutputBudget": 5
+        },
+        "plan_kind_counts": {
+          "pass_through": 3,
+          "rewritten": 5
+        },
+        "row_count": 8
+      },
+      "audit_matches_capture": true,
+      "call_site_count": 1,
+      "call_site_decisions": {
+        "bench.agents.hotpot_qa:_run_one:75": 8
+      },
+      "context_compress_screen": {
+        "attention_gate_decisions": 8,
+        "dead_fraction_gate_decisions": 0,
+        "size_gate_decisions": 3
+      },
+      "dispatch_events": [
+        {
+          "max_output_tokens": null,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 6938,
+          "prompt_digest": "dc02a0fcbae1a929",
+          "sequence": 1
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 8123,
+          "prompt_digest": "e52213aee3c50e45",
+          "sequence": 2
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 14313,
+          "prompt_digest": "c70d7d0da9411a76",
+          "sequence": 3
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 8301,
+          "prompt_digest": "ae0de82e014fa6f9",
+          "sequence": 4
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 6426,
+          "prompt_digest": "c1c5dcad3b7c774c",
+          "sequence": 5
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 13806,
+          "prompt_digest": "ebfa9519e8652af3",
+          "sequence": 6
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 6731,
+          "prompt_digest": "6315f2a861846e62",
+          "sequence": 7
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 7998,
+          "prompt_digest": "d6291f7e47df667b",
+          "sequence": 8
+        }
+      ],
+      "error": null,
+      "fixture": {
+        "exists": true,
+        "key": "hotpot_distractor",
+        "path": "bench/fixtures/hotpot_distractor.json",
+        "records": 500,
+        "sha256": "b95ca37012e9a677643102b328e23a4b40f6cbd1867b1d6eeeb1868e7efc6536"
+      },
+      "fixture_key": "hotpot_distractor",
+      "interpretation": "Public multi-hop QA prompts; single-call retrieval context.",
+      "message_count": {
+        "max": 12,
+        "median": 12,
+        "min": 12,
+        "p95": 12
+      },
+      "module": "bench.agents.hotpot_qa",
+      "name": "hotpot_qa",
+      "network_calls": 0,
+      "offline_provider_dispatches": 8,
+      "optimizer_decisions": 8,
+      "plan_events": [
+        {
+          "call_site_id": "bench.agents.hotpot_qa:_run_one:75",
+          "call_site_ordinal": 1,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.083333,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 6938,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 1
+        },
+        {
+          "call_site_id": "bench.agents.hotpot_qa:_run_one:75",
+          "call_site_ordinal": 2,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 8123,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 2
+        },
+        {
+          "call_site_id": "bench.agents.hotpot_qa:_run_one:75",
+          "call_site_ordinal": 3,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 14313,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 3
+        },
+        {
+          "call_site_id": "bench.agents.hotpot_qa:_run_one:75",
+          "call_site_ordinal": 4,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 8301,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 8301,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 4
+        },
+        {
+          "call_site_id": "bench.agents.hotpot_qa:_run_one:75",
+          "call_site_ordinal": 5,
+          "input": {
+            "attention_dead_count": 3,
+            "attention_dead_fraction": 0.25,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 6426,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 3,
+            "attention_dead_fraction": 0.25,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 6426,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 5
+        },
+        {
+          "call_site_id": "bench.agents.hotpot_qa:_run_one:75",
+          "call_site_ordinal": 6,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 13806,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 13806,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 6
+        },
+        {
+          "call_site_id": "bench.agents.hotpot_qa:_run_one:75",
+          "call_site_ordinal": 7,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 6731,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 6731,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 7
+        },
+        {
+          "call_site_id": "bench.agents.hotpot_qa:_run_one:75",
+          "call_site_ordinal": 8,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.083333,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 7998,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.083333,
+            "attention_score_count": 12,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 12,
+            "message_dependency_count": 12,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 7998,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 8
+        }
+      ],
+      "plan_kind_counts": {
+        "pass_through": 3,
+        "rewritten": 5
+      },
+      "post_warmup_activation_rate": 1.0,
+      "post_warmup_activations": 5,
+      "post_warmup_decisions": 5,
+      "post_warmup_pass_through": 0,
+      "prompt_bytes": {
+        "max": 14313,
+        "median": 7998,
+        "min": 6426,
+        "p95": 14313
+      },
+      "rule_activation_counts": {
+        "OutputBudget": 5
+      },
+      "status": "ok",
+      "tasks_requested": 8,
+      "tasks_returned": 8,
+      "warmup_decisions": 3,
+      "workload_class": "natural_request"
+    },
+    {
+      "audit": {
+        "first_rule_counts": {
+          "OutputBudget": 10
+        },
+        "plan_kind_counts": {
+          "pass_through": 6,
+          "rewritten": 10
+        },
+        "row_count": 16
+      },
+      "audit_matches_capture": true,
+      "call_site_count": 2,
+      "call_site_decisions": {
+        "bench.agents.support_qa:_run_one:61": 8,
+        "bench.agents.support_qa:_run_one:73": 8
+      },
+      "context_compress_screen": {
+        "attention_gate_decisions": 16,
+        "dead_fraction_gate_decisions": 0,
+        "size_gate_decisions": 12
+      },
+      "dispatch_events": [
+        {
+          "max_output_tokens": null,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 16457,
+          "prompt_digest": "54fe78f28962d9b8",
+          "sequence": 1
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 16414,
+          "prompt_digest": "a859924d6711f0f9",
+          "sequence": 2
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 9515,
+          "prompt_digest": "76231607bee9c1ff",
+          "sequence": 3
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 9472,
+          "prompt_digest": "bc9239f29cdaf38a",
+          "sequence": 4
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 6298,
+          "prompt_digest": "e562bf637bee1429",
+          "sequence": 5
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 6255,
+          "prompt_digest": "b11983c57a4bb023",
+          "sequence": 6
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 11082,
+          "prompt_digest": "6f20f48adcb7f44d",
+          "sequence": 7
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 11039,
+          "prompt_digest": "67585e8943af4306",
+          "sequence": 8
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 9168,
+          "prompt_digest": "1e213ae9d1aaac11",
+          "sequence": 9
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 9125,
+          "prompt_digest": "3cf0bc513f8d6329",
+          "sequence": 10
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 7743,
+          "prompt_digest": "a8d867408f299d11",
+          "sequence": 11
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 7700,
+          "prompt_digest": "891876bddf6953fa",
+          "sequence": 12
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 11296,
+          "prompt_digest": "eb0d66fb0359f657",
+          "sequence": 13
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 11253,
+          "prompt_digest": "2f24802c71f405f4",
+          "sequence": 14
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 9593,
+          "prompt_digest": "cb3c54532a136931",
+          "sequence": 15
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 3,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 9550,
+          "prompt_digest": "b6a74162d9dc6f2e",
+          "sequence": 16
+        }
+      ],
+      "error": null,
+      "fixture": {
+        "exists": true,
+        "key": "wikipedia_qa",
+        "path": "bench/fixtures/wikipedia_qa.json",
+        "records": 39,
+        "sha256": "f38436e515a5f91e3da60803edf611f7b2f788bcd4e714445aaa78a89d8fa2e6"
+      },
+      "fixture_key": "wikipedia_qa",
+      "interpretation": "Cold-agent two-pass document QA, not designed for Agentc rules.",
+      "message_count": {
+        "max": 3,
+        "median": 3,
+        "min": 3,
+        "p95": 3
+      },
+      "module": "bench.agents.support_qa",
+      "name": "wikipedia_qa",
+      "network_calls": 0,
+      "offline_provider_dispatches": 16,
+      "optimizer_decisions": 16,
+      "plan_events": [
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:61",
+          "call_site_ordinal": 1,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 16457,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 1
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:73",
+          "call_site_ordinal": 1,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 16414,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 2
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:61",
+          "call_site_ordinal": 2,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 9515,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 3
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:73",
+          "call_site_ordinal": 2,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 9472,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 4
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:61",
+          "call_site_ordinal": 3,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 6298,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 5
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:73",
+          "call_site_ordinal": 3,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 6255,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 6
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:61",
+          "call_site_ordinal": 4,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11082,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11082,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 7
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:73",
+          "call_site_ordinal": 4,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11039,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11039,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 8
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:61",
+          "call_site_ordinal": 5,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 9168,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 9168,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 9
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:73",
+          "call_site_ordinal": 5,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 9125,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 9125,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 10
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:61",
+          "call_site_ordinal": 6,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 7743,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 7743,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 11
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:73",
+          "call_site_ordinal": 6,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 7700,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 7700,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 12
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:61",
+          "call_site_ordinal": 7,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11296,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11296,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 13
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:73",
+          "call_site_ordinal": 7,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11253,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11253,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 14
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:61",
+          "call_site_ordinal": 8,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 9593,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 9593,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 15
+        },
+        {
+          "call_site_id": "bench.agents.support_qa:_run_one:73",
+          "call_site_ordinal": 8,
+          "input": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 9550,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 0,
+            "attention_dead_fraction": 0.0,
+            "attention_score_count": 3,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": false,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 3,
+            "message_dependency_count": 3,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 9550,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 16
+        }
+      ],
+      "plan_kind_counts": {
+        "pass_through": 6,
+        "rewritten": 10
+      },
+      "post_warmup_activation_rate": 1.0,
+      "post_warmup_activations": 10,
+      "post_warmup_decisions": 10,
+      "post_warmup_pass_through": 0,
+      "prompt_bytes": {
+        "max": 16457,
+        "median": 9515,
+        "min": 6255,
+        "p95": 16457
+      },
+      "rule_activation_counts": {
+        "OutputBudget": 10
+      },
+      "status": "ok",
+      "tasks_requested": 8,
+      "tasks_returned": 8,
+      "warmup_decisions": 6,
+      "workload_class": "natural_request"
+    },
+    {
+      "audit": {
+        "first_rule_counts": {
+          "OutputBudget": 5
+        },
+        "plan_kind_counts": {
+          "pass_through": 3,
+          "rewritten": 5
+        },
+        "row_count": 8
+      },
+      "audit_matches_capture": true,
+      "call_site_count": 1,
+      "call_site_decisions": {
+        "bench.agents._runtime:call_llm:200": 8
+      },
+      "context_compress_screen": {
+        "attention_gate_decisions": 8,
+        "dead_fraction_gate_decisions": 8,
+        "size_gate_decisions": 0
+      },
+      "dispatch_events": [
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1367,
+          "prompt_digest": "08f1481619a12a88",
+          "sequence": 1
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1992,
+          "prompt_digest": "9286e51c6d948ec7",
+          "sequence": 2
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1460,
+          "prompt_digest": "446e00fdd1edeee7",
+          "sequence": 3
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 2576,
+          "prompt_digest": "e5b1cad03361a03e",
+          "sequence": 4
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 648,
+          "prompt_digest": "d1128f277d6cb76f",
+          "sequence": 5
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 2174,
+          "prompt_digest": "cc18451f80094f2e",
+          "sequence": 6
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1146,
+          "prompt_digest": "b5b48ae1d5f1c8e8",
+          "sequence": 7
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 943,
+          "prompt_digest": "645f177a78b8a0e1",
+          "sequence": 8
+        }
+      ],
+      "error": null,
+      "fixture": {
+        "exists": true,
+        "key": "swebench_planner",
+        "path": "bench/fixtures/swebench_planner.json",
+        "records": 50,
+        "sha256": "26e07aa8327a1e50518b069c970f780d0de1cc687f95bd4cbf15d8691c6e38a1"
+      },
+      "fixture_key": "swebench_planner",
+      "interpretation": "SWE-bench issue text sent to a plan generator; this is not a code-solving SWE-bench agent and cannot establish resolve-rate external validity.",
+      "message_count": {
+        "max": 2,
+        "median": 2,
+        "min": 2,
+        "p95": 2
+      },
+      "module": "bench.agents.swebench_planner",
+      "name": "swebench_planner",
+      "network_calls": 0,
+      "offline_provider_dispatches": 8,
+      "optimizer_decisions": 8,
+      "plan_events": [
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 1,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1367,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 1
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 2,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1992,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 2
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 3,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1460,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 3
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 4,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 2576,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 2576,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 4
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 5,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 648,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 648,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 5
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 6,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 2174,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 2174,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 6
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 7,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1146,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1146,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 7
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 8,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 943,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 943,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 8
+        }
+      ],
+      "plan_kind_counts": {
+        "pass_through": 3,
+        "rewritten": 5
+      },
+      "post_warmup_activation_rate": 1.0,
+      "post_warmup_activations": 5,
+      "post_warmup_decisions": 5,
+      "post_warmup_pass_through": 0,
+      "prompt_bytes": {
+        "max": 2576,
+        "median": 1367,
+        "min": 648,
+        "p95": 2576
+      },
+      "rule_activation_counts": {
+        "OutputBudget": 5
+      },
+      "status": "ok",
+      "tasks_requested": 8,
+      "tasks_returned": 8,
+      "warmup_decisions": 3,
+      "workload_class": "task_prompt_proxy"
+    },
+    {
+      "audit": {
+        "first_rule_counts": {
+          "OutputBudget": 7,
+          "ParallelBranch": 14
+        },
+        "plan_kind_counts": {
+          "parallel": 14,
+          "pass_through": 3,
+          "rewritten": 7
+        },
+        "row_count": 24
+      },
+      "audit_matches_capture": true,
+      "call_site_count": 1,
+      "call_site_decisions": {
+        "bench.agents._runtime:call_llm:200": 24
+      },
+      "context_compress_screen": {
+        "attention_gate_decisions": 24,
+        "dead_fraction_gate_decisions": 24,
+        "size_gate_decisions": 0
+      },
+      "dispatch_events": [
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1819,
+          "prompt_digest": "4b1ced40546cd950",
+          "sequence": 1
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1920,
+          "prompt_digest": "f196f1c16fbf1acc",
+          "sequence": 2
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 193,
+          "prompt_digest": "adda0850c00cda32",
+          "sequence": 3
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1141,
+          "prompt_digest": "848e1d4dbb642644",
+          "sequence": 4
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1317,
+          "prompt_digest": "342dc77030769d55",
+          "sequence": 5
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 193,
+          "prompt_digest": "c8ebf48864957f4b",
+          "sequence": 6
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1935,
+          "prompt_digest": "66b495e128df4ed0",
+          "sequence": 7
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 2318,
+          "prompt_digest": "00718c31d4b40a86",
+          "sequence": 8
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 193,
+          "prompt_digest": "3934c6bd7d3e9fcc",
+          "sequence": 9
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 726,
+          "prompt_digest": "ff4dbbef658d5e0d",
+          "sequence": 10
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 592,
+          "prompt_digest": "60a47f6c0e4e1e9b",
+          "sequence": 11
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 193,
+          "prompt_digest": "b8007d86abf74609",
+          "sequence": 12
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1097,
+          "prompt_digest": "cc6c6cb65563c886",
+          "sequence": 13
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1159,
+          "prompt_digest": "8677319e07f5ce45",
+          "sequence": 14
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 193,
+          "prompt_digest": "ecedb92ffd634c6a",
+          "sequence": 15
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1186,
+          "prompt_digest": "d13496519ed85ee4",
+          "sequence": 16
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1504,
+          "prompt_digest": "c07e564988787a08",
+          "sequence": 17
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 193,
+          "prompt_digest": "d37b2fcd690b3403",
+          "sequence": 18
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 2548,
+          "prompt_digest": "5b0ef2e1675ba6bc",
+          "sequence": 19
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 2382,
+          "prompt_digest": "92dccdb998d07132",
+          "sequence": 20
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 193,
+          "prompt_digest": "32b84426ce6ee18d",
+          "sequence": 21
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1185,
+          "prompt_digest": "fb769972389904f4",
+          "sequence": 22
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 1059,
+          "prompt_digest": "57d070b8f948e6e8",
+          "sequence": 23
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 2,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 193,
+          "prompt_digest": "73f6f738af75a3b2",
+          "sequence": 24
+        }
+      ],
+      "error": null,
+      "fixture": {
+        "exists": true,
+        "key": "rag_summarizer",
+        "path": "bench/fixtures/rag_summarizer.json",
+        "records": 200,
+        "sha256": "b69ce6a47eab863dedb403c26da91b34812cf597833a7de7b1fe7860768e85ff"
+      },
+      "fixture_key": "rag_summarizer",
+      "interpretation": "Repository map-reduce reference agent with explicit parallel_map.",
+      "message_count": {
+        "max": 2,
+        "median": 2,
+        "min": 2,
+        "p95": 2
+      },
+      "module": "bench.agents.rag_summarizer",
+      "name": "rag_summarizer",
+      "network_calls": 0,
+      "offline_provider_dispatches": 24,
+      "optimizer_decisions": 24,
+      "plan_events": [
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 2,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1819,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 1
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 2,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1920,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 2
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 3,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 3
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 5,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1141,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 4
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 5,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1317,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 5
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 6,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 6
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 8,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1935,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 7
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 8,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 2318,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 8
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 9,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 9
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 11,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 726,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 10
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 11,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 592,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 11
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 12,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 12
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 14,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1097,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 13
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 14,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1159,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 14
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 15,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 15
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 17,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1186,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 16
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 17,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1504,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 17
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 18,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 18
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 20,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 2548,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 19
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 20,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 2382,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 20
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 21,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 21
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 23,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1185,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 22
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 23,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": true,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 1059,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "parallel",
+          "rewritten": null,
+          "rules": [
+            "ParallelBranch"
+          ],
+          "sequence": 23
+        },
+        {
+          "call_site_id": "bench.agents._runtime:call_llm:200",
+          "call_site_ordinal": 24,
+          "input": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "rewritten",
+          "rewritten": {
+            "attention_dead_count": 1,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 2,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": false,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 2,
+            "message_dependency_count": 2,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 193,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "OutputBudget"
+          ],
+          "sequence": 24
+        }
+      ],
+      "plan_kind_counts": {
+        "parallel": 14,
+        "pass_through": 3,
+        "rewritten": 7
+      },
+      "post_warmup_activation_rate": 1.0,
+      "post_warmup_activations": 21,
+      "post_warmup_decisions": 21,
+      "post_warmup_pass_through": 0,
+      "prompt_bytes": {
+        "max": 2548,
+        "median": 1097,
+        "min": 193,
+        "p95": 2382
+      },
+      "rule_activation_counts": {
+        "OutputBudget": 7,
+        "ParallelBranch": 14
+      },
+      "status": "ok",
+      "tasks_requested": 8,
+      "tasks_returned": 8,
+      "warmup_decisions": 3,
+      "workload_class": "engineered_reference"
+    },
+    {
+      "audit": {
+        "first_rule_counts": {
+          "ContextCompress": 5
+        },
+        "plan_kind_counts": {
+          "composed": 5,
+          "pass_through": 3
+        },
+        "row_count": 8
+      },
+      "audit_matches_capture": true,
+      "call_site_count": 1,
+      "call_site_decisions": {
+        "bench.agents.long_context_qa:_run_one:72": 8
+      },
+      "context_compress_screen": {
+        "attention_gate_decisions": 8,
+        "dead_fraction_gate_decisions": 8,
+        "size_gate_decisions": 8
+      },
+      "dispatch_events": [
+        {
+          "max_output_tokens": null,
+          "message_count": 22,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 15006,
+          "prompt_digest": "35605bc257821512",
+          "sequence": 1
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 22,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 24661,
+          "prompt_digest": "d0596f710ded7961",
+          "sequence": 2
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 22,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 16733,
+          "prompt_digest": "8a568654d5f0740d",
+          "sequence": 3
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 15,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 17892,
+          "prompt_digest": "311e7f282236c314",
+          "sequence": 4
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 16,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 11571,
+          "prompt_digest": "a676889816ea9784",
+          "sequence": 5
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 15,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 11577,
+          "prompt_digest": "ae48d01aa99e7828",
+          "sequence": 6
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 8777,
+          "prompt_digest": "4620600880b8395f",
+          "sequence": 7
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 8548,
+          "prompt_digest": "0c28aff4bf176271",
+          "sequence": 8
+        }
+      ],
+      "error": null,
+      "fixture": {
+        "exists": true,
+        "key": "long_context_qa",
+        "path": "bench/fixtures/long_context_qa.json",
+        "records": 100,
+        "sha256": "5efe452f7ecb6a7c16535ff1da1ad502c30157f5e0cea80f1931fac2a6410e95"
+      },
+      "fixture_key": "long_context_qa",
+      "interpretation": "Positive control engineered to clear ContextCompress's size gate.",
+      "message_count": {
+        "max": 22,
+        "median": 22,
+        "min": 22,
+        "p95": 22
+      },
+      "module": "bench.agents.long_context_qa",
+      "name": "long_context_qa",
+      "network_calls": 0,
+      "offline_provider_dispatches": 8,
+      "optimizer_decisions": 8,
+      "plan_events": [
+        {
+          "call_site_id": "bench.agents.long_context_qa:_run_one:72",
+          "call_site_ordinal": 1,
+          "input": {
+            "attention_dead_count": 9,
+            "attention_dead_fraction": 0.409091,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15006,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 1
+        },
+        {
+          "call_site_id": "bench.agents.long_context_qa:_run_one:72",
+          "call_site_ordinal": 2,
+          "input": {
+            "attention_dead_count": 8,
+            "attention_dead_fraction": 0.363636,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 24661,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 2
+        },
+        {
+          "call_site_id": "bench.agents.long_context_qa:_run_one:72",
+          "call_site_ordinal": 3,
+          "input": {
+            "attention_dead_count": 9,
+            "attention_dead_fraction": 0.409091,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 16733,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 3
+        },
+        {
+          "call_site_id": "bench.agents.long_context_qa:_run_one:72",
+          "call_site_ordinal": 4,
+          "input": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.454545,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 23708,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.454545,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 15,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 17892,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 4
+        },
+        {
+          "call_site_id": "bench.agents.long_context_qa:_run_one:72",
+          "call_site_ordinal": 5,
+          "input": {
+            "attention_dead_count": 11,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15239,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 11,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 16,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11571,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 5
+        },
+        {
+          "call_site_id": "bench.agents.long_context_qa:_run_one:72",
+          "call_site_ordinal": 6,
+          "input": {
+            "attention_dead_count": 8,
+            "attention_dead_fraction": 0.363636,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 18029,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 8,
+            "attention_dead_fraction": 0.363636,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 15,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11577,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 6
+        },
+        {
+          "call_site_id": "bench.agents.long_context_qa:_run_one:72",
+          "call_site_ordinal": 7,
+          "input": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.454545,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15761,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.454545,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 12,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 8777,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 7
+        },
+        {
+          "call_site_id": "bench.agents.long_context_qa:_run_one:72",
+          "call_site_ordinal": 8,
+          "input": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.454545,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15448,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.454545,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 12,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 8548,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 8
+        }
+      ],
+      "plan_kind_counts": {
+        "composed": 5,
+        "pass_through": 3
+      },
+      "post_warmup_activation_rate": 1.0,
+      "post_warmup_activations": 5,
+      "post_warmup_decisions": 5,
+      "post_warmup_pass_through": 0,
+      "prompt_bytes": {
+        "max": 24661,
+        "median": 15761,
+        "min": 15006,
+        "p95": 24661
+      },
+      "rule_activation_counts": {
+        "ContextCompress": 5,
+        "OutputBudget": 5
+      },
+      "status": "ok",
+      "tasks_requested": 8,
+      "tasks_returned": 8,
+      "warmup_decisions": 3,
+      "workload_class": "purpose_built_control"
+    },
+    {
+      "audit": {
+        "first_rule_counts": {
+          "ContextCompress": 11,
+          "StateDrop": 7
+        },
+        "plan_kind_counts": {
+          "composed": 18,
+          "pass_through": 6
+        },
+        "row_count": 24
+      },
+      "audit_matches_capture": true,
+      "call_site_count": 2,
+      "call_site_decisions": {
+        "bench.agents.multirule_qa:_initial_answer:102": 8,
+        "bench.agents.multirule_qa:_refine_step:148": 16
+      },
+      "context_compress_screen": {
+        "attention_gate_decisions": 24,
+        "dead_fraction_gate_decisions": 24,
+        "size_gate_decisions": 24
+      },
+      "dispatch_events": [
+        {
+          "max_output_tokens": null,
+          "message_count": 22,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 15006,
+          "prompt_digest": "35605bc257821512",
+          "sequence": 1
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 23,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 15133,
+          "prompt_digest": "07a7d61430ff394a",
+          "sequence": 2
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 24,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 15166,
+          "prompt_digest": "8be09697d50d1296",
+          "sequence": 3
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 22,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 24661,
+          "prompt_digest": "d0596f710ded7961",
+          "sequence": 4
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 23,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 24788,
+          "prompt_digest": "cd6b090718ca9e43",
+          "sequence": 5
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 23,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 24788,
+          "prompt_digest": "574f6be223a2cf05",
+          "sequence": 6
+        },
+        {
+          "max_output_tokens": null,
+          "message_count": 22,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 16733,
+          "prompt_digest": "8a568654d5f0740d",
+          "sequence": 7
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 14,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 9709,
+          "prompt_digest": "6300bedea9b3b81c",
+          "sequence": 8
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 23,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 16860,
+          "prompt_digest": "b1f7acdf60d5c418",
+          "sequence": 9
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 15,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 17892,
+          "prompt_digest": "311e7f282236c314",
+          "sequence": 10
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 15,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 17986,
+          "prompt_digest": "89433b506d2387ed",
+          "sequence": 11
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 23,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 23835,
+          "prompt_digest": "8663abf5eed2c780",
+          "sequence": 12
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 16,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 11571,
+          "prompt_digest": "a676889816ea9784",
+          "sequence": 13
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 16,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 11665,
+          "prompt_digest": "047970f99dbf7fed",
+          "sequence": 14
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 23,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 15366,
+          "prompt_digest": "e9e9c1f2fa75874d",
+          "sequence": 15
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 15,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 11577,
+          "prompt_digest": "ae48d01aa99e7828",
+          "sequence": 16
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 15,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 11671,
+          "prompt_digest": "42e24f3fc583b51d",
+          "sequence": 17
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 23,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 18156,
+          "prompt_digest": "ecc9088eb241fb23",
+          "sequence": 18
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 8777,
+          "prompt_digest": "4620600880b8395f",
+          "sequence": 19
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 8871,
+          "prompt_digest": "dfe9d6dfb4e2abd6",
+          "sequence": 20
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 23,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 15888,
+          "prompt_digest": "6ad6f7e8306fc3cc",
+          "sequence": 21
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 8548,
+          "prompt_digest": "0c28aff4bf176271",
+          "sequence": 22
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 12,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 8642,
+          "prompt_digest": "779477a34f6b4228",
+          "sequence": 23
+        },
+        {
+          "max_output_tokens": 64,
+          "message_count": 23,
+          "model": "gpt-4o-mini-2024-07-18",
+          "prompt_bytes": 15575,
+          "prompt_digest": "d203f3e38b1eaac5",
+          "sequence": 24
+        }
+      ],
+      "error": null,
+      "fixture": {
+        "exists": true,
+        "key": "multirule_qa",
+        "path": "bench/fixtures/multirule_qa.json",
+        "records": 100,
+        "sha256": "5efe452f7ecb6a7c16535ff1da1ad502c30157f5e0cea80f1931fac2a6410e95"
+      },
+      "fixture_key": "multirule_qa",
+      "interpretation": "Positive control engineered for long-context and state rewrites.",
+      "message_count": {
+        "max": 24,
+        "median": 23,
+        "min": 22,
+        "p95": 24
+      },
+      "module": "bench.agents.multirule_qa",
+      "name": "multirule_qa",
+      "network_calls": 0,
+      "offline_provider_dispatches": 24,
+      "optimizer_decisions": 24,
+      "plan_events": [
+        {
+          "call_site_id": "bench.agents.multirule_qa:_initial_answer:102",
+          "call_site_ordinal": 1,
+          "input": {
+            "attention_dead_count": 9,
+            "attention_dead_fraction": 0.409091,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15006,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 1
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 1,
+          "input": {
+            "attention_dead_count": 11,
+            "attention_dead_fraction": 0.478261,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 23,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15133,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 2
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 2,
+          "input": {
+            "attention_dead_count": 12,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 24,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15166,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 3
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_initial_answer:102",
+          "call_site_ordinal": 2,
+          "input": {
+            "attention_dead_count": 8,
+            "attention_dead_fraction": 0.363636,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 24661,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 4
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 3,
+          "input": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.434783,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 23,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 24788,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 5
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 4,
+          "input": {
+            "attention_dead_count": 11,
+            "attention_dead_fraction": 0.458333,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 24,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 24821,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 11,
+            "attention_dead_fraction": 0.458333,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 23,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 24788,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "StateDrop",
+            "OutputBudget"
+          ],
+          "sequence": 6
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_initial_answer:102",
+          "call_site_ordinal": 3,
+          "input": {
+            "attention_dead_count": 9,
+            "attention_dead_fraction": 0.409091,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 16733,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "pass_through",
+          "rewritten": null,
+          "rules": [],
+          "sequence": 7
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 5,
+          "input": {
+            "attention_dead_count": 11,
+            "attention_dead_fraction": 0.478261,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 23,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 16860,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 11,
+            "attention_dead_fraction": 0.478261,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 14,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 9709,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 8
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 6,
+          "input": {
+            "attention_dead_count": 12,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 24,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 16893,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 12,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 23,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 16860,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "StateDrop",
+            "OutputBudget"
+          ],
+          "sequence": 9
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_initial_answer:102",
+          "call_site_ordinal": 4,
+          "input": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.454545,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 23708,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.454545,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 15,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 17892,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 10
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 7,
+          "input": {
+            "attention_dead_count": 12,
+            "attention_dead_fraction": 0.521739,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 23,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 23835,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 12,
+            "attention_dead_fraction": 0.521739,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 15,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 17986,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 11
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 8,
+          "input": {
+            "attention_dead_count": 13,
+            "attention_dead_fraction": 0.541667,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 24,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 23868,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 13,
+            "attention_dead_fraction": 0.541667,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 23,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 23835,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "StateDrop",
+            "OutputBudget"
+          ],
+          "sequence": 12
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_initial_answer:102",
+          "call_site_ordinal": 5,
+          "input": {
+            "attention_dead_count": 11,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15239,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 11,
+            "attention_dead_fraction": 0.5,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 16,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11571,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 13
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 9,
+          "input": {
+            "attention_dead_count": 12,
+            "attention_dead_fraction": 0.521739,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 23,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15366,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 12,
+            "attention_dead_fraction": 0.521739,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 16,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11665,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 14
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 10,
+          "input": {
+            "attention_dead_count": 13,
+            "attention_dead_fraction": 0.541667,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 24,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15399,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 13,
+            "attention_dead_fraction": 0.541667,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 23,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15366,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "StateDrop",
+            "OutputBudget"
+          ],
+          "sequence": 15
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_initial_answer:102",
+          "call_site_ordinal": 6,
+          "input": {
+            "attention_dead_count": 8,
+            "attention_dead_fraction": 0.363636,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 18029,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 8,
+            "attention_dead_fraction": 0.363636,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 15,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11577,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 16
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 11,
+          "input": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.434783,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 23,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 18156,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.434783,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 15,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 11671,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 17
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 12,
+          "input": {
+            "attention_dead_count": 11,
+            "attention_dead_fraction": 0.458333,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 24,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 18189,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 11,
+            "attention_dead_fraction": 0.458333,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 23,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 18156,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "StateDrop",
+            "OutputBudget"
+          ],
+          "sequence": 18
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_initial_answer:102",
+          "call_site_ordinal": 7,
+          "input": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.454545,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15761,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.454545,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 12,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 8777,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 19
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 13,
+          "input": {
+            "attention_dead_count": 12,
+            "attention_dead_fraction": 0.521739,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 23,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15888,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 12,
+            "attention_dead_fraction": 0.521739,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 12,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 8871,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 20
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 14,
+          "input": {
+            "attention_dead_count": 13,
+            "attention_dead_fraction": 0.541667,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 24,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15921,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 13,
+            "attention_dead_fraction": 0.541667,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 23,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15888,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "StateDrop",
+            "OutputBudget"
+          ],
+          "sequence": 21
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_initial_answer:102",
+          "call_site_ordinal": 8,
+          "input": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.454545,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 22,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15448,
+            "window_state_read_count": 0
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 10,
+            "attention_dead_fraction": 0.454545,
+            "attention_score_count": 22,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 12,
+            "message_dependency_count": 22,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 8548,
+            "window_state_read_count": 0
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 22
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 15,
+          "input": {
+            "attention_dead_count": 12,
+            "attention_dead_fraction": 0.521739,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 23,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15575,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 12,
+            "attention_dead_fraction": 0.521739,
+            "attention_score_count": 23,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 12,
+            "message_dependency_count": 23,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 8642,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "ContextCompress",
+            "OutputBudget"
+          ],
+          "sequence": 23
+        },
+        {
+          "call_site_id": "bench.agents.multirule_qa:_refine_step:148",
+          "call_site_ordinal": 16,
+          "input": {
+            "attention_dead_count": 13,
+            "attention_dead_fraction": 0.541667,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": true,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": null,
+            "message_count": 24,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15608,
+            "window_state_read_count": 1
+          },
+          "plan_kind": "composed",
+          "rewritten": {
+            "attention_dead_count": 13,
+            "attention_dead_fraction": 0.541667,
+            "attention_score_count": 24,
+            "context_compress_attention_gate": false,
+            "context_compress_dead_fraction_gate": true,
+            "context_compress_size_gate": true,
+            "dead_attention_epsilon": 0.1,
+            "has_parallel_peer": false,
+            "max_output_tokens": 64,
+            "message_count": 23,
+            "message_dependency_count": 24,
+            "model": "gpt-4o-mini-2024-07-18",
+            "prompt_bytes": 15575,
+            "window_state_read_count": 1
+          },
+          "rules": [
+            "StateDrop",
+            "OutputBudget"
+          ],
+          "sequence": 24
+        }
+      ],
+      "plan_kind_counts": {
+        "composed": 18,
+        "pass_through": 6
+      },
+      "post_warmup_activation_rate": 1.0,
+      "post_warmup_activations": 18,
+      "post_warmup_decisions": 18,
+      "post_warmup_pass_through": 0,
+      "prompt_bytes": {
+        "max": 24821,
+        "median": 15921,
+        "min": 15006,
+        "p95": 24788
+      },
+      "rule_activation_counts": {
+        "ContextCompress": 11,
+        "OutputBudget": 18,
+        "StateDrop": 7
+      },
+      "status": "ok",
+      "tasks_requested": 8,
+      "tasks_returned": 8,
+      "warmup_decisions": 6,
+      "workload_class": "purpose_built_control"
+    }
+  ]
+}

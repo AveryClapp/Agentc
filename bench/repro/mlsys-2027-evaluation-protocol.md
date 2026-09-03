@@ -1,21 +1,24 @@
 # Agentc MLSys 2027 staged evaluation protocol
 
 - Protocol: `agentc-mlsys2027-v1`
-- Revision: 5
+- Revision: 6
 - Initial freeze: 2026-09-03
 - Revision 2 freeze: 2026-09-03
 - Revision 3 freeze: 2026-09-03
 - Revision 4 freeze: 2026-09-03
 - Revision 5 freeze: 2026-09-03
+- Revision 6 freeze: 2026-09-03
 - Revision 2 record: [mlsys-2027-protocol-revision-2.json](mlsys-2027-protocol-revision-2.json)
 - Revision 3 record: [mlsys-2027-protocol-revision-3.json](mlsys-2027-protocol-revision-3.json)
 - Revision 4 record: [mlsys-2027-protocol-revision-4.json](mlsys-2027-protocol-revision-4.json)
 - Revision 5 record: [mlsys-2027-protocol-revision-5.json](mlsys-2027-protocol-revision-5.json)
+- Revision 6 record: [mlsys-2027-protocol-revision-6.json](mlsys-2027-protocol-revision-6.json)
 - Runtime baseline before this protocol: `4250a01`
 - Revision 2 runtime baseline: `27f896f`
 - Revision 3 runtime baseline: `6339d79`
 - Revision 4 runtime baseline: `f352f78`
 - Revision 5 runtime baseline: `91e864c`
+- Revision 6 runtime baseline: `f9a8f04`
 - Target decision date: 2026-10-01
 - Target venue deadline: 2026-10-30 20:00 UTC
 
@@ -43,7 +46,11 @@ execution or outcome inspection.
 Revision 5 was issued after the persisted cost model was changed from
 all-history summaries to an exact bounded sample window and verified during
 Stage E0, before any Stage E1, C, P, or T execution or outcome inspection.
-Revisions 2 through 5 do not change the `agentc-mlsys2027-v1` split namespace,
+
+Revision 6 was issued after per-rule divergence statistics and the consecutive-
+breach controller state were made restart-persistent and verified during Stage
+E0, before any Stage E1, C, P, or T execution or outcome inspection.
+Revisions 2 through 6 do not change the `agentc-mlsys2027-v1` split namespace,
 task membership, workloads, models, arms, outcomes, margins, inference,
 stopping rules, or gates. Their machine-readable revision records enumerate
 every runtime-contract change and the engineering evidence that triggered it.
@@ -316,6 +323,21 @@ copy-on-write snapshot, concurrent observation, and flush-interleaving tests
 also pass. This retires `bd-bwgu` as a Stage C blocker without admitting a
 workload or supplying paper evidence.
 
+Revision 6 makes every completed shadow comparison immediately persist its
+cumulative `(n, mean, variance)` divergence estimate and consecutive-breach
+streak. Startup hydrates that state before planning. The fifth consecutive
+over-budget sample persists a 24-hour disable, and startup hydrates the disable
+before serving subsequent plans. Legacy divergence rows receive a zero streak
+because the former schema did not retain it.
+
+Five release-mode, zero-network Stage E0 repetitions recorded four breaches,
+restarted, recorded the fifth breach, and observed the durable disable before a
+lifecycle flush. A second restart remained pass-through. Frozen tau2 and
+SWE-agent no-network reruns preserved plan sequences, response digests, scopes,
+and observation counts. This retires only the persistence blocker `bd-shi1.5`;
+it does not establish the production 2% guard operating point, damage budget,
+drift response, or paper evidence.
+
 The main benefit claim is restricted to `ContextCompress`, `ModelDowngrade`,
 `OutputBudget`, and exact `CacheHit`. `StateDrop` is a safety-stress mechanism
 and becomes a benefit-eligible rule only if structure is inferred by a general
@@ -549,6 +571,11 @@ five consecutive sampled breaches is about 3,100 rewritten calls. These are
 protocol predictions to test, not acceptable safety results. A failure requires
 a controller redesign or removal of the 2% safety claim.
 
+Revision 6 verifies the restart-persistence mechanism required by this section,
+not the damage contract. The cumulative estimator is not yet drift-bounded, and
+its detection/false-disable frontier and durable-write overhead remain open
+before Stage C.
+
 ## 12. Retry, exclusion, and stopping rules
 
 - Provider 429/5xx/network failures use the frozen upstream retry policy. Count
@@ -642,7 +669,11 @@ No Stage C, P, or T result is admissible while its relevant blocker is open.
 | `bd-3q3l` | the composition proxy destroys its own provenance tags and cannot validate provenance-dependent rewrites. |
 | `bd-vdj` | exact current model routes and snapshot pins are absent from runtime wiring. |
 | `bd-o2qj` | pricing, dataset pin, and fixture-count integrity defects remain. |
-| `bd-jq6c`, `bd-shi1.4`, `bd-shi1.5` | 2% guard behavior, false disables, and persistent evidence are not yet established. |
+| `bd-jq6c`, `bd-shi1.4` | 2% guard behavior, harmful-site detection, and false disables are not yet established. |
+| `bd-nggo` | persisted divergence is cumulative rather than drift-bounded; provider/workload drift can retain stale guard evidence. |
+| `bd-h7k9` | non-finite divergence samples or thresholds can poison or bypass guard state. |
+| `bd-rm0w` | per-shadow-sample durable-write overhead and cost-DB mutex contention are not quantified. |
+| `bd-z5zj` | same-process Python and bundled-Rust SQLite ownership remains unaudited beyond the separate-process E0 probe boundary. |
 | `bd-bjs` | clean-clone fixture/bootstrap path is incomplete. |
 | `bd-7s4.1` | CI does not execute the benchmark harness tests. |
 | `bd-zqeq` | composed rule-set savings windows are bounded in process but not persisted; this blocks a restart-persistent composition-payoff claim, not the call-site window verified in revision 5. |
@@ -691,3 +722,13 @@ previous plan sequences, response digests, scopes, and observation counts.
 Rule-set restart persistence and the operator report's mixed time/sample window
 remain explicitly scoped by `bd-zqeq` and `bd-6bon`. The evidence is
 [cost-model-window-preflight-2026-09-03.json](cost-model-window-preflight-2026-09-03.json).
+
+Revision 6 retires `bd-shi1.5` at Stage E0 without admitting a workload at
+Stage E1. The runtime now persists cumulative divergence statistics and the
+current consecutive-breach streak after each shadow comparison, hydrates both
+on restart, and preserves the resulting 24-hour disable across a second
+restart. Five release repetitions produced identical normalized state and plan
+sequences; frozen tau2 and SWE-agent reruns preserved their earlier semantics.
+The 2% controller frontier, drift-bounded estimation, non-finite input
+hardening, and durable-write overhead remain explicit blockers. The evidence is
+[guard-persistence-preflight-2026-09-03.json](guard-persistence-preflight-2026-09-03.json).

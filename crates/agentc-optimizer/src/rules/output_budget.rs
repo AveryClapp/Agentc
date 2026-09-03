@@ -1,8 +1,9 @@
 //! `OutputBudget` — cap output tokens at ceil(p99 × 1.2) on hot call sites.
 //!
 //! Compiler analog: strength reduction. Replace an unconstrained generation
-//! call with a bounded one. The empirical p99 output distribution provides
-//! a tight safe ceiling — 99% of real responses fit within it.
+//! call with a bounded one. The cost model's conservative p99 upper bound
+//! provides the ceiling; until the rolling window in bd-bwgu lands, that
+//! field is the all-history observed maximum.
 //!
 //! Cost driver: OutputTokens — orthogonal to ContextCompress (InputTokens)
 //! and ModelDowngrade (ModelPrice). Safe to compose with both.

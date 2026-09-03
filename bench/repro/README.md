@@ -136,3 +136,10 @@ on opaque multimodal/tool histories, permits `OutputBudget`, and returns the
 original system, message, tool, beta-header, and thinking objects by identity.
 It also records the output-quantile overshoot discovered during the screen as
 `bd-pbus`. This is Stage E0 integration evidence only, not a benchmark result.
+
+The follow-up [output-quantile preflight](output-quantile-preflight-2026-09-03.json)
+replays the triggering constant-output case after the estimator correction.
+The persisted p95/p99 now equal the three observed 80-token completions and the
+resulting cap is 96 rather than 143. The file also states the conservative
+all-history-maximum contract, legacy-profile implications, and the bounded-
+window work deferred to `bd-bwgu`.

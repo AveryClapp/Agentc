@@ -318,31 +318,30 @@ fn apply_update(profile: &mut CallSiteProfile, update: &CostModelUpdate, now_us:
     profile.output_is_structured = add_mean(profile.output_is_structured, update.output_is_structured);
     profile.output_is_short = add_mean(profile.output_is_short, update.output_is_short);
 
-    // Output token p95 is not strictly Welford-able; the spec asks for a
-    // rolling estimate, not an exact percentile. Approximate with the P²
-    // algorithm's single-sample incremental step: move toward the
-    // observation by (p if x > p95 else -(1-p)) * stddev, capped by
-    // observed values. This converges to the true p95 without storing the
-    // full stream.
+    // Output token p95 is not Welford-able without retaining additional
+    // order-statistic state. Keep a bounded asymmetric moving proxy until
+    // the persisted rolling-window work in bd-bwgu lands. Using the distance
+    // to the observation makes each update a convex step, so the estimate
+    // cannot escape the range of values seen by a fresh profile.
     let target_p = 0.95f64;
     let cur_p95 = profile.output_token_p95 as f64;
     let obs = update.output_tokens as f64;
     let step = 0.01_f64.max(1.0 / n); // smaller corrections for older streams
-    let next_p95 = if obs > cur_p95 {
-        cur_p95 + step * target_p * obs.max(1.0)
+    let next_p95 = if profile.n_observations == 1 {
+        obs
+    } else if obs > cur_p95 {
+        cur_p95 + step * target_p * (obs - cur_p95)
     } else {
-        cur_p95 - step * (1.0 - target_p) * cur_p95.max(1.0)
+        cur_p95 - step * (1.0 - target_p) * (cur_p95 - obs)
     };
     profile.output_token_p95 = next_p95.max(0.0) as f32;
 
-    let target_p99 = 0.99f64;
-    let cur_p99 = profile.output_token_p99 as f64;
-    let next_p99 = if obs > cur_p99 {
-        cur_p99 + step * target_p99 * obs.max(1.0)
-    } else {
-        cur_p99 - step * (1.0 - target_p99) * cur_p99.max(1.0)
-    };
-    profile.output_token_p99 = next_p99.max(0.0) as f32;
+    // With the configured 50-sample window, nearest-rank empirical p99 is
+    // the window maximum. The window is not yet retained (bd-bwgu), so use
+    // the all-history maximum as a conservative upper bound. It may reduce
+    // savings after an old outlier, but it cannot undercut an observed
+    // completion or overshoot a fresh profile's observed maximum.
+    profile.output_token_p99 = profile.output_token_p99.max(obs as f32);
 
     profile.updated_at_us = now_us;
 }
@@ -616,6 +615,43 @@ mod tests {
         p.n_observations = 1_000;
         assert_eq!(p.confidence(100), 1.0);
         assert_eq!(p.confidence(0), 0.0);
+    }
+
+    #[test]
+    fn quantile_trackers_do_not_overshoot_constant_stream() {
+        let cm = CostModel::new();
+        for _ in 0..3 {
+            cm.observe(an_update("site", 80));
+        }
+        let p = cm.get("site").unwrap();
+        assert_eq!(p.output_token_p95, 80.0);
+        assert_eq!(p.output_token_p99, 80.0);
+    }
+
+    #[test]
+    fn quantile_trackers_stay_within_observed_range() {
+        let cm = CostModel::new();
+        for tokens in [10, 20, 40, 80, 160, 320] {
+            cm.observe(an_update("site", tokens));
+        }
+        let p = cm.get("site").unwrap();
+        assert!((10.0..=320.0).contains(&p.output_token_p95));
+        assert_eq!(p.output_token_p99, 320.0);
+    }
+
+    #[test]
+    fn p99_retains_observed_outlier_as_safe_upper_bound() {
+        let cm = CostModel::new();
+        for _ in 0..100 {
+            cm.observe(an_update("site", 80));
+        }
+        cm.observe(an_update("site", 1_000));
+        for _ in 0..100 {
+            cm.observe(an_update("site", 80));
+        }
+        let p = cm.get("site").unwrap();
+        assert_eq!(p.output_token_p99, 1_000.0);
+        assert!(p.output_token_p95 <= p.output_token_p99);
     }
 
     #[test]

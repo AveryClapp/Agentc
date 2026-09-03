@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "experiment_kind": "offline_output_quantile_regression_preflight",
+  "paper_evidence": false,
+  "created_at_utc": "2026-09-03T17:20:11Z",
+  "base_commit": "a1a212ca50dfd58f7bfccf198de9cdeacbb826a1",
+  "implementation_revision": "commit containing this artifact",
+  "implementation_sha256": {
+    "crates/agentc-optimizer/src/cost_model.rs": "a2a146c8c4c87b4327edb54ac7648179ce8b4a78360f81f12acb1e5cc75a05f4"
+  },
+  "network_calls": 0,
+  "triggering_case": {
+    "observed_output_tokens": [
+      80,
+      80,
+      80
+    ],
+    "old_p99": 118.404,
+    "old_output_budget_cap": 143,
+    "source_artifact": "bench/repro/osworld-request-preflight-2026-09-03.json"
+  },
+  "corrected_case": {
+    "observed_output_tokens": [
+      80,
+      80,
+      80
+    ],
+    "persisted_p95": 80.0,
+    "persisted_p99": 80.0,
+    "output_budget_cap_before": 1024,
+    "output_budget_cap_after": 96,
+    "hot_rule": "OutputBudget",
+    "structured_request_identity_preserved": true
+  },
+  "estimator_contract": {
+    "p95": "bounded asymmetric moving proxy; a fresh profile remains within its observed value range",
+    "p99": "all-history observed maximum until a persisted rolling window is implemented",
+    "safety_argument": "For the configured 50-sample window, nearest-rank empirical p99 is the window maximum. The all-history maximum is therefore conservative: it can retain a stale outlier but cannot undercut an observed completion."
+  },
+  "regression_cases": [
+    {
+      "name": "constant stream",
+      "input": "80 repeated three times",
+      "status": "pass",
+      "property": "p95=p99=80; neither estimator overshoots"
+    },
+    {
+      "name": "monotone stream",
+      "input": [
+        10,
+        20,
+        40,
+        80,
+        160,
+        320
+      ],
+      "status": "pass",
+      "property": "p95 stays in [10,320] and p99=320"
+    },
+    {
+      "name": "rare high outlier",
+      "input": "100x80, 1x1000, 100x80",
+      "status": "pass",
+      "property": "p99 remains 1000 and never falls below p95"
+    }
+  ],
+  "migration": {
+    "automatic_destructive_reset": false,
+    "fresh_profiles": "use the corrected estimator immediately",
+    "existing_profiles": "may retain a historically inflated persisted percentile because raw order statistics were not stored; the retained value is conservative for output capping",
+    "experiment_policy": "Every protocol stage already requires fresh per-arm Agentc storage, so legacy profiles cannot enter calibration, pilot, or confirmatory results",
+    "follow_up": "bd-bwgu tracks a persisted bounded-window design that can age out old observations safely"
+  },
+  "verification": {
+    "focused_rust_quantile_tests": "9 passed across quantile/p99 filters",
+    "optimizer_clippy_all_targets_deny_warnings": "pass",
+    "native_python_rust_preflight": "pass"
+  },
+  "interpretation_limits": [
+    "This is a deterministic synthetic Stage E0 regression screen, not evidence of provider-token savings or task quality.",
+    "The all-history maximum deliberately trades responsiveness for safety until bd-bwgu lands.",
+    "The p95 field remains a bounded proxy rather than an exact order statistic and must be described as such in any analysis using it."
+  ]
+}

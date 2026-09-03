@@ -640,7 +640,10 @@ fn golden_composition_selection_and_net_are_stable() {
             // rule's projection moved (e.g. OB's *0.5 dropped) even if the
             // selected rule set is unchanged — re-verify vs the ledger before
             // updating this literal.
-            let golden = 0.07049099f32;
+            // bd-pbus: twenty identical 200-token observations now produce
+            // p99=200 and an OutputBudget cap of 240. The old invalid
+            // overshooting proxy understated this composition's savings.
+            let golden = 0.07180935f32;
             assert!(
                 (net_savings_usd - golden).abs() < 1e-5,
                 "net_savings {net_savings_usd} != golden {golden}; a rule projection changed"

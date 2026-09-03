@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "record_kind": "prospective_protocol_revision",
+  "protocol_id": "agentc-mlsys2027-v1",
+  "split_namespace": "agentc-mlsys2027-v1",
+  "revision": 2,
+  "parent_revision": 1,
+  "created_at_utc": "2026-09-03T17:24:20Z",
+  "effective_before_stage": "C",
+  "runtime_baseline": "27f896f",
+  "protocol_document": {
+    "path": "bench/repro/mlsys-2027-evaluation-protocol.md",
+    "parent_sha256": "86d9eb77d86f19121882081fecf0d02af5a7aaaae0ea71787df615b0c9fef250",
+    "revision_2_sha256": "50e739d9cf8cfd09b7400eb8684104efdf7ff737e8316b1e8e58e28dfdf6ffb6"
+  },
+  "information_state": {
+    "stage_e0_executed": true,
+    "stage_e1_executed": false,
+    "stage_c_executed": false,
+    "stage_p_executed": false,
+    "stage_t_executed": false,
+    "pilot_outcomes_inspected": false,
+    "confirmatory_outcomes_inspected": false,
+    "calibration_data_invalidated": false,
+    "reason_calibration_not_invalidated": "No Stage C run existed. All triggering screens are permanently labeled paper_evidence=false."
+  },
+  "changes": [
+    {
+      "id": "r2-request-opacity-gate",
+      "category": "integration_safety",
+      "beads": [
+        "bd-voua"
+      ],
+      "before": "Provider-native structured message blocks were projected into the string-only DAG and could be reconstructed from that lossy projection after any rewrite.",
+      "after": "Losslessly unrepresentable message histories carry an opaque marker. Structural rules abstain by default; only rules declaring no message inspection or mutation may propose, and provider adapters retain native objects for dispatch.",
+      "claimed_rules_allowed_on_opaque_messages": [
+        "ModelDowngrade",
+        "OutputBudget"
+      ],
+      "implemented_only_rule_allowed_on_opaque_messages": [
+        "DeadOutputTruncation"
+      ],
+      "runtime_commit": "a1a212c",
+      "evidence": "bench/repro/osworld-request-preflight-2026-09-03.json"
+    },
+    {
+      "id": "r2-anthropic-beta-interception",
+      "category": "integration_coverage",
+      "beads": [
+        "bd-zsvv"
+      ],
+      "before": "Only anthropic.resources.messages stable resources were wrapped; OSWorld V2 calls client.beta.messages.create.",
+      "after": "Stable and beta Anthropic sync/async create/stream resources are discovered, independently wrapped, alias-deduplicated, and restored to their exact prior descriptors.",
+      "runtime_commit": "a1a212c",
+      "evidence": "bench/repro/osworld-request-preflight-2026-09-03.json"
+    },
+    {
+      "id": "r2-openai-output-cap-family",
+      "category": "provider_conformance",
+      "beads": [
+        "bd-lhte"
+      ],
+      "before": "Every OutputBudget mutation emitted max_tokens and could leave a conflicting max_completion_tokens field.",
+      "after": "A rewrite preserves the caller's existing cap family, otherwise selects max_completion_tokens for gpt-5/o1/o3/o4 and max_tokens for other chat models, and removes the alternate field.",
+      "runtime_commit": "a1a212c",
+      "evidence": "tests/test_optimizer_glue.py"
+    },
+    {
+      "id": "r2-output-quantile-contract",
+      "category": "transformation_and_projection",
+      "beads": [
+        "bd-pbus",
+        "bd-bwgu"
+      ],
+      "before": "A magnitude-scaled heuristic labeled p95/p99 could overshoot the observed maximum and could also underreact to a late high output.",
+      "after": "Fresh-profile p95 is a bounded asymmetric moving proxy and p99 is the all-history observed maximum. The latter is a conservative upper bound on the intended 50-sample nearest-rank p99.",
+      "runtime_commit": "27f896f",
+      "evidence": "bench/repro/output-quantile-preflight-2026-09-03.json",
+      "stage_c_status": "blocked_pending_bd-bwgu",
+      "reason": "The configured 50-sample window still does not age persisted observations; another numbered revision is required after that implementation."
+    },
+    {
+      "id": "r2-blocker-ledger",
+      "category": "admission_status",
+      "before": "bd-voua blocked OSWorld request-shape admission; bd-zsvv, bd-lhte, bd-pbus, and bd-bwgu had not yet been discovered at the initial freeze.",
+      "after": "bd-voua, bd-zsvv, bd-lhte, and bd-pbus are resolved at Stage E0 only. bd-bwgu is an explicit Stage C blocker. No workload is admitted by these closures."
+    }
+  ],
+  "unchanged_frozen_items": [
+    "claim_under_test",
+    "workload_admission_boundary",
+    "upstream_workload_revisions_and_input_digests",
+    "task_split_membership_and_counts",
+    "model_and_provider_pool",
+    "primary_and_secondary_arms",
+    "primary_outcomes",
+    "non_inferiority_margins",
+    "statistical_tests_and_multiplicity_control",
+    "guard_rate_grid_and_damage_contract",
+    "retry_exclusion_and_stopping_rules",
+    "pilot_and_october_1_go_no_go_gates",
+    "artifact_contract"
+  ],
+  "split_invariants": {
+    "tau2-banking-knowledge": {
+      "counts_calibration_pilot_confirmatory": [
+        20,
+        20,
+        57
+      ],
+      "ordered_id_digest": "915b4717167618cf6d2da855450fe7cb5143a7c4be710e7baed5d80d898c417b"
+    },
+    "swebench-verified": {
+      "counts_calibration_pilot_confirmatory": [
+        30,
+        30,
+        90
+      ],
+      "not_selected": 350,
+      "ordered_id_digest": "5f649dc4518274c7a605cce1a5dcbf451eb1e14cba30a6dc2a032b84731ca9e4"
+    },
+    "osworld-v2": {
+      "counts_calibration_pilot_confirmatory": [
+        22,
+        22,
+        64
+      ],
+      "ordered_id_digest": "ec2798cd66968cf6735af9e4b5deafca38c006532df96fa0c3d6d9f08c273556"
+    }
+  },
+  "closed_e0_blockers": [
+    "bd-voua",
+    "bd-zsvv",
+    "bd-lhte",
+    "bd-pbus"
+  ],
+  "new_open_blockers": [
+    "bd-bwgu"
+  ],
+  "outcome_blindness_assertion": "Every revision-2 change was triggered by source inspection, deterministic unit/integration tests, or synthetic no-network Stage E0 traces. No calibration, pilot, or confirmatory task outcome informed the change."
+}

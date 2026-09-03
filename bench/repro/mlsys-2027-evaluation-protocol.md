@@ -1,8 +1,12 @@
 # Agentc MLSys 2027 staged evaluation protocol
 
 - Protocol: `agentc-mlsys2027-v1`
-- Frozen: 2026-09-03
+- Revision: 2
+- Initial freeze: 2026-09-03
+- Revision 2 freeze: 2026-09-03
+- Revision record: [mlsys-2027-protocol-revision-2.json](mlsys-2027-protocol-revision-2.json)
 - Runtime baseline before this protocol: `4250a01`
+- Revision 2 runtime baseline: `27f896f`
 - Target decision date: 2026-10-01
 - Target venue deadline: 2026-10-30 20:00 UTC
 
@@ -15,6 +19,13 @@ The committed mocked-provider activation screen and live HotpotQA `n=8` smoke
 predate this freeze. They are engineering diagnostics only and cannot enter a
 paper table, select a test task, or support a quality, latency, or savings
 claim.
+
+Revision 2 was issued after request-shape and output-quantile defects were found
+during Stage E0, before any Stage C, P, or T execution or outcome inspection.
+It does not change the `agentc-mlsys2027-v1` split namespace, task membership,
+workloads, models, arms, outcomes, margins, inference, stopping rules, or gates.
+The machine-readable revision record enumerates every runtime-contract change
+and the engineering evidence that triggered it.
 
 ## 1. Change control and blinding
 
@@ -205,6 +216,24 @@ All measured builds are release builds. Unless an arm states otherwise:
 - production shadow sampling rate `0.02`;
 - no manually authored provenance, support labels, task-specific rule hints,
   or hand-marked safe call sites.
+
+Revision 2 adds a conservative provider-shape gate. When the string-only DAG
+cannot round-trip a native message exactly, the adapter marks the message list
+opaque and the planner rejects every rule unless it explicitly declares that it
+does not inspect, hash, remove, replace, or reorder messages. At this revision,
+only `ModelDowngrade`, `OutputBudget`, and `DeadOutputTruncation` make that
+declaration. The Python adapter must then return the original native system,
+message, tool, beta-header, cache-control, multimodal, and thinking objects; a
+text projection may be used for profiling but never for reconstruction.
+
+For fresh profiles, revision 2 treats `output_token_p99` as the all-history
+observed maximum. This is a conservative upper bound on the nearest-rank p99 of
+the intended 50-sample window, whose p99 is its maximum. The p95 field is a
+bounded moving proxy, not an exact order statistic. Stage C remains blocked on
+`bd-bwgu`, because `cost_model_window=50` does not yet age observations out of
+the persisted statistics. The interim estimator is admissible only for E0
+integration work; a bounded-window implementation requires another numbered
+revision before Stage C.
 
 The main benefit claim is restricted to `ContextCompress`, `ModelDowngrade`,
 `OutputBudget`, and exact `CacheHit`. `StateDrop` is a safety-stress mechanism
@@ -526,14 +555,24 @@ No Stage C, P, or T result is admissible while its relevant blocker is open.
 |---|---|
 | `bd-323l.5` | tau2 and SWE-agent call `litellm.completion`; current OpenAI/Anthropic SDK patches do not intercept that boundary. |
 | `bd-xs37` | tau2's process-wide interception can optimize the user simulator as well as the evaluated assistant. |
-| `bd-voua` | current request lifting/reconstruction destroys multimodal content blocks required by OSWorld. |
 | `bd-8uxj` | shared helper call-site identity collapses distinct RAG stages; semantic call-site identity needs a general solution. |
 | `bd-3q3l` | the composition proxy destroys its own provenance tags and cannot validate provenance-dependent rewrites. |
 | `bd-vdj` | exact current model routes and snapshot pins are absent from runtime wiring. |
 | `bd-o2qj` | pricing, dataset pin, and fixture-count integrity defects remain. |
+| `bd-bwgu` | `cost_model_window=50` does not yet bound or age the persisted historical statistics; Stage C quantile and drift calibration are blocked. |
 | `bd-jq6c`, `bd-shi1.4`, `bd-shi1.5` | 2% guard behavior, false disables, and persistent evidence are not yet established. |
 | `bd-bjs` | clean-clone fixture/bootstrap path is incomplete. |
 | `bd-7s4.1` | CI does not execute the benchmark harness tests. |
 
 Closing a blocker requires its own tests and evidence. A closed Bead alone does
 not admit a workload; the Stage E1 conformance result does.
+
+Revision 2 retires four Stage E0 blockers without admitting a workload:
+`bd-voua` preserves structured native requests and gates lossy rewrites;
+`bd-zsvv` intercepts Anthropic stable and beta message resources; `bd-lhte`
+preserves the OpenAI output-cap parameter family; and `bd-pbus` removes the
+invalid quantile overshoot and tail underreaction for fresh profiles. The
+supporting non-paper artifacts are
+[osworld-request-preflight-2026-09-03.json](osworld-request-preflight-2026-09-03.json)
+and
+[output-quantile-preflight-2026-09-03.json](output-quantile-preflight-2026-09-03.json).

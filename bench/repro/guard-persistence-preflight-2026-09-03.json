@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "experiment_kind": "durable_guard_persistence_preflight_bundle",
+  "created_at_utc": "2026-09-03T19:56:30Z",
+  "agentc_git_commit": "f9a8f04865432ee0b027fe4aa24f50b77627325c",
+  "runtime_change_commit": "f9a8f04865432ee0b027fe4aa24f50b77627325c",
+  "contract_sync_commit": "f9a8f04865432ee0b027fe4aa24f50b77627325c",
+  "paper_evidence": false,
+  "mocked_provider": false,
+  "network_calls": 0,
+  "verdict": {
+    "admission_passed": true,
+    "each_shadow_sample_persisted_before_lifecycle_flush": true,
+    "divergence_statistics_survived_restart": true,
+    "breach_streak_survived_restart": true,
+    "fifth_post_restart_breach_disabled_rule": true,
+    "disable_row_survived_second_restart": true,
+    "frozen_integration_semantics_preserved": true
+  },
+  "settings": {
+    "enabled_rules": [
+      "OutputBudget"
+    ],
+    "call_site_id": "guard-persistence-preflight",
+    "hot_threshold": 3,
+    "max_planning_overhead_ms": 1000,
+    "shadow_rate": 0,
+    "divergence_budget": 0.1,
+    "divergence_sample": 0.5,
+    "breach_streak": 5,
+    "cooldown_us": 86400000000,
+    "process_reinitializations": 2
+  },
+  "canonical_result": {
+    "native_storage_match": true,
+    "warmup_plan_kinds": [
+      "pass_through",
+      "pass_through",
+      "pass_through"
+    ],
+    "hot_plan_before_guard": {
+      "kind": "rewritten",
+      "rule": "OutputBudget"
+    },
+    "divergence_before_restart": {
+      "n_samples": 4,
+      "divergence_mean": 0.5,
+      "divergence_var": 0.0,
+      "consecutive_breaches": 4
+    },
+    "disabled_before_restart": null,
+    "plan_before_fifth_breach": {
+      "kind": "rewritten",
+      "rule": "OutputBudget"
+    },
+    "divergence_after_disable": {
+      "n_samples": 5,
+      "divergence_mean": 0.5,
+      "divergence_var": 0.0,
+      "consecutive_breaches": 0
+    },
+    "disable_reason": "shadow_divergence",
+    "disable_cooldown_us": 86400000000,
+    "plan_after_fifth_breach": {
+      "kind": "pass_through",
+      "rule": null
+    },
+    "plan_after_second_restart": {
+      "kind": "pass_through",
+      "rule": null
+    }
+  },
+  "sqlite_measurement_boundary": {
+    "writer": "rusqlite 0.31 with bundled SQLite in the Agentc extension",
+    "probe": "Python sqlite3 in a separate child process",
+    "reason": "A same-process Python sqlite3 probe retained stale WAL visibility while the bundled native SQLite connection remained open. A child-process probe observed the committed fifth sample and disable row before lifecycle shutdown.",
+    "broader_runtime_audit": "bd-z5zj"
+  },
+  "repeatability": {
+    "repetitions": 5,
+    "all_release_builds": true,
+    "all_runtime_commits_equal": true,
+    "all_normalized_results_equal": true,
+    "normalization": "Remove created_at_utc and absolute disabled_at_us/reenable_at_us; retain their exact 86400000000-us difference.",
+    "run_created_at_utc": [
+      "2026-09-03T19:52:27.601048+00:00",
+      "2026-09-03T19:52:28.750437+00:00",
+      "2026-09-03T19:52:29.872187+00:00",
+      "2026-09-03T19:52:30.993337+00:00",
+      "2026-09-03T19:52:32.206121+00:00"
+    ],
+    "raw_run_sha256": [
+      "e2877db487a3f4a584cd472a8af17a72d8a0ab965401a783d31147028aa36021",
+      "2e6e75343aee9083f2de106a9f18992f49fe97035641101d4df5057ec16ad6fd",
+      "c03cf6de7555076304c56c938dac658cf4babcf1a7274957aa7122fe2b865cb3",
+      "2e24c8c3259d31bd2194cc687547d19819cfaee22b4462bdf3fb1a72a383dc44",
+      "37fe355a5bcbc6b5636acb93f35368eeb6d82007e5d7f6e34b155e3d2a9b5a36"
+    ]
+  },
+  "integration_regression": {
+    "tau2_v1.0.1": {
+      "upstream_commit": "fc0055dc4e0a316c3f83133267fbd6faaa770992",
+      "upstream_dirty_paths": [],
+      "raw_run_sha256": "726b3b19b63b87919aa9fd42cf6f6fd61be1c219ca5fc09dcbae903f28605968",
+      "logical_calls": 16,
+      "eligible_assistant_calls": 8,
+      "excluded_user_simulator_calls": 8,
+      "plan_kind_counts": {
+        "pass_through": 3,
+        "rewritten": 5
+      },
+      "observation_calls": 8,
+      "response_digest": "ec409ae07e72e04510204ad2459af61640f8cbbba0a33fec14aae7b887c8b92d",
+      "semantic_fields_equal_to_pre_persistence_run": true,
+      "network_calls": 0
+    },
+    "sweagent_v1.1.0": {
+      "upstream_commit": "0f3acafacabc0def8cc76b4e48acb4b6cf302cb9",
+      "upstream_dirty_paths": [],
+      "raw_run_sha256": "409e83ccafe8279c00244e7f55d74606e71786099a2ae358a589764f04482a8b",
+      "logical_calls": 1,
+      "eligible_calls": 1,
+      "plan_kind_counts": {
+        "pass_through": 1
+      },
+      "observation_calls": 1,
+      "response_digest": "5916abb9726a202fdd2a7309083f3f1c92bae9d59002076ce79117e25954054d",
+      "semantic_fields_equal_to_pre_persistence_run": true,
+      "network_calls": 0
+    }
+  },
+  "runtime": {
+    "platform": "macOS-26.5-arm64-arm-64bit",
+    "python": "3.12.9",
+    "rustc": "1.94.1 (e408947bf 2026-03-25)",
+    "cargo": "1.94.1 (29ea6fb6a 2026-03-24)",
+    "agentc_package": "0.1.0"
+  },
+  "source_digests_sha256": {
+    "bench/guard_persistence_preflight.py": "450eef60be9dc810c34809869c64fdbbf197a9b9b22523a508370ce414ef4012",
+    "crates/agentc-optimizer/src/budget.rs": "b64feb880e8d13809f3a6209c9b65b84aabbf422b8cacf91a607a9bda93d1926",
+    "crates/agentc-optimizer/src/schema.rs": "b975c1e01960410b0ff2e1b446972d595d051acd4295180e287d38b9e943f2b2",
+    "crates/agentc-optimizer/src/wiring.rs": "d795da362f7ec069efe785f2a74004aedb764b3a9773aef052a15fc47fa28911",
+    "crates/agentc-optimizer/src/reporting.rs": "2b316cfc76a94cba1261b26f8e14be850283d7776e7db269b511359dfe4a61e7",
+    "crates/agentc-profiler/src/lib.rs": "fb05c7679935aed8a3675d5ea42d110bfcb8452283266a75932a7590d101fca8",
+    "python/agentc/_lifecycle.py": "4ca97d28d3927c195bfaf37b89f0e86ee58d0ead85009637d7b59234c728bc93",
+    "python/agentc/_native.pyi": "db06e0b5c4e92dded04aeec4b7aae5e1efd700c4b20b1e97fe23cdc34aa7b1f6",
+    "specs/optimizer.md": "ac2f46545dc8603370451e8154427988f7537c1cb91909f1e1564664eaca98ae",
+    "tests/test_lifecycle.py": "6c4120d6e1304c540c111bf2639b5b08d07cddd13ca9c944648a1d6464dcd4a6",
+    "python/agentc/_native.cpython-312-darwin.so": "65ebbb136333a064111b53d02439054388035bf5b6c87bd87c966321c82869ad"
+  },
+  "verification": {
+    "optimizer_tests": "199 passed",
+    "optimizer_clippy_warnings_denied": "passed",
+    "workspace_tests_excluding_profiler": "491 passed",
+    "profiler_cargo_check": "passed",
+    "profiler_clippy_warnings_denied": "passed",
+    "python_suite": "389 passed, 10 skipped",
+    "runner_ruff_check": "passed",
+    "release_preflight_repetitions": "5 passed",
+    "tau2_admission_preflight": "passed",
+    "sweagent_admission_preflight": "passed",
+    "repo_wide_rustfmt_check": "failed on pre-existing unrelated formatting drift; tracked by bd-t3ne"
+  },
+  "replay": {
+    "prerequisite": "Build and install Agentc commit f9a8f04865432ee0b027fe4aa24f50b77627325c in release mode.",
+    "guard_command": "python bench/guard_persistence_preflight.py --output /tmp/guard-persistence.json",
+    "tau2_command": "/path/to/tau2-v1.0.1/.venv/bin/python bench/litellm_admission_preflight.py --workload tau2 --upstream-root /path/to/tau2-v1.0.1 --turns 8 --output /tmp/tau2-admission.json",
+    "sweagent_command": "/path/to/swe-agent-v1.1.0/.venv/bin/python bench/litellm_admission_preflight.py --workload sweagent --upstream-root /path/to/swe-agent-v1.1.0 --output /tmp/sweagent-admission.json",
+    "network_requirement": "None. The guard runner calls local runtime code directly; workload admission uses LiteLLM mock_response behind a socket guard."
+  },
+  "interpretation_limits": [
+    "This is Stage E0 engineering evidence, not provider-backed or paper-result evidence.",
+    "The guard run uses deterministic synthetic optimizer inputs for one rule and one call site; it does not measure semantic quality, precision, recall, billed savings, or provider latency.",
+    "The persisted divergence estimate is cumulative rather than drift-bounded; bd-nggo tracks the guard-window redesign.",
+    "Non-finite divergence and threshold validation is not included; bd-h7k9 tracks that fail-open hardening.",
+    "Per-sample SQLite persistence overhead and mutex contention are not measured; bd-rm0w tracks that experiment.",
+    "The separate-process SQLite probe is a measurement boundary, not a resolution of the broader mixed-library runtime audit in bd-z5zj."
+  ]
+}

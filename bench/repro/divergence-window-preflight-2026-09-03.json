@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "experiment_kind": "bounded_guard_divergence_window_preflight_bundle",
+  "created_at_utc": "2026-09-03T20:57:54Z",
+  "agentc_git_commit": "b73d703a9a32852b50c1876b5008a52eca1c66df",
+  "runtime_change_commit": "b73d703a9a32852b50c1876b5008a52eca1c66df",
+  "contract_sync_commit": "b73d703a9a32852b50c1876b5008a52eca1c66df",
+  "paper_evidence": false,
+  "mocked_provider": false,
+  "network_calls": 0,
+  "verdict": {
+    "preflight_passed": true,
+    "divergence_statistics_are_bounded": true,
+    "old_distribution_fully_aged_out": true,
+    "exact_window_persisted": true,
+    "restart_window_equal": true,
+    "smaller_window_persisted": true,
+    "legacy_unbounded_statistics_restart_cold": true,
+    "lifetime_count_and_breach_streak_survive_migration": true,
+    "reporting_uses_retained_sample_weights": true,
+    "frozen_integration_semantics_preserved": true
+  },
+  "settings": {
+    "window": 50,
+    "resized_window": 10,
+    "old_distribution_samples": 50,
+    "new_distribution_samples": 50,
+    "old_divergence": 0.800000011920929,
+    "new_divergence": 0.019999999552965164
+  },
+  "distribution_shift": {
+    "before": {
+      "lifetime_samples": 50,
+      "window_samples": 50,
+      "divergence_mean": 0.800000011920929
+    },
+    "after": {
+      "lifetime_samples": 100,
+      "window_samples": 50,
+      "divergence_mean": 0.019999999552965164
+    },
+    "old_distribution_fully_aged_out": true
+  },
+  "persistence": {
+    "lifetime_samples": 100,
+    "window_samples": 50,
+    "retained_rows": 50,
+    "first_retained_sequence": 51,
+    "last_retained_sequence": 100,
+    "restart_window_equal": true,
+    "summary_and_samples_share_one_transaction": true,
+    "resized_window_samples": 10,
+    "resized_retained_rows": 10,
+    "resized_first_retained_sequence": 91,
+    "resized_last_retained_sequence": 100,
+    "second_restart_window_equal": true
+  },
+  "legacy_migration": {
+    "lifetime_samples_preserved": 100,
+    "window_samples": 0,
+    "divergence_mean": 0.0,
+    "divergence_var": 0.0,
+    "consecutive_breaches_preserved": 4,
+    "unreconstructable_statistics_cold_started": true,
+    "inspect_treats_zero_retained_samples_as_unmeasured": true
+  },
+  "controller_contract": {
+    "comparison_basis": "each raw valid divergence sample against the rule budget",
+    "disable_threshold": "five consecutive raw breaches",
+    "consecutive_breach_logic_changed": false,
+    "retained_mean_controls_disable": false,
+    "claim_boundary": "This change bounds the estimator and diagnostics; it does not redesign or validate the damage controller."
+  },
+  "reporting_contract": {
+    "lifetime_field": "rule_divergence.n_samples",
+    "estimator_weight_field": "rule_divergence.window_samples",
+    "cross_site_means_weighted_by_retained_samples": true,
+    "zero_retained_samples_excluded_from_inspect": true
+  },
+  "repeatability": {
+    "repetitions": 5,
+    "all_release_builds": true,
+    "all_runtime_commits_equal": true,
+    "normalization": "delete created_at_unix_us, serialize with jq -cS, then SHA-256",
+    "normalized_result_sha256": "ab5512882b828ad4c60516c437f406cdbaa47816ba9ded548e1aa4f16aed5d2e",
+    "all_normalized_results_equal": true,
+    "raw_run_sha256": [
+      "1a65384889a293f780b250dfae688316caf79e13454e55d762a1ff48ea525b34",
+      "7ce5836ba8c404d03e2ca1c0179db5ae97ef510d6c89e2f3259083fa771fe221",
+      "499ff7a9f12b72e41723db312cbd841a41b595d782431cd55c41024491998ac6",
+      "d90aec0e10bc5e65a91d2699d834a3db83505be6d16f2d472780f4c38279bdf3",
+      "b29168a7122cc7b16f17b5bdb8110a1bc832bfa7370feef3d5501992826f6759"
+    ]
+  },
+  "integration_regression": {
+    "mocked_provider": true,
+    "tau2_v1.0.1": {
+      "upstream_commit": "fc0055dc4e0a316c3f83133267fbd6faaa770992",
+      "upstream_dirty_paths": [],
+      "raw_run_sha256": "4ee02c1ad4694a22eb9ef4b0c925fd884b6abb9045b976793e3ff6c5f856f5f1",
+      "logical_calls": 16,
+      "eligible_assistant_calls": 8,
+      "excluded_user_simulator_calls": 8,
+      "plan_kind_counts": {
+        "pass_through": 3,
+        "rewritten": 5
+      },
+      "observation_calls": 8,
+      "response_digest": "ec409ae07e72e04510204ad2459af61640f8cbbba0a33fec14aae7b887c8b92d",
+      "semantic_fields_equal_to_revision_7": true,
+      "network_calls": 0
+    },
+    "sweagent_v1.1.0": {
+      "upstream_commit": "0f3acafacabc0def8cc76b4e48acb4b6cf302cb9",
+      "upstream_dirty_paths": [],
+      "raw_run_sha256": "84f625882e508735931c78bd59441d830082293fa094a6d2b847dd91aa8edf1d",
+      "logical_calls": 1,
+      "eligible_calls": 1,
+      "plan_kind_counts": {
+        "pass_through": 1
+      },
+      "observation_calls": 1,
+      "response_digest": "5916abb9726a202fdd2a7309083f3f1c92bae9d59002076ce79117e25954054d",
+      "semantic_fields_equal_to_revision_7": true,
+      "network_calls": 0
+    }
+  },
+  "compatibility_regression": {
+    "guard_persistence": {
+      "raw_run_sha256": "eb531475712da03f9ebac6a642439a544bd3fe81b8d8b1c3dd1cf02f1080d7da",
+      "four_breaches_survive_restart": true,
+      "fifth_breach_disables": true,
+      "disable_survives_second_restart": true,
+      "network_calls": 0
+    },
+    "guard_input_validation": {
+      "raw_run_sha256": "b914e48fa4cc2c077cad3b4c2143f73442ff3f04002fe9ef684f30fd1291bb73",
+      "invalid_divergences_create_no_state": true,
+      "invalid_thresholds_use_declared_rule_budget": true,
+      "network_calls": 0
+    }
+  },
+  "runtime": {
+    "platform": "macOS-26.5-arm64-arm-64bit",
+    "python": "3.12.9",
+    "rustc": "1.94.1 (e408947bf 2026-03-25)",
+    "cargo": "1.94.1 (29ea6fb6a 2026-03-24)",
+    "agentc_package": "0.1.0",
+    "native_extension_sha256": "89add24aea05aff85670515c802b9f0caaf741cded73a8b300df4ed062efc70f",
+    "cargo_lock_sha256": "974e41e8c0ef917dcbffe0f807a198dea5c41d0e332486ccf2ddac2766d3b8dc"
+  },
+  "source_digests_sha256": {
+    "crates/agentc-optimizer/examples/divergence_window_preflight.rs": "a2a1b4d78aa49bc1d1219c2475d3cfd6b91cf842a79de66eba8e999b0bae594f",
+    "crates/agentc-optimizer/src/budget.rs": "d64c31c6df60ba8dfb9643217efbe586e18c0a92118cb50b6d17302cb8cc040d",
+    "crates/agentc-optimizer/src/config.rs": "0fc9d23c8d91916765370f06a788bfa15b6cd59214382c27e5f6b5a98ab6d0f7",
+    "crates/agentc-optimizer/src/reporting.rs": "7983473e0d3b5ac1cfe8b97de59e6419191a0944a09123cb515cf44d98603b69",
+    "crates/agentc-optimizer/src/schema.rs": "7e064db6f88edfc728cba2e6f26315d6c10f60bf18bf74bc4fdc1f73c56983c7",
+    "crates/agentc-optimizer/src/wiring.rs": "c80e3e0fbab607051585f36a281a6ac4555ec2c7405d1c51a95bb7b467ab6ba6",
+    "crates/agentc-profiler/src/lib.rs": "11514bb9302b7d1c304513b52055ca9dde8baa29fb0a31e851c887e25903562d",
+    "bench/optimizer_bench.py": "ef0bbbda1a89a1026e88481d803c722ad8c9f6771d472a6adba7133f135f1ce7",
+    "bench/audit_guard_fp.py": "a2d8d0d0617eec8af974454098c09171866de5d90dad861513305f3e861affd3",
+    "bench/litellm_admission_preflight.py": "64a00db558ac8f2cbdb0199145e8df76d478450d1f9570d852c40d9945dc4488",
+    "bench/guard_persistence_preflight.py": "450eef60be9dc810c34809869c64fdbbf197a9b9b22523a508370ce414ef4012",
+    "bench/guard_input_validation_preflight.py": "3bb7b86af4cb0e4ae35f4af6f8f069ae1a8a40c0653bb63bf58c0c224925de0d",
+    "tests/test_lifecycle.py": "4a3cd78aef0b70e1b20552865ee977321931e9b0b15865bc196a52c09f323492",
+    "tests/test_optimizer_bench.py": "39297fd26384dd3943637ebb3bcd2b99d1e24dc7291b738f36e4740fca2a2b53",
+    "specs/optimizer.md": "3c1790e10b4ced77100f1f5e1dd3ec1bab73b21d82a4e5925d2cb5d2b0f1de75",
+    "CONFIG.md": "2bb269d9f7ceafe299b6fd3f48c3f05d8b5a312806c474385adc2762bffaede2",
+    "python/agentc/_native.pyi": "f190c7d529a7c74cc55cea1d1db81e166b2983813a5eb4e60efc60b450d07ac7"
+  },
+  "verification": {
+    "optimizer_all_targets": "206 passed",
+    "optimizer_clippy_warnings_denied": "passed",
+    "workspace_tests_excluding_profiler": "498 passed",
+    "profiler_clippy_warnings_denied": "passed",
+    "python_suite": "399 passed, 10 skipped",
+    "native_lifecycle_tests": "34 passed",
+    "optimizer_benchmark_tests": "7 passed",
+    "changed_python_ruff": "passed",
+    "git_diff_check": "passed",
+    "release_preflight_repetitions": "5 passed",
+    "tau2_admission_preflight": "passed",
+    "sweagent_admission_preflight": "passed",
+    "guard_persistence_preflight": "passed",
+    "guard_input_validation_preflight": "passed"
+  },
+  "known_preexisting_gate_debt": {
+    "repo_wide_rustfmt": "tracked by bd-t3ne",
+    "repo_wide_mypy": "18 errors in 10 files, tracked by bd-qc7d",
+    "documented_uv_pytest_interpreter_escape": "tracked by bd-mt1q"
+  },
+  "replay": {
+    "prerequisite": "Build Agentc commit b73d703a9a32852b50c1876b5008a52eca1c66df in release mode.",
+    "window_command": "cargo run -q -p agentc-optimizer --release --example divergence_window_preflight",
+    "guard_persistence_command": "python bench/guard_persistence_preflight.py --output /tmp/guard-persistence.json",
+    "guard_input_validation_command": "python bench/guard_input_validation_preflight.py --output /tmp/guard-input-validation.json",
+    "tau2_command": "/path/to/tau2-v1.0.1/.venv/bin/python bench/litellm_admission_preflight.py --workload tau2 --upstream-root /path/to/tau2-v1.0.1 --turns 8 --output /tmp/tau2-admission.json",
+    "sweagent_command": "/path/to/swe-agent-v1.1.0/.venv/bin/python bench/litellm_admission_preflight.py --workload sweagent --upstream-root /path/to/swe-agent-v1.1.0 --output /tmp/sweagent-admission.json",
+    "network_requirement": "None. The window and guard runners use direct deterministic inputs; workload admission uses LiteLLM mock_response behind a socket guard."
+  },
+  "interpretation_limits": [
+    "This is Stage E0 engineering evidence, not a provider-backed or paper result.",
+    "The divergence values are deterministic synthetic inputs and do not measure application quality, billed savings, provider latency, or workload drift.",
+    "The frozen workload runs validate integration semantics with mocked responses; they do not validate task outcomes.",
+    "The preflight validates estimator aging and restart equivalence, not harmful-site detection, false disables, detection delay, or cumulative damage.",
+    "The consecutive-breach controller still compares each raw sample with a fixed rule budget; its safety frontier remains a separate empirical question.",
+    "Durable-write overhead and mutex contention remain tracked by bd-rm0w."
+  ]
+}

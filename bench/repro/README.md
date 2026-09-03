@@ -109,3 +109,14 @@ validate.
 The RAG row is diagnostic rather than clean evidence: chunk-summary and combine
 calls currently share one optimizer call-site profile. `bd-8uxj` tracks that
 benchmark-validity defect.
+
+### Live Hotpot follow-up smoke
+
+The [live n=8 result](live-hotpot-smoke-2026-09-03.json) checked the natural
+Hotpot row with pinned `gpt-4o-mini-2024-07-18` calls. It reproduced the offline
+plan sequence (three cold pass-throughs, then five OutputBudget rewrites), with
+the same 5/8 quality outcome and exactly the same token counts and $0.0023913
+cost in both arms. Every answer was already below the proposed 64-token cap, so
+the rule activated without realizing savings. The file is labeled engineering
+smoke and records the unrandomized order, debug build, disabled shadow sampling,
+and other reasons it is not paper evidence.

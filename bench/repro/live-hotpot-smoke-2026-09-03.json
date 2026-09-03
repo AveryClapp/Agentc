@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "experiment_kind": "live_engineering_smoke",
+  "paper_evidence": false,
+  "created_at_utc": "2026-09-03T16:23:14Z",
+  "source_commit": "7637c84694ec3406e6d84ffa2f50687df795fa5f",
+  "workload": {
+    "module": "bench.agents.hotpot_qa",
+    "fixture": "bench/fixtures/hotpot_distractor.json",
+    "fixture_sha256": "b95ca37012e9a677643102b328e23a4b40f6cbd1867b1d6eeeb1868e7efc6536",
+    "task_offset": 0,
+    "tasks": 8,
+    "quality_scorer": "normalized exact match with standalone-gold substring tolerance"
+  },
+  "configuration": {
+    "provider": "OpenAI",
+    "model": "gpt-4o-mini-2024-07-18",
+    "live_credentials_detected": true,
+    "stub_mode": false,
+    "composition": true,
+    "shadow_rate": 0.0,
+    "hot_threshold": 3,
+    "arm_order": [
+      "baseline",
+      "optimized"
+    ],
+    "temperature_explicitly_set": false,
+    "runtime_build": "local debug agentc CLI and development Python extension"
+  },
+  "baseline": {
+    "provider_calls": 8,
+    "tasks_passed": 5,
+    "tasks_total": 8,
+    "input_tokens": 15858,
+    "output_tokens": 21,
+    "cost_usd": 0.0023913,
+    "trace_wall_seconds": 8.156
+  },
+  "optimized": {
+    "provider_calls": 8,
+    "tasks_passed": 5,
+    "tasks_total": 8,
+    "input_tokens": 15858,
+    "output_tokens": 21,
+    "cost_usd": 0.0023913,
+    "trace_wall_seconds": 6.166,
+    "optimizer_decisions": 8,
+    "plan_counts": {
+      "pass_through": 3,
+      "rewritten.OutputBudget": 5
+    },
+    "optimizer_overhead_us": {
+      "pass_through": {
+        "count": 3,
+        "mean": 385.0,
+        "min": 185,
+        "max": 729
+      },
+      "rewritten.OutputBudget": {
+        "count": 5,
+        "mean": 9280.0,
+        "min": 5733,
+        "max": 14996
+      }
+    }
+  },
+  "paired_quality": {
+    "both_pass": 5,
+    "baseline_pass_optimized_fail": 0,
+    "baseline_fail_optimized_pass": 0,
+    "both_fail": 3,
+    "accuracy_delta_percentage_points": 0.0,
+    "task_outcomes": [
+      {"task_id": "hotpot_5a85ea095542994775f606a8", "baseline": true, "optimized": true},
+      {"task_id": "hotpot_5a85b2d95542997b5ce40028", "baseline": true, "optimized": true},
+      {"task_id": "hotpot_5a87ab905542996e4f3088c1", "baseline": false, "optimized": false},
+      {"task_id": "hotpot_5a7166395542994082a3e814", "baseline": true, "optimized": true},
+      {"task_id": "hotpot_5ab3b0bf5542992ade7c6e39", "baseline": true, "optimized": true},
+      {"task_id": "hotpot_5ab56e32554299637185c594", "baseline": false, "optimized": false},
+      {"task_id": "hotpot_5a75e05c55429976ec32bc5f", "baseline": true, "optimized": true},
+      {"task_id": "hotpot_5ae0d4c9554299603e418468", "baseline": false, "optimized": false}
+    ]
+  },
+  "deltas": {
+    "cost_savings_percent": 0.0,
+    "input_token_savings_percent": 0.0,
+    "output_token_savings_percent": 0.0,
+    "observed_trace_wall_delta_percent": 24.4,
+    "total_estimated_billed_cost_usd": 0.0047826
+  },
+  "local_raw_artifacts": {
+    "storage_root": "/tmp/agentc-live-hotpot-n8.tfZf6t/bench_agents_hotpot_qa",
+    "baseline_traces_sha256": "725dcc81edf6330a65db64567281873b3cd3d089244729b3a6c4e98e1f12218a",
+    "optimized_traces_sha256": "18876048267ec8d69731fc17dce1c2aa25fd3c4956dbeefc5e09cd7329402d58",
+    "optimizer_audit_sha256": "2e174f7a0432e9ff6292e727a48140dad9dd326b12903949439c360979e53777",
+    "cost_model_sha256": "d5ddcf3074d8eec9216aced7f98f0d17f8e250fcbcfbca95223c1b5a2a31400a",
+    "committed": false
+  },
+  "replay": {
+    "prerequisites": "OPENAI_API_KEY in the environment or repository .env, native extension built, agentc CLI at target/debug/agentc",
+    "command": "BENCH_MAX_TASKS=8 BENCH_BASELINE_MODEL=gpt-4o-mini-2024-07-18 OPENAI_MAX_RETRIES=2 AGENTC_OPTIMIZE_SHADOW=0 AGENTC_COMPOSE=1 AGENTC_BIN=$PWD/target/debug/agentc python -m bench.optimizer_bench bench.agents.hotpot_qa --storage-root <fresh-temp-directory>"
+  },
+  "interpretation_limits": [
+    "This is an eight-task engineering smoke, not a powered or preregistered experiment.",
+    "The baseline arm ran before the optimized arm; arm order was not randomized.",
+    "Temperature was not explicitly fixed by the agent, although the observed answers matched across arms.",
+    "Shadow evaluation was disabled, so this run does not estimate semantic divergence.",
+    "The debug runtime is unsuitable for production optimizer-overhead claims.",
+    "The observed wall-time delta is provider variance and is not treated as a causal result.",
+    "OutputBudget activated five times but never bound: all real outputs were one to five tokens, far below its 64-token cap.",
+    "No cost, input-token, or output-token saving was realized."
+  ]
+}

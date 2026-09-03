@@ -3,7 +3,7 @@
 .claude/*
 !.claude/skills/
 
-# Beads runtime state (issues.jsonl is the source of truth, rest is ephemeral)
+# Beads runtime state (Dolt is authoritative; issues.jsonl is the tracked interchange snapshot)
 .beads/beads.db
 .beads/beads.db-*
 .beads/dolt
@@ -255,3 +255,6 @@ docs/plans/
 .dolt/
 *.db
 .beads-credential-key
+
+# Beads / Dolt files (added by bd init)
+.beads/proxieddb/

@@ -103,9 +103,8 @@ bd close <id>         # Complete work
 
 - Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
 - Run `bd prime` for detailed command reference and session close protocol
-- For persistent knowledge, attach a `bd comments` note to the relevant issue (or a
-  dedicated tracking issue) — do NOT use MEMORY.md files. (There is no `bd remember`
-  subcommand; `bd` is an alias for `br`.)
+- Use `bd remember` for durable project knowledge and `bd memories` / `bd recall`
+  to retrieve it — do NOT use MEMORY.md files.
 
 ## Session Completion
 
@@ -115,12 +114,13 @@ bd close <id>         # Complete work
 
 1. **File issues for remaining work** - Create issues for anything that needs follow-up
 2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
+3. **Update issue status** - Close finished work and update in-progress items
+4. **SYNC AND PUSH** - This is MANDATORY:
    ```bash
+   bd dolt pull            # merge the authoritative remote issue history
+   bd dolt push            # publish local issue-history commits
    git pull --rebase
-   bd sync                 # export bead state to .beads/issues.jsonl (there is no `bd dolt push`)
-   git push                # .beads/issues.jsonl is git-tracked and rides the push
+   git push
    git status  # MUST show "up to date with origin"
    ```
 5. **Clean up** - Clear stashes, prune remote branches

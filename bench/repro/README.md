@@ -5,6 +5,11 @@ Committed drivers for the shadow-divergence accuracy-guard results. Each writes
 pass/fail vectors). See the top-level `Reproducibility` section / `tab:repro` for
 the rule-validation tables; this directory covers the guard and cross-model results.
 
+The prospective main-track campaign is governed by the frozen
+[MLSys 2027 staged evaluation protocol](mlsys-2027-evaluation-protocol.md). Its
+engineering, calibration, pilot, and confirmatory stages must not be mixed with
+the historical guard results described below.
+
 ## Prerequisites
 
 - Python env: `.venv` with the project installed (`PYTHONPATH=python`).

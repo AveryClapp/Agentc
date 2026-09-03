@@ -1,7 +1,7 @@
 # Agentc MLSys 2027 staged evaluation protocol
 
 - Protocol: `agentc-mlsys2027-v1`
-- Revision: 7
+- Revision: 8
 - Initial freeze: 2026-09-03
 - Revision 2 freeze: 2026-09-03
 - Revision 3 freeze: 2026-09-03
@@ -9,12 +9,14 @@
 - Revision 5 freeze: 2026-09-03
 - Revision 6 freeze: 2026-09-03
 - Revision 7 freeze: 2026-09-03
+- Revision 8 freeze: 2026-09-03
 - Revision 2 record: [mlsys-2027-protocol-revision-2.json](mlsys-2027-protocol-revision-2.json)
 - Revision 3 record: [mlsys-2027-protocol-revision-3.json](mlsys-2027-protocol-revision-3.json)
 - Revision 4 record: [mlsys-2027-protocol-revision-4.json](mlsys-2027-protocol-revision-4.json)
 - Revision 5 record: [mlsys-2027-protocol-revision-5.json](mlsys-2027-protocol-revision-5.json)
 - Revision 6 record: [mlsys-2027-protocol-revision-6.json](mlsys-2027-protocol-revision-6.json)
 - Revision 7 record: [mlsys-2027-protocol-revision-7.json](mlsys-2027-protocol-revision-7.json)
+- Revision 8 record: [mlsys-2027-protocol-revision-8.json](mlsys-2027-protocol-revision-8.json)
 - Runtime baseline before this protocol: `4250a01`
 - Revision 2 runtime baseline: `27f896f`
 - Revision 3 runtime baseline: `6339d79`
@@ -22,6 +24,7 @@
 - Revision 5 runtime baseline: `91e864c`
 - Revision 6 runtime baseline: `f9a8f04`
 - Revision 7 runtime baseline: `d920357`
+- Revision 8 runtime baseline: `b73d703`
 - Target decision date: 2026-10-01
 - Target venue deadline: 2026-10-30 20:00 UTC
 
@@ -57,7 +60,13 @@ E0, before any Stage E1, C, P, or T execution or outcome inspection.
 Revision 7 was issued after the native guard boundary was hardened against
 non-finite and out-of-range divergence samples and threshold overrides during
 Stage E0, before any Stage E1, C, P, or T execution or outcome inspection.
-Revisions 2 through 7 do not change the `agentc-mlsys2027-v1` split namespace,
+
+Revision 8 was issued after the persisted divergence estimator was changed
+from an all-history summary to an exact bounded sample window and verified
+during Stage E0, before any Stage E1, C, P, or T execution or outcome
+inspection.
+
+Revisions 2 through 8 do not change the `agentc-mlsys2027-v1` split namespace,
 task membership, workloads, models, arms, outcomes, margins, inference,
 stopping rules, or gates. Their machine-readable revision records enumerate
 every runtime-contract change and the engineering evidence that triggered it.
@@ -256,6 +265,7 @@ All measured builds are release builds. Unless an arm states otherwise:
 
 - `hot_threshold=3` observations per semantic call site;
 - `cost_model_window=50`;
+- `divergence_window=50` exact newest samples per call-site/rule pair;
 - `max_overhead_ms=5`;
 - composition enabled;
 - normalized token-overlap shadow divergence;
@@ -360,6 +370,27 @@ fallback. Frozen tau2 and SWE-agent reruns preserved plan sequences, response
 digests, scopes, and observation counts. This retires only `bd-h7k9`; it does
 not establish controller calibration, a damage bound, drift response, or paper
 evidence.
+
+Revision 8 supersedes revision 6's all-history divergence estimator. Each
+`(call_site, rule)` now retains the exact newest `divergence_window=50` valid
+samples. `n_samples` remains a lifetime operator count, while
+`window_samples`, mean, and variance describe only the retained estimator
+window. The summary and exact sample rows are replaced in one SQLite
+transaction; startup recomputes statistics from those rows and persists the
+newest subset if the configured window shrinks. An aggregate-only legacy row
+cannot be reconstructed, so migration preserves its lifetime count and breach
+streak but clears its statistical window until new samples arrive. Reporting
+weights cross-site divergence by retained samples and does not present a
+zero-sample migrated row as measured zero divergence.
+
+Five release-mode, zero-network Stage E0 repetitions aged a 50-sample `0.8`
+distribution entirely out after 50 samples at `0.02`, persisted sequences
+51–100, reproduced the window after restart, and persisted sequences 91–100
+after a resize to 10. Conservative legacy migration and frozen tau2/SWE-agent
+integration semantics also reproduced. This retires only `bd-nggo`; the raw
+five-consecutive-breach controller is unchanged, and harmful-site detection,
+false disables, detection delay, cumulative damage, and durable-write overhead
+remain open.
 
 The main benefit claim is restricted to `ContextCompress`, `ModelDowngrade`,
 `OutputBudget`, and exact `CacheHit`. `StateDrop` is a safety-stress mechanism
@@ -595,13 +626,18 @@ protocol predictions to test, not acceptable safety results. A failure requires
 a controller redesign or removal of the 2% safety claim.
 
 Revision 6 verifies the restart-persistence mechanism required by this section,
-not the damage contract. The cumulative estimator is not yet drift-bounded, and
-its detection/false-disable frontier and durable-write overhead remain open
-before Stage C.
+not the damage contract.
 
 Revision 7 verifies that malformed numeric inputs cannot poison or bypass the
 persisted guard state. It does not improve the five-breach controller's
 detection delay, false-disable rate, drift behavior, or cumulative damage.
+
+Revision 8 verifies that the diagnostic divergence estimator ages out stale
+samples and survives restart exactly. The disable decision still compares each
+raw sampled divergence against a fixed threshold and requires five consecutive
+breaches. Bounding the estimator therefore does not establish the controller's
+detection/false-disable frontier, the 2% operating point, the cumulative-damage
+contract, or durable-write overhead.
 
 ## 12. Retry, exclusion, and stopping rules
 
@@ -697,7 +733,6 @@ No Stage C, P, or T result is admissible while its relevant blocker is open.
 | `bd-vdj` | exact current model routes and snapshot pins are absent from runtime wiring. |
 | `bd-o2qj` | pricing, dataset pin, and fixture-count integrity defects remain. |
 | `bd-jq6c`, `bd-shi1.4` | 2% guard behavior, harmful-site detection, and false disables are not yet established. |
-| `bd-nggo` | persisted divergence is cumulative rather than drift-bounded; provider/workload drift can retain stale guard evidence. |
 | `bd-rm0w` | per-shadow-sample durable-write overhead and cost-DB mutex contention are not quantified. |
 | `bd-z5zj` | same-process Python and bundled-Rust SQLite ownership remains unaudited beyond the separate-process E0 probe boundary. |
 | `bd-bjs` | clean-clone fixture/bootstrap path is incomplete. |
@@ -767,5 +802,15 @@ after validation at `f64` precision. Five release repetitions produced
 identical normalized results; frozen tau2 and SWE-agent reruns preserved their
 previous plan sequences, response digests, scopes, and observation counts. The
 controller frontier, damage contract, drift-bounded estimator, and durable-
-write overhead remain explicit blockers. The evidence is
+write overhead remained explicit blockers at revision 7. The evidence is
 [guard-input-validation-preflight-2026-09-03.json](guard-input-validation-preflight-2026-09-03.json).
+
+Revision 8 retires `bd-nggo` at Stage E0 without admitting a workload at Stage
+E1. Per-site/rule divergence summaries now use an exact persisted newest-50
+window while retaining a separate lifetime count and the raw breach streak.
+Five release repetitions produced the same normalized correctness payload;
+frozen tau2 and SWE-agent reruns preserved their previous plan sequences,
+response digests, scopes, and observation counts. The raw five-breach
+controller, 2% damage frontier, and durable-write overhead remain explicit
+blockers. The evidence is
+[divergence-window-preflight-2026-09-03.json](divergence-window-preflight-2026-09-03.json).

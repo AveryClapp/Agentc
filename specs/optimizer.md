@@ -524,6 +524,11 @@ both tables before serving plans, so neither accumulated evidence nor an
 active disable is lost across process restarts. `optimize_flush` and lifecycle
 reset flush dirty divergence again as a final fail-open boundary.
 
+Divergence and thresholds are finite fractions in `[0,1]`. The native boundary
+discards an invalid divergence without creating or mutating guard state. An
+invalid `AGENTC_SHADOW_DIVERGENCE_BUDGET` override falls through to the firing
+rule's declared budget, then to `0.05` if that declaration is also invalid.
+
 Shadow mode:
 
 - A shadow-sampled call runs **both** the rewritten and the unrewritten plan.

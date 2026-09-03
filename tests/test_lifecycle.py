@@ -238,6 +238,64 @@ class TestInit:
         assert divergence == pytest.approx((5, 0.5, 0))
         assert disabled == ("shadow_divergence",)
 
+    def test_invalid_guard_divergence_does_not_create_state(
+        self, tmp_storage: Path
+    ) -> None:
+        controls = {
+            "AGENTC_ENABLED_RULES": "OutputBudget",
+            "AGENTC_SHADOW_DIVERGENCE_BUDGET": "0.1",
+        }
+        with patch.dict(os.environ, controls):
+            agentc.init(storage_path=str(tmp_storage))
+            for divergence in [float("nan"), float("inf"), float("-inf"), -0.1, 1.1]:
+                agentc._native.optimize_record_divergence(
+                    "invalid-guard-site", "OutputBudget", divergence
+                )
+            agentc.shutdown()
+
+        with sqlite3.connect(tmp_storage / "cost_model.db") as connection:
+            count = connection.execute(
+                "SELECT COUNT(*) FROM rule_divergence "
+                "WHERE call_site_id = ? AND rule = ?",
+                ("invalid-guard-site", "OutputBudget"),
+            ).fetchone()
+        assert count == (0,)
+
+    @pytest.mark.parametrize(
+        "invalid_threshold",
+        ["nan", "inf", "-inf", "-1e-300", "1.000000000001", "-0.1", "1.1"],
+    )
+    def test_invalid_guard_threshold_falls_back_to_rule_budget(
+        self, tmp_storage: Path, invalid_threshold: str
+    ) -> None:
+        controls = {
+            "AGENTC_ENABLED_RULES": "OutputBudget",
+            "AGENTC_SHADOW_DIVERGENCE_BUDGET": invalid_threshold,
+        }
+        with patch.dict(os.environ, controls):
+            agentc.init(storage_path=str(tmp_storage))
+            for _ in range(5):
+                agentc._native.optimize_record_divergence(
+                    "fallback-guard-site", "OutputBudget", 0.5
+                )
+            agentc.shutdown()
+
+        with sqlite3.connect(tmp_storage / "cost_model.db") as connection:
+            divergence = connection.execute(
+                "SELECT n_samples, divergence_mean, consecutive_breaches "
+                "FROM rule_divergence "
+                "WHERE call_site_id = ? AND rule = ?",
+                ("fallback-guard-site", "OutputBudget"),
+            ).fetchone()
+            disabled = connection.execute(
+                "SELECT reason FROM optimizer_disabled "
+                "WHERE call_site_id = ? AND rule = ?",
+                ("fallback-guard-site", "OutputBudget"),
+            ).fetchone()
+
+        assert divergence == pytest.approx((5, 0.5, 0))
+        assert disabled == ("shadow_divergence",)
+
 
 class TestShutdown:
     def test_basic_shutdown(self, tmp_storage: Path) -> None:

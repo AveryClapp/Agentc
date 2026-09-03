@@ -991,25 +991,41 @@ fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) {
 ///
 /// Threshold precedence: `AGENTC_SHADOW_DIVERGENCE_BUDGET` env override,
 /// else the firing rule's own `accuracy_budget()`, else a conservative
-/// 0.05. Never raises — the user-visible call has already returned.
+/// 0.05. Non-finite and out-of-range divergence is discarded; an invalid
+/// threshold falls through to the next source. Never raises — the user-visible
+/// call has already returned.
+fn unit_fraction_f32(value: f32) -> Option<f32> {
+    (value.is_finite() && (0.0..=1.0).contains(&value)).then_some(value)
+}
+
+fn unit_fraction_f64(value: f64) -> Option<f32> {
+    (value.is_finite() && (0.0..=1.0).contains(&value)).then_some(value as f32)
+}
+
 #[pyfunction]
 fn optimize_record_divergence(py: Python<'_>, call_site_id: &str, rule: &str, divergence: f64) {
     py.allow_threads(|| {
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let Some(divergence) = unit_fraction_f64(divergence) else {
+                return;
+            };
             let state = optimizer_state();
             let threshold = std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
                 .ok()
-                .and_then(|v| v.trim().parse::<f32>().ok())
-                .or_else(|| state.optimizer.accuracy_budget_for(rule))
+                .and_then(|v| v.trim().parse::<f64>().ok())
+                .and_then(unit_fraction_f64)
+                .or_else(|| {
+                    state
+                        .optimizer
+                        .accuracy_budget_for(rule)
+                        .and_then(unit_fraction_f32)
+                })
                 .unwrap_or(0.05);
             let now = now_us_i64();
-            let outcome = state.budget.record_sample(
-                call_site_id,
-                rule,
-                divergence as f32,
-                threshold,
-                now,
-            );
+            let outcome =
+                state
+                    .budget
+                    .record_sample(call_site_id, rule, divergence, threshold, now);
             let disable = match outcome {
                 SampleOutcome::Disable {
                     disabled_at_us,
@@ -1100,6 +1116,27 @@ mod tests {
     #[test]
     fn test_version_matches_cargo_pkg() {
         assert_eq!(VERSION, env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn guard_fractions_reject_non_finite_and_out_of_range_values() {
+        for invalid in [
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            -f64::MIN_POSITIVE,
+            1.0 + f64::EPSILON,
+            -0.1,
+            1.1,
+        ] {
+            assert!(unit_fraction_f64(invalid).is_none());
+        }
+        for valid in [0.0, 0.5, 1.0] {
+            assert_eq!(unit_fraction_f64(valid), Some(valid as f32));
+        }
+        for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -0.1, 1.1] {
+            assert!(unit_fraction_f32(invalid).is_none());
+        }
     }
 }
 

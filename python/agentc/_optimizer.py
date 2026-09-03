@@ -104,9 +104,9 @@ def observe_outcome(plan: Plan, outcome: dict[str, Any]) -> None:
 def record_divergence(call_site_id: str, rule: str, divergence: float) -> None:
     """Fold one shadow-mode divergence sample into the Rust accuracy budget.
 
-    Called from the dispatch layer on sampled rewritten calls. Fail-open:
-    a native hiccup must never surface to the user, whose call already
-    returned.
+    Called from the dispatch layer on sampled rewritten calls. Non-finite or
+    out-of-range values are discarded without mutating guard state. Fail-open:
+    a native hiccup must never surface to the user, whose call already returned.
     """
     if not call_site_id or not rule:
         return

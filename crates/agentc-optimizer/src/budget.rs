@@ -72,6 +72,7 @@ pub struct DisabledEntry {
 /// decide whether to persist a disable row.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SampleOutcome {
+    RejectedInvalidInput,
     WithinBudget,
     Breached {
         consecutive: u32,
@@ -205,6 +206,10 @@ impl Budget {
         budget: f32,
         now_us: i64,
     ) -> SampleOutcome {
+        if !is_unit_fraction(divergence) || !is_unit_fraction(budget) {
+            return SampleOutcome::RejectedInvalidInput;
+        }
+
         let key = (call_site_id.to_string(), rule.to_string());
         let (outcome, disabled, generation) = {
             let mut entry = self.divergence.entry(key.clone()).or_default();
@@ -395,6 +400,10 @@ impl Budget {
     }
 }
 
+fn is_unit_fraction(value: f32) -> bool {
+    value.is_finite() && (0.0..=1.0).contains(&value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -435,6 +444,59 @@ mod tests {
             assert_eq!(out, SampleOutcome::WithinBudget);
         }
         assert!(!b.is_disabled("site", "RuleA", 0));
+    }
+
+    #[test]
+    fn invalid_samples_and_budgets_do_not_mutate_state() {
+        let b = Budget::new();
+        let invalid = [
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            -f32::EPSILON,
+            1.0 + f32::EPSILON,
+        ];
+
+        for divergence in invalid {
+            assert_eq!(
+                b.record_sample("site", "RuleA", divergence, 0.1, 0),
+                SampleOutcome::RejectedInvalidInput
+            );
+        }
+        for budget in invalid {
+            assert_eq!(
+                b.record_sample("site", "RuleA", 0.5, budget, 0),
+                SampleOutcome::RejectedInvalidInput
+            );
+        }
+
+        assert!(b.get_entry("site", "RuleA").is_none());
+        assert_eq!(b.dirty_len(), 0);
+        assert_eq!(
+            b.record_sample("site", "RuleA", 0.5, 0.1, 0),
+            SampleOutcome::Breached { consecutive: 1 }
+        );
+
+        let before = b.get_entry("site", "RuleA").unwrap();
+        for divergence in invalid {
+            assert_eq!(
+                b.record_sample("site", "RuleA", divergence, 0.1, 1),
+                SampleOutcome::RejectedInvalidInput
+            );
+        }
+        for budget in invalid {
+            assert_eq!(
+                b.record_sample("site", "RuleA", 0.5, budget, 1),
+                SampleOutcome::RejectedInvalidInput
+            );
+        }
+        let after = b.get_entry("site", "RuleA").unwrap();
+        assert_eq!(after.stats.n, before.stats.n);
+        assert_eq!(after.stats.mean.to_bits(), before.stats.mean.to_bits());
+        assert_eq!(after.stats.m2.to_bits(), before.stats.m2.to_bits());
+        assert_eq!(after.consecutive_breaches, before.consecutive_breaches);
+        assert_eq!(after.generation, before.generation);
+        assert_eq!(b.dirty_len(), 1);
     }
 
     /// Exit-criterion: auto-disable fires at exactly k=5 consecutive

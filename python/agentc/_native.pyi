@@ -187,7 +187,8 @@ def optimize_record_divergence(call_site_id: str, rule: str, divergence: float) 
 
     Feeds the accuracy budget: five consecutive over-threshold samples for
     `rule` at `call_site_id` disable the rule there. The cumulative estimate
-    and current breach streak persist across lifecycle restarts.
+    and current breach streak persist across lifecycle restarts. Non-finite or
+    out-of-range divergence is discarded without mutating guard state.
     Internally fail-open — any error is dropped.
     """
     ...

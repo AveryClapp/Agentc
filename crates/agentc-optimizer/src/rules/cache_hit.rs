@@ -76,10 +76,10 @@ impl RewriteRule for CacheHitRule {
     }
 
     fn applies(&self, _call: &Call, profile: &CallSiteProfile) -> bool {
-        // The profile's n_observations >= hot_threshold is the planner's
-        // precondition; here we only skip if the site has never produced a
-        // cost observation — without one, `cost_usd.mean` is 0 and the
-        // projected savings can't rank the proposal.
+        // A full retained window is the planner's precondition; here we only
+        // skip if the site has never produced a cost observation — without
+        // one, `cost_usd.mean` is 0 and the projected savings can't rank the
+        // proposal.
         profile.n_observations > 0
     }
 

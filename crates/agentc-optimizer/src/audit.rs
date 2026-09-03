@@ -122,8 +122,8 @@ pub fn insert_batch(conn: &mut Connection, rows: &[PlanAudit]) -> Result<usize> 
     Ok(rows.len())
 }
 
-/// Prune any rows beyond `cap` by deleting the oldest `audit_id`s. Runs on
-/// the writer thread; safe to call every Nth insert.
+/// Prune any rows beyond `cap` by deleting the oldest `audit_id`s. Callers run
+/// this explicitly from their own serialized maintenance path.
 ///
 /// Returns the number of rows deleted.
 pub fn prune(conn: &mut Connection, cap: i64) -> Result<u64> {

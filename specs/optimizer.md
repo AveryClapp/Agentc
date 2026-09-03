@@ -1,7 +1,7 @@
 ---
 title: Optimizer
 status: active
-last-updated: 2026-07-17
+last-updated: 2026-09-03
 ---
 
 # Optimizer
@@ -210,7 +210,10 @@ Environment overrides:
 |---|---|
 | `AGENTC_OPTIMIZE=0` | Disables the optimizer. Profiling still runs. |
 | `AGENTC_OPTIMIZE_HOT_THRESHOLD=10` | Overrides `hot_threshold`. |
+| `AGENTC_OPTIMIZE_COST_MODEL_WINDOW=50` | Sets the exact retained sample count per cost profile. |
+| `AGENTC_OPTIMIZE_MAX_OVERHEAD_MS=5` | Sets the plan kill-switch budget. |
 | `AGENTC_OPTIMIZE_SHADOW=0.1` | Overrides `shadow_rate`. |
+| `AGENTC_COMPOSE=0` | Disables orthogonal rule composition. |
 
 ### Rust API
 
@@ -264,10 +267,19 @@ pub struct Proposal {
 
 ### FFI surface
 
-Two new functions on `agentc._native`:
+The native extension exposes seven optimizer functions:
 
 ```python
 # python/agentc/_native.pyi
+def optimize_configure(storage_path: str) -> str:
+    """Flush prior state, build at storage_path, and return the owned path."""
+
+def optimize_storage_path() -> str:
+    """Return the path owned by the active native optimizer."""
+
+def optimize_reset() -> None:
+    """Flush and drop native optimizer state."""
+
 def optimize_plan(call_json: str) -> str:
     """
     Input: JSON-serialized Call (call_site_id, model, messages, parameters, tools).
@@ -278,6 +290,14 @@ def optimize_observe(plan_json: str, outcome_json: str) -> None:
     """
     Feeds the cost model with the measured outcome of a plan.
     """
+
+def optimize_record_divergence(
+    call_site_id: str, rule: str, divergence: float
+) -> None:
+    """Feed one sampled counterfactual result into the accuracy budget."""
+
+def optimize_flush() -> None:
+    """Flush buffered cost-model state without dropping the optimizer."""
 ```
 
 All plan execution happens in Python — the SDK receives the `Plan` back from Rust and dispatches the (possibly rewritten) LLM call(s) itself. Rust never calls out to the user's LLM provider.
@@ -373,8 +393,8 @@ The cost model is a per-`call_site_id` rolling estimator fitted from the profile
 ```rust
 pub struct CallSiteProfile {
     pub call_site_id: String,
-    pub n_observations: u32,
-    pub confidence: f32,               // 0..1, saturates at cost_model_window samples
+    pub n_observations: u32,           // lifetime count for operator reporting
+    pub window_observations: u32,      // retained count, capped at cost_model_window
 
     // Cost distribution (last cost_model_window observations).
     pub input_tokens:  WelfordStats,   // mean, variance
@@ -382,19 +402,29 @@ pub struct CallSiteProfile {
     pub latency_ms:    WelfordStats,
     pub cost_usd:      WelfordStats,
 
-    // Accuracy proxies — per-rule, rolling.
-    pub shadow_divergence_by_rule: HashMap<&'static str, WelfordStats>,
-
     // Output shape features — inform ModelDowngrade and friends.
     pub output_token_p95: f32,
+    pub output_token_p99: f32,
     pub output_is_structured: f32,     // fraction of outputs that parse as JSON
     pub output_is_short: f32,          // fraction with output_tokens <= 128
 }
 ```
 
-`WelfordStats` is the numerically stable online mean/variance estimator (already used in the profiler for span stats). The cost model is **empirical, not predictive** — it summarizes what has been observed under each (call_site, rule) combination, and it trusts that distribution to extrapolate. No learned model, no neural network. A per-rule lookup is O(1).
+`WelfordStats` is the numerically stable mean/variance summary. The cost model
+retains the exact last `cost_model_window` samples and recomputes each summary
+from that bounded set, including nearest-rank p95 and p99. `CostModel::get`
+clones the summary while sharing the retained samples through `Arc`; planning
+therefore does not copy the window. The cost model is **empirical, not
+predictive** — it summarizes what has been observed under each `(call_site,
+rule)` combination and does not extrapolate with a learned model. A per-rule
+lookup is O(1).
 
-The cost model persists in `cost_model.db` (sibling of `traces.db`) with an in-memory cache warmed at optimizer start. `optimize_observe` updates both the in-memory stats and the persistent store asynchronously via the writer thread.
+The cost model persists in `cost_model.db` (sibling of `traces.db`) with an
+in-memory cache warmed at optimizer start. `optimize_observe` updates the
+in-memory window synchronously after the provider response. The native runtime
+flushes dirty profiles every 16 observations, on explicit `optimize_flush`, and
+before lifecycle reset. Each SQLite transaction writes the summary and its
+exact retained samples together.
 
 **Projected savings per rule** come from direct arithmetic on the cost model:
 
@@ -410,7 +440,10 @@ All projections ignore the optimizer's own overhead, which is tracked separately
 
 ### Hot threshold and cold path
 
-A call site is **cold** when `n_observations < hot_threshold`. Cold calls return `Plan::PassThrough` immediately — no rules evaluated, no overhead beyond the profile lookup. This matters because:
+A call site is **cold** when `window_observations < hot_threshold`. Cold calls
+return `Plan::PassThrough` immediately — no rules are evaluated and no overhead
+beyond the profile lookup is incurred. The lifetime `n_observations` counter
+does not keep a migrated or emptied window hot. This matters because:
 
 1. Rules that depend on output-shape features (`ModelDowngrade`) need observations to fire correctly; firing on observation #1 would be a random bet.
 2. The cost-model confidence below `hot_threshold` is 0; projected savings can't be ranked reliably.
@@ -515,9 +548,10 @@ Two new DBs alongside `traces.db`:
 
 ```sql
 -- cost_model.db
-CREATE TABLE call_site_profile (
+CREATE TABLE IF NOT EXISTS call_site_profile (
     call_site_id          TEXT PRIMARY KEY NOT NULL,
     n_observations        INTEGER NOT NULL,
+    window_observations   INTEGER NOT NULL,
     input_tokens_mean     REAL NOT NULL,
     input_tokens_var      REAL NOT NULL,
     output_tokens_mean    REAL NOT NULL,
@@ -527,12 +561,26 @@ CREATE TABLE call_site_profile (
     cost_usd_mean         REAL NOT NULL,
     cost_usd_var          REAL NOT NULL,
     output_token_p95      REAL NOT NULL,
+    output_token_p99      REAL NOT NULL,
     output_is_structured  REAL NOT NULL,
     output_is_short       REAL NOT NULL,
     updated_at            INTEGER NOT NULL
 ) STRICT;
 
-CREATE TABLE rule_divergence (
+CREATE TABLE IF NOT EXISTS call_site_observation (
+    call_site_id          TEXT NOT NULL,
+    sample_sequence       INTEGER NOT NULL,
+    input_tokens          INTEGER NOT NULL,
+    output_tokens         INTEGER NOT NULL,
+    latency_ms            REAL NOT NULL,
+    cost_usd              REAL NOT NULL,
+    output_is_structured  INTEGER NOT NULL CHECK (output_is_structured IN (0, 1)),
+    output_is_short       INTEGER NOT NULL CHECK (output_is_short IN (0, 1)),
+    observed_at           INTEGER NOT NULL,
+    PRIMARY KEY (call_site_id, sample_sequence)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS rule_divergence (
     call_site_id          TEXT NOT NULL,
     rule                  TEXT NOT NULL,
     n_samples             INTEGER NOT NULL,
@@ -541,7 +589,7 @@ CREATE TABLE rule_divergence (
     PRIMARY KEY (call_site_id, rule)
 ) STRICT, WITHOUT ROWID;
 
-CREATE TABLE optimizer_disabled (
+CREATE TABLE IF NOT EXISTS optimizer_disabled (
     call_site_id          TEXT NOT NULL,
     rule                  TEXT NOT NULL,
     reason                TEXT NOT NULL,
@@ -550,14 +598,24 @@ CREATE TABLE optimizer_disabled (
     PRIMARY KEY (call_site_id, rule)
 ) STRICT, WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS rule_set_stats (
+    call_site_id          TEXT NOT NULL,
+    rule_set              TEXT NOT NULL,
+    n                     INTEGER NOT NULL,
+    mean                  REAL NOT NULL,
+    m2                    REAL NOT NULL,
+    updated_at            INTEGER NOT NULL,
+    PRIMARY KEY (call_site_id, rule_set)
+) STRICT, WITHOUT ROWID;
+
 -- optimizer_audit.db
-CREATE TABLE plan_audit (
+CREATE TABLE IF NOT EXISTS plan_audit (
     audit_id              INTEGER PRIMARY KEY AUTOINCREMENT,
     ts_us                 INTEGER NOT NULL,
     call_site_id          TEXT NOT NULL,
-    span_id               BLOB(8) NOT NULL,
-    plan_kind             TEXT NOT NULL,   -- "pass_through" | "cached" | "rewritten" | "parallel"
-    rule                  TEXT,            -- null for pass_through
+    span_id               BLOB NOT NULL,
+    plan_kind             TEXT NOT NULL,
+    rule                  TEXT,
     projected_savings_usd REAL,
     measured_savings_usd  REAL,
     overhead_us           INTEGER NOT NULL,
@@ -565,11 +623,20 @@ CREATE TABLE plan_audit (
     shadow_divergence     REAL
 ) STRICT;
 
-CREATE INDEX idx_audit_call_site ON plan_audit(call_site_id, ts_us DESC);
-CREATE INDEX idx_audit_ts ON plan_audit(ts_us);
+CREATE INDEX IF NOT EXISTS idx_audit_call_site ON plan_audit(call_site_id, ts_us DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON plan_audit(ts_us);
 ```
 
-`plan_audit` is a ring: when it exceeds 10,000 rows, `DELETE FROM plan_audit WHERE audit_id < ?` prunes the oldest ones in the background writer thread.
+Schema migration adds `window_observations` and the retained-sample table to
+existing databases. An unbounded legacy summary cannot be reconstructed into an
+exact window: migration preserves its lifetime `n_observations`, zeros its
+statistical fields, and requires fresh retained observations before the planner
+considers the site hot. Changing to a smaller configured window truncates and
+persists the newest samples at startup.
+
+`plan_audit` supports pruning to a 10,000-row cap through `audit::prune`.
+Pruning is an explicit maintenance operation; the runtime does not silently
+delete audit rows in the background.
 
 ### Repo layout
 
@@ -651,9 +718,18 @@ A user's LLM call never fails because the optimizer failed.
 
 ### Concurrency model
 
-- **Plan evaluation is read-only** for shared state: profile and cache are accessed through `Arc<dyn ...>` read handles. Multiple threads can plan concurrently without locks.
-- **Cost model updates are serialized** on a single writer thread (the same thread that serves memoization inserts and span writes). `observe` enqueues a `CostModelUpdate` message.
-- **Audit writes are serialized** on the same writer thread.
+- **Plan evaluation is read-only** for shared state. A `DashMap` shard lock is
+  held only long enough to clone a profile summary; the retained sample window
+  is shared through `Arc` and is not copied. Multiple threads then evaluate
+  plans independently.
+- **Cost model updates lock one call-site entry.** An update mutates that
+  profile's copy-on-write sample window, recomputes its statistics, and records
+  a monotonically increasing dirty generation. An older flush clears a dirty
+  marker only when its captured generation is still current.
+- **SQLite cost-model flushes are serialized** by the native profiler's cost-DB
+  mutex. Each transaction replaces the exact retained samples and summary for
+  every captured dirty site.
+- **Audit writes are synchronous and serialized** by a separate audit-DB mutex.
 - **Shadow execution runs in a background `asyncio.Task`** or thread (depending on the SDK), so it never blocks the primary return. If the shadow task doesn't complete within 2× the primary latency, it's dropped.
 
 ---
@@ -717,10 +793,18 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Auto-disabled rule re-enables after 24h | `tests/accuracy_budget.rs` |
 | Optimizer FFI panic yields PassThrough | `tests/fail_open.rs` |
 | Overhead kill switch activates above `max_overhead_ms` | `tests/fail_open.rs` |
+| All cost and shape statistics retain exactly the last configured N samples | `cost_model::tests::rolling_window_recomputes_every_stat_after_distribution_shift` |
+| Exact retained window survives restart and continues eviction | `cost_model::tests::retained_window_survives_restart_and_continues_eviction` |
+| Smaller runtime window is persisted on restart | `cost_model::tests::smaller_window_is_applied_and_persisted_on_restart` |
+| Legacy unbounded profiles restart cold while preserving lifetime count | `schema::tests::legacy_unbounded_profile_is_cold_started_without_losing_lifetime_count` |
+| Concurrent post-snapshot update remains dirty and survives restart | `cost_model::tests::flush_keeps_dirty_marker_for_post_snapshot_observation` |
 
 ### Performance targets
 
-Benchmarks live in `bench/optimizer_bench.py`:
+Plan benchmarks live in `bench/optimizer_bench.py`. The release-mode bounded
+window diagnostic lives in
+`crates/agentc-optimizer/examples/cost_model_window_preflight.rs` and remains
+Stage E0 engineering evidence rather than a paper benchmark.
 
 | Metric | Target | Measurement |
 |---|---|---|
@@ -729,7 +813,7 @@ Benchmarks live in `bench/optimizer_bench.py`:
 | p50 plan overhead (cold call) | < 100 μs | Profile lookup + early return |
 | p99 plan overhead (cold call) | < 300 μs | Same |
 | Shadow-mode sample rate | 2% ± 0.3% | Bernoulli(0.02) over 10k calls |
-| Cost model write throughput | > 1000 observations/s | Single writer thread |
+| Cost model write throughput | > 1000 observations/s | In-memory update; persistence measured separately |
 
 ### Savings / accuracy (reference agents)
 
@@ -800,7 +884,15 @@ proposal to pass its safety check becomes the plan and the rest are skipped for 
 
 ### Empirical cost model, not learned
 
-Per-call-site rolling mean/variance via Welford's algorithm. No neural network, no bandit, no gradient-anything. The cost model summarizes observations; it doesn't extrapolate beyond them. **Rejected: per-call-site bandit (Thompson sampling over rule choice).** Adds per-rule arm state and assumes rule choice is a contextual-bandit problem, which it isn't — `applies(&call, &profile)` is a hard predicate, not a stochastic one. **Rejected: learned cost predictor.** Non-trivial training pipeline, hard to debug regressions, buys accuracy we don't need when the decisions are "cache vs not" and "downgrade vs not."
+Retain the exact most recent `cost_model_window` observations per call site and
+derive mean, variance, p95, p99, and output-shape fractions from that set. This
+makes drift response deterministic across process restarts while keeping the
+default state bounded to 50 samples per site. **Rejected: unbounded Welford
+aggregates.** They are compact but cannot age out provider or workload drift or
+recover exact quantiles. **Rejected: mergeable exponential decay.** It is more
+compact but makes the configured window approximate and complicates replay.
+**Rejected: learned cost predictor.** It adds a training pipeline and opaque
+failure modes where direct empirical arithmetic suffices.
 
 ### Per-rule accuracy budget with shadow mode
 

@@ -14,13 +14,10 @@ before running these tests.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
 import sqlite3
 import subprocess
-import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -60,7 +57,6 @@ def storage_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     storage.mkdir(parents=True, exist_ok=True)
 
     import agentc
-    from agentc import _writer
 
     if agentc.is_initialized():
         agentc.shutdown(timeout_ms=500)
@@ -110,11 +106,11 @@ def test_cache_stats_on_empty_db_is_rendered_but_zero(storage_dir: Path):
     assert result.returncode == 0, result.stderr
     assert "Cache summary" in result.stdout
     assert "Entries:" in result.stdout
-    assert "Exact hits:" in result.stdout
-    assert "LSH hits:" in result.stdout
-    assert "Misses:" in result.stdout
-    # No spans with agentc.cache.* attributes → hits render as "—".
+    assert "Total hits:" in result.stdout
+    assert "Estimated savings:" in result.stdout
+    assert "Active (last 24h):" in result.stdout
     assert re.search(r"Entries:\s+0\b", result.stdout), result.stdout
+    assert re.search(r"Total hits:\s+0\b", result.stdout), result.stdout
 
 
 def test_cache_stats_reflects_inserted_entries(storage_dir: Path):

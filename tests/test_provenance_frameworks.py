@@ -82,14 +82,18 @@ def _cleanup_langgraph() -> None:
     sys.modules.pop("langgraph", None)
 
 
-def test_langgraph_missing_framework_returns_false():
-    # Ensure the real+fake module is absent.
-    sys.modules.pop("langgraph.graph", None)
-    sys.modules.pop("langgraph", None)
+def test_langgraph_missing_framework_returns_false(
+    monkeypatch: pytest.MonkeyPatch,
+):
     from agentc._provenance_frameworks import langgraph as adapter
 
     # uninstall first so any prior test leakage doesn't short-circuit.
     adapter.uninstall()
+    # A missing key in sys.modules still permits importing a package installed
+    # in the environment. A None sentinel makes import fail deterministically,
+    # so this test remains valid when CI installs the full framework extra.
+    monkeypatch.setitem(sys.modules, "langgraph.graph", None)  # type: ignore[arg-type]
+    monkeypatch.setitem(sys.modules, "langgraph", None)  # type: ignore[arg-type]
     try:
         assert adapter.install() is False
     finally:
@@ -179,12 +183,14 @@ def _cleanup_crewai() -> None:
     sys.modules.pop("crewai", None)
 
 
-def test_crewai_missing_framework_returns_false():
-    sys.modules.pop("crewai.task", None)
-    sys.modules.pop("crewai", None)
+def test_crewai_missing_framework_returns_false(
+    monkeypatch: pytest.MonkeyPatch,
+):
     from agentc._provenance_frameworks import crewai as adapter
 
     adapter.uninstall()
+    monkeypatch.setitem(sys.modules, "crewai.task", None)  # type: ignore[arg-type]
+    monkeypatch.setitem(sys.modules, "crewai", None)  # type: ignore[arg-type]
     try:
         assert adapter.install() is False
     finally:

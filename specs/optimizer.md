@@ -1,12 +1,18 @@
 ---
 title: Optimizer
-status: active
+status: draft
 last-updated: 2026-09-03
 ---
 
 # Optimizer
 
-The JIT runtime that intercepts LLM calls, lifts them into a typed DAG IR, applies cost-ranked rewrite rules subject to a per-rule accuracy budget, and executes the rewritten plan. Optimization fires on hot call sites only — cold paths run unmodified so that first-call latency stays clean and the cost model has real data before it makes decisions. The optimizer depends on the profiler for execution traces (its training corpus) and the memoization layer for the `Cache` trait (one of its rewrite rules).
+The application-side runtime that intercepts LLM calls, lifts them into a typed
+DAG IR, and jointly chooses a target model plus compatible semantic rewrites.
+Selection is constrained by request compatibility, complete-plan evidence,
+output-divergence, freshness, exploration, and exposure budgets. Cold or
+inadmissible alternatives execute the exact original request. The optimizer
+depends on the profiler for execution traces and the memoization layer for the
+`Cache` trait.
 
 ---
 
@@ -16,13 +22,16 @@ Agent code is mostly untuned. Developers write straightforward `llm.chat(...)` s
 
 The optimizer operates at the **call boundary**. On every intercepted LLM call it asks:
 
-1. Have we seen this call site N times? (If no → execute unmodified, profile it.)
-2. What does the empirical cost model say about this call site's cost, latency, and accuracy distribution?
-3. Which rewrite rules apply, and what is the projected cost delta of each?
-4. Does the rewrite stay within the accuracy budget for this rule?
-5. Execute the rewritten plan; record outcome for the cost model.
+1. Is this versioned semantic call site hot? If not, execute the reference call.
+2. Which model targets and rewrite sequences preserve the native request shape?
+3. What has happened when each complete plan ran at this call site?
+4. Which plans satisfy the evidence, divergence, freshness, exposure, and
+   operator constraints?
+5. Select the cheapest or fastest admissible plan with deterministic
+   tie-breaking, or fall back to the reference call.
+6. Record the outcome against the complete plan that actually executed.
 
-Nine rewrite rules ship (five original + four added in V2). The registered set is
+Nine rewrite rules supply transformations to the candidate generator. The registered set is
 authoritative in `crates/agentc-optimizer/src/wiring.rs`; this table must match it.
 
 | Rule | Cost driver | Trigger | Effect |
@@ -37,12 +46,16 @@ authoritative in `crates/agentc-optimizer/src/wiring.rs`; this table must match 
 | `StructuredTruncation` | InputTokens | Tool-output messages with unreferenced JSON fields | Project out fields no downstream call reads. |
 | `DeadOutputTruncation` | OutputTokens | Output feeds a branch that is never read | Cap output length on the dead branch. |
 
-**Composition (V2):** rules with different cost drivers (non-overlapping `Call` fields) may
-compose in a single plan via the `CompositionPlanner`, emitted as `Plan::Composed`. Controlled
-by `AGENTC_COMPOSE=1` (default on); `AGENTC_COMPOSE=0` restores V1 first-match. See the
-composition note below.
+The candidate generator may combine compatible rules and every configured model
+target. Orthogonal cost drivers prune obviously conflicting combinations but do
+not establish joint safety. A combined plan becomes user-visible only from its
+own `(call-site version, execution-plan ID)` profile; solo rule and solo model
+observations never stand in for interaction evidence.
 
-Each rule declares its own safety check — a cheap predicate that must be satisfied before the rewrite commits. Rules fire in a cost-ranked order (largest projected savings first); the first rule to pass its safety check wins and the others are skipped for that call.
+Each rule declares a cheap structural precondition and a mutation. Complete
+plans, rather than individual proposals, compete under the constrained selector.
+The existing cost-driver composer remains the
+`independent_route_then_rewrite` evaluation baseline.
 
 This is a **JIT** optimizer in the literal compiler sense: cold code runs interpreted (pass-through), hot code gets compiled (rewritten) once the profile is statistically meaningful. It is not a whole-program optimizer — no global plan is required, no agent code needs to be annotated, no static analysis is performed.
 
@@ -51,8 +64,14 @@ This is a **JIT** optimizer in the literal compiler sense: cold code runs interp
 - Does not rewrite tool implementations, prompt templates, or agent code.
 - Does not speculate across call sites that have not yet executed.
 - Does not apply rewrites on the first N invocations of a call site; those are always pass-through.
-- Does not learn rewrite rules. The rule set is fixed; the cost model under each rule is learned.
+- Does not learn rewrite rules. The rule set is fixed; complete-plan behavior is observed online.
 - Does not operate without the profiler — a cold-start workspace with no trace data always runs pass-through.
+- Does not call output divergence task quality or promise semantic equivalence.
+- Does not infer the safety of a target-plus-rewrite combination from its parts.
+
+The frozen thesis, title, deployment envelope, thresholds, and analysis contract
+are in
+[`working/joint-execution-planning-contract.md`](working/joint-execution-planning-contract.md).
 
 ---
 
@@ -178,8 +197,18 @@ enabled = true
 hot_threshold = 3                   # Invocations before a call site is eligible.
 cost_model_window = 50              # Rolling window for cost model fitting.
 divergence_window = 50              # Retained shadow samples per site/rule.
+plan_profile_window = 50             # Retained outcomes per site-version/plan.
+min_plan_evidence = 20               # Paired samples before admission.
+plan_profile_freshness_hours = 24
 max_overhead_ms = 5                 # Abort optimization if budget exceeded.
 shadow_rate = 0.02                  # 2% of optimized calls run shadow execution.
+
+[optimizer.selection]
+objective = "cost"                   # "cost" or "latency".
+max_rewrite_depth = 3
+exploration_calls_per_site_24h = 20
+max_concurrent_counterfactuals = 1
+divergence_exposure_budget = 1.0
 
 [optimizer.accuracy_budget]
 # Maximum allowed shadow-mode divergence per rule, as a fraction.
@@ -213,9 +242,12 @@ Environment overrides:
 | `AGENTC_OPTIMIZE_HOT_THRESHOLD=10` | Overrides `hot_threshold`. |
 | `AGENTC_OPTIMIZE_COST_MODEL_WINDOW=50` | Sets the exact retained sample count per cost profile. |
 | `AGENTC_OPTIMIZE_DIVERGENCE_WINDOW=50` | Sets the exact retained divergence samples per call-site/rule pair. |
+| `AGENTC_OPTIMIZE_PLAN_PROFILE_WINDOW=50` | Sets the exact retained outcomes per call-site-version/plan pair. |
+| `AGENTC_OPTIMIZE_MIN_PLAN_EVIDENCE=20` | Sets the paired evidence floor for a non-reference plan. |
+| `AGENTC_OPTIMIZE_OBJECTIVE=cost` | Selects `cost` or `latency` minimization. |
 | `AGENTC_OPTIMIZE_MAX_OVERHEAD_MS=5` | Sets the plan kill-switch budget. |
 | `AGENTC_OPTIMIZE_SHADOW=0.1` | Overrides `shadow_rate`. |
-| `AGENTC_COMPOSE=0` | Disables orthogonal rule composition. |
+| `AGENTC_COMPOSE=0` | Selects the independent first-match compatibility baseline; it is not a joint-planner mode. |
 
 ### Rust API
 
@@ -223,9 +255,9 @@ Environment overrides:
 // crates/agentc-optimizer/src/lib.rs
 
 pub struct Optimizer {
-    profile: Arc<dyn Profile>,          // Read-only view over traces.db
-    cache: Arc<dyn Cache>,              // From agentc-memo
-    cost_model: CostModel,
+    cost_model: Arc<CostModel>,         // Reference-call reporting profile
+    plan_profiles: Arc<PlanProfiles>,   // Site-version × complete-plan evidence
+    model_catalog: ModelCatalog,
     rules: Vec<Box<dyn RewriteRule>>,
     config: OptimizerConfig,
 }
@@ -234,12 +266,30 @@ impl Optimizer {
     pub fn new(profile: Arc<dyn Profile>, cache: Arc<dyn Cache>, config: OptimizerConfig) -> Self { ... }
 
     /// Entry point called by the SDK on every intercepted LLM call.
-    /// Returns either a rewritten plan to execute, or `Plan::PassThrough`
-    /// if the call is cold or no rule fires.
+    /// Returns the selected executable plan, or `Plan::PassThrough` when no
+    /// non-reference candidate is admissible.
     pub fn plan(&self, call: &Call) -> Plan { ... }
 
-    /// Record the actual outcome of a plan for the cost model.
+    /// Record the actual outcome against the plan that really dispatched.
     pub fn observe(&self, plan: &Plan, outcome: &Outcome);
+}
+
+pub struct CandidatePlan {
+    pub id: ExecutionPlanId,
+    pub call: Call,
+    pub target: ModelTarget,
+    pub rewrites: Vec<RewriteApplication>,
+    pub validation: ValidationPolicy,
+    pub estimate: Option<PlanEstimate>,
+}
+
+pub struct PlanEstimate {
+    pub paired_observations: u32,
+    pub expected_cost_usd: f64,
+    pub expected_latency_ms: f64,
+    pub divergence_upper_p95: f64,
+    pub expected_net_savings_usd: f64,
+    pub fresh: bool,
 }
 
 pub enum Plan {
@@ -266,6 +316,13 @@ pub struct Proposal {
     pub safety_check: Box<dyn Fn(&Call) -> bool + Send + Sync>,
 }
 ```
+
+`ExecutionPlanId` hashes the provider protocol, requested and target model IDs,
+ordered rewrite names, implementation versions and parameters, cache policy,
+output budget, and validation policy. Price metadata is observation metadata and
+does not change plan identity. The selector sees only `CandidatePlan` values and
+returns one decision; provider adapters and profile storage remain hidden behind
+the optimizer.
 
 ### FFI surface
 
@@ -294,9 +351,9 @@ def optimize_observe(plan_json: str, outcome_json: str) -> None:
     """
 
 def optimize_record_divergence(
-    call_site_id: str, rule: str, divergence: float
+    call_site_version: str, execution_plan_id: str, divergence: float
 ) -> None:
-    """Feed one sampled counterfactual result into the accuracy budget."""
+    """Feed one sampled counterfactual into the complete-plan guard."""
 
 def optimize_flush() -> None:
     """Flush buffered cost-profile and guard-divergence state."""
@@ -328,11 +385,11 @@ All plan execution happens in Python — the SDK receives the `Plan` back from R
                  ▼
     ┌─────────────────────────────────┐
     │ Rust: Optimizer::plan           │
-    │   1. profile.lookup(call_site)  │
-    │   2. if cold → PassThrough      │
-    │   3. rank & apply rules         │
-    │   4. safety checks              │
-    │   5. return Plan                │
+    │   1. version semantic call site │
+    │   2. enumerate model + rewrites │
+    │   3. load complete-plan profiles│
+    │   4. constrain + select         │
+    │   5. fallback or return Plan    │
     └────────────┬────────────────────┘
                  ▼
     ┌─────────────────────────────────┐
@@ -346,7 +403,7 @@ All plan execution happens in Python — the SDK receives the `Plan` back from R
     ┌─────────────────────────────────┐
     │ optimize_observe(plan, outcome) │
     │ → profiler emits span           │
-    │ → cost model updates            │
+    │ → exact plan profile updates    │
     └─────────────────────────────────┘
 ```
 
@@ -388,9 +445,12 @@ ORDER BY start_time DESC
 LIMIT 16;
 ```
 
-### Cost model
+### Complete-plan profiles
 
-The cost model is a per-`call_site_id` rolling estimator fitted from the profiler's `spans` table. For each call site it tracks:
+The existing per-`call_site_id` cost model remains the reference-call and
+operator-reporting summary. It does not drive joint selection because it pools
+outcomes from different target models and transformations. For each call site it
+tracks:
 
 ```rust
 pub struct CallSiteProfile {
@@ -412,23 +472,45 @@ pub struct CallSiteProfile {
 }
 ```
 
-`WelfordStats` is the numerically stable mean/variance summary. The cost model
-retains the exact last `cost_model_window` samples and recomputes each summary
+Decision-critical evidence lives in a separate bounded profile keyed by
+`(call_site_version, execution_plan_id)`:
+
+```rust
+pub struct PlanProfile {
+    pub call_site_version: CallSiteVersion,
+    pub execution_plan_id: ExecutionPlanId,
+    pub n_observations: u64,
+    pub window_observations: u32,
+    pub paired_observations: u32,
+    pub input_tokens: WelfordStats,
+    pub output_tokens: WelfordStats,
+    pub latency_ms: WelfordStats,
+    pub cost_usd: WelfordStats,
+    pub divergence_samples: VecDeque<f32>,
+    pub provider_protocol: String,
+    pub target_model_id: String,
+    pub target_model_version: String,
+    pub updated_at_us: i64,
+}
+```
+
+`WelfordStats` is the numerically stable mean/variance summary. Both stores
+retain exact newest-N samples and recompute each summary
 from that bounded set, including nearest-rank p95 and p99. `CostModel::get`
 clones the summary while sharing the retained samples through `Arc`; planning
-therefore does not copy the window. The cost model is **empirical, not
-predictive** — it summarizes what has been observed under each `(call_site,
-rule)` combination and does not extrapolate with a learned model. A per-rule
-lookup is O(1).
+therefore does not copy the window. The profiles are **empirical, not
+predictive**: an observation updates only the complete plan that actually ran.
+A routing-only profile and rewrite-only profile cannot authorize their
+combination.
 
-The cost model persists in `cost_model.db` (sibling of `traces.db`) with an
+The cost model and plan profiles persist in `cost_model.db` (sibling of `traces.db`) with an
 in-memory cache warmed at optimizer start. `optimize_observe` updates the
-in-memory window synchronously after the provider response. The native runtime
+matching in-memory plan window synchronously after the provider response. The native runtime
 flushes dirty profiles every 16 observations, on explicit `optimize_flush`, and
 before lifecycle reset. Each SQLite transaction writes the summary and its
 exact retained samples together.
 
-**Projected savings per rule** come from direct arithmetic on the cost model:
+Rule-level projections remain candidate-generation hints:
 
 | Rule | Projection |
 |---|---|
@@ -438,7 +520,10 @@ exact retained samples together.
 | `ModelDowngrade` | `cost_usd.mean * (1 - target_model_price_ratio)` |
 | `StateDrop` | `cost_usd.mean * dropped_state_fraction` |
 
-All projections ignore the optimizer's own overhead, which is tracked separately and subtracted from reported savings in `agentc optimize report`.
+The constrained selector ranks admitted plans by observed complete-plan cost or
+latency. Its net estimate subtracts optimizer work, sampled counterfactual cost,
+and observed fallback/retry cost. Rule projections never override a complete-
+plan observation.
 
 ### Hot threshold and cold path
 
@@ -458,19 +543,23 @@ The default `hot_threshold = 3` is chosen so that a call site is optimizable aft
 On a hot call, the optimizer:
 
 1. Gathers the recent DAG context (last 16 spans in the trace).
-2. Calls `rule.applies(&call, &profile)` for each enabled rule. Filters to applicable rules.
-3. Calls `rule.propose(&call, &profile)` for each applicable rule → `Vec<Proposal>`.
-4. Sorts proposals by `projected_savings_usd` descending.
-5. For each proposal in order, runs `proposal.safety_check(&call)`. The first to pass wins.
-6. Returns `proposal.rewritten`.
+2. Calls `rule.applies(&call, &profile)` and `rule.propose(...)` for each
+   enabled rule to obtain structurally valid mutations.
+3. Crosses those mutations with allowlisted model targets, preserving operation
+   order and rejecting incompatible request shapes.
+4. Computes a canonical identity for every complete candidate and loads its
+   exact plan profile.
+5. Rejects candidates with inadequate evidence, stale/non-finite estimates,
+   excessive divergence, non-positive net benefit, active disable state, or an
+   exhausted exploration/exposure budget.
+6. Minimizes expected billed cost or latency among admitted plans. Ties prefer
+   more evidence, lower divergence, fewer mutations, then the lexicographically
+   smaller plan ID.
+7. Returns the immutable reference call when no alternative qualifies.
 
-> **SUPERSEDED (2026-05, V2).** This paragraph described the original first-match design.
-> **Orthogonal composition shipped** as the `CompositionPlanner` (`Plan::Composed`,
-> `AGENTC_COMPOSE=1` default) and is the paper's V2 contribution — do **not** delete it. What
-> was rejected was *greedy* composition with a cumulative budget; what shipped composes only
-> rules with **different cost drivers** (non-overlapping `Call` fields), so attribution stays
-> per-field and the accuracy blast radius does not compound. First-match remains available via
-> `AGENTC_COMPOSE=0`.
+Cost-driver orthogonality is a compatibility filter and an explicit
+`independent_route_then_rewrite` baseline. It is not evidence that a composed
+plan is safe or near-additive on a different model.
 
 ### Rule specifications
 
@@ -497,10 +586,16 @@ On a hot call, the optimizer:
 
 #### `ModelDowngrade`
 
-- **Applies when:** The call's current `model` has an entry in `config.rules.ModelDowngrade.route`, AND `output_token_p95 <= route.max_output_tokens`, AND `output_is_short + output_is_structured >= 0.80` (the call site reliably produces short or structured outputs).
-- **Safety check:** Projected shadow-mode divergence under the downgrade ≤ the rule's accuracy budget on this call site. On first-ever downgrade attempt for a call site, divergence is unknown → the rule fires probabilistically (30%) and observes; it commits fully only after ≥ 20 shadow samples confirm the budget.
-- **Rewrite:** `Plan::Rewritten` with `call.model = route.to`.
-- **Projection:** `cost_usd.mean * (1 - price_ratio(from, to))`.
+- **Candidate source:** The model catalog enumerates every allowlisted target
+  compatible with the provider protocol, tools, modalities, context length, and
+  output cap. `ModelDowngrade` remains the name of the routing-only baseline.
+- **Admission:** A target alone or in combination with rewrites needs its own
+  complete-plan evidence. Output length and shape are candidate filters, not a
+  substitute for observed behavior on the target.
+- **Rewrite:** Set `call.model` to the selected target while preserving the
+  provider-native request.
+- **Projection:** Price metadata supplies an initial arithmetic hint; observed
+  complete-plan billed cost ranks admitted candidates.
 
 #### `StateDrop`
 
@@ -509,40 +604,40 @@ On a hot call, the optimizer:
 - **Rewrite:** `Plan::Rewritten` with the identified state fields removed from `messages`.
 - **Projection:** `cost_usd.mean * dropped_state_fraction`.
 
-### Accuracy budget
+### Plan risk, exploration, and fallback
 
-Every rule declares a per-call-site accuracy budget (e.g., `ModelDowngrade =
-0.03` → 3% maximum shadow divergence). The optimizer retains the exact newest
-`divergence_window` samples and a consecutive-breach streak per `(call_site,
-rule)` pair, fed by shadow-mode sampling (`shadow_rate`, default 2% of optimized
-calls). `n_samples` remains a lifetime operator count; the mean and variance
-describe only the bounded retained window.
+Every non-reference plan has a plan-level divergence threshold selected on the
+frozen calibration split. The optimizer retains the exact newest 50 paired
+divergence samples per `(call-site version, execution-plan ID)`. A plan needs at
+least 20 paired observations and a one-sided conformal upper 95th-percentile at
+or below its threshold before it becomes user-visible.
 
-Budget enforcement:
+Initial exploration returns the reference result and executes at most one
+candidate counterfactual in the background. It is capped at 20 candidate calls
+per call site in 24 hours and one concurrent counterfactual. After admission,
+the selected result is returned and the reference is sampled at `shadow_rate`
+(default 2%) for drift detection.
 
-- **Pre-fire:** The rule's safety check rejects proposals whose projected divergence (from the cost model) exceeds the budget.
-- **Post-fire:** If observed divergence exceeds the budget for `k` consecutive samples (default `k = 5`), the optimizer auto-disables the rule on that call site. A disabled `(call_site, rule)` row lives in `optimizer_disabled` with the reason; it is re-enabled after a 24-hour cooldown so that transient issues don't poison the cache permanently.
+The controller tracks sampled divergence exposure:
 
-Each completed shadow comparison immediately writes `n_samples`,
-`window_samples`, retained-window mean and variance, `consecutive_breaches`,
-and the exact newest samples in one SQLite transaction. When a sample reaches
-`k`, the runtime persists the matching `optimizer_disabled` row before
-returning from `optimize_record_divergence`. Optimizer startup hydrates and
-recomputes the exact window before serving plans, so neither retained evidence
-nor an active disable is lost across process restarts. `optimize_flush` and
-lifecycle reset flush dirty divergence again as a final fail-open boundary.
+```text
+E_t = sum(max(0, divergence_i - threshold)).
+```
 
-Divergence and thresholds are finite fractions in `[0,1]`. The native boundary
-discards an invalid divergence without creating or mutating guard state. An
-invalid `AGENTC_SHADOW_DIVERGENCE_BUDGET` override falls through to the firing
-rule's declared budget, then to `0.05` if that declaration is also invalid.
+Crossing `E_t = 1.0` in 24 hours durably disables that complete plan. A
+provider/model version, prompt-shape version, tool schema, or rewrite
+implementation change starts a cold profile immediately. The 24-hour cooldown
+ends in cold re-admission, not automatic full-rate reuse.
 
-Shadow mode:
+Each comparison updates one complete-plan history. A composed result is never
+copied into every constituent rule as if it were causal evidence. Solo-rule
+guard rows remain available for the routing-only and rewrite-only baselines.
 
-- A shadow-sampled call runs **both** the rewritten and the unrewritten plan.
-- The user receives the rewritten result (so savings are realized); the unrewritten result is discarded after divergence measurement.
-- Divergence = `1 - jaccard(output_tokens(rewritten), output_tokens(unrewritten))` for text outputs; for tool-calls, `1.0` if the tool name differs, else token-level Jaccard on arguments.
-- Sampling is per-call (Bernoulli(shadow_rate)), not per-call-site. A high-volume call site is sampled more often in absolute terms, which is what we want for the confidence interval.
+Divergence and thresholds are finite fractions in `[0,1]`; invalid values do not
+create or mutate state. Text divergence uses the calibration-selected metric.
+Tool calls compare tool identity and schema-valid arguments. The runtime calls
+this quantity divergence, not quality. Workload-level task damage is measured
+only by the evaluation harness where labels or official scores exist.
 
 ### Overhead budget
 
@@ -599,6 +694,54 @@ CREATE TABLE IF NOT EXISTS call_site_observation (
     output_is_short       INTEGER NOT NULL CHECK (output_is_short IN (0, 1)),
     observed_at           INTEGER NOT NULL,
     PRIMARY KEY (call_site_id, sample_sequence)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_profile (
+    call_site_version       TEXT NOT NULL,
+    execution_plan_id       TEXT NOT NULL,
+    n_observations          INTEGER NOT NULL,
+    window_observations     INTEGER NOT NULL,
+    paired_observations     INTEGER NOT NULL,
+    input_tokens_mean       REAL NOT NULL,
+    output_tokens_mean      REAL NOT NULL,
+    latency_ms_mean         REAL NOT NULL,
+    cost_usd_mean           REAL NOT NULL,
+    divergence_upper_p95    REAL,
+    provider_protocol       TEXT NOT NULL,
+    target_model_id         TEXT NOT NULL,
+    target_model_version    TEXT NOT NULL,
+    updated_at              INTEGER NOT NULL,
+    PRIMARY KEY (call_site_version, execution_plan_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_observation (
+    call_site_version       TEXT NOT NULL,
+    execution_plan_id       TEXT NOT NULL,
+    sample_sequence         INTEGER NOT NULL,
+    input_tokens            INTEGER NOT NULL,
+    output_tokens           INTEGER NOT NULL,
+    latency_ms              REAL NOT NULL,
+    cost_usd                REAL NOT NULL,
+    divergence              REAL CHECK (
+        divergence IS NULL OR (divergence >= 0.0 AND divergence <= 1.0)
+    ),
+    dispatch_fallback       INTEGER NOT NULL CHECK (dispatch_fallback IN (0, 1)),
+    provider_protocol       TEXT NOT NULL,
+    target_model_id         TEXT NOT NULL,
+    target_model_version    TEXT NOT NULL,
+    price_table_version     TEXT NOT NULL,
+    observed_at             INTEGER NOT NULL,
+    PRIMARY KEY (call_site_version, execution_plan_id, sample_sequence)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_disabled (
+    call_site_version       TEXT NOT NULL,
+    execution_plan_id       TEXT NOT NULL,
+    reason                  TEXT NOT NULL,
+    exposure                REAL NOT NULL CHECK (exposure >= 0.0),
+    disabled_at             INTEGER NOT NULL,
+    reenable_at             INTEGER NOT NULL,
+    PRIMARY KEY (call_site_version, execution_plan_id)
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS rule_divergence (
@@ -667,6 +810,12 @@ cost or divergence summary cannot be reconstructed into an exact window:
 migration preserves its lifetime count, zeros its window statistics, and
 retains any already-persisted breach streak. Changing either configured window
 to a smaller value truncates and persists the newest samples at startup.
+
+The joint planner adds the three `execution_plan_*` tables above without
+promoting legacy `call_site_profile`, `rule_divergence`, or `rule_set_stats`
+rows into plan evidence. Those rows remain reporting and baseline state. Every
+new complete plan starts cold because the old schema cannot identify the target,
+ordered transformations, or validation policy that produced an observation.
 
 `plan_audit` supports pruning to a 10,000-row cap through `audit::prune`.
 Pruning is an explicit maintenance operation; the runtime does not silently
@@ -847,6 +996,12 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | A within-budget sample resets a hydrated streak | `budget::tests::within_budget_sample_resets_restarted_streak` |
 | A concurrent post-snapshot divergence remains dirty | `budget::tests::flush_keeps_post_snapshot_sample_dirty` |
 | The fifth breach after restart disables durably | `tests/test_lifecycle.py::TestInit::test_guard_breach_streak_survives_reinit` |
+| Canonical plan identity includes target, ordered rewrites, versions, parameters, and validation policy | `execution_plan::tests::canonical_identity_*` |
+| Cost and latency objectives select the best admissible complete plan | `execution_plan::tests::selects_*` |
+| Missing, non-finite, stale, under-evidenced, or non-positive candidates abstain | `execution_plan::tests::rejects_*` |
+| Routing-only and rewrite-only evidence cannot admit their joint plan | `plan_profile::tests::complete_plan_evidence_is_not_synthesized` |
+| A harmful composed interaction updates only its complete-plan guard | `plan_guard::tests::composed_sample_has_single_causal_identity` |
+| A failed selected target retries the exact original request once | `tests/test_optimizer_glue.py::test_routed_failure_replays_exact_original` |
 
 `bench/guard_persistence_preflight.py` is the deterministic Stage E0 replay for
 the restart boundary. It records four breaches, restarts, records the fifth,
@@ -887,36 +1042,39 @@ Stage E0 engineering evidence rather than a paper benchmark.
 
 Accuracy floor is the hard fail gate — no release passes if a reference agent drops below it.
 
-### Per-rule ablations
+### Plan-selection ablations
 
-`bench/optimizer_ablation.py` runs each reference agent with:
+The confirmatory harness runs fixed-strong, fixed-cheap, routing-only,
+rewrite-only on the strong model, independently routed-then-rewritten, and joint
+guarded policies on identical tasks and model pools. Secondary arms remove each
+model and rewrite family, run each rewrite on each compatible fixed model, and
+disable complete-plan interaction profiles.
 
-1. All rules enabled (baseline savings number).
-2. Each rule disabled one at a time.
-3. Only one rule enabled at a time.
+This produces a `(call-site, model, rewrite set)` capability frontier and tests
+whether joint selection adds value beyond the strongest router or rewrite
+system. It also exposes negative interactions and abstention-dominant workloads.
 
-This produces a (rule × agent) contribution matrix that informs rule-specific budget tuning and identifies rules that hurt on specific workloads.
+### Counterfactual divergence bounds
 
-### Shadow-mode divergence bounds
-
-For each `(rule, agent)` pair, the shadow-mode divergence over 1,000 invocations must stay within the rule's configured budget:
-
-| Rule | Default budget | Measured on reference agents |
-|---|---|---|
-| `CacheHit` | 1.0% | (filled in by `bench/optimizer_ablation.py`) |
-| `ContextCompress` | 2.0% | |
-| `ParallelBranch` | 0.0% | must be exactly zero |
-| `ModelDowngrade` | 3.0% | |
-| `StateDrop` | 1.0% | |
+For each `(call-site version, execution plan)` pair, calibration selects a
+threshold from `{0.05, 0.10, 0.15, 0.20, 0.30, 0.50}`. Admission requires at
+least 20 paired samples and a one-sided conformal upper 95th-percentile no
+greater than that threshold. The held-out report includes the full distribution,
+false disables, missed harmful plans, time and calls to fallback, divergence
+exposure, task-equivalent damage where labels exist, and net savings after
+counterfactual cost.
 
 ### Acceptance criteria (ship gate)
 
 The optimizer crate reaches `status: active` when:
 
 - All correctness tests pass.
-- All four reference agents hit their savings target without dropping below their accuracy floor.
+- Joint planning beats routing-only and rewrite-only in at least two frozen
+  workload/model cells without crossing the predeclared quality margin.
+- Joint planning beats independently routed-then-rewritten execution on at
+  least one primary efficiency outcome in those cells.
 - p99 plan overhead is within 1.2 ms on the reference hardware.
-- Shadow-mode divergence stays within budget on every `(rule, agent)` pair.
+- The plan-level guard meets the frozen 2% damage and false-disable gate.
 - Fail-open paths are exercised by fault-injection tests (`tests/fail_open.rs`).
 
 ---
@@ -927,49 +1085,39 @@ The optimizer crate reaches `status: active` when:
 
 Cold calls are pass-through; optimization kicks in after `hot_threshold` observations. The profiler already produces the empirical data the cost model needs, and first-call latency stays clean (no optimizer overhead before we have profile data to act on). **Rejected: eager rewriting on every call.** Pays optimizer cost on the first invocation when the cost model has zero confidence — the rewrite is a guess, not a decision. **Rejected: waste-triggered only.** Only fires on call sites the profiler's 5 detectors flag; misses wins outside those detector categories.
 
-### First-match wins, no rule composition
+### Joint complete-plan selection, not independent routing and rewriting
 
-Rules are ranked by projected savings. In V1 first-match (`AGENTC_COMPOSE=0`) the first
-proposal to pass its safety check becomes the plan and the rest are skipped for that call.
+Enumerate target-plus-rewrite candidates and compare complete-plan profiles.
+This captures model--rewrite interactions directly and gives every observed
+outcome one causal plan identity. **Rejected: route first and then run the
+orthogonality composer.** It assumes that a router's fixed-request estimate and a
+rewrite's fixed-model estimate transfer to their combination. Keep this path as
+an evaluation baseline. **Rejected: infer joint safety from solo-rule budgets.**
+A compressed-and-routed request can fail even when each decision is benign alone.
 
-> **SUPERSEDED (2026-05, V2).** The "start with first-match and revisit" plan was revisited:
-> the `CompositionPlanner` now composes rules with **orthogonal cost drivers** in one
-> `Plan::Composed` (default, `AGENTC_COMPOSE=1`). The blast-radius/attribution concern below
-> is what motivated restricting composition to non-overlapping `Call` fields — *greedy*
-> cumulative-budget composition is still rejected, but orthogonal composition is not. This is
-> a headline V2 result; keep it. The original reasoning is retained for traceability:
->
-> *Composition (e.g., apply `ContextCompress` then `ModelDowngrade`) multiplies the accuracy
-> blast radius and makes divergence attribution ambiguous; a compressed-and-downgraded call
-> that produces a bad answer is hard to attribute.*
+### Empirical complete-plan profiles, not a learned predictor
 
-### Empirical cost model, not learned
+Retain the exact newest observations per call-site version and complete
+execution plan, and derive cost, latency, output-shape, and divergence summaries
+from that set. This makes drift response deterministic across process restarts
+while keeping the default state bounded to 50 samples per plan. The call-site
+aggregate remains reporting-only. **Rejected: unbounded Welford aggregates.**
+They cannot age out provider or workload drift or recover exact quantiles.
+**Rejected: mergeable exponential decay.** It makes the configured horizon
+approximate and complicates replay. **Rejected: a learned predictor before an
+empirical baseline.** It adds a training pipeline and opaque failure modes
+before the project has demonstrated that the joint opportunity exists.
 
-Retain the exact most recent `cost_model_window` observations per call site and
-derive mean, variance, p95, p99, and output-shape fractions from that set. This
-makes drift response deterministic across process restarts while keeping the
-default state bounded to 50 samples per site. **Rejected: unbounded Welford
-aggregates.** They are compact but cannot age out provider or workload drift or
-recover exact quantiles. **Rejected: mergeable exponential decay.** It is more
-compact but makes the configured window approximate and complicates replay.
-**Rejected: learned cost predictor.** It adds a training pipeline and opaque
-failure modes where direct empirical arithmetic suffices.
+### Complete-plan divergence contract
 
-### Per-rule accuracy budget with shadow mode
-
-Each rule has its own divergence budget (e.g., `ModelDowngrade = 0.03`). The
-optimizer retains the exact newest `divergence_window` samples and the raw
-consecutive-breach streak per `(call_site, rule)`, and persists both so restart
-boundaries reproduce the same estimator and disable decision. Shadow-mode
-sampling at 2% provides the ground truth. **Rejected: an unbounded Welford
-aggregate.** It cannot age out provider or workload drift. **Rejected:
-exponential decay.** It saves rows but makes the horizon approximate and exact
-restart replay harder to audit. **Rejected: volatile guard state.** A process
-restart would erase the evidence immediately before a disable. **Rejected:
-global accuracy budget.** A single budget muddles attribution—you cannot tell
-which rule burned the budget. **Rejected: pre-flight validator (cheap LLM
-re-checks the output).** It doubles latency on every call and contradicts the
-≤ 1 ms overhead goal.
+Attach evidence and disable state to `(call-site version, execution-plan ID)`.
+Initial exploration returns the reference result; ongoing sampled comparisons
+track drift after admission. Persist the exact window and exposure state so a
+restart cannot erase evidence immediately before fallback. **Rejected: charging
+a composed comparison to every constituent rule.** It fabricates causal evidence
+and can disable an innocent transformation. **Rejected: a global budget.** It
+muddles which plan consumed exposure. **Rejected: calling the divergence meter
+an accuracy oracle.** Task damage is available only in labeled evaluation.
 
 ### `CacheHit` as a rewrite rule, not a bypass
 
@@ -983,9 +1131,16 @@ The Rust optimizer computes `Plan`s and emits them as JSON. Python's executor is
 
 `ParallelBranch` and `StateDrop` need `DepSource` annotations that can't be reliably inferred from raw `messages`. Framework adapters supply them; framework-free users get the other three rules (`CacheHit`, `ContextCompress`, `ModelDowngrade`). This trades universal coverage for correctness — a `ParallelBranch` that fires on non-disjoint deps is a race condition, not a savings. **Rejected: heuristic provenance from message content overlap.** False positives on shared boilerplate (system prompts); false negatives on renamed fields. Requires tuning per-framework anyway.
 
-### Shadow-mode at 2%
+### Production counterfactual sampling at 2%
 
-2% sampling gives usable divergence confidence intervals within a single session for high-traffic call sites, while capping the shadow-execution cost overhead at 2% of total spend. **Rejected: 100% shadow during calibration.** Doubles spend during the window; prevents the savings from being realized. **Rejected: never shadow.** Without ground-truth divergence data, the accuracy budget can't be enforced.
+Use 2% as the frozen production operating point and measure its actual detection
+delay, retained savings, synchronous latency, false disables, and task damage.
+It is a cost setting, not an assertion that every session yields enough samples.
+Initial candidate calibration uses bounded reference-visible exploration rather
+than exposing an unadmitted result. **Rejected: extrapolating from 100%
+sampling.** Detection time changes by orders of magnitude. **Rejected: never
+sampling.** The runtime then has no direct signal for provider, model, or
+workload drift.
 
 ---
 
@@ -994,5 +1149,3 @@ The Rust optimizer computes `Plan`s and emits them as JSON. Python's executor is
 > **OPEN (avery, 2026-05-15):** Decide how to handle streaming LLM responses under the optimizer. `CacheHit` is trivial (replay the cached stream chunk-by-chunk). `ModelDowngrade` on a streaming call requires the downgrade target also supports streaming at the same chunking granularity. `ParallelBranch` interleaves streams from parallel calls, which the user's UI may or may not expect. Initial implementation disables the optimizer for streaming calls (`extra_headers={"agentc-optimize": "false"}` equivalent, applied automatically when `stream=True`); revisit when we have a streaming reference agent.
 
 > **OPEN (avery, 2026-05-15):** Resolve how `ContextCompress` interacts with vendor-side prompt caching (OpenAI's prefix caching, Anthropic's `cache_control`). Dropping tokens from a cached prefix invalidates the vendor cache and can cost more than it saves. Provisional behavior: `ContextCompress` is disabled when the `messages` list contains any `cache_control` marker; this is conservative and may leak savings. Needs a proper cost model term for "cached prefix length gained/lost per compression."
-
-> **OPEN (avery, 2026-05-15):** Decide the eviction policy for `call_site_profile` rows that haven't been touched in ≥ 7 days. Stale profiles can steer rewrites based on outdated behavior (e.g., a prompt template changed but the call_site_id didn't). Options: (1) time-decay the `n_observations` counter, (2) prune stale rows outright, (3) hash the prompt structure into `call_site_id` so template changes create a new site.

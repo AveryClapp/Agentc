@@ -10,6 +10,7 @@
 - Revision 6 freeze: 2026-09-03
 - Revision 7 freeze: 2026-09-03
 - Revision 8 freeze: 2026-09-03
+- Revision 9 freeze: 2026-09-03
 - Revision 2 record: [mlsys-2027-protocol-revision-2.json](mlsys-2027-protocol-revision-2.json)
 - Revision 3 record: [mlsys-2027-protocol-revision-3.json](mlsys-2027-protocol-revision-3.json)
 - Revision 4 record: [mlsys-2027-protocol-revision-4.json](mlsys-2027-protocol-revision-4.json)
@@ -17,6 +18,7 @@
 - Revision 6 record: [mlsys-2027-protocol-revision-6.json](mlsys-2027-protocol-revision-6.json)
 - Revision 7 record: [mlsys-2027-protocol-revision-7.json](mlsys-2027-protocol-revision-7.json)
 - Revision 8 record: [mlsys-2027-protocol-revision-8.json](mlsys-2027-protocol-revision-8.json)
+- Revision 9 record: [mlsys-2027-protocol-revision-9.json](mlsys-2027-protocol-revision-9.json)
 - Runtime baseline before this protocol: `4250a01`
 - Revision 2 runtime baseline: `27f896f`
 - Revision 3 runtime baseline: `6339d79`
@@ -25,6 +27,7 @@
 - Revision 6 runtime baseline: `f9a8f04`
 - Revision 7 runtime baseline: `d920357`
 - Revision 8 runtime baseline: `b73d703`
+- Revision 9 contract baseline: `75dcc97`
 - Target decision date: 2026-10-01
 - Target venue deadline: 2026-10-30 20:00 UTC
 
@@ -66,10 +69,20 @@ from an all-history summary to an exact bounded sample window and verified
 during Stage E0, before any Stage E1, C, P, or T execution or outcome
 inspection.
 
-Revisions 2 through 8 do not change the `agentc-mlsys2027-v1` split namespace,
-task membership, workloads, models, arms, outcomes, margins, inference,
-stopping rules, or gates. Their machine-readable revision records enumerate
-every runtime-contract change and the engineering evidence that triggered it.
+Revision 9 was issued after the thesis was narrowed from independent rewrite
+ranking to constrained joint model-and-rewrite execution planning, before any
+Stage E1, C, P, or T execution or outcome inspection. It changes the claim,
+planner contract, primary arms, telemetry, and competitive gate while retaining
+the frozen task universe, split membership, model pool, quality margins,
+statistical tests, and stopping rules. No previous experiment is evidence for
+the new joint-planning claim.
+
+Revisions 2 through 9 do not change the `agentc-mlsys2027-v1` split namespace,
+task membership, workloads, models, outcomes, margins, inference, or stopping
+rules. Revision 9 deliberately changes the arms and gates before
+calibration; its machine-readable record enumerates the change. Earlier
+revision records enumerate the runtime-contract changes and engineering
+evidence that triggered them.
 
 ## 1. Change control and blinding
 
@@ -98,15 +111,18 @@ contract executable, but may not change it silently.
 
 The admissible main-track claim is narrow:
 
-> Agentc is an application-side control plane that observes opaque provider
-> calls, recovers enough repeated-call structure to apply multiple conservative
-> semantic rewrites, abstains when its preconditions are absent, and limits
-> cumulative quality damage with sampled counterfactual execution—without
-> modifying workload source code or controlling the model server.
+> Agentc is an application-side execution planner that observes repeated opaque
+> provider calls, learns bounded per-call-site profiles for complete
+> model-and-rewrite plans, and selects the cheapest or fastest plan admitted by
+> explicit compatibility, evidence, divergence, freshness, and exposure
+> constraints—without modifying workload source code or controlling the model
+> server.
 
 The protocol does not test or permit a broad "first JIT optimizer for agents"
-claim. It also does not claim serving-layer scheduling, KV-cache management, or
-semantic preservation by construction.
+claim. It does not treat routing, compression, caching, or interception alone
+as novel. It also does not claim serving-layer scheduling, KV-cache management,
+semantic preservation by construction, or that output divergence is task
+quality.
 
 ### 2.1 Admissible integration boundary
 
@@ -266,6 +282,18 @@ All measured builds are release builds. Unless an arm states otherwise:
 - `hot_threshold=3` observations per semantic call site;
 - `cost_model_window=50`;
 - `divergence_window=50` exact newest samples per call-site/rule pair;
+- `plan_profile_window=50` exact newest observations per call-site-version and
+  complete execution-plan identity;
+- `min_plan_evidence=20` paired counterfactual observations before a
+  non-reference plan is eligible for user-visible selection;
+- `plan_profile_freshness=24h`;
+- cost-first selection, with positive expected net savings after validation,
+  retry, and optimizer overhead;
+- at most three semantic rewrites plus one target model per candidate;
+- at most 20 exploratory candidate calls per call site in 24 hours and one
+  concurrent counterfactual per call site;
+- divergence-exposure budget `1.0` per call-site-version and complete plan in a
+  24-hour window;
 - `max_overhead_ms=5`;
 - composition enabled;
 - normalized token-overlap shadow divergence;
@@ -408,16 +436,37 @@ Structural thresholds and transformations are exactly those in the code-freeze
 commit. A code change that modifies a gate, rewrite, ranking function, route,
 or composition result requires a protocol revision before Stage P.
 
+Revision 9 defines the complete execution plan as the target provider/model,
+ordered rewrite names and implementation versions, rewrite parameters, cache
+policy, output budget, and validation policy. The profile key is the pair of a
+versioned semantic call site and this canonical plan identity. Routing-only and
+rewrite-only observations do not populate the profile for their combination.
+The immutable reference plan is always a candidate and wins whenever every
+alternative is cold, stale, incompatible, non-finite, disabled, or projected to
+have non-positive net benefit.
+
+Initial plan exploration returns the reference result and executes at most one
+candidate counterfactual, so it spends inference budget without exposing an
+unadmitted result to the application. After admission, the selected plan is
+user-visible and the reference plan is sampled for drift detection. A changed
+call-site shape, tool schema, provider protocol, model version, or rewrite
+implementation version starts a cold profile.
+
 ### 6.1 Guard-threshold selection
 
-For each provider/model pair and destructive rule, Stage C evaluates normalized
-divergence thresholds `{0.05, 0.10, 0.15, 0.20, 0.30, 0.50}`. Select the
+For each provider/model pair and complete plan family, Stage C evaluates
+normalized divergence thresholds `{0.05, 0.10, 0.15, 0.20, 0.30, 0.50}`. Select the
 configuration with maximum retained net savings subject to calibration harmful-
 site detection of at least 90%, benign disable rate at most 5%, and the
 cumulative-damage budget in Section 11. Break ties by lower cumulative damage,
-then lower threshold. If no point qualifies, that rule is disabled for the
-benefit experiment and the guard gate fails for that pair; no threshold is
+then lower threshold. If no point qualifies, that plan family is disabled for
+the benefit experiment and the guard gate fails for that pair; no threshold is
 chosen from pilot or confirmatory outcomes.
+
+A plan is admitted only after at least 20 paired observations and when its
+one-sided conformal upper 95th-percentile divergence does not exceed the selected
+threshold. Complete-plan evidence is not synthesized from constituent model or
+rewrite profiles.
 
 ## 7. Frozen model and provider coverage
 
@@ -462,30 +511,38 @@ analysis and never rewrites the contemporaneous billed-cost result.
 
 ### 8.1 Primary arms
 
-1. `unmodified`: upstream agent without Agentc; measures absolute instrumentation
-   overhead against `trace_only`.
-2. `trace_only`: Agentc records calls but the optimizer is disabled. This is the
-   paired system baseline for all value comparisons.
-3. `all_on_guarded`: the benefit-eligible frozen rule set, composition enabled,
-   selected guard threshold, shadow rate 2%.
-4. `best_single_guarded`: the one rule selected on Stage C by maximum net cost
-   reduction subject to its quality margin.
-5. `naive_sequence_guarded`: every individually eligible rule applied in the
-   fixed order `CacheHit`, `ContextCompress`, `OutputBudget`,
-   `ModelDowngrade`, `StateDrop`, with no composition ranking; ineligible rules
-   are logged and skipped.
+1. `unmodified_fixed_strong`: upstream agent without Agentc on the strong model;
+   measures absolute instrumentation overhead against `trace_only_fixed_strong`.
+2. `trace_only_fixed_strong`: Agentc records calls but holds the original model
+   and request fixed. This is the paired system reference.
+3. `fixed_cheap`: the original request always uses the cheap model. This exposes
+   the quality floor and prevents selective routing from being compared only to
+   an expensive reference.
+4. `routing_only`: a model router selects from the frozen strong/cheap pool while
+   every semantic rewrite is disabled.
+5. `rewrite_only_fixed_strong`: Agentc selects semantic rewrites while the model
+   remains fixed to the strong target.
+6. `independent_route_then_rewrite`: the routing policy and the current
+   orthogonality composer are calibrated separately, then applied in that fixed
+   order without complete-plan interaction profiles.
+7. `joint_guarded`: Agentc profiles and selects complete target-plus-rewrite
+   plans under the frozen evidence, divergence, freshness, exploration, and
+   exposure constraints, with production counterfactual rate 2%.
 
-The main unified-system comparison is `all_on_guarded` against `trace_only`,
-`best_single_guarded`, and `naive_sequence_guarded`.
+The main system comparison is `joint_guarded` against the best admissible result
+among arms 1--6 at the workload's frozen non-inferiority margin. The interaction
+claim additionally requires direct wins over `routing_only`,
+`rewrite_only_fixed_strong`, and `independent_route_then_rewrite`.
 
 ### 8.2 Secondary ablations
 
-- each benefit-eligible rule alone;
-- leave-one-rule-out from `all_on_guarded`;
-- `all_on_guarded` with shadow rates `0`, `0.01`, `0.05`, `0.10`, and `1.0`
+- each benefit-eligible rule alone on each compatible fixed model;
+- leave-one-model and leave-one-rewrite-family out from `joint_guarded`;
+- `joint_guarded` with shadow rates `0`, `0.01`, `0.05`, `0.10`, and `1.0`
   for the safety experiment, not the primary value estimate;
 - cold-start and persisted-warm-state variants;
-- composition disabled (first-match planner).
+- complete-plan interaction profiles disabled, which reduces the planner to
+  `independent_route_then_rewrite`.
 
 Primary arms use five paired repetitions per task. Secondary ablations use
 three paired repetitions unless Stage C power analysis requires more; fewer is
@@ -553,8 +610,12 @@ Retain per task, arm, and repetition:
   wait, cold-start cost, steady-state overhead, and synchronous shadow latency;
 - per-rule eligibility, proposal, application, realized mutation, dispatch
   fallback, abstention reason, and natural fire rate;
-- chosen composition, rejected alternatives, projected savings, and realized
-  marginal savings of each pass.
+- versioned call-site ID, canonical execution-plan ID, requested and selected
+  model, exact ordered rewrites, profile evidence/freshness, selected objective,
+  and every candidate rejection reason;
+- chosen complete plan, rejected alternatives, projected and realized net
+  benefit, exploratory/counterfactual calls, divergence exposure, and realized
+  marginal savings of each model or rewrite decision.
 
 Aggregate over all assigned tasks (intention to treat), not only warm, eligible,
 successful, or rewritten calls. Report cold and warm strata in addition to the
@@ -583,11 +644,15 @@ aggregate.
 
 ## 11. Guard experiment and damage contract
 
-The guard is evaluated at shadow rates `{0, 0.01, 0.02, 0.05, 0.10, 1.0}` on:
+The plan-level guard is evaluated at shadow rates
+`{0, 0.01, 0.02, 0.05, 0.10, 1.0}` on:
 
 - naturally harmful rewrites observed without opening confirmatory aggregates;
-- at least 20 seeded harmful site-scenarios for each destructive claimed rule;
-- at least 20 benign meaning-preserving site-scenarios per destructive rule;
+- at least 20 seeded harmful site-scenarios for each destructive claimed
+  complete-plan family, including model--rewrite interactions whose constituents
+  are benign alone;
+- at least 20 benign meaning-preserving site-scenarios per destructive complete-
+  plan family;
 - provider errors, process restart, model-version drift, structured tool calls,
   and multimodal calls.
 
@@ -603,8 +668,8 @@ For normalized task quality `q` in `[0,1]`, cumulative damage at a call site is
 D_t = sum_{i <= t} max(0, q_baseline_i - q_rewritten_i).
 ```
 
-The operator damage budget is `D_max = 5.0` task-equivalent losses per
-`(call_site, rule)` in a 24-hour window. A site is caught in budget only if the
+The evaluation damage budget is `D_max = 5.0` task-equivalent losses per
+`(call-site version, execution plan)` in a 24-hour window. A site is caught in budget only if the
 disable decision is durable before `D_t > 5.0`. The production 2% point passes
 only if all of the following hold on held-out scenarios:
 
@@ -616,6 +681,13 @@ only if all of the following hold on held-out scenarios:
 - a restart neither erases accumulated evidence nor silently re-enables a rule;
 - sampled counterfactual cost and synchronous request latency are included, not
   described as microsecond bookkeeping overhead.
+
+The unlabeled runtime separately tracks sampled **divergence exposure**
+`E_t = sum(max(0, divergence_i - threshold))` and durably disables a complete
+plan when `E_t > 1.0` within 24 hours. This is an observable proxy contract, not
+a claim that Agentc sees task quality online. One composed-plan comparison
+updates one complete-plan guard; it is not copied into every constituent rule's
+causal history.
 
 The current five-consecutive-breach controller receives no exemption. With
 Bernoulli 2% sampling, even a rewrite that breaches on every shadow sample has
@@ -694,8 +766,9 @@ and raw-result digest.
 Stage P proceeds to confirmatory execution only if:
 
 1. all three workloads pass admission with unmodified upstream source;
-2. at least two workloads naturally apply two or more benefit-eligible
-   mechanisms after warmup;
+2. at least two workloads naturally admit more than one target-plus-rewrite
+   plan after warmup, with at least one non-additive model--rewrite interaction
+   measurable on calibration data;
 3. at least two pilot workloads show either at least 10% lower billed cost or
    at least 15% lower end-to-end latency without a point estimate beyond the
    non-inferiority margin;
@@ -710,7 +783,7 @@ package satisfies every row:
 | Gate | Pass condition |
 |---|---|
 | Natural usefulness | At least two of three workloads achieve at least 10% lower billed cost or 15% lower end-to-end latency, and their quality intervals clear the frozen margins. |
-| Multi-mechanism value | At least two independent rule families contribute held-out gain; `all_on_guarded` beats both `best_single_guarded` and `naive_sequence_guarded` on at least one primary efficiency outcome without a quality trade. |
+| Joint-planning value | In at least two workload/model cells, `joint_guarded` beats both `routing_only` and `rewrite_only_fixed_strong`; it also beats `independent_route_then_rewrite` on a primary efficiency outcome without crossing the quality margin. |
 | Safety at 2% | At least 90% harmful sites caught within `D_max=5.0`; benign disables at most 5%; at least 80% gross savings retained; restart and drift cases pass. |
 | Competitive position | At matched quality, Agentc beats a mechanism-matched baseline on a primary outcome in at least two workloads, or demonstrates a measured integration/composition capability that baseline cannot provide. |
 | Statistical validity | Frozen tasks, five paired primary repetitions, selection-disjoint calibration, intervals, multiplicity correction, and complete intention-to-treat results. |
@@ -727,6 +800,7 @@ No Stage C, P, or T result is admissible while its relevant blocker is open.
 | Bead | Blocked evidence |
 |---|---|
 | `bd-323l.5` | the broader compatibility/overhead matrix and additive-value experiment above native provider or serving optimizations remain incomplete; this blocks the competitive-position gate, not E1 interception of the frozen tau2/SWE-agent non-streaming paths. |
+| `bd-323l.6.1`--`bd-323l.6.7` | complete-plan identity, constrained selection, plan-specific persistent profiles, bounded exploration, model-catalog dispatch, plan-level guard attribution, diagnostics, and the joint baseline harness are not yet implemented; no Stage C, P, or T result can support the revision-9 thesis until the applicable children close. |
 | `bd-ez1k` | route-independent LiteLLM streaming is incomplete; this does not block the frozen non-streaming cells but blocks any framework-neutral streaming claim. |
 | `bd-8uxj` | shared helper call-site identity collapses distinct RAG stages; semantic call-site identity needs a general solution. |
 | `bd-3q3l` | the composition proxy destroys its own provenance tags and cannot validate provenance-dependent rewrites. |
@@ -814,3 +888,11 @@ response digests, scopes, and observation counts. The raw five-breach
 controller, 2% damage frontier, and durable-write overhead remain explicit
 blockers. The evidence is
 [divergence-window-preflight-2026-09-03.json](divergence-window-preflight-2026-09-03.json).
+
+Revision 9 freezes the result-independent joint-planning thesis and analysis
+before Stage E1. It adds no runtime capability and cites no new experimental
+evidence. The existing `ModelDowngrade`, rule composer, per-site aggregates, and
+per-rule guard are implementation baselines, not evidence that complete-plan
+profiling or interaction-aware selection works. Beads `bd-323l.6.1` through
+`bd-323l.6.7` track the executable contract, and the working decision record is
+[joint-execution-planning-contract.md](../../specs/working/joint-execution-planning-contract.md).

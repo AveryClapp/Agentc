@@ -1,12 +1,15 @@
 # Agentc MLSys 2027 staged evaluation protocol
 
 - Protocol: `agentc-mlsys2027-v1`
-- Revision: 2
+- Revision: 3
 - Initial freeze: 2026-09-03
 - Revision 2 freeze: 2026-09-03
-- Revision record: [mlsys-2027-protocol-revision-2.json](mlsys-2027-protocol-revision-2.json)
+- Revision 3 freeze: 2026-09-03
+- Revision 2 record: [mlsys-2027-protocol-revision-2.json](mlsys-2027-protocol-revision-2.json)
+- Revision 3 record: [mlsys-2027-protocol-revision-3.json](mlsys-2027-protocol-revision-3.json)
 - Runtime baseline before this protocol: `4250a01`
 - Revision 2 runtime baseline: `27f896f`
+- Revision 3 runtime baseline: `6339d79`
 - Target decision date: 2026-10-01
 - Target venue deadline: 2026-10-30 20:00 UTC
 
@@ -22,10 +25,14 @@ claim.
 
 Revision 2 was issued after request-shape and output-quantile defects were found
 during Stage E0, before any Stage C, P, or T execution or outcome inspection.
-It does not change the `agentc-mlsys2027-v1` split namespace, task membership,
-workloads, models, arms, outcomes, margins, inference, stopping rules, or gates.
-The machine-readable revision record enumerates every runtime-contract change
-and the engineering evidence that triggered it.
+
+Revision 3 was issued after actor-scope, LiteLLM-boundary, and storage-isolation
+defects were found during Stage E0, before any Stage E1, C, P, or T execution or
+outcome inspection. Revisions 2 and 3 do not change the
+`agentc-mlsys2027-v1` split namespace, task membership, workloads, models, arms,
+outcomes, margins, inference, stopping rules, or gates. Their machine-readable
+revision records enumerate every runtime-contract change and the engineering
+evidence that triggered it.
 
 ## 1. Change control and blinding
 
@@ -80,12 +87,18 @@ A workload is admissible only when all of these hold:
    blocks, cache-control markers, and streaming flags.
 4. Calls outside the evaluated agent—graders, user simulators, embedding
    services, judges, and environment services—are traced separately and are
-   ineligible for rewrites.
+   ineligible for rewrites. Eligibility comes from an explicit stable actor or
+   subsystem boundary, never a prompt, task, model, output, or ad hoc call-name
+   heuristic; low-cardinality eligible and excluded counts enter the manifest.
 5. Every call receives a stable semantic call-site identity. A shared helper is
    not sufficient when it collapses distinct agent stages into one profile.
 6. A pass-through conformance run demonstrates request equivalence at the
    provider boundary and identical task outcomes up to residual provider
    nondeterminism.
+7. `AGENTC_STORAGE_PATH` is set before Agentc is imported and names the same
+   fresh per-arm store passed to any programmatic initialization. The manifest
+   records the resolved Python and native store paths, and validation rejects a
+   mismatch or evidence of prior-arm warm state.
 
 Failure of any item blocks that workload. It does not authorize prompt
 engineering, a substitute in-repository proxy, or selecting a different
@@ -111,7 +124,9 @@ SWE-agent uses a per-instance model-cost ceiling of USD 2.00. Reaching the
 ceiling is a task failure, not an exclusion. Tau2's user simulator is fixed to
 `openai/gpt-4.1-mini-2025-04-14` and is never optimized. Environment and grader
 calls are included in end-to-end latency and monetary totals but broken out
-from eligible assistant calls.
+from eligible assistant calls. The tau2 integration assigns the stable scopes
+`tau2.evaluated_assistant` and `tau2.user_simulator`; only the former is
+eligible. Neither model identity nor request content selects that scope.
 
 The repository's `swebench_planner`, `long_context_qa`, `multirule_qa`,
 `rag_summarizer`, and other purpose-built agents remain mechanism tests. None is
@@ -175,7 +190,10 @@ provider drift and warm-cache order without choosing a favorable sequence.
 
 Mocked-provider runs, trace-shape inspection, one-task provider checks, guard
 simulation, and purpose-built agents are unlimited. They may find bugs and
-estimate spend. They are permanently labeled `paper_evidence=false`.
+estimate spend. They are permanently labeled `paper_evidence=false`. The
+frozen-workload LiteLLM admission bundle is an E0 call-shape screen, despite
+invoking real upstream Python call sites; its synthetic usage, cost estimate,
+latency, and activation sequence cannot select any Stage C setting.
 
 ### Stage E1: admission
 
@@ -216,6 +234,35 @@ All measured builds are release builds. Unless an arm states otherwise:
 - production shadow sampling rate `0.02`;
 - no manually authored provenance, support labels, task-specific rule hints,
   or hand-marked safe call sites.
+
+Revision 3 adds a context-local actor eligibility gate. Stable framework
+entrypoints may create a named scope with one Boolean rewrite decision; provider
+adapters trace every call and record the scope, eligibility, and decision
+reason. For the frozen tau2 text workload, Agentc wraps the unmodified imported
+`generate` aliases in `tau2.agent.llm_agent` and
+`tau2.user.user_simulator`. The evaluated-assistant alias is eligible and the
+user-simulator alias is not. An explicit `agentc-optimize: false` request header
+may only further opt a call out; it cannot opt an excluded scope in.
+
+Revision 3 also adds a LiteLLM logical-call seam for synchronous and
+asynchronous non-streaming `completion` calls. It is installed before provider
+SDK adapters, repairs tau2's known by-value completion alias, preserves
+unrelated native request objects, applies only supported mutated fields, and
+suppresses nested OpenAI or Anthropic adapters so one logical request produces
+one plan, observation, and provider span. Patch failure is fail-open and
+shutdown restores the exact prior module functions and known aliases.
+
+The frozen tau2 and SWE-agent paths are non-streaming. LiteLLM streaming still
+passes through to an available provider SDK stream adapter; a route without
+such an adapter lacks route-independent Agentc tracing. This is outside the
+required cells but blocks any framework-neutral LiteLLM streaming claim until
+`bd-ez1k` closes.
+
+Every Stage E1, C, P, or T launcher must export its fresh
+`AGENTC_STORAGE_PATH` before importing Agentc and pass the same path to
+`agentc.init` when using programmatic initialization. This is required even
+after `bd-hoer` closes. Until then, `bd-hoer` blocks Stage C because the public
+`storage_path` argument alone does not prove native cost-model isolation.
 
 Revision 2 adds a conservative provider-shape gate. When the string-only DAG
 cannot round-trip a native message exactly, the adapter marks the message list
@@ -499,6 +546,8 @@ Each run directory contains a manifest with:
   SDK version, request ID, date, model-catalog digest, and price-table digest;
 - arm, rule set, ordered rule configuration, guard configuration, task/repetition
   seed support, deterministic arm order, warm/cold state, and storage digest;
+- resolved Python and native storage paths plus per-scope eligible, excluded,
+  opt-out, planner, observation, and span counts;
 - raw per-call timing and usage, trace/span/call-site IDs, plan audit, mutations,
   abstentions, retries, errors, task result, and cost calculation;
 - hashes of request/response content plus replayable content wherever licenses
@@ -553,8 +602,9 @@ No Stage C, P, or T result is admissible while its relevant blocker is open.
 
 | Bead | Blocked evidence |
 |---|---|
-| `bd-323l.5` | tau2 and SWE-agent call `litellm.completion`; current OpenAI/Anthropic SDK patches do not intercept that boundary. |
-| `bd-xs37` | tau2's process-wide interception can optimize the user simulator as well as the evaluated assistant. |
+| `bd-323l.5` | the broader compatibility/overhead matrix and additive-value experiment above native provider or serving optimizations remain incomplete; this blocks the competitive-position gate, not E1 interception of the frozen tau2/SWE-agent non-streaming paths. |
+| `bd-hoer` | `agentc.init(storage_path=...)` alone can diverge from the native optimizer store; Stage C is blocked until the paths converge and a cross-store leakage regression passes. |
+| `bd-ez1k` | route-independent LiteLLM streaming is incomplete; this does not block the frozen non-streaming cells but blocks any framework-neutral streaming claim. |
 | `bd-8uxj` | shared helper call-site identity collapses distinct RAG stages; semantic call-site identity needs a general solution. |
 | `bd-3q3l` | the composition proxy destroys its own provenance tags and cannot validate provenance-dependent rewrites. |
 | `bd-vdj` | exact current model routes and snapshot pins are absent from runtime wiring. |
@@ -576,3 +626,14 @@ supporting non-paper artifacts are
 [osworld-request-preflight-2026-09-03.json](osworld-request-preflight-2026-09-03.json)
 and
 [output-quantile-preflight-2026-09-03.json](output-quantile-preflight-2026-09-03.json).
+
+Revision 3 retires the frozen non-streaming portions of `bd-6wzv` and
+`bd-xs37` at Stage E0 without admitting a workload at Stage E1. In two repeated
+no-network runs, frozen tau2 v1.0.1 produced eight eligible assistant calls,
+eight excluded simulator calls, eight plans and observations, and 16 successful
+scoped spans; frozen SWE-agent v1.1.0 produced one plan, observation, and span
+at its real `_single_query` call site. The semantic response digests, plan
+sequences, and scope reports repeated exactly across runs. The synthetic tau2
+sequence of three warmup pass-throughs followed by five `OutputBudget`
+activations is only an integration control. The evidence is
+[litellm-admission-preflight-2026-09-03.json](litellm-admission-preflight-2026-09-03.json).

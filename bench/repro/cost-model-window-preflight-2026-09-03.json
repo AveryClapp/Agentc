@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "experiment_kind": "bounded_cost_model_window_preflight_bundle",
+  "created_at_utc": "2026-09-03T19:18:23.900981+00:00",
+  "agentc_git_commit": "91e864c1829a1d283c446ed725bd655e13fe1488",
+  "runtime_change_commit": "cf7ac5774f40ed32099d72683ffee5fa9d21d2df",
+  "contract_sync_commit": "91e864c1829a1d283c446ed725bd655e13fe1488",
+  "paper_evidence": false,
+  "mocked_provider": false,
+  "network_calls": 0,
+  "verdict": {
+    "admission_passed": true,
+    "call_site_statistics_are_bounded": true,
+    "old_distribution_fully_aged_out": true,
+    "exact_window_persisted": true,
+    "restart_profile_equal": true,
+    "legacy_unbounded_profiles_restart_cold": true,
+    "post_snapshot_updates_remain_dirty": true,
+    "frozen_integration_semantics_preserved": true
+  },
+  "settings": {
+    "window": 50,
+    "old_distribution_observations": 50,
+    "new_distribution_observations": 50,
+    "old_value": 1000,
+    "new_value": 80,
+    "profile_snapshot_iterations_per_repetition": 200000,
+    "observation_iterations_per_repetition": 20000
+  },
+  "distribution_shift": {
+    "before": {
+      "lifetime_observations": 50,
+      "window_observations": 50,
+      "output_mean": 1000.0,
+      "output_p95": 1000.0,
+      "output_p99": 1000.0
+    },
+    "after": {
+      "lifetime_observations": 100,
+      "window_observations": 50,
+      "input_mean": 160.0,
+      "output_mean": 80.0,
+      "latency_mean_ms": 80.0,
+      "cost_mean_usd": 0.008,
+      "output_p95": 80.0,
+      "output_p99": 80.0,
+      "structured_fraction": 1.0,
+      "short_fraction": 1.0
+    },
+    "old_distribution_fully_aged_out": true,
+    "statistics_checked": [
+      "input_tokens_mean_and_variance",
+      "output_tokens_mean_and_variance",
+      "latency_mean_and_variance",
+      "cost_mean_and_variance",
+      "output_token_p95",
+      "output_token_p99",
+      "structured_fraction",
+      "short_fraction"
+    ]
+  },
+  "persistence": {
+    "lifetime_observations": 100,
+    "window_observations": 50,
+    "retained_rows": 50,
+    "reloaded_profiles": 1,
+    "restart_profile_equal": true,
+    "summary_and_samples_share_one_transaction": true,
+    "smaller_window_restart_test": "passed",
+    "legacy_migration_test": "passed",
+    "flush_observe_interleaving_test": "passed"
+  },
+  "rule_set_window": {
+    "in_process_retained_observations": 50,
+    "mean_savings_usd_after_shift": 0.01,
+    "old_distribution_fully_aged_out": true,
+    "restart_persistence_tested": false,
+    "restart_persistence_status": "not implemented; tracked by bd-zqeq"
+  },
+  "repeatability": {
+    "repetitions": 5,
+    "all_release_builds": true,
+    "all_runtime_commits_equal": true,
+    "all_correctness_payloads_equal": true,
+    "raw_run_sha256": [
+      "16c4d1c60e7e469a920223af7ee7c752634d922136a142913c2aa0b4d76bdce6",
+      "6c69752cd818c0c092e20b2fb66602f19dd5db253db3486c32e936ca285e8839",
+      "a0d92284aa42a611b7c0ffe21fd09b25a0c2d82112686ffd95690ed462715bd5",
+      "95a193f539da2f6eef0f8e0b1071bb240ab488ac05256231bd50db8c2c3187a5",
+      "b6d64a6ec53309a2b07e24c732321110c1a5acb017ae8fc5d6908ab42d47b596"
+    ],
+    "profile_snapshot_mean_ns_per_iteration": [
+      44.84021,
+      46.856665,
+      46.67333,
+      44.81729,
+      46.8375
+    ],
+    "window_observe_mean_ns_per_iteration": [
+      416.56875,
+      422.92705,
+      419.87085,
+      431.42915,
+      408.33125
+    ]
+  },
+  "microbenchmark_summary_ns": {
+    "profile_snapshot": {
+      "minimum": 44.81729,
+      "median": 46.67333,
+      "maximum": 46.856665
+    },
+    "window_observe": {
+      "minimum": 408.33125,
+      "median": 419.87085,
+      "maximum": 431.42915
+    }
+  },
+  "integration_regression": {
+    "tau2_v1.0.1": {
+      "upstream_commit": "fc0055dc4e0a316c3f83133267fbd6faaa770992",
+      "raw_run_sha256": "5df16e98701d93492ee628fa78e9df3824dd93c4ae8b4bf3fc4711f0993a9d2a",
+      "logical_calls": 16,
+      "eligible_assistant_calls": 8,
+      "excluded_user_simulator_calls": 8,
+      "plan_kind_counts": {
+        "pass_through": 3,
+        "rewritten": 5
+      },
+      "observation_calls": 8,
+      "response_digest": "ec409ae07e72e04510204ad2459af61640f8cbbba0a33fec14aae7b887c8b92d",
+      "semantic_fields_equal_to_pre_window_run": true,
+      "network_calls": 0
+    },
+    "sweagent_v1.1.0": {
+      "upstream_commit": "0f3acafacabc0def8cc76b4e48acb4b6cf302cb9",
+      "raw_run_sha256": "ec03baaa054f34d910e75da699683e0d268748d7ea6d37eb8935e36b87ddc673",
+      "logical_calls": 1,
+      "eligible_calls": 1,
+      "plan_kind_counts": {
+        "pass_through": 1
+      },
+      "observation_calls": 1,
+      "response_digest": "5916abb9726a202fdd2a7309083f3f1c92bae9d59002076ce79117e25954054d",
+      "semantic_fields_equal_to_pre_window_run": true,
+      "network_calls": 0
+    },
+    "same_process_storage_isolation": {
+      "raw_run_sha256": "16ff74e29b0c6b1a3efe543cbf5943b3ff05b0e64ea373d9d3c8434c08087770",
+      "store_a_plan_sequence": [
+        "pass_through",
+        "pass_through",
+        "pass_through",
+        "rewritten"
+      ],
+      "store_b_first_plan": "pass_through",
+      "python_native_paths_match": true,
+      "caller_environment_restored": true,
+      "decoy_store_created": false,
+      "network_calls": 0
+    }
+  },
+  "runtime": {
+    "platform": "macOS-26.5-arm64-arm-64bit",
+    "python": "3.12.9",
+    "rustc": "1.94.1 (e408947bf 2026-03-25)",
+    "cargo": "1.94.1 (29ea6fb6a 2026-03-24)",
+    "agentc_package": "0.1.0"
+  },
+  "source_digests_sha256": {
+    "crates/agentc-optimizer/src/cost_model.rs": "1e368cd949a90fd03d0d522aafd915aed9f9e5c6b7fdd3fa98c6500502f3df73",
+    "crates/agentc-optimizer/src/schema.rs": "d613b78964cf9055cbd96be4a98b470c40ea9cf121f04a54f59d5d34200e39f1",
+    "crates/agentc-optimizer/src/planner.rs": "970019a18efed16dd78464a5e207eb58f3018d126a3761ed7ab3e3bb03491460",
+    "crates/agentc-optimizer/src/reporting.rs": "c4dbe57f08c9ad2b59a944b8a2fff81db068be2d142aae1ea35e247cebe12d1a",
+    "crates/agentc-optimizer/src/wiring.rs": "3a4d8c1ed949c9d7516b12e6a06baceab35aac90eaa8f30aee288c1a4383375d",
+    "crates/agentc-profiler/src/lib.rs": "2c89ce3ed9b33a6059624ee978bf81c9d19e6f8d491397cd426b8a7a60f955ca",
+    "crates/agentc-optimizer/examples/cost_model_window_preflight.rs": "76e308087974d576a2d41796ee26aa601cd70f5dd84f61334ddc1a5a66d6848f",
+    "bench/litellm_admission_preflight.py": "64a00db558ac8f2cbdb0199145e8df76d478450d1f9570d852c40d9945dc4488",
+    "bench/storage_isolation_preflight.py": "c04022bc1483e28397ff22bcb3ea261eceec6e1086600bb37f613fb036703923"
+  },
+  "verification": {
+    "optimizer_tests": "194 passed",
+    "optimizer_clippy_warnings_denied": "passed",
+    "workspace_tests_excluding_profiler": "passed",
+    "profiler_cargo_check": "passed",
+    "profiler_clippy_warnings_denied": "passed",
+    "python_suite": "398 passed",
+    "release_preflight_repetitions": "5 passed",
+    "tau2_admission_preflight": "passed",
+    "sweagent_admission_preflight": "passed",
+    "storage_isolation_preflight": "passed"
+  },
+  "replay": {
+    "prerequisite": "Build Agentc commit 91e864c1829a1d283c446ed725bd655e13fe1488 in release mode.",
+    "window_command": "cargo run -q -p agentc-optimizer --release --example cost_model_window_preflight",
+    "storage_command": "python bench/storage_isolation_preflight.py --output /tmp/storage-isolation.json",
+    "tau2_command": "/path/to/tau2-v1.0.1/.venv/bin/python bench/litellm_admission_preflight.py --workload tau2 --upstream-root /path/to/tau2-v1.0.1 --turns 8 --output /tmp/tau2-admission.json",
+    "sweagent_command": "/path/to/swe-agent-v1.1.0/.venv/bin/python bench/litellm_admission_preflight.py --workload sweagent --upstream-root /path/to/swe-agent-v1.1.0 --output /tmp/sweagent-admission.json",
+    "network_requirement": "None. The window and storage runners call local runtime code directly; workload admission uses LiteLLM mock_response behind a socket guard."
+  },
+  "interpretation_limits": [
+    "This is Stage E0 engineering evidence, not a provider-backed or paper result.",
+    "The distribution shift is deterministic synthetic input and does not measure application quality, billed savings, or provider latency.",
+    "Microbenchmark timings are single-process wall-clock diagnostics, not a publication-grade latency or throughput result.",
+    "The optimizer planning path and SQLite flush throughput are not measured by the microbenchmark.",
+    "Rule-set savings statistics are bounded in process but are not restart-persistent; bd-zqeq tracks that separate gap.",
+    "The report's retained-sample cost window and wall-clock audit window remain semantically different; bd-6bon tracks that reporting gap."
+  ]
+}

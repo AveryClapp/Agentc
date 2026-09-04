@@ -1,9 +1,11 @@
 """Concurrency benchmark: latency and throughput under concurrent load.
 
-Tests §3.6 claim: the optimizer does not become a serialization point
-under concurrent load. Runs long_context_qa at 1×, 8×, and 32× concurrency
-with and without agentc optimization, and measures wall-clock time,
-per-task latency distributions (p50/p95/p99), QPS, and token savings.
+Measures provider-scale behavior for long_context_qa at 1×, 8×, and 32×
+concurrency with and without Agentc optimization: wall-clock time, per-task
+latency distributions (p50/p95/p99), QPS, and token savings. Remote latency can
+mask local optimizer contention, so this workload result must be interpreted
+alongside ``bench.optimizer_e2e_scaling`` rather than as proof that the
+optimizer has no serialization point.
 
 Usage:
     python -m bench.run_concurrency_bench
@@ -22,26 +24,23 @@ import csv
 import os
 import re
 import shutil
-import sqlite3
 import statistics
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "python"))
 
-from bench.optimizer_bench import _find_agentc_binary
+from bench.optimizer_bench import _find_agentc_binary  # noqa: E402
 
 PAPER_RESULTS = _REPO / "bench" / "paper_results"
 STORAGE_ROOT = Path("/tmp/agentc-concurrency-bench")
 AGENT_MODULE = "bench.agents.long_context_qa_concurrent"
 
-_TIMING_RE = re.compile(
-    r"^TIMING\s+(\S+)\s+([\d.]+)\s+(\d+)\s+(\d+)$", re.MULTILINE
-)
+_TIMING_RE = re.compile(r"^TIMING\s+(\S+)\s+([\d.]+)\s+(\d+)\s+(\d+)$", re.MULTILINE)
 _PASS_FAIL_RE = re.compile(r"^(PASS|FAIL)\s+(\S+)", re.MULTILINE)
 
 
@@ -120,10 +119,14 @@ def run_condition(
 
     agentc_bin = _find_agentc_binary()
     cmd = [
-        agentc_bin, "record",
-        "--storage-path", str(storage_dir),
+        agentc_bin,
+        "record",
+        "--storage-path",
+        str(storage_dir),
         "--",
-        sys.executable, "-m", AGENT_MODULE,
+        sys.executable,
+        "-m",
+        AGENT_MODULE,
     ]
 
     if verbose:
@@ -131,6 +134,7 @@ def run_condition(
         print(f"  {label} running {n_tasks} tasks...", end="", flush=True)
 
     import time
+
     t_start = time.perf_counter()
     proc = subprocess.run(cmd, env=env, capture_output=True, text=True, check=False)
     total_wall_s = time.perf_counter() - t_start
@@ -151,15 +155,17 @@ def run_condition(
     rows: list[TaskRow] = []
     for m in _TIMING_RE.finditer(proc.stdout):
         task_id = m.group(1)
-        rows.append(TaskRow(
-            concurrency=concurrency,
-            condition=condition,
-            task_id=task_id,
-            latency_s=float(m.group(2)),
-            prompt_tokens=int(m.group(3)),
-            completion_tokens=int(m.group(4)),
-            passed=pass_fail.get(task_id, 0),
-        ))
+        rows.append(
+            TaskRow(
+                concurrency=concurrency,
+                condition=condition,
+                task_id=task_id,
+                latency_s=float(m.group(2)),
+                prompt_tokens=int(m.group(3)),
+                completion_tokens=int(m.group(4)),
+                passed=pass_fail.get(task_id, 0),
+            )
+        )
 
     if verbose:
         n_passed = sum(r.passed for r in rows)
@@ -195,7 +201,8 @@ def compute_summary(
     mean_tokens = statistics.mean(tokens) if tokens else 0.0
     savings_pct = (
         100.0 * (baseline_mean_tokens - mean_tokens) / baseline_mean_tokens
-        if baseline_mean_tokens > 0 else 0.0
+        if baseline_mean_tokens > 0
+        else 0.0
     )
     stub_mode = int(not os.environ.get("OPENAI_API_KEY"))
     return ConditionSummary(
@@ -225,15 +232,22 @@ def main(argv: Optional[list[str]] = None) -> int:
         description="Latency and throughput under concurrent load (§3.6).",
     )
     p.add_argument(
-        "--concurrency", nargs="+", type=int, default=[1, 8, 32],
+        "--concurrency",
+        nargs="+",
+        type=int,
+        default=[1, 8, 32],
         help="Concurrency levels to test (default: 1 8 32)",
     )
     p.add_argument(
-        "--n-tasks", type=int, default=100,
+        "--n-tasks",
+        type=int,
+        default=100,
         help="Tasks per condition (default: 100)",
     )
     p.add_argument(
-        "--storage-root", type=Path, default=STORAGE_ROOT,
+        "--storage-root",
+        type=Path,
+        default=STORAGE_ROOT,
         help=f"Storage root for agentc DBs (default: {STORAGE_ROOT})",
     )
     args = p.parse_args(argv)
@@ -256,7 +270,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     for concurrency in args.concurrency:
         for condition in conditions:
             done += 1
-            print(f"\n[{done}/{total_conditions}] concurrency={concurrency} condition={condition}")
+            print(
+                f"\n[{done}/{total_conditions}] concurrency={concurrency} condition={condition}"
+            )
             storage_dir = args.storage_root / f"{condition}_{concurrency}x"
             rows, wall = run_condition(
                 concurrency=concurrency,
@@ -265,7 +281,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 storage_dir=storage_dir,
             )
             if not rows:
-                print(f"  WARNING: no TIMING lines parsed for {condition} {concurrency}x")
+                print(
+                    f"  WARNING: no TIMING lines parsed for {condition} {concurrency}x"
+                )
                 continue
 
             all_rows.extend(rows)
@@ -283,50 +301,67 @@ def main(argv: Optional[list[str]] = None) -> int:
     # Write detail CSV
     detail_path = PAPER_RESULTS / "concurrency_bench.csv"
     detail_fields = [
-        "concurrency", "condition", "task_id",
-        "latency_s", "prompt_tokens", "completion_tokens", "passed",
+        "concurrency",
+        "condition",
+        "task_id",
+        "latency_s",
+        "prompt_tokens",
+        "completion_tokens",
+        "passed",
     ]
     with detail_path.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=detail_fields)
         w.writeheader()
         for r in all_rows:
-            w.writerow({
-                "concurrency": r.concurrency,
-                "condition": r.condition,
-                "task_id": r.task_id,
-                "latency_s": r.latency_s,
-                "prompt_tokens": r.prompt_tokens,
-                "completion_tokens": r.completion_tokens,
-                "passed": r.passed,
-            })
+            w.writerow(
+                {
+                    "concurrency": r.concurrency,
+                    "condition": r.condition,
+                    "task_id": r.task_id,
+                    "latency_s": r.latency_s,
+                    "prompt_tokens": r.prompt_tokens,
+                    "completion_tokens": r.completion_tokens,
+                    "passed": r.passed,
+                }
+            )
     print(f"\nWrote {detail_path}")
 
     # Write summary CSV
     summary_path = PAPER_RESULTS / "concurrency_bench_summary.csv"
     summary_fields = [
-        "concurrency", "condition", "n_tasks", "n_passed",
-        "total_wall_s", "qps",
-        "p50_latency_s", "p95_latency_s", "p99_latency_s",
-        "mean_prompt_tokens", "token_savings_pct", "stub_mode",
+        "concurrency",
+        "condition",
+        "n_tasks",
+        "n_passed",
+        "total_wall_s",
+        "qps",
+        "p50_latency_s",
+        "p95_latency_s",
+        "p99_latency_s",
+        "mean_prompt_tokens",
+        "token_savings_pct",
+        "stub_mode",
     ]
     with summary_path.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=summary_fields)
         w.writeheader()
         for s in summaries:
-            w.writerow({
-                "concurrency": s.concurrency,
-                "condition": s.condition,
-                "n_tasks": s.n_tasks,
-                "n_passed": s.n_passed,
-                "total_wall_s": s.total_wall_s,
-                "qps": s.qps,
-                "p50_latency_s": s.p50_latency_s,
-                "p95_latency_s": s.p95_latency_s,
-                "p99_latency_s": s.p99_latency_s,
-                "mean_prompt_tokens": s.mean_prompt_tokens,
-                "token_savings_pct": s.token_savings_pct,
-                "stub_mode": s.stub_mode,
-            })
+            w.writerow(
+                {
+                    "concurrency": s.concurrency,
+                    "condition": s.condition,
+                    "n_tasks": s.n_tasks,
+                    "n_passed": s.n_passed,
+                    "total_wall_s": s.total_wall_s,
+                    "qps": s.qps,
+                    "p50_latency_s": s.p50_latency_s,
+                    "p95_latency_s": s.p95_latency_s,
+                    "p99_latency_s": s.p99_latency_s,
+                    "mean_prompt_tokens": s.mean_prompt_tokens,
+                    "token_savings_pct": s.token_savings_pct,
+                    "stub_mode": s.stub_mode,
+                }
+            )
     print(f"Wrote {summary_path}")
 
     # Print summary table

@@ -461,11 +461,14 @@ dispatcher that is independent of the optimizer's rule evaluation pipeline. For
 concurrent workloads, actual parallel dispatch is realized at the
 \texttt{agentc.parallel\_map} level via a \texttt{ThreadPoolExecutor} that runs
 the agent callback for each input item in parallel. The optimizer never manages
-threads or synchronization primitives; it observes the calls those threads emit
-and evaluates rules on each one independently.
+worker threads; it observes the calls those threads emit and evaluates rules on
+each one. Its in-memory profiles and guards are concurrency-safe, while each
+\texttt{plan\_audit} row is synchronously appended through one mutex-protected
+SQLite connection.
 
-This has three consequences. First, the optimizer cannot introduce race
-conditions: it holds no shared mutable state across concurrent calls. Second,
+This has three consequences. First, shared state is synchronized rather than
+absent: profile access remains concurrent, but audit persistence can queue callers
+under load (Section~\ref{sec:eval}). Second,
 \texttt{Plan::Parallel}, emitted by the ParallelBranch rule when a disjointness
 certificate is produced, is a bookkeeping artifact, not a scheduling directive.
 It records that the optimizer verified the paired calls are provenance-disjoint,
@@ -843,24 +846,33 @@ it is not an audit-only timer. These E0 measurements keep p99 below 1\,ms on the
 recorded host, but the frozen protocol excludes them from confirmatory latency
 claims.
 
-Separately, the historical internal-clock context-size sweep grows from
-0.33\,ms to 0.71\,ms at p50 over a 16$\times$ size range (4\,KB to 64\,KB); it
-does not measure the full FFI path. The flat overhead profile under concurrency
-is attributable to the execution-optimizer decoupling
-described in Section~\ref{sec:decoupling}: because the optimizer holds no shared
-mutable state across concurrent calls and never manages threads, it does not become
-a serialization point under parallel workloads. Figure~\ref{fig:throughput} confirms
-this end to end: across 1/8/32$\times$ concurrency, optimized throughput scales with
-baseline and optimized p50 latency stays at or below baseline.
+We next vary exact serialized call size (4, 8, 16, 32, and 64\,KiB) and
+concurrency (1, 8, and 32 callers) for both guarded-reference and admitted joint-
+rewrite paths: five randomized 1{,}024-call replications per cell, or 153{,}600
+complete calls. At one caller, p50 spans 0.108--0.135\,ms for reference selection
+and 0.128--0.253\,ms for an admitted rewrite. At 32 callers, those ranges become
+1.744--2.388\,ms and 2.070--2.853\,ms; pooled p99 reaches 14.6--41.4\,ms and
+23.7--46.1\,ms, respectively. Throughput improves only 1.35--1.69$\times$ for
+reference selection and 1.38--1.98$\times$ for rewriting relative to one caller
+on an eight-core Apple M2. The paired internal planner p99 remains at or below
+0.721\,ms at 32 callers, while the combined boundary/state/audit residual accounts
+for 94--97\% of mean complete-call time. This residual is not an audit-only clock,
+but the synchronous mutex-protected audit append is the known serialized operation
+in its scope. Two of 76{,}800 admitted-path calls (0.0026\%) safely fell back with
+\texttt{planning\_overhead\_exceeded}. These results expose a local persistence
+bottleneck; they remain single-machine Stage~E0 diagnostics rather than
+confirmatory latency evidence.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig7_overhead_scaling.pdf}
-\caption{Historical internal planner-clock diagnostic versus context length.
-p50 grows from 0.33\,ms to 0.71\,ms over a 16$\times$ size range
-(4\,KB to 64\,KB); p95 stays under 1.5\,ms throughout. This legacy
-clock excludes the outer FFI boundary and audit persistence. Its isolated
-8\,KB p99 tail therefore cannot be attributed to the audit write.}
+\caption{Complete-call latency for an admitted joint rewrite across exact
+serialized call sizes and concurrent callers (five randomized replications,
+5{,}120 calls per point; log scale). Sequential medians remain below 0.3\,ms,
+but the synchronous production path develops millisecond medians and
+10--50\,ms-scale p99 tails under contention. Stage~E0, one Apple M2 host, no
+provider calls; replication-level intervals and the guarded-reference control
+are retained in the artifact.}
 \label{fig:overhead}
 \end{figure}
 
@@ -873,9 +885,10 @@ latency CDFs. \textit{Center}: throughput (QPS) and token savings versus concurr
 \textit{Right}: optimized/baseline p50 and p99 latency ratio. Throughput scales with
 concurrency for both baseline and optimized (optimized QPS 1.35$\rightarrow$4.55
 $\rightarrow$8.92 across 1/8/32$\times$), and optimized p50 latency is at or below
-baseline at every level (ratio $\leq$1.0), confirming the optimizer does not become a
-serialization point under parallel load (Section~\ref{sec:decoupling}). Token savings
-persist under concurrency. The 8$\times$ QPS dip is single-run API variance at $n$=50.}
+baseline at every level (ratio $\leq$1.0). Token savings persist under concurrency,
+but remote provider latency masks the local contention isolated in
+Figure~\ref{fig:overhead}; this single-run $n$=50 experiment does not establish that
+the optimizer is free of serialization. The 8$\times$ QPS dip is API variance.}
 \label{fig:throughput}
 \end{figure*}
 
@@ -1957,9 +1970,11 @@ accuracy guard (Section~\ref{sec:eval-guard}). Input-token savings are within 1\
 three model providers (OpenAI, Anthropic, open-source Llama-3.3-70B) when structural
 preconditions are met. A CompositionPlanner grounded in cost-driver orthogonality
 combines compatible rules to near-additive savings (95.2\% of ideal for orthogonal
-pairs). A paired complete-call Stage~E0 diagnostic stays below 0.4\,ms at p99 on
-the recorded host; confirmatory context-size and concurrency measurements remain
-part of the frozen evaluation campaign. The methodology introduced here, comprising
+pairs). A paired fixed-shape Stage~E0 diagnostic stays below 0.4\,ms at p99, while
+a 153{,}600-call size/concurrency diagnostic exposes the synchronous audit append as
+a scalability target: 32-caller p50 is 1.7--2.9\,ms and p99 is 14.6--46.1\,ms on
+the recorded host. Confirmatory multi-host and provider-level latency measurements
+remain part of the frozen evaluation campaign. The methodology introduced here, comprising
 shared-baseline ablation,
 input-token attribution as a deterministic signal, and McNemar exact testing on
 per-task pass/fail vectors, addresses a general measurement problem for
@@ -2068,6 +2083,11 @@ Stage~E0 local diagnostic (no API; not paper evidence) &
 Optimizer complete-call overhead &
 \texttt{optimizer-e2e-overhead-2026-09-04.\{json,csv\}} (Stage~E0) &
 \texttt{python -m bench.optimizer\_\allowbreak e2e\_\allowbreak overhead} \\
+
+\addlinespace
+Optimizer size/concurrency scaling &
+\texttt{optimizer-e2e-scaling-2026-09-04.json} and \texttt{.csv.gz} (Stage~E0) &
+\texttt{python -m bench.optimizer\_\allowbreak e2e\_\allowbreak scaling} \\
 
 \addlinespace
 \ref{fig:throughput} &

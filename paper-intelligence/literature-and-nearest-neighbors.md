@@ -9,7 +9,9 @@ owner: paper-intelligence
 
 This is the authoritative literature map for AgentC. It merges the verified source blurbs, the conceptual related-work map, and the nearest-neighbor comparison.
 
-Routing is one subsection here. The paper-level frame is broader: **runtime optimization for compound AI / multi-step LLM agent traces**.
+Routing is one subsection here. The paper-level frame is narrower and more
+specific: **guarded, application-side joint routing and semantic rewriting for
+opaque multi-step LLM calls**.
 
 Supersedes:
 
@@ -31,9 +33,28 @@ Supersedes:
 
 ## High-Level Blurb
 
-The verified literature still supports the main framing: AgentC is best positioned as a runtime optimizer for compound AI / multi-step LLM agent traces, not as a paper about routing alone. Prior work already owns the individual tricks: routing, cascades, prompt compression, semantic caching, parallel tool execution, and serving optimization. AgentC's plausible contribution is the control layer: observing framework-emitted traces and applying multiple rewrite classes under one runtime policy.
+The verified literature supports a deliberately narrow framing: AgentC is an
+application-side control plane that profiles framework-emitted call sites online
+and jointly chooses model targets and semantic rewrites under abstention and a
+persistent damage contract. It is not a routing paper or a broad claim to the
+first agent runtime. Prior work already owns routing, cascades, prompt compression,
+semantic caching, parallel tool execution, workflow compilation, and serving
+optimization.
 
 The dangerous reviewer objection is now sharper: several systems already optimize compound AI or agent workflows, especially Agentix/Autellix, Halo, Murakkab, AIOS, Cognify, ApproxMLIR, AgentOpt, Agent JIT Compilation, Parrot, DSPy, LMQL, SGLang, LLMCompiler, LLM-Tool Compiler, and vCache. The 2026 additions eliminate broad novelty claims around transparent client-side interception, joint model/workflow configuration, accuracy-aware heterogeneous transformation, or the phrase "agent JIT" in isolation. The paper should instead say exactly what AgentC optimizes, where it intercepts, which online evidence is plan-specific, what risk contract gates execution, and how behavior is measured under stochasticity.
+
+The 2026-09-04 complete-call matrix adds a systems constraint to that positioning.
+AgentC's planner computation remains sub-millisecond at p99 under 32 callers, but
+its current synchronous audit path yields 14.6--46.1 ms complete-call p99 and only
+1.35--1.98x throughput scaling on an eight-core host. This does not make serving-
+layer systems direct substitutes: they still cannot choose AgentC's semantic
+rewrites over an opaque provider API. It does mean the application-side boundary
+is defensible only after its own observability path stops serializing requests.
+Agentix, Murakkab, Parrot, SGLang, and related systems set an end-to-end scaling
+bar, not merely a related-work paragraph. Treat audit batching/off-path durability
+and a post-fix frozen rerun as prerequisites for claiming a lightweight control
+plane. The result is recorded under `RES-013` in the evidence ledger and is
+diagnostic, not paper evidence.
 
 ## How To Use This File
 

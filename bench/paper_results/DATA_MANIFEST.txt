@@ -1,4 +1,4 @@
-Data Manifest -- generated 2026-05-17
+Data Manifest -- updated 2026-09-04
 Warmup-corrected harness: per-config isolated state; W warmup tasks populate
 cost_model.db, then traces/audit reset; N measurement tasks run against warm model.
 
@@ -97,6 +97,49 @@ fig6_composition_orthogonality.pdf
   Script: bench/paper_figures/fig6_composition_orthogonality.py
   Changes: MD+CC 95.6%->95.2%; CC+SD 65.3%->100.5% (additive, not sub-additive);
            table rows corrected: MD+CC (49.61/74.12/77.83 mUSD), CC+SD (32.54/32.78/32.60% tok)
+
+fig7_overhead_scaling.pdf
+  Script: bench/paper_figures/fig7_overhead_scaling.py
+  Source: bench/repro/optimizer-e2e-scaling-2026-09-04.json
+  Scope: admitted joint-rewrite complete-call p50/p99 by exact serialized size
+         (4/8/16/32/64 KiB) and concurrency (1/8/32); log scale
+  Status: Stage E0 diagnostic, paper_evidence=false
+
+============================================================
+STAGE E0 DIAGNOSTICS (reproducible, not confirmatory paper evidence)
+============================================================
+
+Complete optimizer call -- fixed shape
+  Summary: bench/repro/optimizer-e2e-overhead-2026-09-04.json
+  Raw:     bench/repro/optimizer-e2e-overhead-2026-09-04.csv
+  Script:  python -m bench.optimizer_e2e_overhead
+  Samples: 30,000 timed calls; five replications per path
+  Result:  reference p50/p99 99.958/164.750 us; admitted joint rewrite
+           115.000/307.209 us; legacy greedy rewrite 74.959/219.750 us
+  Boundary: release mode, single arm64 host, SQLite only, no provider/network;
+            paper_evidence=false
+
+Complete optimizer call -- size/concurrency matrix
+  Summary: bench/repro/optimizer-e2e-scaling-2026-09-04.json
+  Raw:     bench/repro/optimizer-e2e-scaling-2026-09-04.csv.gz
+  SHA256:  summary a069de8bfa6a5b2fdb294f6a0188b09c341d89969410027ae2fdb83063779249
+           raw a7b4419f6457d06fdfeba0de9fc1f96d1fda9f9b9b73efbd6916350fbdcc9d4b
+  Source:  git 994f9e85f6b20ce9ffc54542b39bd0caf4824fad (clean);
+           native 770e20b7d7bb2eb4bd65172af2f2f1869856298c36f35a2c2efc498c60e5cee8
+  Script:  python -m bench.optimizer_e2e_scaling
+  Samples: 153,600 timed calls; exact 4/8/16/32/64 KiB x C=1/8/32 x
+           reference/admitted-rewrite x five replications
+  Result:  C=1 p50 0.108--0.253 ms; C=32 p50 1.744--2.853 ms and
+           p99 14.620--46.122 ms; C=32 throughput speedup 1.35--1.98x.
+           Two of 76,800 admitted calls safely fell back at the 5 ms deadline.
+  Diagnosis: internal C=32 p99 <=0.721 ms; the combined boundary/state/audit
+             residual is 94--97% of mean. The synchronous audit mutex is the
+             known serialized operation but the residual is not audit-only.
+  Boundary: release mode, one eight-core Apple M2, synthetic calls, no
+            provider/network; paper_evidence=false; tail intervals are wide.
+
+The historical 1,818-row 76/120 us result measures the internal pre-audit clock.
+It is not complete-call overhead and must not be used as an end-to-end claim.
 
 ============================================================
 PENDING EDITORIAL (decisions for authors, not data gaps)

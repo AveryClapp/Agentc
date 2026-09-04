@@ -769,17 +769,21 @@ is visible rather than folded into main-path savings.
 
 ### Overhead budget
 
-The optimizer targets < 1 ms p99 per intercepted call. The `plan` path's work:
+The optimizer targets < 1.2 ms p99 for the complete `optimize_plan` call,
+including audit persistence, at every frozen 4--64 KiB and 1/8/32-caller
+matrix cell. The internal planner retains a < 1 ms p99 sub-budget. The complete
+call's target allocation is:
 
 | Step | Target | Notes |
 |---|---|---|
-| FFI boundary (JSON in) | 100 μs | 2-5 KB payload |
+| FFI boundary + state lookup | 100 μs | Measured outside the internal planner clock. |
 | Profile lookup | 50 μs | in-memory HashMap |
 | DAG context fetch (last 16 spans) | 300 μs | SQLite read, cached per-trace |
 | Rule applies + propose | 200 μs | 5 rules × 40 μs |
 | Ranking + safety checks | 100 μs | |
-| FFI boundary (JSON out) | 100 μs | |
-| **p99 total** | **≤ 1 ms** | |
+| Plan encoding + FFI return | 100 μs | |
+| Audit serialization + durability | 350 μs | Must not queue all callers behind one global writer. |
+| **complete-call p99 total** | **≤ 1.2 ms** | Every frozen size/concurrency cell. |
 
 `max_overhead_ms` (default 5 ms) is the kill switch over joint selection plus
 exploration reservation. Exploration uses a non-blocking cost-DB lock, so a
@@ -792,12 +796,21 @@ the lease eventually becomes abandoned and charged. This protects against
 pathological cases while keeping provider dispatch outside an over-budget
 decision.
 
+The 2026-09-04 release-mode Stage E0 matrix does not meet this target under
+contention. Sequential p50 is 0.108--0.253 ms, but 32-caller p50/p99 reaches
+1.74--2.85 ms/14.6--46.1 ms and throughput improves only 1.35--1.98× on an
+eight-core Apple M2. The internal pre-audit p99 remains at or below 0.721 ms;
+the combined boundary/state/audit residual accounts for 94--97% of mean time.
+The known global operation in that residual is the synchronous audit-DB mutex.
+The overhead acceptance gate therefore remains open until persistence no longer
+serializes callers and the frozen matrix is rerun.
+
 ### Persistent storage
 
 Two new DBs alongside `traces.db`:
 
 - **`cost_model.db`** — per-call-site rolling stats. Schema below.
-- **`optimizer_audit.db`** — a ring buffer of the last 10,000 plans (for `agentc optimize inspect`). Schema below.
+- **`optimizer_audit.db`** — an append-only plan log for `agentc optimize inspect`; an explicit maintenance call can prune it to 10,000 rows. Schema below.
 
 ```sql
 -- cost_model.db
@@ -1208,6 +1221,10 @@ A user's LLM call never fails because the optimizer failed.
   only the captured generation, so a concurrent post-snapshot sample remains
   dirty.
 - **Audit writes are synchronous and serialized** by a separate audit-DB mutex.
+  The 153,600-call Stage E0 matrix shows that this lock dominates complete-call
+  scaling: at 32 callers the paired residual outside the internal planner is
+  94--97% of mean latency. This is an acceptance blocker, not a concurrency
+  guarantee.
 - **Initial exploration runs in a background `asyncio.Task` or daemon thread.**
   The adapter schedules it only after the reference response is observed.
   **Post-admission shadow execution remains synchronous** in the provider
@@ -1320,6 +1337,7 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Tool-bearing requests never receive the text-only exploration comparator | `ffi::tests::tool_bearing_request_never_receives_a_text_only_counterfactual` |
 | An over-budget envelope is canceled before candidate dispatch without spending call capacity | `ffi::tests::over_budget_envelope_can_be_cancelled_before_candidate_dispatch`, `tests/test_live_exploration_preflight.py::test_zero_total_overhead_budget_never_dispatches_counterfactual` |
 | Every timed complete optimizer call pairs with exactly one WAL-backed audit row and native state resets on benchmark failure | `tests/test_optimizer_e2e_overhead.py` |
+| Concurrent complete-call samples pair to exact audit rows by span ID, preserve deadline fallbacks, and close the native writer before cross-driver WAL inspection | `tests/test_optimizer_e2e_scaling.py` |
 | OpenAI, Anthropic, and LiteLLM adapters return the reference before scheduling the candidate | `tests/test_openai_patch.py`, `tests/test_anthropic_patch.py`, `tests/test_litellm_patch.py` |
 | Sync and async candidate failure closes the lease without retrying the reference | `tests/test_optimizer_glue.py::TestBoundedExplorationPythonEntry` |
 | Async shutdown routes cancellation through the task's owning event loop | `tests/test_optimizer_glue.py::TestBoundedExplorationPythonEntry::test_cross_thread_async_cancel_is_scheduled_on_owning_loop` |
@@ -1390,6 +1408,18 @@ not audit-write latency. The committed release-mode record contains five
 samples beside it. It is a single-machine Stage E0 diagnostic and is permanently
 labeled `paper_evidence=false`.
 
+`bench/optimizer_e2e_scaling.py` extends that clock to a full factorial over
+exact 4/8/16/32/64 KiB serialized calls, 1/8/32 Python callers, and guarded-
+reference/admitted-joint-rewrite paths. Each timed call carries a span ID unique
+within its timed replication, so its outer duration pairs with the exact audit row despite concurrent
+completion order. Five randomized 1,024-call replications per cell produce
+153,600 measurements. The committed summary and gzip-compressed raw samples are
+`bench/repro/optimizer-e2e-scaling-2026-09-04.{json,csv.gz}`. Sequential p50 is
+0.108--0.253 ms across paths and sizes; at 32 callers p50 reaches 1.744--2.853
+ms, p99 reaches 14.620--46.122 ms, and throughput speedup is only 1.35--1.98×.
+Two admitted calls (0.0026%) fail open with `planning_overhead_exceeded`. The
+artifact is permanently labeled `paper_evidence=false`.
+
 ### Performance targets
 
 Plan benchmarks live in `bench/optimizer_bench.py`. The release-mode bounded
@@ -1401,15 +1431,18 @@ live joint-planner diagnostic above also remains Stage E0; its three recorded
 for a four-candidate search on the recorded arm64 development machine. The
 complete-call diagnostic had pooled p50/p99 of 99.958/164.750 us for guarded
 reference selection and 115.000/307.209 us for an admitted joint rewrite on the
-same class of host. These values include the WAL-backed audit write but do not
-replace the frozen campaign's end-to-end latency measurements.
+same class of host. The size/concurrency companion then shows 32-caller p99 of
+14.620--46.122 ms and only 1.35--1.98× throughput scaling. These diagnostics
+include the WAL-backed audit write but do not replace the frozen campaign's
+end-to-end latency measurements; the concurrency result currently fails the
+ship target.
 
 | Metric | Target | Measurement |
 |---|---|---|
-| p50 plan overhead (hot call) | < 0.5 ms | 5-rule optimizer, 100k-entry cache |
-| p99 plan overhead (hot call) | < 1.2 ms | Same |
-| p50 plan overhead (cold call) | < 100 μs | Profile lookup + early return |
-| p99 plan overhead (cold call) | < 300 μs | Same |
+| p50 complete-plan overhead (hot call) | < 0.5 ms | C=1, exact 4--64 KiB calls, audit included |
+| p99 complete-plan overhead (hot call) | < 1.2 ms | Every C=1/8/32 × 4--64 KiB cell, audit included |
+| p50 complete-plan overhead (cold call) | < 100 μs | C=1 profile lookup + early return, audit included |
+| p99 complete-plan overhead (cold call) | < 300 μs | Same |
 | Shadow-mode sample rate | 2% ± 0.3% | Bernoulli(0.02) over 10k calls |
 | Cost model write throughput | > 1000 observations/s | In-memory update; persistence measured separately |
 
@@ -1457,7 +1490,8 @@ The optimizer crate reaches `status: active` when:
   workload/model cells without crossing the predeclared quality margin.
 - Joint planning beats independently routed-then-rewritten execution on at
   least one primary efficiency outcome in those cells.
-- p99 plan overhead is within 1.2 ms on the reference hardware.
+- Complete-call p99, including audit persistence, is within 1.2 ms in every
+  frozen 4--64 KiB × C=1/8/32 cell on the reference hardware.
 - The plan-level guard meets the frozen 2% damage and false-disable gate.
 - Fail-open paths are exercised by fault-injection tests (`tests/fail_open.rs`).
 

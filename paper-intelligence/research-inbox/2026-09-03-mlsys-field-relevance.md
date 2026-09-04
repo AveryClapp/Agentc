@@ -1,7 +1,7 @@
 ---
 title: MLSys Field Relevance and Main-Track Readiness
 status: active
-last-updated: 2026-09-03
+last-updated: 2026-09-04
 owner: paper-intelligence
 ---
 
@@ -9,7 +9,7 @@ owner: paper-intelligence
 
 ## Scope and method
 
-This is a point-in-time assessment as of **2026-09-03**. It compares the current Agentc design, manuscript, presubmit state, venue roadmap, literature ledger, publishability assessment, and canonical data manifest against primary sources only: official proceedings and conference pages, original papers, and authors' official project repositories. Statements about what another system does are source-backed; statements about novelty, reviewer reaction, or the experiments Agentc should run are explicitly judgments.
+This is a point-in-time assessment as of **2026-09-04**. It compares the current Agentc design, manuscript, presubmit state, venue roadmap, literature ledger, publishability assessment, and canonical data manifest against primary sources only: official proceedings and conference pages, original papers, and authors' official project repositories. Statements about what another system does are source-backed; statements about novelty, reviewer reaction, or the experiments Agentc should run are explicitly judgments.
 
 The short answer is not “the field has moved on.” The field has moved *into* this problem, quickly and at high systems depth. That makes Agentc more topical and its current broad framing less defensible at the same time.
 
@@ -39,6 +39,30 @@ That is a useful and timely systems point **only if the paper demonstrates the d
 
 **Recommendation: conditional go for MLSys 2027, with an early kill gate.** Run a frozen, blind pilot on unengineered public agents immediately. Continue the main-track push only if at least two natural workloads show meaningful end-to-end benefit, with task-quality non-inferiority and a credible guard at its claimed production sampling rate. Otherwise stop expanding the compiler metaphor, submit a narrower safety/methodology paper elsewhere, and treat the runtime as an artifact rather than claiming a general optimizer.
 
+### Systems-evidence update: 2026-09-04
+
+The repository now has a complete-call size/concurrency diagnostic rather than
+only the historical internal planner clock. The release-mode full factorial
+contains 153,600 span-paired calls across exact 4--64 KiB payloads, 1/8/32
+callers, guarded-reference selection, and an admitted joint rewrite. Sequential
+p50 remains 0.108--0.253 ms, but at 32 callers p50 reaches 1.74--2.85 ms, p99
+reaches 14.6--46.1 ms, and throughput improves only 1.35--1.98x on an eight-core
+Apple M2. The internal planner p99 remains at or below 0.721 ms; 94--97% of mean
+complete-call time sits in the combined boundary/state/audit residual. The
+single mutex-protected synchronous audit connection is the known serialized
+operation in that scope. Two of 76,800 admitted calls (0.0026%) safely returned
+the reference after the 5 ms planning deadline elapsed.
+
+This is useful negative evidence: it closes the measurement gap and opens an
+implementation gap. It does not improve Agentc's MLSys verdict yet. A main-track
+runtime cannot claim scalable transparent interception while its mandatory
+per-call audit path creates 10--50 ms-scale tails under local contention. Batch
+or move audit persistence off-path, preserve crash-bounded observability, and
+rerun the same frozen matrix before treating overhead as a strength. The
+canonical files are
+`bench/repro/optimizer-e2e-scaling-2026-09-04.{json,csv.gz}` and remain explicitly
+`paper_evidence=false`.
+
 ## What the repository currently proves
 
 The repository contains a real runtime, not a paper-only proposal. Its differentiating implementation ingredients are SDK interception, a typed trace/IR, observe-before-act hotness, per-call-site empirical profiles, deterministic rewrite preconditions, a composition planner, fail-open behavior, and a sampled shadow-output circuit breaker. Those are a credible substrate.
@@ -54,6 +78,7 @@ The evidence, however, is much narrower than the abstract and contribution list 
 | ContextCompress + StateDrop, (n=30): 100.5% of additive token ideal, but StateDrop contributes only 0.06% alone | Same-driver rules need not interfere when they affect disjoint message subsets | A meaningful multi-rule gain or a general interference model |
 | Deliberately harmful StateDrop guard sweep | The implementation can observe output divergence, disable a rule, and sharply limit a constructed failure under dense shadowing | An “accuracy guarantee,” guard false-positive/false-negative rates, restart durability, semantic equivalence, or the claimed result at 2% sampling |
 | A handful of authors' agents and one unseen third-party integration | The interception path can operate outside the micro-fixtures and sometimes abstain correctly | Broad production prevalence, independent production deployment, diverse framework compatibility, or statistically powered generalization |
+| Complete-call size/concurrency matrix (153,600 local calls) | Sequential planning is cheap; exact audit pairing works under threads; the 5 ms deadline fails open | Scalable hot-path persistence: C=32 p99 reaches 46.1 ms and throughput gains at most 1.98x |
 
 There are also submission-blocking synchronization issues. The current `DATA_MANIFEST.txt`, generated 2026-05-17, lists `autogen_bridge` at (n=200) with 38.5% token savings, while `main.tex` reports (n=300) and two operating points at 23.5% and 14.0%. The manifest marks StateDrop precondition validation “IN PROGRESS,” while the manuscript reports 0/320 versus 116/320 behavior. This may simply mean the manuscript has newer runs, but the canonical data ledger and paper currently disagree. No reviewer should be asked to infer which is authoritative. At inspection time the presubmit file left every gate open; this assessment has since verified the target CFP, but the manuscript is still not in the MLSys format and the visible author block still violates double-blind submission requirements.
 
@@ -329,6 +354,7 @@ Proceed only if the blind package shows all of the following:
 - the full system beats best-single and naïve composition, rather than deriving nearly all benefit from one ContextCompress case;
 - at the actual 2% shadow rate, the guard limits harmful-rewrite damage to the declared budget with acceptable delay and benign-disable rate, while preserving most of the optimization benefit;
 - Agentc remains competitive with mechanism-matched baselines or demonstrates a clear deployment/combination advantage they do not offer;
+- the post-fix complete-call matrix meets its declared tail-latency target at every reported concurrency and no global persistence lock bounds throughput;
 - the result survives repeated trials, held-out analysis, and complete artifact replay.
 
 These numbers are go/no-go engineering thresholds, not claims about what MLSys formally requires.
@@ -370,6 +396,7 @@ The MLSys campaign is a **GO only if every row below passes on frozen, held-out 
 | Joint-planner value | On at least two unengineered workloads, the selected joint model-by-rewrite policy beats route-only, rewrite-only, the best static joint configuration, both sequential orders, and the current greedy planner at matched quality after charging search, exploration, and shadow costs; its selection-valid 95% lower bound on the primary benefit is positive, and at least one workload exhibits a held-out model/rewrite rank reversal or other material non-separability |
 | Safety at the advertised rate | At 2% sampling, at least 90% of injected harmful call sites are disabled before their predeclared cumulative damage budget; benign-rule disable rate is at most 5%; at least 80% of gross optimization savings remains after shadow cost |
 | Competitive position | At matched quality, Agentc beats AgentOpt or the relevant point-solution baseline on a primary outcome on at least two workloads, or demonstrates a measured integration/composition capability that the baseline cannot provide |
+| Runtime scalability | After removing the synchronous audit bottleneck, the frozen complete-call matrix meets the declared p99 bound at every reported concurrency and shows that no single global lock caps throughput |
 | Statistical validity | Primary results use disjoint calibration/test tasks, repeated paired trials or a justified power design, selection-aware analysis, and intervals—not “non-significant” single-run deltas |
 | Submission integrity | Manuscript, manifest, figures, prices, and raw outcomes agree; clean-clone replay works; the anonymous paper fits the official ten-page body |
 
@@ -406,7 +433,7 @@ Stop by the early-October gate if any of these remain true:
 
 The field has **surpassed the current broad story but not necessarily the constrained problem**. Agentc is relevant because existing agents increasingly run over opaque provider APIs and cannot all be ported into Parrot, SGLang, Murakkab, ApproxMLIR, or a custom serving engine. A safe application-side optimizer is a legitimate missing layer. But transparency alone is no longer enough after AgentOpt, and “JIT for agents” is no longer an ownable phrase after ICML 2026.
 
-The main-track path is to make the paper about a principled rewrite contract and prove it under natural traffic: evidence before rewrite, explicit abstention, interference-aware plan choice, sampled counterfactual validation, and bounded damage. The current implementation contains pieces of that system. The current evaluation does not yet prove the system matters broadly or that the guard works under the operating rate advertised in the abstract.
+The main-track path is to make the paper about a principled rewrite contract and prove it under natural traffic: evidence before rewrite, explicit abstention, interference-aware plan choice, sampled counterfactual validation, bounded damage, and a non-blocking observability path. The current implementation contains pieces of that system. The current evaluation does not yet prove the system matters broadly or that the guard works under the operating rate advertised in the abstract, and the new local matrix shows that audit persistence must be redesigned before scalability can be claimed.
 
 **Net: relevant, not obsolete; broad novelty surpassed; MLSys 2027 is a high-risk conditional go, contingent on blind real-workload evidence and a safety-centered reframing.**
 

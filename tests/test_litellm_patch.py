@@ -241,11 +241,16 @@ async def test_async_catalog_route_preserves_native_request_shape() -> None:
     plan = Plan(kind="rewritten", rule="ModelDowngrade", call=call)
     response = _response(target)
     wrapped = AsyncMock(return_value=response)
+    shadow = AsyncMock()
 
     with (
         patch("agentc._patches._litellm._write_root_span"),
         patch("agentc._patches._litellm._plan_call", return_value=(plan, "site")),
         patch("agentc._patches._litellm._observe"),
+        patch(
+            "agentc._patches._optimizer_glue.maybe_shadow_record_async",
+            new=shadow,
+        ),
     ):
         result = await _wrap_acompletion(wrapped, None, (), request)
 
@@ -258,6 +263,8 @@ async def test_async_catalog_route_preserves_native_request_shape() -> None:
     assert sent["max_tokens"] == 64
     assert plan.dispatch_fallback is False
     assert plan.executed_model_id == target
+    shadow.assert_awaited_once()
+    assert shadow.await_args.args[:3] == (plan, "site", response)
 
 
 @pytest.mark.asyncio

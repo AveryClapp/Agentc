@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -21,6 +21,7 @@ from agentc._patches._anthropic import (
     _extract_request_attrs,
     _extract_response_attrs,
     _wrap_create,
+    _wrap_create_async,
     _wrap_stream,
     patch as patch_anthropic,
     unpatch as unpatch_anthropic,
@@ -389,6 +390,47 @@ class TestSyncCreateWrapper:
         s = written[0]
         assert s["start_time"] > 0
         assert s["end_time"] >= s["start_time"]
+
+
+class TestAsyncCreateWrapper:
+    @pytest.mark.asyncio
+    async def test_native_anthropic_runs_async_shadow_guard(
+        self, initialized: Path
+    ) -> None:
+        from agentc._optimizer import Plan
+
+        plan = Plan(
+            kind="rewritten",
+            rule="OutputBudget",
+            call={"model": "claude-sonnet-4-20250514", "messages": []},
+        )
+        response = MockMessage()
+        shadow = AsyncMock()
+
+        with patch("agentc._patches._anthropic._write_root_span"), patch(
+            "agentc._patches._anthropic._plan_anthropic_call",
+            return_value=(plan, "site"),
+        ), patch(
+            "agentc._executor.dispatch",
+            new=AsyncMock(return_value=response),
+        ), patch(
+            "agentc._patches._optimizer_glue.maybe_shadow_record_async",
+            new=shadow,
+        ), patch("agentc._patches._anthropic._observe_anthropic_outcome"):
+            result = await _wrap_create_async(
+                AsyncMock(return_value=response),
+                None,
+                (),
+                {
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": 128,
+                    "messages": [],
+                },
+            )
+
+        assert result is response
+        shadow.assert_awaited_once()
+        assert shadow.await_args.args[:3] == (plan, "site", response)
 
 
 class TestSyncStreamWrapper:

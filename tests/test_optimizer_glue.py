@@ -21,6 +21,7 @@ from agentc._patches._optimizer_glue import (
     build_call_dict_openai,
     dispatch_sync,
     maybe_shadow_record,
+    maybe_shadow_record_async,
     resolve_executed_model_id,
 )
 from agentc._provenance import (
@@ -801,3 +802,103 @@ class TestShadowGuardPythonEntry:
         resp = self._resp("identical output text")
         maybe_shadow_record(self._plan(), "site", resp, run_original=lambda: resp)
         assert recorded == [("site", "ContextCompress", 0.0)]
+
+    @pytest.mark.asyncio
+    async def test_async_divergent_shadow_forwards_positive_divergence(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import agentc._optimizer
+
+        recorded: list[tuple[str, str, float]] = []
+        monkeypatch.setattr(
+            agentc._optimizer,
+            "record_divergence",
+            lambda site, rule, div: recorded.append((site, rule, div)),
+        )
+        monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "1.0")
+
+        async def run_original():
+            return self._resp("Photosynthesis converts sunlight in plants")
+
+        await maybe_shadow_record_async(
+            self._plan(),
+            "site",
+            self._resp("Paris is the capital of France"),
+            run_original,
+        )
+
+        assert len(recorded) == 1
+        site, rule, divergence = recorded[0]
+        assert (site, rule) == ("site", "ContextCompress")
+        assert divergence > 0.0
+
+    @pytest.mark.asyncio
+    async def test_async_fallback_never_replays_original(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        plan = self._plan()
+        plan.dispatch_fallback = True
+        monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "1.0")
+        original_calls = 0
+
+        async def run_original():
+            nonlocal original_calls
+            original_calls += 1
+            return self._resp("reference")
+
+        await maybe_shadow_record_async(
+            plan,
+            "site",
+            self._resp("reference"),
+            run_original,
+        )
+
+        assert original_calls == 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("rate", ["nan", "inf", "-inf", "not-a-number"])
+    async def test_invalid_rate_uses_bounded_default_for_sync_and_async(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        rate: str,
+    ) -> None:
+        monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", rate)
+        monkeypatch.setattr("random.random", lambda: 0.5)
+        sync_calls = 0
+        async_calls = 0
+
+        def run_sync():
+            nonlocal sync_calls
+            sync_calls += 1
+            return self._resp("reference")
+
+        async def run_async():
+            nonlocal async_calls
+            async_calls += 1
+            return self._resp("reference")
+
+        optimized = self._resp("optimized")
+        maybe_shadow_record(self._plan(), "site", optimized, run_sync)
+        await maybe_shadow_record_async(self._plan(), "site", optimized, run_async)
+
+        assert sync_calls == 0
+        assert async_calls == 0
+
+    @pytest.mark.asyncio
+    async def test_async_shadow_preserves_task_cancellation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import asyncio
+
+        monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "1.0")
+
+        async def cancelled():
+            raise asyncio.CancelledError
+
+        with pytest.raises(asyncio.CancelledError):
+            await maybe_shadow_record_async(
+                self._plan(),
+                "site",
+                self._resp("optimized"),
+                cancelled,
+            )

@@ -453,11 +453,18 @@ async def _wrap_acompletion(
             response = await run_original()
         else:
             from agentc._executor import dispatch
+            from agentc._patches._optimizer_glue import maybe_shadow_record_async
 
             response = await dispatch(
                 plan,
                 run_original=run_original,
                 run_mutated=run_mutated,
+            )
+            await maybe_shadow_record_async(
+                plan,
+                call_site_id,
+                response,
+                run_original,
             )
     except BaseException as exc:
         attrs["error.type"] = type(exc).__name__

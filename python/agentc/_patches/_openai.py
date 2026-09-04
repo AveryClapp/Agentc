@@ -663,7 +663,10 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
     try:
         if plan is not None:
             from agentc._executor import dispatch
-            from agentc._patches._optimizer_glue import apply_call_mutations_openai
+            from agentc._patches._optimizer_glue import (
+                apply_call_mutations_openai,
+                maybe_shadow_record_async,
+            )
 
             async def _run_original() -> Any:
                 return await wrapped(*args, **kwargs)
@@ -673,6 +676,12 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
                 return await wrapped(*args, **new_kwargs)
 
             response = await dispatch(plan, run_original=_run_original, run_mutated=_run_mutated)
+            await maybe_shadow_record_async(
+                plan,
+                call_site_id,
+                response,
+                _run_original,
+            )
         else:
             response = await wrapped(*args, **kwargs)
     except BaseException as exc:

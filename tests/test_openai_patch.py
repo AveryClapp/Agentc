@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -22,6 +22,7 @@ from agentc._patches._openai import (
     _extract_output_messages,
     _inject_stream_options,
     _wrap_create,
+    _wrap_create_async,
     patch as patch_openai,
     unpatch as unpatch_openai,
 )
@@ -313,6 +314,43 @@ class TestSyncCreateWrapper:
         span = written[0]
         assert "input_messages" in span
         assert "output_messages" in span
+
+
+class TestAsyncCreateWrapper:
+    @pytest.mark.asyncio
+    async def test_native_openai_runs_async_shadow_guard(
+        self, initialized: Path
+    ) -> None:
+        from agentc._optimizer import Plan
+
+        plan = Plan(
+            kind="rewritten",
+            rule="OutputBudget",
+            call={"model": "gpt-4o", "messages": []},
+        )
+        response = MockChatCompletion()
+        shadow = AsyncMock()
+
+        with patch("agentc._patches._openai._write_root_span"), patch(
+            "agentc._patches._openai._plan_openai_call",
+            return_value=(plan, "site"),
+        ), patch(
+            "agentc._executor.dispatch",
+            new=AsyncMock(return_value=response),
+        ), patch(
+            "agentc._patches._optimizer_glue.maybe_shadow_record_async",
+            new=shadow,
+        ), patch("agentc._patches._openai._observe_openai_outcome"):
+            result = await _wrap_create_async(
+                AsyncMock(return_value=response),
+                None,
+                (),
+                {"model": "gpt-4o", "messages": []},
+            )
+
+        assert result is response
+        shadow.assert_awaited_once()
+        assert shadow.await_args.args[:3] == (plan, "site", response)
 
 
 class TestStreamingWrapper:

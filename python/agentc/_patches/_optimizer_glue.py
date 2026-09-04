@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import sys
 from types import FrameType
-from typing import Any, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from agentc._degradation import log_degraded
 
@@ -1032,6 +1033,57 @@ def _applied_rules(plan: Any) -> list[str]:
     return []
 
 
+def _shadow_sample_rules(plan: Any, call_site_id: Optional[str]) -> list[str]:
+    """Return the rules to sample, or an empty list when sampling abstains."""
+    import os
+    import random
+
+    # A failed optimized dispatch already executed the exact reference request
+    # once as its user-visible fallback. Running another shadow reference would
+    # duplicate side effects and violate the exactly-once fallback contract.
+    if bool(getattr(plan, "dispatch_fallback", False)):
+        return []
+
+    rules = _applied_rules(plan)
+    if not rules or not call_site_id:
+        return []
+    try:
+        rate = float(os.environ.get("AGENTC_OPTIMIZE_SHADOW", "0.02"))
+    except (TypeError, ValueError):
+        rate = 0.02
+    if not math.isfinite(rate):
+        rate = 0.02
+    rate = min(max(rate, 0.0), 1.0)
+    if rate == 0.0 or random.random() >= rate:
+        return []
+    return rules
+
+
+def _record_shadow_comparison(
+    rules: list[str],
+    call_site_id: str,
+    optimized_response: Any,
+    original_response: Any,
+) -> None:
+    opt_text = _response_output_text(optimized_response)
+    orig_text = _response_output_text(original_response)
+    if opt_text is None or orig_text is None:
+        # Extraction failed on at least one side — we do NOT know the
+        # outputs, so feeding a divergence here would be a fabricated
+        # sample ("" vs real text scores as maximal divergence) that could
+        # auto-disable a working rule. Skip the sample (bd-kq7).
+        log_degraded(
+            "shadow_output_extraction_failed",
+            f"skipped shadow divergence sample for call_site={call_site_id}",
+        )
+        return
+    divergence = _text_divergence(opt_text, orig_text)
+    from agentc._optimizer import record_divergence
+
+    for rule in rules:
+        record_divergence(call_site_id, rule, divergence)
+
+
 def maybe_shadow_record(
     plan: Any,
     call_site_id: Optional[str],
@@ -1053,45 +1105,47 @@ def maybe_shadow_record(
     call's latency and cost to the user-visible request. Fail-open: it never
     raises, but it is not free and not off the request's critical path.
     """
-    import os
-    import random
-
-    # A failed optimized dispatch already executed the exact reference request
-    # once as its user-visible fallback. Running another shadow reference would
-    # duplicate side effects and violate the exactly-once fallback contract.
-    if bool(getattr(plan, "dispatch_fallback", False)):
-        return
-
-    rules = _applied_rules(plan)
-    if not rules or not call_site_id:
-        return
-    try:
-        rate = float(os.environ.get("AGENTC_OPTIMIZE_SHADOW", "0.02"))
-    except (TypeError, ValueError):
-        rate = 0.02
-    if rate <= 0.0 or random.random() >= rate:
+    rules = _shadow_sample_rules(plan, call_site_id)
+    if not rules or call_site_id is None:
         return
     try:
         original = run_original()
-        opt_text = _response_output_text(optimized_response)
-        orig_text = _response_output_text(original)
-        if opt_text is None or orig_text is None:
-            # Extraction failed on at least one side — we do NOT know the
-            # outputs, so feeding a divergence here would be a fabricated
-            # sample ("" vs real text scores as maximal divergence) that could
-            # auto-disable a working rule. Skip the sample (bd-kq7).
-            log_degraded(
-                "shadow_output_extraction_failed",
-                f"skipped shadow divergence sample for call_site={call_site_id}",
-            )
-            return
-        divergence = _text_divergence(opt_text, orig_text)
-        from agentc._optimizer import record_divergence
-
-        for rule in rules:
-            record_divergence(call_site_id, rule, divergence)
+        _record_shadow_comparison(
+            rules,
+            call_site_id,
+            optimized_response,
+            original,
+        )
     except BaseException:
         log.debug("shadow sample failed; dropping", exc_info=True)
+
+
+async def maybe_shadow_record_async(
+    plan: Any,
+    call_site_id: Optional[str],
+    optimized_response: Any,
+    run_original: Callable[[], Awaitable[Any]],
+) -> None:
+    """Async counterpart to :func:`maybe_shadow_record` with identical gates."""
+    import asyncio
+
+    rules = _shadow_sample_rules(plan, call_site_id)
+    if not rules or call_site_id is None:
+        return
+    try:
+        original = await run_original()
+        _record_shadow_comparison(
+            rules,
+            call_site_id,
+            optimized_response,
+            original,
+        )
+    except asyncio.CancelledError:
+        # Shadow work remains on the request's critical path. Preserve normal
+        # task cancellation rather than turning it into a successful response.
+        raise
+    except BaseException:
+        log.debug("async shadow sample failed; dropping", exc_info=True)
 
 
 def _mark_dispatch_fallback(plan: Any, reason: str) -> None:

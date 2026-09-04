@@ -23,9 +23,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::cost_model::{CostModel, CostModelUpdate};
 use crate::dag::{Call, DepSource, Outcome};
+use crate::diagnostics::{attach_planner_diagnostics, PlannerDecisionDiagnostics};
 use crate::execution_plan::{
     select_candidate, CachePolicy, CandidatePlan, ExecutionPlanSpec, PlanAdmission, PlanEstimate,
-    RewriteApplication, RewriteOrdering, SelectionPolicy, ValidationPolicy,
+    RewriteApplication, RewriteOrdering, ValidationPolicy,
     EXECUTION_PLAN_SCHEMA_VERSION,
 };
 use crate::exploration::{
@@ -204,7 +205,18 @@ pub fn optimize_profiled_plan(
             )
         };
         if started.elapsed().as_micros() > max_overhead_us {
-            return fallback();
+            let alternatives = Vec::new();
+            let policy = opt.config().selection_policy(now_us);
+            let selection = select_candidate(&reference, &alternatives, &policy);
+            let mut diagnostics = PlannerDecisionDiagnostics::from_selection(
+                opt.config(),
+                &reference_descriptor.context.key.call_site_version,
+                &reference,
+                &alternatives,
+                &selection,
+            );
+            diagnostics.force_fallback("planning_overhead_exceeded");
+            return attach_planner_diagnostics(fallback(), &diagnostics);
         }
 
         let reference_profile = plan_profiles.get(
@@ -264,28 +276,42 @@ pub fn optimize_profiled_plan(
             ));
             candidates.push(candidate);
             if started.elapsed().as_micros() > max_overhead_us {
-                return fallback();
+                let policy = opt.config().selection_policy(now_us);
+                let selection = select_candidate(&reference, &candidates, &policy);
+                let mut diagnostics = PlannerDecisionDiagnostics::from_selection(
+                    opt.config(),
+                    &reference_descriptor.context.key.call_site_version,
+                    &reference,
+                    &candidates,
+                    &selection,
+                );
+                diagnostics.force_fallback("planning_overhead_exceeded");
+                return attach_planner_diagnostics(fallback(), &diagnostics);
             }
         }
 
-        let selection = select_candidate(
+        let policy = opt.config().selection_policy(now_us);
+        let selection = select_candidate(&reference, &candidates, &policy);
+        let mut diagnostics = PlannerDecisionDiagnostics::from_selection(
+            opt.config(),
+            &reference_descriptor.context.key.call_site_version,
             &reference,
             &candidates,
-            &SelectionPolicy {
-                now_us,
-                divergence_exposure_budget: plan_guard.exposure_budget(),
-                ..SelectionPolicy::default()
-            },
+            &selection,
         );
         if selection.selected_reference || started.elapsed().as_micros() > max_overhead_us {
-            return fallback();
+            if started.elapsed().as_micros() > max_overhead_us {
+                diagnostics.force_fallback("planning_overhead_exceeded");
+            }
+            return attach_planner_diagnostics(fallback(), &diagnostics);
         }
         let selected_id = selection.selected.id.clone();
         let Some((_id, selected_plan, selected_context)) = executable
             .into_iter()
             .find(|(id, _, _)| *id == selected_id)
         else {
-            return fallback();
+            diagnostics.force_fallback("selected_plan_not_executable");
+            return attach_planner_diagnostics(fallback(), &diagnostics);
         };
         // Re-check immediately before exposure. A concurrent shadow result may
         // have disabled the plan after its admission snapshot was built.
@@ -293,11 +319,15 @@ pub fn optimize_profiled_plan(
             .decision(&selected_context.key, now_us)
             .blocks_user_visible()
         {
-            return fallback();
+            diagnostics.force_fallback("guard_changed_before_dispatch");
+            return attach_planner_diagnostics(fallback(), &diagnostics);
         }
         let plan_json =
             serde_json::to_string(&selected_plan).unwrap_or_else(|_| PASS_THROUGH_JSON.to_string());
-        encode_observation_context(plan_json, &selected_context)
+        attach_planner_diagnostics(
+            encode_observation_context(plan_json, &selected_context),
+            &diagnostics,
+        )
     }))
     .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
 }
@@ -1565,6 +1595,17 @@ mod tests {
             serde_json::from_str::<Plan>(&cold).unwrap(),
             Plan::PassThrough
         ));
+        let cold_diagnostics = crate::diagnostics::extract_planner_diagnostics(&cold)
+            .expect("cold joint decision diagnostics");
+        assert!(cold_diagnostics.selected_reference);
+        assert_eq!(
+            cold_diagnostics.fallback_reason.as_deref(),
+            Some("no_admissible_alternative")
+        );
+        assert!(cold_diagnostics
+            .candidates
+            .iter()
+            .all(|candidate| candidate.rejection_reason.as_deref() == Some("missing_estimate")));
 
         let plans = optimizer.candidate_plans(&call, &catalog);
         let joint_plan = plans
@@ -1650,6 +1691,14 @@ mod tests {
         }
         let selected_context = embedded_observation_context(&selected).unwrap().unwrap();
         assert_eq!(selected_context.key, joint_descriptor.context.key);
+        let diagnostics = crate::diagnostics::extract_planner_diagnostics(&selected)
+            .expect("selected joint decision diagnostics");
+        assert!(!diagnostics.selected_reference);
+        assert_eq!(diagnostics.selected_plan_id, joint_descriptor.context.key.execution_plan_id);
+        assert!(diagnostics
+            .candidates
+            .iter()
+            .any(|candidate| candidate.selected && candidate.evidence_confidence == 1.0));
     }
 
     #[test]

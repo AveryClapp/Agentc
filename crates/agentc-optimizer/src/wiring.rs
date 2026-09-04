@@ -25,8 +25,9 @@ use crate::budget::Budget;
 use crate::config::OptimizerConfig;
 use crate::cost_model::CostModel;
 use crate::dag::Call;
+use crate::exploration::ExplorationController;
 use crate::model_catalog::{default_model_catalog, ModelCatalog};
-use crate::plan_guard::PlanGuard;
+use crate::plan_guard::{PlanGuard, PLAN_DISABLE_COOLDOWN_US, PLAN_EXPOSURE_WINDOW_US};
 use crate::plan_profile::PlanProfiles;
 use crate::planner::{Optimizer, RewriteRule};
 use crate::rules::cache_hit::CacheKeyBuilder;
@@ -85,6 +86,7 @@ pub struct Wired {
     pub cost_model: Arc<CostModel>,
     pub plan_profiles: Arc<PlanProfiles>,
     pub plan_guard: Arc<PlanGuard>,
+    pub exploration_controller: ExplorationController,
     pub model_catalog: Arc<ModelCatalog>,
     pub budget: Arc<Budget>,
     /// Connection to `optimizer_audit.db`. The FFI layer wraps it in a
@@ -113,6 +115,9 @@ fn set_write_pragmas(conn: &Connection) -> Result<()> {
 /// where `@memoize` already writes — so a CacheHit served by the rule and
 /// a CacheHit served by `@memoize` look identical to a downstream reader.
 pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wired> {
+    config.validate().context("validate optimizer configuration")?;
+    let exploration_controller = ExplorationController::with_policy(config.exploration_policy())
+        .context("validate exploration configuration")?;
     std::fs::create_dir_all(storage_dir)
         .with_context(|| format!("create storage dir {:?}", storage_dir))?;
 
@@ -138,7 +143,14 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
         .flush_dirty(&mut cost_conn)
         .context("persist resized execution-plan windows")?;
 
-    let plan_guard = Arc::new(PlanGuard::new());
+    let plan_guard = Arc::new(
+        PlanGuard::with_limits(
+            config.divergence_exposure_budget,
+            PLAN_EXPOSURE_WINDOW_US,
+            PLAN_DISABLE_COOLDOWN_US,
+        )
+        .context("validate complete-plan guard configuration")?,
+    );
     let _ = plan_guard
         .warm_from_db(&cost_conn)
         .context("warm execution-plan guard")?;
@@ -247,6 +259,7 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
         cost_model,
         plan_profiles,
         plan_guard,
+        exploration_controller,
         model_catalog,
         budget,
         audit_conn,
@@ -281,6 +294,28 @@ mod tests {
                 .unwrap();
             assert_eq!(mode.to_lowercase(), "wal", "{name} must be WAL mode");
         }
+    }
+
+    #[test]
+    fn one_config_drives_guard_and_exploration_limits() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = OptimizerConfig {
+            min_plan_evidence: 7,
+            plan_profile_window: 10,
+            exploration_calls_per_site_24h: 9,
+            max_concurrent_counterfactuals: 2,
+            divergence_exposure_budget: 0.25,
+            evaluation_task_damage_budget: 2.0,
+            ..OptimizerConfig::default()
+        };
+        let wired = build_optimizer(dir.path(), config).unwrap();
+        assert_eq!(wired.plan_guard.exposure_budget(), 0.25);
+        let policy = wired.exploration_controller.policy();
+        assert_eq!(policy.evidence_target, 7);
+        assert_eq!(policy.max_calls_per_site, 9);
+        assert_eq!(policy.max_concurrent_per_site, 2);
+        assert_eq!(policy.divergence_exposure_budget, 0.25);
+        assert_eq!(policy.task_damage_budget, Some(2.0));
     }
 
     #[test]

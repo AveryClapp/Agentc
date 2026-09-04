@@ -17,6 +17,7 @@ pub mod config;
 pub mod cost_model;
 pub mod dag;
 pub mod dag_context;
+pub mod diagnostics;
 pub mod execution_plan;
 pub mod exploration;
 pub mod ffi;
@@ -33,10 +34,20 @@ pub mod wiring;
 pub use audit::{PlanAudit, PlanKind, RING_BUFFER_CAP};
 pub use budget::{Budget, BudgetEntry, DisabledEntry, SampleOutcome, BREACH_STREAK, COOLDOWN_US};
 pub use composition::{compose_proposals, enumerate_compatible_plans, CompositionResult};
-pub use config::OptimizerConfig;
+pub use config::{
+    OptimizerConfig, OptimizerConfigError, DEFAULT_EVALUATION_TASK_DAMAGE_BUDGET,
+    DEFAULT_MIN_PLAN_EVIDENCE, DEFAULT_PLAN_PROFILE_FRESHNESS_HOURS,
+    OSWORLD_NON_INFERIORITY_MARGIN, SWE_BENCH_NON_INFERIORITY_MARGIN,
+    TAU2_NON_INFERIORITY_MARGIN,
+};
 pub use cost_model::{CallSiteProfile, CostModel, CostModelUpdate, WelfordStats};
 pub use dag::{Call, DepSource, Message, Outcome, Parameters, Tool};
 pub use dag_context::{DagContextCache, DagSpan, DEFAULT_WINDOW, MAX_TRACES_CACHED};
+pub use diagnostics::{
+    attach_planner_diagnostics, extract_planner_diagnostics,
+    extract_planner_diagnostics_json, CandidateDecisionDiagnostic, PlannerDecisionDiagnostics,
+    PlannerRiskContract, PLANNER_DIAGNOSTICS_KEY, PLANNER_DIAGNOSTICS_SCHEMA_VERSION,
+};
 pub use execution_plan::{
     select_candidate, CachePolicy as ExecutionCachePolicy, CandidatePlan, CandidateRejection,
     CandidateRejectionReason, ExecutionPlanId, ExecutionPlanSpec, PlanAdmission, PlanEstimate,

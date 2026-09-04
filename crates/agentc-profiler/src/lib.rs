@@ -22,6 +22,7 @@ use agentc_optimizer::{
     build_optimizer,
     config::OptimizerConfig,
     cost_model::CostModel,
+    diagnostics::extract_planner_diagnostics_json,
     ffi::{
         complete_profiled_exploration as rust_complete_exploration,
         fail_embedded_exploration as rust_fail_embedded_exploration,
@@ -725,26 +726,18 @@ fn optimizer_slot() -> &'static RwLock<Option<Arc<OptimizerState>>> {
     OPTIMIZER.get_or_init(|| RwLock::new(None))
 }
 
-fn exploration_enabled_from_env() -> bool {
-    match std::env::var("AGENTC_OPTIMIZE_EXPLORATION") {
-        Ok(value) => !matches!(
-            value.trim().to_ascii_lowercase().as_str(),
-            "0" | "false" | "no" | "off"
-        ),
-        Err(_) => true,
-    }
-}
-
 fn build_optimizer_state(
     storage: std::path::PathBuf,
     config: OptimizerConfig,
 ) -> OptimizerState {
+    let exploration_enabled = config.exploration_enabled;
     match build_optimizer(&storage, config.clone()) {
         Ok(Wired {
             optimizer,
             cost_model,
             plan_profiles,
             plan_guard,
+            exploration_controller,
             model_catalog,
             budget,
             audit_conn,
@@ -760,8 +753,8 @@ fn build_optimizer_state(
                 plan_profiles,
                 plan_guard,
                 model_catalog: Some(model_catalog),
-                exploration_controller: ExplorationController::new(),
-                exploration_enabled: exploration_enabled_from_env(),
+                exploration_controller,
+                exploration_enabled,
                 budget,
                 audit: Some(Mutex::new(audit_conn)),
                 cost_db,
@@ -771,10 +764,14 @@ fn build_optimizer_state(
         }
         Err(e) => {
             eprintln!("[agentc-profiler] optimizer wiring failed: {e}");
+            let config = OptimizerConfig::safe_disabled(format!("optimizer wiring failed: {e}"));
             let cost_model = Arc::new(CostModel::with_window(config.cost_model_window));
             let plan_profiles = Arc::new(PlanProfiles::with_window(config.plan_profile_window));
             let plan_guard = Arc::new(PlanGuard::new());
             let budget = Arc::new(Budget::with_window(config.divergence_window));
+            let exploration_controller =
+                ExplorationController::with_policy(config.exploration_policy())
+                    .expect("safe disabled exploration configuration is valid");
             let optimizer = Arc::new(Optimizer::empty(cost_model.clone(), config));
             OptimizerState {
                 optimizer,
@@ -782,8 +779,8 @@ fn build_optimizer_state(
                 plan_profiles,
                 plan_guard,
                 model_catalog: default_model_catalog().ok().map(Arc::new),
-                exploration_controller: ExplorationController::new(),
-                exploration_enabled: exploration_enabled_from_env(),
+                exploration_controller,
+                exploration_enabled: false,
                 budget,
                 audit: None,
                 cost_db: None,
@@ -1073,6 +1070,7 @@ fn write_plan_audit(state: &OptimizerState, call_json: &str, plan_json: &str, ov
         Ok(p) => p,
         Err(_) => Plan::PassThrough,
     };
+    let planner_diagnostics_json = extract_planner_diagnostics_json(plan_json);
 
     let (plan_kind, rule, projected) = match &plan {
         Plan::PassThrough => (PlanKind::PassThrough, None, None),
@@ -1105,6 +1103,7 @@ fn write_plan_audit(state: &OptimizerState, call_json: &str, plan_json: &str, ov
         overhead_us,
         shadow_sampled: false,
         shadow_divergence: None,
+        planner_diagnostics_json,
     };
 
     let Ok(conn) = audit_mu.lock() else { return; };
@@ -1193,12 +1192,11 @@ fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) -> Stri
 ///
 /// The numeric threshold was resolved when the plan was returned and is bound
 /// into both its canonical identity and opaque observation token. Precedence at
-/// planning is `AGENTC_SHADOW_DIVERGENCE_BUDGET`, then the minimum declared
-/// budget among the plan's rules, then 0.05. The minimum is a plan-level policy;
-/// it does not propagate a composed outcome into constituent rule evidence.
-/// Non-finite and out-of-range divergence is discarded; an invalid threshold
-/// falls through to the next source. Never raises — the user-visible call has
-/// already returned.
+/// planning is the validated global divergence threshold, then the minimum
+/// declared budget among the plan's rules, then 0.05. The minimum is a
+/// plan-level policy; it does not propagate a composed outcome into constituent
+/// rule evidence. Non-finite and out-of-range divergence is discarded. Never
+/// raises — the user-visible call has already returned.
 fn unit_fraction_f32(value: f32) -> Option<f32> {
     (value.is_finite() && (0.0..=1.0).contains(&value)).then_some(value)
 }
@@ -1252,9 +1250,10 @@ fn apply_divergence_guards(
         return None;
     }
     let rule = attribution.solo_rule.as_deref()?;
-    let threshold = std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
-        .ok()
-        .and_then(|value| value.trim().parse::<f64>().ok())
+    let threshold = state
+        .optimizer
+        .config()
+        .global_divergence_threshold
         .and_then(unit_fraction_f64)
         .or_else(|| {
             state

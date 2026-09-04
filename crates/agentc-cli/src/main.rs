@@ -146,7 +146,7 @@ enum OptimizeCmd {
         #[arg(long, default_value = "~/.agentc")]
         storage_path: String,
     },
-    /// Per-call-site cost model + rule firing rates + accuracy status.
+    /// Per-call-site cost, rule, complete-plan, risk, and fallback diagnostics.
     Inspect {
         /// Target call_site_id.
         call_site: String,
@@ -1534,7 +1534,14 @@ fn cmd_optimize_inspect(call_site: String, storage_path: String) -> anyhow::Resu
     let storage_dir = resolve_storage_path(&storage_path);
     let cost = open_cost_model_db(&storage_dir)?;
     let audit = open_audit_db(&storage_dir)?;
-    match agentc_optimizer::build_inspect(&cost, &audit, &call_site, 50, now_us())? {
+    let config = agentc_optimizer::OptimizerConfig::from_env();
+    match agentc_optimizer::build_inspect(
+        &cost,
+        &audit,
+        &call_site,
+        config.cost_model_window,
+        now_us(),
+    )? {
         Some(inspect) => {
             print!("{}", agentc_optimizer::render_inspect(&inspect));
             Ok(())

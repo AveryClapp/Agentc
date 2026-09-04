@@ -15,7 +15,14 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write;
 
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
+
+use crate::config::{
+    OSWORLD_NON_INFERIORITY_MARGIN, SWE_BENCH_NON_INFERIORITY_MARGIN,
+    TAU2_NON_INFERIORITY_MARGIN,
+};
+use crate::diagnostics::PlannerDecisionDiagnostics;
+use crate::execution_plan::SelectionObjective;
 
 // =============================================================================
 // Report: `agentc optimize report [--window-hours N]`
@@ -296,6 +303,7 @@ pub struct CallSiteInspect {
     pub savings_fraction: f64,
     pub firing_rates: Vec<RuleFiringRate>,
     pub accuracy: AccuracyStatus,
+    pub planner_decision: Option<PlannerDecisionDiagnostics>,
 }
 
 pub fn build_inspect(
@@ -394,6 +402,7 @@ pub fn build_inspect(
     };
 
     let budget_remaining = divergence.map(|d| 0.01f64 - d); // CacheHit budget as a default display
+    let planner_decision = load_latest_planner_diagnostics(audit_conn, call_site_id)?;
 
     Ok(Some(CallSiteInspect {
         call_site_id: call_site_id.to_string(),
@@ -409,7 +418,25 @@ pub fn build_inspect(
             is_disabled: disabled.is_some(),
             reenable_at_us: disabled,
         },
+        planner_decision,
     }))
+}
+
+fn load_latest_planner_diagnostics(
+    conn: &Connection,
+    call_site_id: &str,
+) -> Result<Option<PlannerDecisionDiagnostics>> {
+    let raw = conn
+        .query_row(
+            "SELECT planner_diagnostics_json FROM plan_audit \
+             WHERE call_site_id = ?1 AND planner_diagnostics_json IS NOT NULL \
+             ORDER BY ts_us DESC, audit_id DESC LIMIT 1",
+            params![call_site_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .context("load latest planner diagnostics")?;
+    Ok(raw.and_then(|value| serde_json::from_str(&value).ok()))
 }
 
 fn load_max_divergence(conn: &Connection, call_site_id: &str) -> Result<Option<f64>> {
@@ -663,6 +690,162 @@ pub fn render_report(r: &OptimizerReport) -> String {
     out
 }
 
+fn render_planner_decision(out: &mut String, decision: &PlannerDecisionDiagnostics) {
+    let risk = &decision.risk;
+    let objective = match risk.objective {
+        SelectionObjective::Cost => "cost",
+        SelectionObjective::Latency => "latency",
+    };
+    let _ = writeln!(out, "    Objective             {objective}");
+    let _ = writeln!(
+        out,
+        "    Call-site version     {}",
+        decision.call_site_version,
+    );
+    let _ = writeln!(
+        out,
+        "    Evidence / freshness  {} paired / {:.1}h",
+        risk.min_paired_observations, risk.profile_freshness_hours
+    );
+    let _ = writeln!(
+        out,
+        "    Candidate search      at most {} semantic rewrites",
+        risk.max_rewrite_depth,
+    );
+    let _ = writeln!(
+        out,
+        "    Exploration           {} ({} calls/site/24h, {} concurrent)",
+        if risk.exploration_enabled {
+            "enabled"
+        } else {
+            "disabled"
+        },
+        risk.exploration_calls_per_site_24h,
+        risk.max_concurrent_counterfactuals,
+    );
+    match risk.global_divergence_threshold {
+        Some(threshold) => {
+            let _ = writeln!(
+                out,
+                "    Divergence contract   global threshold {threshold:.3}; exposure < {:.3}; shadow {:.1}%",
+                risk.divergence_exposure_budget,
+                f64::from(risk.shadow_rate) * 100.0,
+            );
+        }
+        None => {
+            let _ = writeln!(
+                out,
+                "    Divergence contract   threshold per plan; exposure < {:.3}; shadow {:.1}%",
+                risk.divergence_exposure_budget,
+                f64::from(risk.shadow_rate) * 100.0,
+            );
+        }
+    }
+    let _ = writeln!(
+        out,
+        "    Task-damage contract  D_max {:.1} (evaluation only; runtime has no task labels)",
+        risk.evaluation_task_damage_budget,
+    );
+    match risk.evaluation_non_inferiority_margin {
+        Some(margin) => {
+            let _ = writeln!(
+                out,
+                "    Non-inferiority       {margin:.3} (configured evaluation workload)",
+            );
+        }
+        None => {
+            let _ = writeln!(
+                out,
+                "    Non-inferiority       workload-specific: tau2 {TAU2_NON_INFERIORITY_MARGIN:.2}, \
+                 SWE-bench {SWE_BENCH_NON_INFERIORITY_MARGIN:.2}, OSWorld {OSWORLD_NON_INFERIORITY_MARGIN:.2}",
+            );
+        }
+    }
+    if let Some(error) = risk.configuration_error.as_deref() {
+        let _ = writeln!(out, "    Configuration         INVALID; optimization disabled ({error})");
+    }
+    let _ = writeln!(
+        out,
+        "    Selected plan         {} ({})",
+        decision.selected_plan_id,
+        if decision.selected_reference {
+            "reference"
+        } else {
+            "alternative"
+        },
+    );
+    let fallback = decision.fallback_reason.as_deref().unwrap_or("available");
+    let _ = writeln!(
+        out,
+        "    Safe fallback         {} ({fallback})",
+        decision.reference_plan_id,
+    );
+    let _ = writeln!(out, "    Selection reason      {}", decision.selection_reason);
+    let _ = writeln!(out, "    Candidates:");
+    if decision.candidates.is_empty() {
+        let _ = writeln!(out, "      (no non-reference candidate generated)");
+        return;
+    }
+    for candidate in &decision.candidates {
+        let status = if candidate.selected {
+            "selected"
+        } else if candidate.admissible {
+            "admissible"
+        } else {
+            "rejected"
+        };
+        let rewrites = if candidate.ordered_rewrites.is_empty() {
+            "none".to_string()
+        } else {
+            candidate.ordered_rewrites.join(" -> ")
+        };
+        let observations = candidate
+            .estimate
+            .as_ref()
+            .map(|estimate| estimate.paired_observations)
+            .unwrap_or(0);
+        let _ = writeln!(out, "      {}  [{status}]", candidate.plan_id);
+        let _ = writeln!(
+            out,
+            "        protocol={} target={}@{} rewrites={} evidence={}/{} confidence={:.2}",
+            candidate.provider_protocol,
+            candidate.target_model_id,
+            candidate
+                .target_model_revision
+                .as_deref()
+                .unwrap_or("unversioned"),
+            rewrites,
+            observations,
+            risk.min_paired_observations,
+            candidate.evidence_confidence,
+        );
+        match candidate.estimate.as_ref() {
+            Some(estimate) => {
+                let _ = writeln!(
+                    out,
+                    "        estimate cost=${:.6} latency={:.2}ms net_cost=${:.6} \
+                     net_latency={:.2}ms divergence_p95={:.3}",
+                    estimate.expected_cost_usd,
+                    estimate.expected_latency_ms,
+                    estimate.expected_net_cost_savings_usd,
+                    estimate.expected_net_latency_savings_ms,
+                    estimate.divergence_upper_p95,
+                );
+            }
+            None => {
+                let _ = writeln!(out, "        estimate unavailable");
+            }
+        }
+        let _ = writeln!(
+            out,
+            "        guard threshold={:.3} exposure={:.3}; decision={}",
+            candidate.divergence_threshold,
+            candidate.divergence_exposure,
+            candidate.rejection_reason.as_deref().unwrap_or(status),
+        );
+    }
+}
+
 pub fn render_inspect(i: &CallSiteInspect) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "Call site: {}", i.call_site_id);
@@ -719,7 +902,15 @@ pub fn render_inspect(i: &CallSiteInspect) -> String {
         }
     }
     let _ = writeln!(out);
-    let _ = writeln!(out, "  Accuracy:");
+    let _ = writeln!(out, "  Joint planner:");
+    match i.planner_decision.as_ref() {
+        Some(decision) => render_planner_decision(&mut out, decision),
+        None => {
+            let _ = writeln!(out, "    (no complete-plan decision recorded)");
+        }
+    }
+    let _ = writeln!(out);
+    let _ = writeln!(out, "  Divergence guard:");
     match i.accuracy.divergence {
         Some(d) => {
             let _ = writeln!(
@@ -811,6 +1002,7 @@ mod tests {
             overhead_us,
             shadow_sampled: false,
             shadow_divergence: None,
+            planner_diagnostics_json: None,
         }
     }
 
@@ -1231,6 +1423,7 @@ mod tests {
                 is_disabled: false,
                 reenable_at_us: None,
             },
+            planner_decision: None,
         };
         let s = render_inspect(&i);
         assert!(s.starts_with("Call site: app.agents.planner:plan_next_step\n"), "{s}");
@@ -1250,6 +1443,101 @@ mod tests {
     }
 
     #[test]
+    fn inspect_renders_latest_complete_plan_decision() {
+        let mut cost = fresh_cost();
+        let model = CostModel::new();
+        model.observe(CostModelUpdate {
+            call_site_id: "diagnostic.site".to_string(),
+            input_tokens: 100,
+            output_tokens: 20,
+            latency_ms: 40.0,
+            cost_usd: 0.02,
+            output_is_structured: false,
+            output_is_short: true,
+            now_us: Some(1),
+        });
+        model.flush_dirty(&mut cost).unwrap();
+
+        let diagnostics: PlannerDecisionDiagnostics = serde_json::from_value(serde_json::json!({
+            "schema_version": 1,
+            "call_site_version": "c".repeat(64),
+            "risk": {
+                "objective": "cost",
+                "min_paired_observations": 20,
+                "profile_freshness_hours": 24.0,
+                "max_rewrite_depth": 3,
+                "shadow_rate": 0.02,
+                "exploration_enabled": true,
+                "exploration_calls_per_site_24h": 20,
+                "max_concurrent_counterfactuals": 1,
+                "divergence_exposure_budget": 1.0,
+                "global_divergence_threshold": 0.05,
+                "evaluation_task_damage_budget": 5.0,
+                "evaluation_non_inferiority_margin": -0.03,
+                "task_quality_scope": "evaluation_only"
+            },
+            "reference_plan_id": "a".repeat(64),
+            "selected_plan_id": "b".repeat(64),
+            "selected_reference": false,
+            "selection_reason": "best_admissible_alternative",
+            "candidates": [{
+                "plan_id": "b".repeat(64),
+                "provider_protocol": "openai.chat.completions.v1",
+                "target_model_id": "cheap-v1",
+                "target_model_revision": "2026-09-04",
+                "ordered_rewrites": ["ContextCompress"],
+                "output_budget": 64,
+                "estimate": {
+                    "paired_observations": 20,
+                    "expected_cost_usd": 0.005,
+                    "expected_latency_ms": 25.0,
+                    "divergence_upper_p95": 0.04,
+                    "expected_net_cost_savings_usd": 0.014,
+                    "expected_net_latency_savings_ms": 14.0,
+                    "last_observed_at_us": 1
+                },
+                "evidence_confidence": 1.0,
+                "divergence_threshold": 0.05,
+                "divergence_exposure": 0.1,
+                "selected": true,
+                "admissible": true
+            }]
+        }))
+        .unwrap();
+        let mut row = audit(
+            2,
+            "diagnostic.site",
+            PlanKind::Composed,
+            Some("ContextCompress"),
+            Some(0.014),
+            100,
+        );
+        row.planner_diagnostics_json = Some(serde_json::to_string(&diagnostics).unwrap());
+        let mut audit_conn = fresh_audit();
+        insert_batch(&mut audit_conn, &[row]).unwrap();
+
+        let inspect = build_inspect(&cost, &audit_conn, "diagnostic.site", 50, 10)
+            .unwrap()
+            .unwrap();
+        assert_eq!(inspect.planner_decision, Some(diagnostics));
+        let rendered = render_inspect(&inspect);
+        for expected in [
+            "Objective             cost",
+            "Evidence / freshness  20 paired / 24.0h",
+            "Candidate search      at most 3 semantic rewrites",
+            "Divergence contract   global threshold 0.050",
+            "Task-damage contract  D_max 5.0 (evaluation only",
+            "Non-inferiority       -0.030",
+            "cheap-v1",
+            "ContextCompress",
+            "confidence=1.00",
+            "decision=selected",
+        ] {
+            assert!(rendered.contains(expected), "missing {expected:?} in:\n{rendered}");
+        }
+    }
+
+    #[test]
     fn render_inspect_marks_disabled_status() {
         let i = CallSiteInspect {
             call_site_id: "x".to_string(),
@@ -1265,6 +1553,7 @@ mod tests {
                 is_disabled: true,
                 reenable_at_us: Some(999),
             },
+            planner_decision: None,
         };
         let s = render_inspect(&i);
         assert!(s.contains("disabled"), "{s}");

@@ -171,7 +171,24 @@ Call site: app.agents.planner:plan_next_step
     ModelDowngrade      fires 31% of the time (to gpt-4o-mini)
     (others)            pass-through
 
-  Accuracy:
+  Joint planner:
+    Objective             cost
+    Evidence / freshness  20 paired / 24.0h
+    Candidate search      at most 3 semantic rewrites
+    Exploration           enabled (20 calls/site/24h, 1 concurrent)
+    Divergence contract   threshold per plan; exposure < 1.000; shadow 2.0%
+    Task-damage contract  D_max 5.0 (evaluation only; runtime has no task labels)
+    Non-inferiority       -0.030 (configured evaluation workload)
+    Selected plan         <execution-plan-id> (alternative)
+    Safe fallback         <reference-plan-id> (available)
+    Selection reason      best_admissible_alternative
+    Candidates:
+      <execution-plan-id>  [selected]
+        target=gpt-4o-mini rewrites=ContextCompress evidence=20/20 confidence=1.00
+        estimate cost=$0.009700 latency=410.00ms net_cost=$0.014400 net_latency=85.00ms divergence_p95=0.003
+        guard threshold=0.050 exposure=0.000; decision=selected
+
+  Divergence guard:
     Shadow divergence     0.3%
     Budget remaining      0.7%
     Status                healthy
@@ -191,7 +208,8 @@ Accuracy:     baseline 82.0% → optimized 81.2% (within budget)
 
 ### Configuration
 
-`agentc.toml`:
+Frozen configuration shape (loading this TOML representation is tracked in
+`bd-217q`; the implemented runtime interface is the environment table below):
 
 ```toml
 [optimizer]
@@ -211,6 +229,14 @@ max_rewrite_depth = 3
 exploration_calls_per_site_24h = 20
 max_concurrent_counterfactuals = 1
 divergence_exposure_budget = 1.0
+# Optional global override; omit to use the strictest threshold in each plan.
+# global_divergence_threshold = 0.03
+
+[optimizer.evaluation]
+# Evaluation-only: production has no task-quality label.
+task_damage_budget = 5.0
+# Workload-specific: tau2=-0.03, SWE-bench=-0.02, OSWorld=-0.02.
+non_inferiority_margin = -0.03
 
 [optimizer.accuracy_budget]
 # Maximum allowed shadow-mode divergence per rule, as a fraction.
@@ -247,10 +273,26 @@ Environment overrides:
 | `AGENTC_OPTIMIZE_PLAN_PROFILE_WINDOW=50` | Sets both independent exact windows: execution outcomes and paired divergences per call-site-version/plan pair. |
 | `AGENTC_OPTIMIZE_MIN_PLAN_EVIDENCE=20` | Sets the paired evidence floor for a non-reference plan. |
 | `AGENTC_OPTIMIZE_OBJECTIVE=cost` | Selects `cost` or `latency` minimization. |
+| `AGENTC_OPTIMIZE_PLAN_PROFILE_FRESHNESS_HOURS=24` | Rejects plans whose newest paired observation is older than this finite positive horizon. |
+| `AGENTC_OPTIMIZE_MAX_REWRITE_DEPTH=3` | Bounds each candidate to one through three semantic rewrites. |
 | `AGENTC_OPTIMIZE_MAX_OVERHEAD_MS=5` | Sets the plan kill-switch budget. |
 | `AGENTC_OPTIMIZE_EXPLORATION=0` | Disables initial off-path calibration. Exploration is enabled by default and issues real, billed candidate calls under the persisted site cap. |
+| `AGENTC_OPTIMIZE_EXPLORATION_CALLS_PER_SITE_24H=20` | Sets the positive rolling counterfactual call cap. |
+| `AGENTC_OPTIMIZE_MAX_CONCURRENT_COUNTERFACTUALS=1` | Sets the positive per-site live counterfactual cap. |
+| `AGENTC_OPTIMIZE_DIVERGENCE_EXPOSURE_BUDGET=1.0` | Sets the finite non-negative complete-plan exposure ceiling. |
+| `AGENTC_SHADOW_DIVERGENCE_BUDGET=0.03` | Sets an optional global finite output-divergence threshold in `[0,1]`; otherwise each plan uses its strictest constituent rule threshold. |
+| `AGENTC_OPTIMIZE_TASK_DAMAGE_BUDGET=5.0` | Sets the finite non-negative evaluation-only labeled task-damage ceiling. |
+| `AGENTC_OPTIMIZE_NON_INFERIORITY_MARGIN=-0.03` | Records the evaluation workload's finite quality margin in `[-1,0]`; it never changes unlabeled runtime admission. |
 | `AGENTC_OPTIMIZE_SHADOW=0.1` | Overrides `shadow_rate`. |
 | `AGENTC_COMPOSE=0` | Selects the independent first-match compatibility baseline; it is not a joint-planner mode. |
+
+Every planner-contract override listed above is parsed strictly and the complete
+configuration is validated as one contract. Non-finite values, out-of-range fractions, zero
+windows/caps, an evidence floor larger than its retained plan window, or an
+unknown objective disable both optimization and exploration for that process.
+The reference request still executes, and the configuration error is retained
+in planner diagnostics. The runtime never silently substitutes a default for a
+malformed operator value.
 
 ### Rust API
 
@@ -998,7 +1040,8 @@ CREATE TABLE IF NOT EXISTS plan_audit (
     measured_savings_usd  REAL,
     overhead_us           INTEGER NOT NULL,
     shadow_sampled        INTEGER NOT NULL DEFAULT 0,
-    shadow_divergence     REAL
+    shadow_divergence     REAL,
+    planner_diagnostics_json TEXT
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_audit_call_site ON plan_audit(call_site_id, ts_us DESC);
@@ -1032,6 +1075,13 @@ the rolling event window is pruned. `execution_plan_exploration` commits a
 reservation before dispatch, counts every attempted call, and keeps divergence
 exposure separate from optional labeled task damage. Expired reservations become
 `abandoned` and release concurrency without refunding spend.
+
+`planner_diagnostics_json` stores only content-free decision metadata: the
+resolved risk contract, reference and selected plan IDs, model/rewrite names,
+numeric estimates, confidence, admission state, and rejection reasons. Prompt
+and response content, native tool arguments, and credentials are excluded.
+Existing audit databases gain this nullable column idempotently; old rows remain
+valid and render as having no complete-plan decision recorded.
 
 `plan_audit` supports pruning to a 10,000-row cap through `audit::prune`.
 Pruning is an explicit maintenance operation; the runtime does not silently
@@ -1241,6 +1291,9 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | A resolved divergence threshold is identity-bearing and delayed feedback retains it | `ffi::tests::resolved_divergence_threshold_is_identity_bearing` |
 | Cost and latency objectives select the best admissible complete plan | `execution_plan::tests::selects_*` |
 | Missing, non-finite, stale, under-evidenced, or non-positive candidates abstain | `execution_plan::tests::rejects_*` |
+| Frozen selection, exploration, divergence, damage, and depth defaults share one validated config | `config::tests::default_matches_frozen_contract`, `config::tests::derived_policies_share_one_risk_contract` |
+| Non-finite/out-of-range config is rejected and malformed environment input disables optimization plus exploration | `config::tests::every_numeric_boundary_is_validated`, `config::tests::malformed_environment_fails_safe_instead_of_using_a_default` |
+| Inspect persists and renders every candidate estimate, confidence, rejection, selected plan, and immutable fallback | `diagnostics::tests::diagnostics_explain_selection_and_rejection_without_content`, `reporting::tests::inspect_renders_latest_complete_plan_decision`, `ffi::tests::live_profiled_path_selects_only_the_exact_evidenced_joint_plan` |
 | Reference, routing-only, rewrite-only, and joint evidence stay isolated | `plan_profile::tests::complete_plan_evidence_is_not_synthesized` |
 | Complete-plan windows survive restart and continue exact eviction | `plan_profile::tests::exact_window_survives_restart_and_continues_eviction` |
 | A 2% shadow rate can retain the 20-pair floor independently of 1,000 executions | `plan_profile::tests::paired_window_remains_usable_at_two_percent_sampling` |

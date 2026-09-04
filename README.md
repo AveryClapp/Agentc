@@ -141,6 +141,13 @@ provider cost; set `AGENTC_OPTIMIZE_EXPLORATION=0` and
 `AGENTC_OPTIMIZE_SHADOW=0` when no additional calls are acceptable. Spec:
 [specs/optimizer.md](specs/optimizer.md).
 
+Selection is cost-first by default; set `AGENTC_OPTIMIZE_OBJECTIVE=latency` for
+latency-first selection. `agentc optimize inspect <call_site>` shows the exact
+objective and risk limits used by the latest decision, the selected and fallback
+plan IDs, and every candidate's evidence, estimate, guard state, and rejection
+reason. Invalid optimizer environment values disable optimization and paid
+exploration for the process instead of silently reverting to another policy.
+
 ---
 
 ## Quick Start
@@ -168,8 +175,8 @@ agentc report --last 20               # aggregate across runs
 Inspect the optimizer:
 
 ```bash
-agentc optimize report                # rule firing rates, savings, accuracy
-agentc optimize inspect <call_site>   # cost model + ablation status per call site
+agentc optimize report                # rule firing rates, projected savings, divergence
+agentc optimize inspect <call_site>   # candidate estimates, constraints, decision + fallback
 agentc optimize disable --rule ModelDowngrade --call-site 'app.*' --hours 24
 agentc optimize bench --agent path/to/agent.py
 ```

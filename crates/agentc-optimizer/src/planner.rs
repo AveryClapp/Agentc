@@ -230,13 +230,11 @@ impl Optimizer {
 
     /// Resolve the complete plan's divergence threshold once, before its
     /// identity and profile key are constructed. An explicit calibrated
-    /// environment value wins; otherwise the strictest constituent rule
+    /// configuration value wins; otherwise the strictest constituent rule
     /// budget applies to this complete plan only.
     pub fn divergence_threshold_for_plan(&self, plan: &Plan) -> f64 {
-        std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
-            .ok()
-            .and_then(|value| value.trim().parse::<f64>().ok())
-            .filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
+        self.config
+            .global_divergence_threshold
             .or_else(|| {
                 plan.rule_names()
                     .iter()
@@ -308,7 +306,7 @@ impl Optimizer {
         semantic_plans.extend(crate::composition::enumerate_compatible_plans(
             proposals,
             call,
-            MAX_JOINT_REWRITE_DEPTH,
+            self.config.max_rewrite_depth,
         ));
 
         let requirements = RequestRequirements::from_call(call);
@@ -874,6 +872,55 @@ mod tests {
             }
             other => panic!("expected parameter-only rewrite, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn configured_rewrite_depth_bounds_joint_candidate_enumeration() {
+        let cm = Arc::new(CostModel::new());
+        observe(&cm, "depth-site", 10);
+        let optimizer = Optimizer::new(
+            cm,
+            vec![
+                Box::new(DropFirstMessage),
+                Box::new(AlwaysFires { savings: 0.5 }),
+            ],
+            OptimizerConfig {
+                max_rewrite_depth: 1,
+                ..OptimizerConfig::default()
+            },
+        );
+        let catalog = default_model_catalog().unwrap();
+        let mut call = sample_call("depth-site");
+        call.messages.push(Message {
+            role: "user".to_string(),
+            content: "second".to_string(),
+        });
+
+        let plans = optimizer.candidate_plans(&call, &catalog);
+        assert!(plans
+            .iter()
+            .all(|plan| !matches!(plan, Plan::Composed { rules, .. } if rules.len() > 1)));
+        assert!(plans
+            .iter()
+            .any(|plan| matches!(plan, Plan::Rewritten { .. })));
+    }
+
+    #[test]
+    fn configured_global_divergence_threshold_overrides_rule_budget() {
+        let optimizer = Optimizer::new(
+            Arc::new(CostModel::new()),
+            vec![Box::new(AlwaysFires { savings: 0.5 })],
+            OptimizerConfig {
+                global_divergence_threshold: Some(0.25),
+                ..OptimizerConfig::default()
+            },
+        );
+        let plan = Plan::Rewritten {
+            rule: "AlwaysFires".to_string(),
+            call: sample_call("threshold-site"),
+            projected_savings_usd: 0.5,
+        };
+        assert_eq!(optimizer.divergence_threshold_for_plan(&plan), 0.25);
     }
 
     #[test]

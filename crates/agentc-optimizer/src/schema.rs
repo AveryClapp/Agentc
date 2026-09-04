@@ -277,7 +277,8 @@ CREATE TABLE IF NOT EXISTS plan_audit (
     measured_savings_usd  REAL,
     overhead_us           INTEGER NOT NULL,
     shadow_sampled        INTEGER NOT NULL DEFAULT 0,
-    shadow_divergence     REAL
+    shadow_divergence     REAL,
+    planner_diagnostics_json TEXT
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_audit_call_site ON plan_audit(call_site_id, ts_us DESC);
@@ -420,6 +421,11 @@ fn add_column_if_missing(conn: &Connection, statement: &str, column: &str) -> Re
 pub fn ensure_audit_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(AUDIT_SCHEMA)
         .context("applying optimizer_audit schema")?;
+    add_column_if_missing(
+        conn,
+        "ALTER TABLE plan_audit ADD COLUMN planner_diagnostics_json TEXT",
+        "planner_diagnostics_json",
+    )?;
     Ok(())
 }
 
@@ -450,6 +456,35 @@ mod tests {
             )
             .unwrap();
         assert_eq!(tables, 14);
+    }
+
+    #[test]
+    fn legacy_audit_schema_gains_planner_diagnostics_column() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE plan_audit (\
+                audit_id INTEGER PRIMARY KEY AUTOINCREMENT, \
+                ts_us INTEGER NOT NULL, call_site_id TEXT NOT NULL, \
+                span_id BLOB NOT NULL, plan_kind TEXT NOT NULL, rule TEXT, \
+                projected_savings_usd REAL, measured_savings_usd REAL, \
+                overhead_us INTEGER NOT NULL, \
+                shadow_sampled INTEGER NOT NULL DEFAULT 0, \
+                shadow_divergence REAL\
+             ) STRICT",
+        )
+        .unwrap();
+
+        ensure_audit_schema(&conn).unwrap();
+        ensure_audit_schema(&conn).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('plan_audit') \
+                 WHERE name = 'planner_diagnostics_json'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
     }
 
     #[test]

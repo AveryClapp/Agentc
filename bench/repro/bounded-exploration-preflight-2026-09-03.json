@@ -1,0 +1,53 @@
+{
+  "after_restart": {
+    "abandoned_calls": 0,
+    "active_leases": 0,
+    "calls_in_window": 4,
+    "completed_calls": 4,
+    "counterfactual_cost_usd": 0.04,
+    "divergence_exposure": 0.6,
+    "failed_calls": 0,
+    "observed_counterfactuals": 3,
+    "task_damage": 0.6,
+    "task_labeled_counterfactuals": 1
+  },
+  "all_user_visible_results_were_reference": true,
+  "before_restart": {
+    "abandoned_calls": 0,
+    "active_leases": 0,
+    "calls_in_window": 4,
+    "completed_calls": 4,
+    "counterfactual_cost_usd": 0.04,
+    "divergence_exposure": 0.6,
+    "failed_calls": 0,
+    "observed_counterfactuals": 3,
+    "task_damage": 0.6,
+    "task_labeled_counterfactuals": 1
+  },
+  "cap_reason_after_restart": "call_cap_exhausted",
+  "cap_reason_before_restart": "call_cap_exhausted",
+  "checks": {
+    "call_cap_enforced": true,
+    "call_cap_persisted": true,
+    "counterfactual_cost_accounted": true,
+    "divergence_and_task_damage_separate": true
+  },
+  "exposed_plan_was_not_retried": true,
+  "network_calls": 0,
+  "paper_evidence": false,
+  "policy": {
+    "divergence_exposure_budget": 0.5,
+    "max_calls_per_site_24h_equivalent": 4,
+    "max_concurrent_counterfactuals": 1,
+    "task_damage_budget": 0.5
+  },
+  "scenario": "bounded-exploration-persistence-preflight",
+  "seed": 20260903,
+  "selected_plan_ids": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  ],
+  "stage": "E0"
+}

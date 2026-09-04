@@ -17,6 +17,8 @@ use rusqlite::Connection;
 /// - `execution_plan_guard` — rolling complete-plan exposure summaries.
 /// - `execution_plan_guard_observation` — exact positive-exposure events.
 /// - `execution_plan_disabled` — durable plan-level guard state.
+/// - `execution_plan_exploration_site` — monotonic per-site lease sequence.
+/// - `execution_plan_exploration` — bounded counterfactual leases and feedback.
 /// - `rule_divergence` — one summary row per `(call_site, rule)`.
 /// - `rule_divergence_observation` — exact retained divergence samples.
 /// - `optimizer_disabled` — per-`(call_site, rule)` disable entries with a
@@ -160,6 +162,56 @@ CREATE TABLE IF NOT EXISTS execution_plan_disabled (
     reenable_at             INTEGER NOT NULL CHECK (reenable_at >= disabled_at),
     PRIMARY KEY (call_site_version, execution_plan_id)
 ) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_exploration_site (
+    call_site_version       TEXT PRIMARY KEY NOT NULL,
+    next_sequence           INTEGER NOT NULL CHECK (next_sequence > 0)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_exploration (
+    call_site_version       TEXT NOT NULL,
+    exploration_sequence    INTEGER NOT NULL CHECK (exploration_sequence > 0),
+    execution_plan_id       TEXT NOT NULL,
+    status                  TEXT NOT NULL CHECK (
+        status IN ('reserved', 'completed', 'failed', 'abandoned')
+    ),
+    divergence_threshold    REAL NOT NULL CHECK (divergence_threshold BETWEEN 0.0 AND 1.0),
+    divergence              REAL CHECK (divergence IS NULL OR divergence BETWEEN 0.0 AND 1.0),
+    divergence_exposure     REAL CHECK (divergence_exposure IS NULL OR divergence_exposure >= 0.0),
+    feedback_kind           TEXT NOT NULL CHECK (
+        feedback_kind IN ('none', 'observation_only', 'task_quality')
+    ),
+    reference_quality       REAL CHECK (reference_quality IS NULL OR reference_quality BETWEEN 0.0 AND 1.0),
+    candidate_quality       REAL CHECK (candidate_quality IS NULL OR candidate_quality BETWEEN 0.0 AND 1.0),
+    task_damage             REAL CHECK (task_damage IS NULL OR task_damage >= 0.0),
+    cost_usd                REAL CHECK (cost_usd IS NULL OR cost_usd >= 0.0),
+    latency_ms              REAL CHECK (latency_ms IS NULL OR latency_ms >= 0.0),
+    started_at              INTEGER NOT NULL CHECK (started_at >= 0),
+    lease_expires_at        INTEGER NOT NULL CHECK (lease_expires_at >= started_at),
+    completed_at            INTEGER CHECK (completed_at IS NULL OR completed_at >= started_at),
+    PRIMARY KEY (call_site_version, exploration_sequence),
+    CHECK (
+        (status = 'reserved' AND feedback_kind = 'none' AND completed_at IS NULL)
+        OR (status = 'completed' AND feedback_kind != 'none' AND completed_at IS NOT NULL)
+        OR (status IN ('failed', 'abandoned') AND feedback_kind = 'none' AND completed_at IS NOT NULL)
+    ),
+    CHECK (
+        (feedback_kind = 'none' AND divergence IS NULL AND divergence_exposure IS NULL
+            AND reference_quality IS NULL AND candidate_quality IS NULL AND task_damage IS NULL)
+        OR (feedback_kind = 'observation_only' AND divergence IS NOT NULL
+            AND divergence_exposure IS NOT NULL AND reference_quality IS NULL
+            AND candidate_quality IS NULL AND task_damage IS NULL)
+        OR (feedback_kind = 'task_quality' AND divergence IS NOT NULL
+            AND divergence_exposure IS NOT NULL AND reference_quality IS NOT NULL
+            AND candidate_quality IS NOT NULL AND task_damage IS NOT NULL)
+    )
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_execution_plan_exploration_site_time
+ON execution_plan_exploration(call_site_version, started_at);
+
+CREATE INDEX IF NOT EXISTS idx_execution_plan_exploration_active
+ON execution_plan_exploration(call_site_version, status, lease_expires_at);
 
 CREATE TABLE IF NOT EXISTS rule_divergence (
     call_site_id          TEXT NOT NULL,
@@ -385,14 +437,16 @@ mod tests {
                               'execution_plan_profile','execution_plan_observation',\
                               'execution_plan_divergence_observation',\
                               'execution_plan_guard','execution_plan_guard_observation',\
-                              'execution_plan_disabled','rule_divergence',\
+                              'execution_plan_disabled',\
+                              'execution_plan_exploration_site',\
+                              'execution_plan_exploration','rule_divergence',\
                               'rule_divergence_observation','optimizer_disabled',\
                               'rule_set_stats')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(tables, 12);
+        assert_eq!(tables, 14);
     }
 
     #[test]

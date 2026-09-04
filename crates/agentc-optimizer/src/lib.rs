@@ -18,6 +18,7 @@ pub mod cost_model;
 pub mod dag;
 pub mod dag_context;
 pub mod execution_plan;
+pub mod exploration;
 pub mod ffi;
 pub mod model_catalog;
 pub mod plan_guard;
@@ -42,6 +43,14 @@ pub use execution_plan::{
     PlanIdentityError, RewriteApplication, RewriteOrdering, Selection, SelectionObjective,
     SelectionPolicy, SelectionPolicyError, SelectionReason, ValidationPolicy,
     EXECUTION_PLAN_SCHEMA_VERSION,
+};
+pub use exploration::{
+    CounterfactualFeedback, CounterfactualLabel, ExplorationCandidate, ExplorationCompletion,
+    ExplorationController, ExplorationDecision, ExplorationError, ExplorationLease,
+    ExplorationPolicy, ExplorationPolicyError, ExplorationReason, ExplorationSiteSnapshot,
+    DEFAULT_CONCURRENT_COUNTERFACTUAL_CAP, DEFAULT_EXPLORATION_CALL_CAP,
+    DEFAULT_EXPLORATION_EVIDENCE_TARGET, DEFAULT_EXPLORATION_LEASE_US,
+    DEFAULT_EXPLORATION_SEED, EXPLORATION_WINDOW_US,
 };
 pub use model_catalog::{
     default_model_catalog, CatalogError, ModelCapabilities, ModelCatalog, ModelPrice,

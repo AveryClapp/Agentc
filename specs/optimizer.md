@@ -638,6 +638,16 @@ per call site in 24 hours and one concurrent counterfactual. After admission,
 the selected result is returned and the reference is sampled at `shadow_rate`
 (default 2%) for drift detection.
 
+The exploration controller persists a lease before the candidate call starts.
+A failed, expired, or abandoned lease still consumes one call from the rolling
+site cap because provider work may already have started. Lease expiry releases
+only the concurrency slot. Candidate allocation prefers the smallest exact-plan
+paired-evidence count, then the fewest attempts in the active window, then a
+seeded stable hash. Reordering the candidate list therefore does not change a
+seeded run. SQLite transaction serialization enforces the concurrency cap across
+controller instances and process restart; a storage failure returns only the
+reference and creates no lease.
+
 The controller tracks sampled divergence exposure:
 
 ```text
@@ -666,6 +676,10 @@ create or mutate state. Text divergence uses the calibration-selected metric.
 Tool calls compare tool identity and schema-valid arguments. The runtime calls
 this quantity divergence, not quality. Workload-level task damage is measured
 only by the evaluation harness where labels or official scores exist.
+Exploration feedback stores either `observation_only` or `task_quality`; only
+the latter contains reference/candidate quality and debits the evaluation-only
+task-damage budget. Both record candidate cost and latency so exploration spend
+is visible rather than folded into main-path savings.
 
 ### Overhead budget
 
@@ -828,6 +842,56 @@ CREATE TABLE IF NOT EXISTS execution_plan_disabled (
     PRIMARY KEY (call_site_version, execution_plan_id)
 ) STRICT, WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS execution_plan_exploration_site (
+    call_site_version       TEXT PRIMARY KEY NOT NULL,
+    next_sequence           INTEGER NOT NULL CHECK (next_sequence > 0)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_exploration (
+    call_site_version       TEXT NOT NULL,
+    exploration_sequence    INTEGER NOT NULL CHECK (exploration_sequence > 0),
+    execution_plan_id       TEXT NOT NULL,
+    status                  TEXT NOT NULL CHECK (
+        status IN ('reserved', 'completed', 'failed', 'abandoned')
+    ),
+    divergence_threshold    REAL NOT NULL CHECK (divergence_threshold BETWEEN 0.0 AND 1.0),
+    divergence              REAL CHECK (divergence IS NULL OR divergence BETWEEN 0.0 AND 1.0),
+    divergence_exposure     REAL CHECK (divergence_exposure IS NULL OR divergence_exposure >= 0.0),
+    feedback_kind           TEXT NOT NULL CHECK (
+        feedback_kind IN ('none', 'observation_only', 'task_quality')
+    ),
+    reference_quality       REAL CHECK (reference_quality IS NULL OR reference_quality BETWEEN 0.0 AND 1.0),
+    candidate_quality       REAL CHECK (candidate_quality IS NULL OR candidate_quality BETWEEN 0.0 AND 1.0),
+    task_damage             REAL CHECK (task_damage IS NULL OR task_damage >= 0.0),
+    cost_usd                REAL CHECK (cost_usd IS NULL OR cost_usd >= 0.0),
+    latency_ms              REAL CHECK (latency_ms IS NULL OR latency_ms >= 0.0),
+    started_at              INTEGER NOT NULL CHECK (started_at >= 0),
+    lease_expires_at        INTEGER NOT NULL CHECK (lease_expires_at >= started_at),
+    completed_at            INTEGER CHECK (completed_at IS NULL OR completed_at >= started_at),
+    PRIMARY KEY (call_site_version, exploration_sequence),
+    CHECK (
+        (status = 'reserved' AND feedback_kind = 'none' AND completed_at IS NULL)
+        OR (status = 'completed' AND feedback_kind != 'none' AND completed_at IS NOT NULL)
+        OR (status IN ('failed', 'abandoned') AND feedback_kind = 'none' AND completed_at IS NOT NULL)
+    ),
+    CHECK (
+        (feedback_kind = 'none' AND divergence IS NULL AND divergence_exposure IS NULL
+            AND reference_quality IS NULL AND candidate_quality IS NULL AND task_damage IS NULL)
+        OR (feedback_kind = 'observation_only' AND divergence IS NOT NULL
+            AND divergence_exposure IS NOT NULL AND reference_quality IS NULL
+            AND candidate_quality IS NULL AND task_damage IS NULL)
+        OR (feedback_kind = 'task_quality' AND divergence IS NOT NULL
+            AND divergence_exposure IS NOT NULL AND reference_quality IS NOT NULL
+            AND candidate_quality IS NOT NULL AND task_damage IS NOT NULL)
+    )
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_execution_plan_exploration_site_time
+ON execution_plan_exploration(call_site_version, started_at);
+
+CREATE INDEX IF NOT EXISTS idx_execution_plan_exploration_active
+ON execution_plan_exploration(call_site_version, status, lease_expires_at);
+
 CREATE TABLE IF NOT EXISTS rule_divergence (
     call_site_id          TEXT NOT NULL,
     rule                  TEXT NOT NULL,
@@ -895,8 +959,8 @@ migration preserves its lifetime count, zeros its window statistics, and
 retains any already-persisted breach streak. Changing either configured window
 to a smaller value truncates and persists the newest samples at startup.
 
-The joint planner adds the complete-plan profile, guard, observation, and
-disable tables above without
+The joint planner adds the complete-plan profile, guard, observation, disable,
+and exploration tables above without
 promoting legacy `call_site_profile`, `rule_divergence`, or `rule_set_stats`
 rows into plan evidence. Those rows remain reporting and baseline state. Every
 new complete plan starts cold because the old schema cannot identify the target,
@@ -907,6 +971,12 @@ the rolling 24-hour horizon. The guard reconstructs `divergence_exposure` from
 those exact events at restart. `execution_plan_disabled` remains present after
 cooldown expiry until the selector explicitly completes cold re-admission; time
 alone never restores full-rate use.
+
+`execution_plan_exploration_site` keeps a monotonic lease sequence even after
+the rolling event window is pruned. `execution_plan_exploration` commits a
+reservation before dispatch, counts every attempted call, and keeps divergence
+exposure separate from optional labeled task damage. Expired reservations become
+`abandoned` and release concurrency without refunding spend.
 
 `plan_audit` supports pruning to a 10,000-row cap through `audit::prune`.
 Pruning is an explicit maintenance operation; the runtime does not silently
@@ -1115,6 +1185,11 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Concurrent post-snapshot plan observations remain dirty | `plan_profile::tests::concurrent_post_snapshot_observation_remains_dirty` |
 | A harmful composed interaction updates only its complete-plan guard | `plan_guard::tests::composed_sample_has_single_causal_identity` |
 | Complete-plan exposure disables the exact plan across restart without disabling its solo rule | `tests/test_lifecycle.py::TestInit::test_complete_plan_exposure_disable_survives_reinit` |
+| Seeded exploration is invariant to candidate input order | `exploration::tests::selection_is_seeded_and_candidate_order_independent` |
+| The site call cap and feedback survive a database close and restart | `exploration::tests::rolling_state_survives_database_close_and_reopen` |
+| Independent database connections enforce one live counterfactual per site | `exploration::tests::independent_database_connections_share_concurrency_limit` |
+| Forbidden, incompatible, disabled, and sufficiently observed plans are never leased | `exploration::tests::forbidden_incompatible_disabled_and_warm_candidates_never_run` |
+| Divergence observations remain distinct from evaluation-only task-quality labels | `exploration::tests::observation_and_task_quality_feedback_remain_distinct` |
 | A failed selected target retries the exact original request once | `tests/test_optimizer_glue.py::test_routed_failure_replays_exact_original` |
 
 `bench/guard_persistence_preflight.py` is the deterministic Stage E0 replay for
@@ -1140,6 +1215,13 @@ ages a 50-sample old distribution completely out, reloads the exact retained
 rows, persists a smaller configured window, and exercises conservative legacy
 migration without provider calls. It is permanently labeled
 `paper_evidence=false`.
+
+`crates/agentc-optimizer/examples/exploration_preflight.rs` is the deterministic
+Stage E0 replay for initial calibration. It verifies reference-only visibility,
+seeded candidate allocation, exact-plan exposure/task-damage stopping, the
+rolling site call cap, counterfactual cost accounting, and restart persistence
+without provider calls. It does not exercise live candidate generation and is
+permanently labeled `paper_evidence=false`.
 
 ### Performance targets
 

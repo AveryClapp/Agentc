@@ -24,6 +24,7 @@ the historical guard results described below.
 | `guard_frontier.sh` | `tab:guard`, `fig:metric-tradeoff` | gpt-4o-mini, n=200, budget frontier tau in {0.10,0.20,0.30,0.50} |
 | `crossmodel_selectivity.sh` | `tab:xmodel` (one row) | n=100; run once per model family (below) |
 | `../guard_overhead_bench.py` | fresh complete-plan feedback overhead | `python -m bench.guard_overhead_bench`; structured Stage E0 output, CPU/SQLite only, no API |
+| `../../crates/agentc-optimizer/examples/exploration_preflight.rs` | bounded exploration persistence and accounting | `cargo run -p agentc-optimizer --example exploration_preflight --quiet`; structured Stage E0 output, SQLite only, no API |
 | `../paper_figures/fig9_metric_tradeoff.py` | renders `fig:metric-tradeoff` | reads the `gsweep_tradeoff_*` CSVs |
 
 ## Reproducing `tab:guard` + `fig:metric-tradeoff`
@@ -183,3 +184,23 @@ and [overhead](complete-plan-guard-overhead-preflight-2026-09-03.json). On the
 recorded development-machine run, 2,000 fresh feedback samples had a 306.2 us
 mean and 412.3 us p99, plus a separately measured 5.0 us divergence metric.
 Those values characterize this E0 run only.
+
+### Bounded exploration preflight
+
+The zero-network Rust preflight exercises the initial-calibration controller:
+
+```bash
+cargo run -p agentc-optimizer --example exploration_preflight --quiet
+```
+
+The committed [output](bounded-exploration-preflight-2026-09-03.json) records a
+seeded two-plan scenario. Every decision returns the reference result while at
+most one candidate holds a counterfactual lease. The first candidate exhausts
+its exact-plan divergence-exposure and labeled task-damage budgets and is not
+retried; the other candidate consumes the remaining four-call site budget. The
+call cap, $0.04 counterfactual cost, divergence exposure, and separately labeled
+task damage survive a database close and restart.
+
+This is Stage E0 mechanism evidence only. It issues no provider calls, does not
+exercise the still-unwired production joint selector, and cannot support a
+quality, cost-savings, or safety claim.

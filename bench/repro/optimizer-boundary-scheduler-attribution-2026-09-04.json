@@ -1,0 +1,3814 @@
+{
+  "agentc_git_commit": "d0be4b94f154692528cf7ead5f8232cf4031e39c",
+  "agentc_git_dirty": false,
+  "aggregate_measurements_us_and_throughput": [
+    {
+      "concurrency": 1,
+      "mean_off_cpu_share_pct": 52.57787359113114,
+      "off_cpu": {
+        "max_us": 1.667,
+        "mean_us": 0.1966365234375,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "operation": "python_noop",
+      "p50_inflation_vs_c1": 1.0,
+      "p99_inflation_vs_c1": 1.0,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 0.375,
+        "ci95_low": 0.375,
+        "estimate": 0.375
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 0.5586,
+        "ci95_low": 0.4502,
+        "estimate": 0.5084
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 0.29483928734333487,
+        "ci95_low": 0.29088539466864244,
+        "estimate": 0.29295003687367405
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 1675214.1740241246,
+        "ci95_low": 1612104.358944164,
+        "estimate": 1652569.2114981415
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 0.5,
+        "mean_us": 0.1773544921875,
+        "p50_us": 0.167,
+        "p95_us": 0.209,
+        "p99_us": 0.25
+      },
+      "throughput_efficiency_pct": 100.0,
+      "throughput_speedup_vs_c1": 1.0,
+      "wall": {
+        "max_us": 1.875,
+        "mean_us": 0.373991015625,
+        "p50_us": 0.375,
+        "p95_us": 0.458,
+        "p99_us": 0.541
+      }
+    },
+    {
+      "concurrency": 2,
+      "mean_off_cpu_share_pct": 52.20169074516362,
+      "off_cpu": {
+        "max_us": 0.5,
+        "mean_us": 0.1925705078125,
+        "p50_us": 0.168,
+        "p95_us": 0.25,
+        "p99_us": 0.332
+      },
+      "operation": "python_noop",
+      "p50_inflation_vs_c1": 1.0,
+      "p99_inflation_vs_c1": 1.0018484288354899,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 0.375,
+        "ci95_low": 0.3504,
+        "estimate": 0.3668
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 0.5666,
+        "ci95_low": 0.5414,
+        "estimate": 0.55
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 0.2833454288422499,
+        "ci95_low": 0.26451969944623605,
+        "estimate": 0.27505926430608174
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 1597832.8210892235,
+        "ci95_low": 1499980.4013588221,
+        "estimate": 1559956.4753956622
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 0.5,
+        "mean_us": 0.1763265625,
+        "p50_us": 0.167,
+        "p95_us": 0.209,
+        "p99_us": 0.25
+      },
+      "throughput_efficiency_pct": 47.19791656960252,
+      "throughput_speedup_vs_c1": 0.9439583313920504,
+      "wall": {
+        "max_us": 0.958,
+        "mean_us": 0.36889707031249996,
+        "p50_us": 0.375,
+        "p95_us": 0.459,
+        "p99_us": 0.542
+      }
+    },
+    {
+      "concurrency": 4,
+      "mean_off_cpu_share_pct": 52.4342541319149,
+      "off_cpu": {
+        "max_us": 3.708,
+        "mean_us": 0.2025638671875,
+        "p50_us": 0.208,
+        "p95_us": 0.291,
+        "p99_us": 0.333
+      },
+      "operation": "python_noop",
+      "p50_inflation_vs_c1": 1.0,
+      "p99_inflation_vs_c1": 1.155268022181146,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 0.375,
+        "ci95_low": 0.375,
+        "estimate": 0.375
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 0.625,
+        "ci95_low": 0.5913999999999999,
+        "estimate": 0.6082
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 0.27967880643258847,
+        "ci95_low": 0.27192634283290573,
+        "estimate": 0.2757663615762017
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 1519769.1602076632,
+        "ci95_low": 1477665.790579275,
+        "estimate": 1500812.0489902187
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 0.542,
+        "mean_us": 0.183755859375,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.291
+      },
+      "throughput_efficiency_pct": 22.704223801157063,
+      "throughput_speedup_vs_c1": 0.9081689520462826,
+      "wall": {
+        "max_us": 3.958,
+        "mean_us": 0.3863197265625,
+        "p50_us": 0.375,
+        "p95_us": 0.5,
+        "p99_us": 0.625
+      }
+    },
+    {
+      "concurrency": 8,
+      "mean_off_cpu_share_pct": 52.181156461307104,
+      "off_cpu": {
+        "max_us": 2.333,
+        "mean_us": 0.206158984375,
+        "p50_us": 0.208,
+        "p95_us": 0.292,
+        "p99_us": 0.334
+      },
+      "operation": "python_noop",
+      "p50_inflation_vs_c1": 1.0,
+      "p99_inflation_vs_c1": 1.155268022181146,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 0.375,
+        "ci95_low": 0.375,
+        "estimate": 0.375
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 0.6578,
+        "ci95_low": 0.5254,
+        "estimate": 0.6
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 0.2717611126966256,
+        "ci95_low": 0.2638071464091896,
+        "estimate": 0.26778412955290765
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 1473973.8468965671,
+        "ci95_low": 1374246.8745880544,
+        "estimate": 1419053.1887540221
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 0.583,
+        "mean_us": 0.18892421874999998,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_efficiency_pct": 10.733689539904166,
+      "throughput_speedup_vs_c1": 0.8586951631923333,
+      "wall": {
+        "max_us": 2.583,
+        "mean_us": 0.395083203125,
+        "p50_us": 0.375,
+        "p95_us": 0.541,
+        "p99_us": 0.625
+      }
+    },
+    {
+      "concurrency": 16,
+      "mean_off_cpu_share_pct": 52.09537765788776,
+      "off_cpu": {
+        "max_us": 2.416,
+        "mean_us": 0.2355193359375,
+        "p50_us": 0.25,
+        "p95_us": 0.292,
+        "p99_us": 0.375
+      },
+      "operation": "python_noop",
+      "p50_inflation_vs_c1": 1.2213333333333334,
+      "p99_inflation_vs_c1": 1.2310536044362292,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 0.45880000000000004,
+        "ci95_low": 0.458,
+        "estimate": 0.45840000000000003
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 0.6668000000000001,
+        "ci95_low": 0.6332,
+        "estimate": 0.65
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 0.2501715423890453,
+        "ci95_low": 0.23303393930792327,
+        "estimate": 0.2417014001755272
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 1154824.0677175594,
+        "ci95_low": 1067341.8830614176,
+        "estimate": 1116282.5848167837
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 0.5,
+        "mean_us": 0.2165732421875,
+        "p50_us": 0.209,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_efficiency_pct": 4.2217694161082004,
+      "throughput_speedup_vs_c1": 0.675483106577312,
+      "wall": {
+        "max_us": 2.708,
+        "mean_us": 0.452092578125,
+        "p50_us": 0.458,
+        "p95_us": 0.542,
+        "p99_us": 0.666
+      }
+    },
+    {
+      "concurrency": 32,
+      "mean_off_cpu_share_pct": 52.31177672319552,
+      "off_cpu": {
+        "max_us": 1.667,
+        "mean_us": 0.2244033203125,
+        "p50_us": 0.209,
+        "p95_us": 0.292,
+        "p99_us": 0.375
+      },
+      "operation": "python_noop",
+      "p50_inflation_vs_c1": 1.1093333333333333,
+      "p99_inflation_vs_c1": 1.155268022181146,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 0.45880000000000004,
+        "ci95_low": 0.3916,
+        "estimate": 0.4252
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 0.6832,
+        "ci95_low": 0.5418000000000001,
+        "estimate": 0.6166
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 0.21783971105040623,
+        "ci95_low": 0.20130553552354716,
+        "estimate": 0.21097607058214563
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 1119040.777008214,
+        "ci95_low": 970235.4872505674,
+        "estimate": 1037778.3807521433
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 0.625,
+        "mean_us": 0.20456953125000002,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_efficiency_pct": 1.962433656203993,
+      "throughput_speedup_vs_c1": 0.6279787699852778,
+      "wall": {
+        "max_us": 1.917,
+        "mean_us": 0.42897285156250003,
+        "p50_us": 0.416,
+        "p95_us": 0.542,
+        "p99_us": 0.625
+      }
+    },
+    {
+      "concurrency": 1,
+      "mean_off_cpu_share_pct": 23.554546120071635,
+      "off_cpu": {
+        "max_us": 1097.375,
+        "mean_us": 0.43800566406249997,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.293
+      },
+      "operation": "native_audit_stats",
+      "p50_inflation_vs_c1": 1.0,
+      "p99_inflation_vs_c1": 1.0,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 1.6082,
+        "ci95_low": 1.583,
+        "estimate": 1.5914
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 2.616,
+        "ci95_low": 1.9246,
+        "estimate": 2.2496
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 0.7620764890003366,
+        "ci95_low": 0.584629300878068,
+        "estimate": 0.7021112755138631
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 547899.8988544956,
+        "ci95_low": 404243.17446923035,
+        "estimate": 495805.1176000859
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 21.5,
+        "mean_us": 1.42153203125,
+        "p50_us": 1.375,
+        "p95_us": 1.542,
+        "p99_us": 1.958
+      },
+      "throughput_efficiency_pct": 100.0,
+      "throughput_speedup_vs_c1": 1.0,
+      "wall": {
+        "max_us": 1118.875,
+        "mean_us": 1.8595376953125,
+        "p50_us": 1.583,
+        "p95_us": 1.791,
+        "p99_us": 2.25
+      }
+    },
+    {
+      "concurrency": 2,
+      "mean_off_cpu_share_pct": 28.46519395002184,
+      "off_cpu": {
+        "max_us": 53.459,
+        "mean_us": 1.5646833984375002,
+        "p50_us": 0.543,
+        "p95_us": 6.791,
+        "p99_us": 11.25
+      },
+      "operation": "native_audit_stats",
+      "p50_inflation_vs_c1": 3.1844598862918514,
+      "p99_inflation_vs_c1": 10.092444444444444,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 5.2416,
+        "ci95_low": 3.7584,
+        "estimate": 4.55
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 24.95,
+        "ci95_low": 20.3418,
+        "estimate": 22.7334
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 1.3502976142852705,
+        "ci95_low": 1.3118197798651272,
+        "estimate": 1.3288472304232486
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 361353.97230898245,
+        "ci95_low": 318923.4702536318,
+        "estimate": 339457.0678397302
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 33.5,
+        "mean_us": 3.932146875,
+        "p50_us": 3.791,
+        "p95_us": 7.583,
+        "p99_us": 11.583
+      },
+      "throughput_efficiency_pct": 34.23291287137688,
+      "throughput_speedup_vs_c1": 0.6846582574275376,
+      "wall": {
+        "max_us": 79.0,
+        "mean_us": 5.4968302734375,
+        "p50_us": 5.041,
+        "p95_us": 13.459,
+        "p99_us": 22.708
+      }
+    },
+    {
+      "concurrency": 4,
+      "mean_off_cpu_share_pct": 55.19659072087718,
+      "off_cpu": {
+        "max_us": 137.001,
+        "mean_us": 10.021119140625,
+        "p50_us": 4.125,
+        "p95_us": 40.458,
+        "p99_us": 72.292
+      },
+      "operation": "native_audit_stats",
+      "p50_inflation_vs_c1": 7.159823120656981,
+      "p99_inflation_vs_c1": 47.092444444444446,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 11.883799999999999,
+        "ci95_low": 10.3666,
+        "estimate": 11.2168
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 111.242,
+        "ci95_low": 98.6918,
+        "estimate": 104.9834
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 1.7071600583515474,
+        "ci95_low": 1.6659185340319813,
+        "estimate": 1.6886664397551794
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 228998.6487780923,
+        "ci95_low": 194815.45987848815,
+        "estimate": 209236.25532183936
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 73.916,
+        "mean_us": 8.134203515625,
+        "p50_us": 5.875,
+        "p95_us": 22.791,
+        "p99_us": 35.792
+      },
+      "throughput_efficiency_pct": 10.550327532652071,
+      "throughput_speedup_vs_c1": 0.4220131013060828,
+      "wall": {
+        "max_us": 204.208,
+        "mean_us": 18.15532265625,
+        "p50_us": 11.334,
+        "p95_us": 61.75,
+        "p99_us": 105.958
+      }
+    },
+    {
+      "concurrency": 8,
+      "mean_off_cpu_share_pct": 75.7747437856429,
+      "off_cpu": {
+        "max_us": 414.875,
+        "mean_us": 29.7973935546875,
+        "p50_us": 20.042,
+        "p95_us": 105.708,
+        "p99_us": 174.334
+      },
+      "operation": "native_audit_stats",
+      "p50_inflation_vs_c1": 16.293114339861024,
+      "p99_inflation_vs_c1": 92.51822222222222,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 26.2668,
+        "ci95_low": 25.0,
+        "estimate": 25.6668
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 224.5916,
+        "ci95_low": 188.8166,
+        "estimate": 207.6166
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 1.87686737534955,
+        "ci95_low": 1.7054267714483164,
+        "estimate": 1.7986342125254404
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 200944.10601298124,
+        "ci95_low": 183696.3997984126,
+        "estimate": 189874.06179918654
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 87.0,
+        "mean_us": 9.5262544921875,
+        "p50_us": 6.542,
+        "p95_us": 27.125,
+        "p99_us": 44.917
+      },
+      "throughput_efficiency_pct": 4.78701346201962,
+      "throughput_speedup_vs_c1": 0.38296107696156956,
+      "wall": {
+        "max_us": 477.25,
+        "mean_us": 39.323648046875,
+        "p50_us": 25.792,
+        "p95_us": 129.75,
+        "p99_us": 208.166
+      }
+    },
+    {
+      "concurrency": 16,
+      "mean_off_cpu_share_pct": 86.60735249942074,
+      "off_cpu": {
+        "max_us": 835.001,
+        "mean_us": 66.90429550781249,
+        "p50_us": 46.167,
+        "p95_us": 238.249,
+        "p99_us": 377.792
+      },
+      "operation": "native_audit_stats",
+      "p50_inflation_vs_c1": 33.66519267214151,
+      "p99_inflation_vs_c1": 183.62977777777778,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 58.7412,
+        "ci95_low": 41.1248,
+        "estimate": 51.433
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 426.67519999999996,
+        "ci95_low": 391.517,
+        "estimate": 407.4002
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 1.9877581527266364,
+        "ci95_low": 1.8410533325907903,
+        "estimate": 1.908155601315042
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 193764.15491519918,
+        "ci95_low": 176276.56787507166,
+        "estimate": 185413.14630681137
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 95.583,
+        "mean_us": 10.3458380859375,
+        "p50_us": 7.125,
+        "p95_us": 30.333,
+        "p99_us": 47.042
+      },
+      "throughput_efficiency_pct": 2.3372735038049357,
+      "throughput_speedup_vs_c1": 0.3739637606087897,
+      "wall": {
+        "max_us": 897.709,
+        "mean_us": 77.25013359375,
+        "p50_us": 53.292,
+        "p95_us": 262.292,
+        "p99_us": 413.167
+      }
+    },
+    {
+      "concurrency": 32,
+      "mean_off_cpu_share_pct": 93.32798499379905,
+      "off_cpu": {
+        "max_us": 1432.667,
+        "mean_us": 134.873178125,
+        "p50_us": 87.375,
+        "p95_us": 498.25,
+        "p99_us": 781.126
+      },
+      "operation": "native_audit_stats",
+      "p50_inflation_vs_c1": 59.72331017056223,
+      "p99_inflation_vs_c1": 363.12933333333336,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 112.6832,
+        "ci95_low": 79.1166,
+        "estimate": 96.5666
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 861.1246,
+        "ci95_low": 768.4082,
+        "estimate": 811.1916
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 1.8103460420093958,
+        "ci95_low": 1.7451877005520877,
+        "estimate": 1.7709542628527388
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 189458.0526942526,
+        "ci95_low": 178353.22618566002,
+        "estimate": 183905.6394399563
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 79.375,
+        "mean_us": 9.642079687499999,
+        "p50_us": 6.834,
+        "p95_us": 27.541,
+        "p99_us": 40.708
+      },
+      "throughput_efficiency_pct": 1.1591351175068305,
+      "throughput_speedup_vs_c1": 0.37092323760218576,
+      "wall": {
+        "max_us": 1466.042,
+        "mean_us": 144.5152578125,
+        "p50_us": 94.542,
+        "p95_us": 519.125,
+        "p99_us": 817.041
+      }
+    },
+    {
+      "concurrency": 1,
+      "mean_off_cpu_share_pct": 2.1472483236310143,
+      "off_cpu": {
+        "max_us": 5.251,
+        "mean_us": 0.21327734375,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "operation": "native_model_catalog",
+      "p50_inflation_vs_c1": 1.0,
+      "p99_inflation_vs_c1": 1.0,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 9.7998,
+        "ci95_low": 9.75,
+        "estimate": 9.7666
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 13.1664,
+        "ci95_low": 11.5416,
+        "estimate": 12.3332
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 0.9543172116401655,
+        "ci95_low": 0.9532093287348311,
+        "estimate": 0.9537948742154815
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 99356.1483234274,
+        "ci95_low": 96406.73637330624,
+        "estimate": 98167.29801970666
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 33.5,
+        "mean_us": 9.719311328125,
+        "p50_us": 9.542,
+        "p95_us": 10.084,
+        "p99_us": 13.083
+      },
+      "throughput_efficiency_pct": 100.0,
+      "throughput_speedup_vs_c1": 1.0,
+      "wall": {
+        "max_us": 33.667,
+        "mean_us": 9.932588671875001,
+        "p50_us": 9.75,
+        "p95_us": 10.416,
+        "p99_us": 13.375
+      }
+    },
+    {
+      "concurrency": 2,
+      "mean_off_cpu_share_pct": 2.490652041323449,
+      "off_cpu": {
+        "max_us": 17.666,
+        "mean_us": 0.27499062500000004,
+        "p50_us": 0.209,
+        "p95_us": 0.292,
+        "p99_us": 0.541
+      },
+      "operation": "native_model_catalog",
+      "p50_inflation_vs_c1": 1.1195897435897437,
+      "p99_inflation_vs_c1": 1.1308411214953271,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 10.9252,
+        "ci95_low": 10.8586,
+        "estimate": 10.8918
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 16.4086,
+        "ci95_low": 13.6836,
+        "estimate": 15.083400000000001
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 1.8963601484585124,
+        "ci95_low": 1.8901219377630691,
+        "estimate": 1.8933258066173646
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 176949.3923062711,
+        "ci95_low": 174790.35678710512,
+        "estimate": 175869.8745466881
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 34.208,
+        "mean_us": 10.765918359375,
+        "p50_us": 10.667,
+        "p95_us": 10.875,
+        "p99_us": 14.625
+      },
+      "throughput_efficiency_pct": 89.57660957082825,
+      "throughput_speedup_vs_c1": 1.7915321914165652,
+      "wall": {
+        "max_us": 48.834,
+        "mean_us": 11.040908984375001,
+        "p50_us": 10.916,
+        "p95_us": 11.125,
+        "p99_us": 15.125
+      }
+    },
+    {
+      "concurrency": 4,
+      "mean_off_cpu_share_pct": 37.33429907852093,
+      "off_cpu": {
+        "max_us": 566.875,
+        "mean_us": 8.8444498046875,
+        "p50_us": 0.291,
+        "p95_us": 36.167,
+        "p99_us": 67.792
+      },
+      "operation": "native_model_catalog",
+      "p50_inflation_vs_c1": 1.3803076923076922,
+      "p99_inflation_vs_c1": 7.286579439252336,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 14.9412,
+        "ci95_low": 12.383000000000001,
+        "estimate": 13.5746
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 103.6166,
+        "ci95_low": 85.9,
+        "estimate": 94.7
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 2.409730044153936,
+        "ci95_low": 2.3225580545381654,
+        "estimate": 2.369083788082884
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 167269.3852104435,
+        "ci95_low": 152106.532019153,
+        "estimate": 159940.21645139024
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 62.625,
+        "mean_us": 14.8454279296875,
+        "p50_us": 13.0,
+        "p95_us": 27.084,
+        "p99_us": 34.875
+      },
+      "throughput_efficiency_pct": 40.73154188762609,
+      "throughput_speedup_vs_c1": 1.6292616755050437,
+      "wall": {
+        "max_us": 599.0,
+        "mean_us": 23.689877734375,
+        "p50_us": 13.458,
+        "p95_us": 62.125,
+        "p99_us": 97.458
+      }
+    },
+    {
+      "concurrency": 8,
+      "mean_off_cpu_share_pct": 64.1772431315574,
+      "off_cpu": {
+        "max_us": 481.584,
+        "mean_us": 40.3330453125,
+        "p50_us": 20.458,
+        "p95_us": 139.5,
+        "p99_us": 231.583
+      },
+      "operation": "native_model_catalog",
+      "p50_inflation_vs_c1": 4.538461538461538,
+      "p99_inflation_vs_c1": 21.685308411214955,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 52.583600000000004,
+        "ci95_low": 33.4418,
+        "estimate": 44.2752
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 302.042,
+        "ci95_low": 276.6916,
+        "estimate": 289.3668
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 2.7503280058722086,
+        "ci95_low": 2.6658681428858126,
+        "estimate": 2.701012565856268
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 131103.8515492712,
+        "ci95_low": 113994.23567023833,
+        "estimate": 120615.61505213416
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 96.125,
+        "mean_us": 22.51328984375,
+        "p50_us": 18.208,
+        "p95_us": 47.125,
+        "p99_us": 67.625
+      },
+      "throughput_efficiency_pct": 15.358426060061403,
+      "throughput_speedup_vs_c1": 1.2286740848049122,
+      "wall": {
+        "max_us": 567.542,
+        "mean_us": 62.84633515625,
+        "p50_us": 44.25,
+        "p95_us": 180.083,
+        "p99_us": 290.041
+      }
+    },
+    {
+      "concurrency": 16,
+      "mean_off_cpu_share_pct": 80.65174065628977,
+      "off_cpu": {
+        "max_us": 1240.876,
+        "mean_us": 96.1070521484375,
+        "p50_us": 27.542,
+        "p95_us": 363.5,
+        "p99_us": 604.374
+      },
+      "operation": "native_model_catalog",
+      "p50_inflation_vs_c1": 5.397435897435898,
+      "p99_inflation_vs_c1": 49.7694953271028,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 105.4418,
+        "ci95_low": 40.6164,
+        "estimate": 73.9416
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 699.9914,
+        "ci95_low": 587.217,
+        "estimate": 633.875
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 3.0788558668109114,
+        "ci95_low": 2.6812968785573568,
+        "estimate": 2.8299603132408797
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 139086.21510689033,
+        "ci95_low": 113793.80972954552,
+        "estimate": 123311.20645803383
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 120.0,
+        "mean_us": 23.055970703125,
+        "p50_us": 18.333,
+        "p95_us": 50.292,
+        "p99_us": 76.584
+      },
+      "throughput_efficiency_pct": 7.850832771296178,
+      "throughput_speedup_vs_c1": 1.2561332434073884,
+      "wall": {
+        "max_us": 1327.959,
+        "mean_us": 119.1630228515625,
+        "p50_us": 52.625,
+        "p95_us": 410.0,
+        "p99_us": 665.667
+      }
+    },
+    {
+      "concurrency": 32,
+      "mean_off_cpu_share_pct": 89.9918620727871,
+      "off_cpu": {
+        "max_us": 3147.709,
+        "mean_us": 198.6758076171875,
+        "p50_us": 21.416,
+        "p95_us": 753.583,
+        "p99_us": 1197.792
+      },
+      "operation": "native_model_catalog",
+      "p50_inflation_vs_c1": 4.752205128205128,
+      "p99_inflation_vs_c1": 94.06856074766354,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 203.7668,
+        "ci95_low": 65.4496,
+        "estimate": 137.5498
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 1330.633,
+        "ci95_low": 1087.4584,
+        "estimate": 1226.55
+      },
+      "replication_mean_thread_cpu_core_equivalents": {
+        "ci95_high": 2.9295512908379084,
+        "ci95_low": 2.6192155300778697,
+        "estimate": 2.750155926625526
+      },
+      "replication_mean_throughput_calls_per_second": {
+        "ci95_high": 163454.2661258555,
+        "ci95_low": 110364.34009276117,
+        "estimate": 129383.72208048614
+      },
+      "sample_count": 5120,
+      "thread_cpu": {
+        "max_us": 136.541,
+        "mean_us": 22.0950521484375,
+        "p50_us": 17.709,
+        "p95_us": 47.417,
+        "p99_us": 68.583
+      },
+      "throughput_efficiency_pct": 4.118725274687226,
+      "throughput_speedup_vs_c1": 1.3179920878999125,
+      "wall": {
+        "max_us": 3284.25,
+        "mean_us": 220.770859765625,
+        "p50_us": 46.334,
+        "p95_us": 788.416,
+        "p99_us": 1258.167
+      }
+    }
+  ],
+  "created_at_utc": "2026-09-04T14:09:53.458804+00:00",
+  "experiment_kind": "optimizer_boundary_scheduler_attribution_preflight",
+  "interpretation_limits": [
+    "This is a single-machine Stage E0 runtime diagnostic, not task-quality or savings evidence.",
+    "Wall minus calling-thread CPU estimates off-CPU time but cannot distinguish scheduler delay, lock waiting, and GIL reacquisition.",
+    "The Python no-op does not release the GIL; it is a clock and worker-loop floor, not a native-boundary substitute.",
+    "The two native controls release and reacquire the GIL but do not construct or enqueue a plan-audit row.",
+    "Inputs are deterministic and no provider or network is invoked.",
+    "Host load averages are recorded before and after the matrix; overlapping external workloads can invalidate a canonical run."
+  ],
+  "network_calls": 0,
+  "paper_evidence": false,
+  "raw_samples": {
+    "compression": "gzip",
+    "path": "optimizer-boundary-scheduler-attribution-2026-09-04.csv.gz",
+    "rows": 92160,
+    "sha256": "e128be44b02a048911b7fe441667f5efbd4fd8554d2c991bb65532311bef50d7"
+  },
+  "replications": [
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 4.839125,
+      "measured_thread_cpu_core_equivalents": 1.6318028569214476,
+      "off_cpu": {
+        "max_us": 254.833,
+        "mean_us": 27.4175244140625,
+        "p50_us": 20.959,
+        "p95_us": 91.333,
+        "p99_us": 150.583
+      },
+      "operation": "native_audit_stats",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 61.292,
+        "mean_us": 7.711423828125,
+        "p50_us": 5.459,
+        "p95_us": 22.583,
+        "p99_us": 30.958
+      },
+      "throughput_calls_per_second": 211608.5036034407,
+      "wall": {
+        "max_us": 316.125,
+        "mean_us": 35.1289482421875,
+        "p50_us": 26.125,
+        "p95_us": 109.291,
+        "p99_us": 172.375
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 6.620791,
+      "measured_thread_cpu_core_equivalents": 3.315005110416565,
+      "off_cpu": {
+        "max_us": 1214.083,
+        "mean_us": 71.2739111328125,
+        "p50_us": 4.917,
+        "p95_us": 306.333,
+        "p99_us": 499.958
+      },
+      "operation": "native_model_catalog",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 114.459,
+        "mean_us": 21.43355078125,
+        "p50_us": 14.75,
+        "p95_us": 50.167,
+        "p99_us": 79.917
+      },
+      "throughput_calls_per_second": 154664.29917512878,
+      "wall": {
+        "max_us": 1311.166,
+        "mean_us": 92.7074619140625,
+        "p50_us": 20.75,
+        "p95_us": 360.0,
+        "p99_us": 567.959
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 5.859333,
+      "measured_thread_cpu_core_equivalents": 1.8937334676148292,
+      "off_cpu": {
+        "max_us": 7.583,
+        "mean_us": 0.28588671875,
+        "p50_us": 0.249,
+        "p95_us": 0.292,
+        "p99_us": 1.792
+      },
+      "operation": "native_model_catalog",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 19.417,
+        "mean_us": 10.8359521484375,
+        "p50_us": 10.708,
+        "p95_us": 10.917,
+        "p99_us": 16.083
+      },
+      "throughput_calls_per_second": 174763.91937444074,
+      "wall": {
+        "max_us": 26.375,
+        "mean_us": 11.1218388671875,
+        "p50_us": 10.917,
+        "p95_us": 11.167,
+        "p99_us": 17.417
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 1.084083,
+      "measured_thread_cpu_core_equivalents": 0.21004480284258678,
+      "off_cpu": {
+        "max_us": 1.541,
+        "mean_us": 0.2461142578125,
+        "p50_us": 0.25,
+        "p95_us": 0.333,
+        "p99_us": 0.416
+      },
+      "operation": "python_noop",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.625,
+        "mean_us": 0.222369140625,
+        "p50_us": 0.209,
+        "p95_us": 0.25,
+        "p99_us": 0.333
+      },
+      "throughput_calls_per_second": 944577.1218624404,
+      "wall": {
+        "max_us": 1.833,
+        "mean_us": 0.4684833984375,
+        "p50_us": 0.459,
+        "p95_us": 0.583,
+        "p99_us": 0.708
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 9.372167,
+      "measured_thread_cpu_core_equivalents": 2.5914175451632477,
+      "off_cpu": {
+        "max_us": 2351.833,
+        "mean_us": 224.17125390625,
+        "p50_us": 131.583,
+        "p95_us": 828.417,
+        "p99_us": 1226.874
+      },
+      "operation": "native_model_catalog",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 124.542,
+        "mean_us": 23.717966796875,
+        "p50_us": 19.167,
+        "p95_us": 49.708,
+        "p99_us": 67.584
+      },
+      "throughput_calls_per_second": 109259.68348622043,
+      "wall": {
+        "max_us": 2476.375,
+        "mean_us": 247.889220703125,
+        "p50_us": 154.208,
+        "p95_us": 865.333,
+        "p99_us": 1277.083
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 1.966208,
+      "measured_thread_cpu_core_equivalents": 0.759199433630623,
+      "off_cpu": {
+        "max_us": 3.459,
+        "mean_us": 0.2082763671875,
+        "p50_us": 0.208,
+        "p95_us": 0.291,
+        "p99_us": 0.333
+      },
+      "operation": "native_audit_stats",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 3.791,
+        "mean_us": 1.4577578125,
+        "p50_us": 1.375,
+        "p95_us": 1.916,
+        "p99_us": 2.041
+      },
+      "throughput_calls_per_second": 520799.42712063016,
+      "wall": {
+        "max_us": 4.917,
+        "mean_us": 1.6660341796875,
+        "p50_us": 1.583,
+        "p95_us": 2.167,
+        "p99_us": 2.333
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 10.817625,
+      "measured_thread_cpu_core_equivalents": 0.9528511110340764,
+      "off_cpu": {
+        "max_us": 2.999,
+        "mean_us": 0.2137919921875,
+        "p50_us": 0.208,
+        "p95_us": 0.251,
+        "p99_us": 0.333
+      },
+      "operation": "native_model_catalog",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 19.167,
+        "mean_us": 10.066001953125,
+        "p50_us": 9.625,
+        "p95_us": 13.0,
+        "p99_us": 13.292
+      },
+      "throughput_calls_per_second": 94660.33440796848,
+      "wall": {
+        "max_us": 19.417,
+        "mean_us": 10.2797939453125,
+        "p50_us": 9.833,
+        "p95_us": 13.25,
+        "p99_us": 13.583
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 0.926542,
+      "measured_thread_cpu_core_equivalents": 0.23563421841643445,
+      "off_cpu": {
+        "max_us": 0.542,
+        "mean_us": 0.234796875,
+        "p50_us": 0.249,
+        "p95_us": 0.333,
+        "p99_us": 0.375
+      },
+      "operation": "python_noop",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.5,
+        "mean_us": 0.2132080078125,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_calls_per_second": 1105184.6543383894,
+      "wall": {
+        "max_us": 1.042,
+        "mean_us": 0.4480048828125,
+        "p50_us": 0.458,
+        "p95_us": 0.583,
+        "p99_us": 0.667
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 0.651333,
+      "measured_thread_cpu_core_equivalents": 0.28955234879854086,
+      "off_cpu": {
+        "max_us": 1.541,
+        "mean_us": 0.207494140625,
+        "p50_us": 0.208,
+        "p95_us": 0.291,
+        "p99_us": 0.334
+      },
+      "operation": "python_noop",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.375,
+        "mean_us": 0.1841748046875,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.25
+      },
+      "throughput_calls_per_second": 1572160.4770524448,
+      "wall": {
+        "max_us": 1.833,
+        "mean_us": 0.3916689453125,
+        "p50_us": 0.375,
+        "p95_us": 0.5,
+        "p99_us": 0.584
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 0.721416,
+      "measured_thread_cpu_core_equivalents": 0.2678690242523038,
+      "off_cpu": {
+        "max_us": 0.542,
+        "mean_us": 0.208943359375,
+        "p50_us": 0.208,
+        "p95_us": 0.292,
+        "p99_us": 0.375
+      },
+      "operation": "python_noop",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.375,
+        "mean_us": 0.1887158203125,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_calls_per_second": 1419430.6752276078,
+      "wall": {
+        "max_us": 0.833,
+        "mean_us": 0.3976591796875,
+        "p50_us": 0.375,
+        "p95_us": 0.541,
+        "p99_us": 0.666
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 8.82575,
+      "measured_thread_cpu_core_equivalents": 2.676943715831516,
+      "off_cpu": {
+        "max_us": 336.667,
+        "mean_us": 41.4589169921875,
+        "p50_us": 19.208,
+        "p95_us": 150.5,
+        "p99_us": 241.459
+      },
+      "operation": "native_model_catalog",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 96.125,
+        "mean_us": 23.07230078125,
+        "p50_us": 18.792,
+        "p95_us": 50.5,
+        "p99_us": 68.417
+      },
+      "throughput_calls_per_second": 116024.13392629521,
+      "wall": {
+        "max_us": 432.792,
+        "mean_us": 64.5312177734375,
+        "p50_us": 42.542,
+        "p95_us": 199.666,
+        "p99_us": 302.959
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 5.871042,
+      "measured_thread_cpu_core_equivalents": 1.7662699398164754,
+      "off_cpu": {
+        "max_us": 1432.667,
+        "mean_us": 145.964220703125,
+        "p50_us": 111.875,
+        "p95_us": 508.584,
+        "p99_us": 876.208
+      },
+      "operation": "native_audit_stats",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 79.375,
+        "mean_us": 10.1268017578125,
+        "p50_us": 7.208,
+        "p95_us": 30.292,
+        "p99_us": 41.25
+      },
+      "throughput_calls_per_second": 174415.37635056945,
+      "wall": {
+        "max_us": 1466.042,
+        "mean_us": 156.0910224609375,
+        "p50_us": 122.333,
+        "p95_us": 537.709,
+        "p99_us": 896.041
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 0.642458,
+      "measured_thread_cpu_core_equivalents": 0.28439680103602105,
+      "off_cpu": {
+        "max_us": 0.5,
+        "mean_us": 0.1968759765625,
+        "p50_us": 0.208,
+        "p95_us": 0.291,
+        "p99_us": 0.334
+      },
+      "operation": "python_noop",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.375,
+        "mean_us": 0.1784306640625,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_calls_per_second": 1593878.5103462017,
+      "wall": {
+        "max_us": 0.791,
+        "mean_us": 0.375306640625,
+        "p50_us": 0.375,
+        "p95_us": 0.5,
+        "p99_us": 0.583
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 3.343958,
+      "measured_thread_cpu_core_equivalents": 1.315854445540285,
+      "off_cpu": {
+        "max_us": 32.625,
+        "mean_us": 1.8232890625,
+        "p50_us": 1.25,
+        "p95_us": 7.417,
+        "p99_us": 13.708
+      },
+      "operation": "native_audit_stats",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 30.625,
+        "mean_us": 4.297033203125,
+        "p50_us": 3.958,
+        "p95_us": 8.625,
+        "p99_us": 13.709
+      },
+      "throughput_calls_per_second": 306223.9418078816,
+      "wall": {
+        "max_us": 48.25,
+        "mean_us": 6.120322265625,
+        "p50_us": 5.25,
+        "p95_us": 15.0,
+        "p99_us": 26.375
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 7.074417,
+      "measured_thread_cpu_core_equivalents": 2.293727384178795,
+      "off_cpu": {
+        "max_us": 341.917,
+        "mean_us": 10.0011865234375,
+        "p50_us": 0.333,
+        "p95_us": 39.708,
+        "p99_us": 67.792
+      },
+      "operation": "native_model_catalog",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 49.792,
+        "mean_us": 15.84646875,
+        "p50_us": 14.458,
+        "p95_us": 29.25,
+        "p99_us": 36.208
+      },
+      "throughput_calls_per_second": 144746.9098867087,
+      "wall": {
+        "max_us": 363.209,
+        "mean_us": 25.8476552734375,
+        "p50_us": 15.958,
+        "p95_us": 63.75,
+        "p99_us": 97.833
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 5.974,
+      "measured_thread_cpu_core_equivalents": 2.059865249414128,
+      "off_cpu": {
+        "max_us": 629.374,
+        "mean_us": 70.3172509765625,
+        "p50_us": 16.625,
+        "p95_us": 275.958,
+        "p99_us": 402.042
+      },
+      "operation": "native_audit_stats",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 87.583,
+        "mean_us": 12.0172216796875,
+        "p50_us": 8.208,
+        "p95_us": 34.583,
+        "p99_us": 50.375
+      },
+      "throughput_calls_per_second": 171409.44091061264,
+      "wall": {
+        "max_us": 697.958,
+        "mean_us": 82.33447265625,
+        "p50_us": 32.0,
+        "p95_us": 302.333,
+        "p99_us": 441.792
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 0.683542,
+      "measured_thread_cpu_core_equivalents": 0.2711406175480073,
+      "off_cpu": {
+        "max_us": 2.958,
+        "mean_us": 0.2031875,
+        "p50_us": 0.168,
+        "p95_us": 0.291,
+        "p99_us": 0.334
+      },
+      "operation": "python_noop",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.542,
+        "mean_us": 0.1809921875,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_calls_per_second": 1498079.1231555631,
+      "wall": {
+        "max_us": 3.208,
+        "mean_us": 0.3841796875,
+        "p50_us": 0.375,
+        "p95_us": 0.5,
+        "p99_us": 0.625
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 5.270375,
+      "measured_thread_cpu_core_equivalents": 1.693194507032232,
+      "off_cpu": {
+        "max_us": 123.083,
+        "mean_us": 10.968087890625,
+        "p50_us": 4.083,
+        "p95_us": 45.708,
+        "p99_us": 74.875
+      },
+      "operation": "native_audit_stats",
+      "replication": 1,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 63.167,
+        "mean_us": 8.714619140625,
+        "p50_us": 6.125,
+        "p95_us": 25.083,
+        "p99_us": 37.375
+      },
+      "throughput_calls_per_second": 194293.57493536986,
+      "wall": {
+        "max_us": 181.041,
+        "mean_us": 19.68270703125,
+        "p50_us": 11.416,
+        "p95_us": 67.042,
+        "p99_us": 114.584
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 0.671667,
+      "measured_thread_cpu_core_equivalents": 0.27162418281678274,
+      "off_cpu": {
+        "max_us": 0.375,
+        "mean_us": 0.194259765625,
+        "p50_us": 0.208,
+        "p95_us": 0.249,
+        "p99_us": 0.251
+      },
+      "operation": "python_noop",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.334,
+        "mean_us": 0.1781650390625,
+        "p50_us": 0.167,
+        "p95_us": 0.209,
+        "p99_us": 0.209
+      },
+      "throughput_calls_per_second": 1524565.0002158808,
+      "wall": {
+        "max_us": 0.667,
+        "mean_us": 0.3724248046875,
+        "p50_us": 0.375,
+        "p95_us": 0.417,
+        "p99_us": 0.459
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 5.196416,
+      "measured_thread_cpu_core_equivalents": 3.0911503236076556,
+      "off_cpu": {
+        "max_us": 1791.375,
+        "mean_us": 110.152982421875,
+        "p50_us": 0.292,
+        "p95_us": 544.833,
+        "p99_us": 958.125
+      },
+      "operation": "native_model_catalog",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 51.542,
+        "mean_us": 15.6864287109375,
+        "p50_us": 13.041,
+        "p95_us": 28.375,
+        "p99_us": 39.333
+      },
+      "throughput_calls_per_second": 197058.89597753529,
+      "wall": {
+        "max_us": 1840.875,
+        "mean_us": 125.8394111328125,
+        "p50_us": 13.333,
+        "p95_us": 571.416,
+        "p99_us": 986.625
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 2.860875,
+      "measured_thread_cpu_core_equivalents": 1.3063373967754621,
+      "off_cpu": {
+        "max_us": 29.291,
+        "mean_us": 1.472466796875,
+        "p50_us": 0.292,
+        "p95_us": 6.958,
+        "p99_us": 11.459
+      },
+      "operation": "native_audit_stats",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 22.292,
+        "mean_us": 3.64967578125,
+        "p50_us": 3.0,
+        "p95_us": 7.25,
+        "p99_us": 11.75
+      },
+      "throughput_calls_per_second": 357932.4507362258,
+      "wall": {
+        "max_us": 51.583,
+        "mean_us": 5.122142578125,
+        "p50_us": 3.25,
+        "p95_us": 13.5,
+        "p99_us": 23.5
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 3.231666,
+      "measured_thread_cpu_core_equivalents": 0.46753191697409324,
+      "off_cpu": {
+        "max_us": 1097.375,
+        "mean_us": 1.3743740234375,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.375
+      },
+      "operation": "native_audit_stats",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 21.5,
+        "mean_us": 1.4754951171875,
+        "p50_us": 1.417,
+        "p95_us": 1.542,
+        "p99_us": 2.0
+      },
+      "throughput_calls_per_second": 316864.4284403153,
+      "wall": {
+        "max_us": 1118.875,
+        "mean_us": 2.849869140625,
+        "p50_us": 1.625,
+        "p95_us": 1.75,
+        "p99_us": 2.916
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 0.862084,
+      "measured_thread_cpu_core_equivalents": 0.22013864078210477,
+      "off_cpu": {
+        "max_us": 0.416,
+        "mean_us": 0.203484375,
+        "p50_us": 0.208,
+        "p95_us": 0.251,
+        "p99_us": 0.292
+      },
+      "operation": "python_noop",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.375,
+        "mean_us": 0.185330078125,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.25
+      },
+      "throughput_calls_per_second": 1187819.2844316794,
+      "wall": {
+        "max_us": 0.708,
+        "mean_us": 0.388814453125,
+        "p50_us": 0.375,
+        "p95_us": 0.5,
+        "p99_us": 0.542
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 0.667834,
+      "measured_thread_cpu_core_equivalents": 0.2819038862950973,
+      "off_cpu": {
+        "max_us": 0.541,
+        "mean_us": 0.1994853515625,
+        "p50_us": 0.208,
+        "p95_us": 0.291,
+        "p99_us": 0.333
+      },
+      "operation": "python_noop",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.375,
+        "mean_us": 0.1838525390625,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_calls_per_second": 1533315.1651458296,
+      "wall": {
+        "max_us": 0.916,
+        "mean_us": 0.383337890625,
+        "p50_us": 0.375,
+        "p95_us": 0.5,
+        "p99_us": 0.625
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 5.879458,
+      "measured_thread_cpu_core_equivalents": 1.8878508869354964,
+      "off_cpu": {
+        "max_us": 14.626,
+        "mean_us": 0.27948828125,
+        "p50_us": 0.249,
+        "p95_us": 0.292,
+        "p99_us": 1.458
+      },
+      "operation": "native_model_catalog",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 34.208,
+        "mean_us": 10.83939453125,
+        "p50_us": 10.709,
+        "p95_us": 11.0,
+        "p99_us": 14.334
+      },
+      "throughput_calls_per_second": 174165.71391444586,
+      "wall": {
+        "max_us": 48.834,
+        "mean_us": 11.1188828125,
+        "p50_us": 10.958,
+        "p95_us": 11.25,
+        "p99_us": 15.084
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 5.107458,
+      "measured_thread_cpu_core_equivalents": 1.8240238098874235,
+      "off_cpu": {
+        "max_us": 533.0,
+        "mean_us": 63.47702734375,
+        "p50_us": 48.875,
+        "p95_us": 207.916,
+        "p99_us": 369.167
+      },
+      "operation": "native_audit_stats",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 67.958,
+        "mean_us": 9.0977783203125,
+        "p50_us": 6.375,
+        "p95_us": 27.625,
+        "p99_us": 44.208
+      },
+      "throughput_calls_per_second": 200491.1249392555,
+      "wall": {
+        "max_us": 596.75,
+        "mean_us": 72.5748056640625,
+        "p50_us": 56.291,
+        "p95_us": 231.375,
+        "p99_us": 410.0
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 10.400083,
+      "measured_thread_cpu_core_equivalents": 0.954258345822817,
+      "off_cpu": {
+        "max_us": 2.624,
+        "mean_us": 0.2092138671875,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "operation": "native_model_catalog",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 16.459,
+        "mean_us": 9.691763671875,
+        "p50_us": 9.583,
+        "p95_us": 10.083,
+        "p99_us": 13.042
+      },
+      "throughput_calls_per_second": 98460.75266899313,
+      "wall": {
+        "max_us": 16.667,
+        "mean_us": 9.9009775390625,
+        "p50_us": 9.75,
+        "p95_us": 10.333,
+        "p99_us": 13.333
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 0.872083,
+      "measured_thread_cpu_core_equivalents": 0.2559561417892563,
+      "off_cpu": {
+        "max_us": 2.0,
+        "mean_us": 0.24168359375,
+        "p50_us": 0.25,
+        "p95_us": 0.333,
+        "p99_us": 0.375
+      },
+      "operation": "python_noop",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.416,
+        "mean_us": 0.2179833984375,
+        "p50_us": 0.209,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_calls_per_second": 1174200.1621405303,
+      "wall": {
+        "max_us": 2.292,
+        "mean_us": 0.4596669921875,
+        "p50_us": 0.459,
+        "p95_us": 0.583,
+        "p99_us": 0.667
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 5.274917,
+      "measured_thread_cpu_core_equivalents": 1.647734552031814,
+      "off_cpu": {
+        "max_us": 130.292,
+        "mean_us": 10.8159599609375,
+        "p50_us": 4.084,
+        "p95_us": 44.166,
+        "p99_us": 74.417
+      },
+      "operation": "native_audit_stats",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 73.916,
+        "mean_us": 8.4879521484375,
+        "p50_us": 5.875,
+        "p95_us": 25.834,
+        "p99_us": 40.834
+      },
+      "throughput_calls_per_second": 194126.27724758512,
+      "wall": {
+        "max_us": 204.208,
+        "mean_us": 19.303912109375,
+        "p50_us": 11.5,
+        "p95_us": 70.583,
+        "p99_us": 111.292
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 7.254334,
+      "measured_thread_cpu_core_equivalents": 2.7959674864708464,
+      "off_cpu": {
+        "max_us": 481.584,
+        "mean_us": 32.7750771484375,
+        "p50_us": 5.833,
+        "p95_us": 130.208,
+        "p99_us": 217.208
+      },
+      "operation": "native_model_catalog",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 85.958,
+        "mean_us": 19.807501953125,
+        "p50_us": 16.0,
+        "p95_us": 42.209,
+        "p99_us": 64.042
+      },
+      "throughput_calls_per_second": 141156.9966312552,
+      "wall": {
+        "max_us": 567.542,
+        "mean_us": 52.5825791015625,
+        "p50_us": 22.625,
+        "p95_us": 171.292,
+        "p99_us": 273.833
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 0.61075,
+      "measured_thread_cpu_core_equivalents": 0.29405976258698324,
+      "off_cpu": {
+        "max_us": 1.375,
+        "mean_us": 0.193314453125,
+        "p50_us": 0.208,
+        "p95_us": 0.249,
+        "p99_us": 0.251
+      },
+      "operation": "python_noop",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.333,
+        "mean_us": 0.1753876953125,
+        "p50_us": 0.167,
+        "p95_us": 0.208,
+        "p99_us": 0.209
+      },
+      "throughput_calls_per_second": 1676627.0978305363,
+      "wall": {
+        "max_us": 1.542,
+        "mean_us": 0.3687021484375,
+        "p50_us": 0.375,
+        "p95_us": 0.416,
+        "p99_us": 0.458
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 0.709375,
+      "measured_thread_cpu_core_equivalents": 0.25549533039647576,
+      "off_cpu": {
+        "max_us": 0.499,
+        "mean_us": 0.19459765625,
+        "p50_us": 0.208,
+        "p95_us": 0.251,
+        "p99_us": 0.292
+      },
+      "operation": "python_noop",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.459,
+        "mean_us": 0.176994140625,
+        "p50_us": 0.167,
+        "p95_us": 0.209,
+        "p99_us": 0.25
+      },
+      "throughput_calls_per_second": 1443524.2290748898,
+      "wall": {
+        "max_us": 0.917,
+        "mean_us": 0.371591796875,
+        "p50_us": 0.375,
+        "p95_us": 0.5,
+        "p99_us": 0.542
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 8.607292,
+      "measured_thread_cpu_core_equivalents": 2.7814275384174256,
+      "off_cpu": {
+        "max_us": 1240.876,
+        "mean_us": 97.238439453125,
+        "p50_us": 10.167,
+        "p95_us": 457.917,
+        "p99_us": 688.875
+      },
+      "operation": "native_model_catalog",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 113.792,
+        "mean_us": 23.3794521484375,
+        "p50_us": 17.5,
+        "p95_us": 56.25,
+        "p99_us": 82.959
+      },
+      "throughput_calls_per_second": 118968.89288756557,
+      "wall": {
+        "max_us": 1327.959,
+        "mean_us": 120.6178916015625,
+        "p50_us": 36.083,
+        "p95_us": 507.709,
+        "p99_us": 761.541
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 6.050625,
+      "measured_thread_cpu_core_equivalents": 2.4248304927176942,
+      "off_cpu": {
+        "max_us": 131.709,
+        "mean_us": 8.48130078125,
+        "p50_us": 0.291,
+        "p95_us": 35.251,
+        "p99_us": 79.917
+      },
+      "operation": "native_model_catalog",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 62.625,
+        "mean_us": 14.32787109375,
+        "p50_us": 12.0,
+        "p95_us": 24.875,
+        "p99_us": 34.875
+      },
+      "throughput_calls_per_second": 169238.7150087801,
+      "wall": {
+        "max_us": 156.292,
+        "mean_us": 22.809171875,
+        "p50_us": 12.291,
+        "p95_us": 60.834,
+        "p99_us": 110.0
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 5.567458,
+      "measured_thread_cpu_core_equivalents": 1.8158626432386198,
+      "off_cpu": {
+        "max_us": 414.875,
+        "mean_us": 30.6131396484375,
+        "p50_us": 19.333,
+        "p95_us": 108.334,
+        "p99_us": 168.333
+      },
+      "operation": "native_audit_stats",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 65.292,
+        "mean_us": 9.8727919921875,
+        "p50_us": 6.667,
+        "p95_us": 28.208,
+        "p99_us": 45.833
+      },
+      "throughput_calls_per_second": 183925.9496883497,
+      "wall": {
+        "max_us": 477.25,
+        "mean_us": 40.485931640625,
+        "p50_us": 25.0,
+        "p95_us": 131.583,
+        "p99_us": 204.75
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 5.402167,
+      "measured_thread_cpu_core_equivalents": 1.7579674971173604,
+      "off_cpu": {
+        "max_us": 1062.583,
+        "mean_us": 128.092068359375,
+        "p50_us": 54.458,
+        "p95_us": 477.125,
+        "p99_us": 771.875
+      },
+      "operation": "native_audit_stats",
+      "replication": 2,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 65.291,
+        "mean_us": 9.274251953125,
+        "p50_us": 6.584,
+        "p95_us": 26.333,
+        "p99_us": 39.834
+      },
+      "throughput_calls_per_second": 189553.5624870538,
+      "wall": {
+        "max_us": 1099.833,
+        "mean_us": 137.3663203125,
+        "p50_us": 63.792,
+        "p95_us": 504.834,
+        "p99_us": 801.209
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 0.613167,
+      "measured_thread_cpu_core_equivalents": 0.2953681460352563,
+      "off_cpu": {
+        "max_us": 1.667,
+        "mean_us": 0.19516015625,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.25
+      },
+      "operation": "python_noop",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.333,
+        "mean_us": 0.176865234375,
+        "p50_us": 0.167,
+        "p95_us": 0.209,
+        "p99_us": 0.209
+      },
+      "throughput_calls_per_second": 1670018.1190442408,
+      "wall": {
+        "max_us": 1.875,
+        "mean_us": 0.372025390625,
+        "p50_us": 0.375,
+        "p95_us": 0.416,
+        "p99_us": 0.417
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 1.008,
+      "measured_thread_cpu_core_equivalents": 0.21624305555555556,
+      "off_cpu": {
+        "max_us": 0.666,
+        "mean_us": 0.2340263671875,
+        "p50_us": 0.25,
+        "p95_us": 0.292,
+        "p99_us": 0.375
+      },
+      "operation": "python_noop",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.459,
+        "mean_us": 0.2128642578125,
+        "p50_us": 0.209,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_calls_per_second": 1015873.0158730159,
+      "wall": {
+        "max_us": 1.125,
+        "mean_us": 0.446890625,
+        "p50_us": 0.458,
+        "p95_us": 0.542,
+        "p99_us": 0.667
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 5.4465,
+      "measured_thread_cpu_core_equivalents": 1.8976939318828605,
+      "off_cpu": {
+        "max_us": 835.001,
+        "mean_us": 64.993775390625,
+        "p50_us": 45.708,
+        "p95_us": 218.417,
+        "p99_us": 369.625
+      },
+      "operation": "native_audit_stats",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 70.958,
+        "mean_us": 10.093544921875,
+        "p50_us": 6.792,
+        "p95_us": 30.084,
+        "p99_us": 48.041
+      },
+      "throughput_calls_per_second": 188010.64904066833,
+      "wall": {
+        "max_us": 897.709,
+        "mean_us": 75.0873203125,
+        "p50_us": 53.125,
+        "p95_us": 244.084,
+        "p99_us": 398.0
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 4.755,
+      "measured_thread_cpu_core_equivalents": 1.6895779179810726,
+      "off_cpu": {
+        "max_us": 116.124,
+        "mean_us": 9.491681640625,
+        "p50_us": 3.541,
+        "p95_us": 41.917,
+        "p99_us": 69.125
+      },
+      "operation": "native_audit_stats",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 59.5,
+        "mean_us": 7.8456474609375,
+        "p50_us": 5.583,
+        "p95_us": 22.083,
+        "p99_us": 36.083
+      },
+      "throughput_calls_per_second": 215352.2607781283,
+      "wall": {
+        "max_us": 135.833,
+        "mean_us": 17.3373291015625,
+        "p50_us": 11.292,
+        "p95_us": 62.583,
+        "p99_us": 101.166
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 0.682917,
+      "measured_thread_cpu_core_equivalents": 0.27310493076025344,
+      "off_cpu": {
+        "max_us": 0.459,
+        "mean_us": 0.200259765625,
+        "p50_us": 0.208,
+        "p95_us": 0.291,
+        "p99_us": 0.334
+      },
+      "operation": "python_noop",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.458,
+        "mean_us": 0.18213671875,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.291
+      },
+      "throughput_calls_per_second": 1499450.1528004135,
+      "wall": {
+        "max_us": 0.916,
+        "mean_us": 0.382396484375,
+        "p50_us": 0.375,
+        "p95_us": 0.5,
+        "p99_us": 0.625
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 8.761375,
+      "measured_thread_cpu_core_equivalents": 2.700253441954031,
+      "off_cpu": {
+        "max_us": 1035.5,
+        "mean_us": 102.096197265625,
+        "p50_us": 62.083,
+        "p95_us": 376.0,
+        "p99_us": 567.334
+      },
+      "operation": "native_model_catalog",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 120.0,
+        "mean_us": 23.1034501953125,
+        "p50_us": 19.0,
+        "p95_us": 48.208,
+        "p99_us": 61.166
+      },
+      "throughput_calls_per_second": 116876.63180722205,
+      "wall": {
+        "max_us": 1147.25,
+        "mean_us": 125.1996474609375,
+        "p50_us": 89.416,
+        "p95_us": 411.042,
+        "p99_us": 607.667
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 8.610583,
+      "measured_thread_cpu_core_equivalents": 2.7059531276802047,
+      "off_cpu": {
+        "max_us": 394.25,
+        "mean_us": 41.8155,
+        "p50_us": 25.999,
+        "p95_us": 136.75,
+        "p99_us": 237.541
+      },
+      "operation": "native_model_catalog",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 91.584,
+        "mean_us": 22.753744140625,
+        "p50_us": 18.334,
+        "p95_us": 46.167,
+        "p99_us": 67.292
+      },
+      "throughput_calls_per_second": 118923.42249067224,
+      "wall": {
+        "max_us": 475.291,
+        "mean_us": 64.569244140625,
+        "p50_us": 49.5,
+        "p95_us": 175.167,
+        "p99_us": 304.875
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 0.65425,
+      "measured_thread_cpu_core_equivalents": 0.2717157050057318,
+      "off_cpu": {
+        "max_us": 0.458,
+        "mean_us": 0.1880537109375,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.333
+      },
+      "operation": "python_noop",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.458,
+        "mean_us": 0.173603515625,
+        "p50_us": 0.167,
+        "p95_us": 0.209,
+        "p99_us": 0.25
+      },
+      "throughput_calls_per_second": 1565150.9361864731,
+      "wall": {
+        "max_us": 0.875,
+        "mean_us": 0.3616572265625,
+        "p50_us": 0.334,
+        "p95_us": 0.5,
+        "p99_us": 0.542
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 0.8995,
+      "measured_thread_cpu_core_equivalents": 0.24663479710950528,
+      "off_cpu": {
+        "max_us": 0.417,
+        "mean_us": 0.2315546875,
+        "p50_us": 0.25,
+        "p95_us": 0.292,
+        "p99_us": 0.375
+      },
+      "operation": "python_noop",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.375,
+        "mean_us": 0.2166484375,
+        "p50_us": 0.209,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_calls_per_second": 1138410.2279043912,
+      "wall": {
+        "max_us": 0.791,
+        "mean_us": 0.448203125,
+        "p50_us": 0.458,
+        "p95_us": 0.542,
+        "p99_us": 0.625
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 8.7645,
+      "measured_thread_cpu_core_equivalents": 2.7646373438302243,
+      "off_cpu": {
+        "max_us": 3147.709,
+        "mean_us": 210.5582294921875,
+        "p50_us": 113.375,
+        "p95_us": 751.542,
+        "p99_us": 1121.166
+      },
+      "operation": "native_model_catalog",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 136.541,
+        "mean_us": 23.6627578125,
+        "p50_us": 18.917,
+        "p95_us": 51.125,
+        "p99_us": 71.791
+      },
+      "throughput_calls_per_second": 116834.95921045126,
+      "wall": {
+        "max_us": 3284.25,
+        "mean_us": 234.2209873046875,
+        "p50_us": 133.041,
+        "p95_us": 794.041,
+        "p99_us": 1200.334
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 6.05175,
+      "measured_thread_cpu_core_equivalents": 2.3952529433634897,
+      "off_cpu": {
+        "max_us": 311.541,
+        "mean_us": 7.797498046875,
+        "p50_us": 0.251,
+        "p95_us": 35.876,
+        "p99_us": 62.959
+      },
+      "operation": "native_model_catalog",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 43.709,
+        "mean_us": 14.155734375,
+        "p50_us": 11.958,
+        "p95_us": 24.834,
+        "p99_us": 32.0
+      },
+      "throughput_calls_per_second": 169207.25410005372,
+      "wall": {
+        "max_us": 329.5,
+        "mean_us": 21.953232421875,
+        "p50_us": 12.25,
+        "p95_us": 59.792,
+        "p99_us": 90.25
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 5.506292,
+      "measured_thread_cpu_core_equivalents": 1.7763030002767743,
+      "off_cpu": {
+        "max_us": 326.084,
+        "mean_us": 30.8180078125,
+        "p50_us": 20.209,
+        "p95_us": 109.458,
+        "p99_us": 186.0
+      },
+      "operation": "native_audit_stats",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 56.542,
+        "mean_us": 9.5516044921875,
+        "p50_us": 6.834,
+        "p95_us": 25.958,
+        "p99_us": 39.375
+      },
+      "throughput_calls_per_second": 185969.06956623442,
+      "wall": {
+        "max_us": 368.834,
+        "mean_us": 40.3696123046875,
+        "p50_us": 26.084,
+        "p95_us": 133.0,
+        "p99_us": 206.75
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 5.344125,
+      "measured_thread_cpu_core_equivalents": 1.7366678361752392,
+      "off_cpu": {
+        "max_us": 1232.917,
+        "mean_us": 128.0332353515625,
+        "p50_us": 91.25,
+        "p95_us": 451.167,
+        "p99_us": 750.625
+      },
+      "operation": "native_audit_stats",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 63.0,
+        "mean_us": 9.063447265625,
+        "p50_us": 6.458,
+        "p95_us": 26.375,
+        "p99_us": 41.333
+      },
+      "throughput_calls_per_second": 191612.28451804552,
+      "wall": {
+        "max_us": 1261.875,
+        "mean_us": 137.0966826171875,
+        "p50_us": 96.0,
+        "p95_us": 475.792,
+        "p99_us": 800.292
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 10.281958,
+      "measured_thread_cpu_core_equivalents": 0.9544394170837889,
+      "off_cpu": {
+        "max_us": 1.292,
+        "mean_us": 0.208181640625,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "operation": "native_model_catalog",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 15.041,
+        "mean_us": 9.583501953125,
+        "p50_us": 9.541,
+        "p95_us": 9.708,
+        "p99_us": 10.917
+      },
+      "throughput_calls_per_second": 99591.92597363265,
+      "wall": {
+        "max_us": 15.25,
+        "mean_us": 9.79168359375,
+        "p50_us": 9.75,
+        "p95_us": 9.916,
+        "p99_us": 11.208
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 0.738542,
+      "measured_thread_cpu_core_equivalents": 0.2618821949191786,
+      "off_cpu": {
+        "max_us": 0.417,
+        "mean_us": 0.2033427734375,
+        "p50_us": 0.208,
+        "p95_us": 0.292,
+        "p99_us": 0.334
+      },
+      "operation": "python_noop",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.417,
+        "mean_us": 0.1888779296875,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.291
+      },
+      "throughput_calls_per_second": 1386515.5942383779,
+      "wall": {
+        "max_us": 0.75,
+        "mean_us": 0.392220703125,
+        "p50_us": 0.375,
+        "p95_us": 0.541,
+        "p99_us": 0.584
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 5.787958,
+      "measured_thread_cpu_core_equivalents": 1.893138132654038,
+      "off_cpu": {
+        "max_us": 17.666,
+        "mean_us": 0.2729150390625,
+        "p50_us": 0.209,
+        "p95_us": 0.292,
+        "p99_us": 0.375
+      },
+      "operation": "native_model_catalog",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 16.666,
+        "mean_us": 10.70058984375,
+        "p50_us": 10.625,
+        "p95_us": 10.833,
+        "p99_us": 14.292
+      },
+      "throughput_calls_per_second": 176919.04467862414,
+      "wall": {
+        "max_us": 32.666,
+        "mean_us": 10.9735048828125,
+        "p50_us": 10.834,
+        "p95_us": 11.042,
+        "p99_us": 14.708
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 1.885042,
+      "measured_thread_cpu_core_equivalents": 0.7623172321889911,
+      "off_cpu": {
+        "max_us": 1.75,
+        "mean_us": 0.2024052734375,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.291
+      },
+      "operation": "native_audit_stats",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 3.0,
+        "mean_us": 1.4033203125,
+        "p50_us": 1.375,
+        "p95_us": 1.459,
+        "p99_us": 1.709
+      },
+      "throughput_calls_per_second": 543223.9706064905,
+      "wall": {
+        "max_us": 4.75,
+        "mean_us": 1.6057255859375,
+        "p50_us": 1.583,
+        "p95_us": 1.667,
+        "p99_us": 2.125
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 2.730375,
+      "measured_thread_cpu_core_equivalents": 1.368790367623495,
+      "off_cpu": {
+        "max_us": 16.458,
+        "mean_us": 1.3381328125,
+        "p50_us": 0.333,
+        "p95_us": 6.583,
+        "p99_us": 9.626
+      },
+      "operation": "native_audit_stats",
+      "replication": 3,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 15.834,
+        "mean_us": 3.6497177734375,
+        "p50_us": 3.458,
+        "p95_us": 6.875,
+        "p99_us": 9.917
+      },
+      "throughput_calls_per_second": 375040.0586000091,
+      "wall": {
+        "max_us": 32.292,
+        "mean_us": 4.9878505859375,
+        "p50_us": 3.792,
+        "p95_us": 12.5,
+        "p99_us": 18.375
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 10.294208,
+      "measured_thread_cpu_core_equivalents": 0.9532349647491094,
+      "off_cpu": {
+        "max_us": 5.251,
+        "mean_us": 0.218552734375,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.291
+      },
+      "operation": "native_model_catalog",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 15.458,
+        "mean_us": 9.5828115234375,
+        "p50_us": 9.542,
+        "p95_us": 9.709,
+        "p99_us": 10.291
+      },
+      "throughput_calls_per_second": 99473.41262193264,
+      "wall": {
+        "max_us": 15.709,
+        "mean_us": 9.8013642578125,
+        "p50_us": 9.75,
+        "p95_us": 9.958,
+        "p99_us": 11.75
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 9.064959,
+      "measured_thread_cpu_core_equivalents": 2.6577844422682992,
+      "off_cpu": {
+        "max_us": 374.416,
+        "mean_us": 43.7759306640625,
+        "p50_us": 36.792,
+        "p95_us": 138.709,
+        "p99_us": 206.542
+      },
+      "operation": "native_model_catalog",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 92.875,
+        "mean_us": 23.5280341796875,
+        "p50_us": 19.5,
+        "p95_us": 47.584,
+        "p99_us": 69.625
+      },
+      "throughput_calls_per_second": 112962.45245014346,
+      "wall": {
+        "max_us": 452.958,
+        "mean_us": 67.30396484375,
+        "p50_us": 56.792,
+        "p95_us": 189.041,
+        "p99_us": 270.625
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 9.015916,
+      "measured_thread_cpu_core_equivalents": 2.6852790110289404,
+      "off_cpu": {
+        "max_us": 762.333,
+        "mean_us": 104.06659765625,
+        "p50_us": 75.5,
+        "p95_us": 368.75,
+        "p99_us": 559.709
+      },
+      "operation": "native_model_catalog",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 110.5,
+        "mean_us": 23.642822265625,
+        "p50_us": 19.417,
+        "p95_us": 49.041,
+        "p99_us": 67.833
+      },
+      "throughput_calls_per_second": 113576.92329875301,
+      "wall": {
+        "max_us": 870.75,
+        "mean_us": 127.709419921875,
+        "p50_us": 101.25,
+        "p95_us": 411.542,
+        "p99_us": 631.208
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 0.642792,
+      "measured_thread_cpu_core_equivalents": 0.27944342804515304,
+      "off_cpu": {
+        "max_us": 0.375,
+        "mean_us": 0.1905869140625,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "operation": "python_noop",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.375,
+        "mean_us": 0.1754140625,
+        "p50_us": 0.167,
+        "p95_us": 0.209,
+        "p99_us": 0.25
+      },
+      "throughput_calls_per_second": 1593050.3179877782,
+      "wall": {
+        "max_us": 0.708,
+        "mean_us": 0.3660009765625,
+        "p50_us": 0.375,
+        "p95_us": 0.458,
+        "p99_us": 0.541
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 5.602875,
+      "measured_thread_cpu_core_equivalents": 1.9194156571403074,
+      "off_cpu": {
+        "max_us": 299.958,
+        "mean_us": 29.9063857421875,
+        "p50_us": 19.708,
+        "p95_us": 107.167,
+        "p99_us": 186.291
+      },
+      "operation": "native_audit_stats",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 72.584,
+        "mean_us": 10.502193359375,
+        "p50_us": 7.416,
+        "p95_us": 29.584,
+        "p99_us": 48.5
+      },
+      "throughput_calls_per_second": 182763.31347745578,
+      "wall": {
+        "max_us": 372.542,
+        "mean_us": 40.4085791015625,
+        "p50_us": 26.5,
+        "p95_us": 132.375,
+        "p99_us": 222.208
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 4.176667,
+      "measured_thread_cpu_core_equivalents": 1.6951492661493004,
+      "off_cpu": {
+        "max_us": 137.001,
+        "mean_us": 8.142974609375,
+        "p50_us": 3.666,
+        "p95_us": 27.917,
+        "p99_us": 68.375
+      },
+      "operation": "native_audit_stats",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 40.042,
+        "mean_us": 6.914134765625,
+        "p50_us": 5.5,
+        "p95_us": 16.167,
+        "p99_us": 29.333
+      },
+      "throughput_calls_per_second": 245171.5686215827,
+      "wall": {
+        "max_us": 172.5,
+        "mean_us": 15.057109375,
+        "p50_us": 9.667,
+        "p95_us": 43.542,
+        "p99_us": 93.667
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 5.815125,
+      "measured_thread_cpu_core_equivalents": 1.893528514004428,
+      "off_cpu": {
+        "max_us": 16.501,
+        "mean_us": 0.2789892578125,
+        "p50_us": 0.209,
+        "p95_us": 0.292,
+        "p99_us": 0.458
+      },
+      "operation": "native_model_catalog",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 21.25,
+        "mean_us": 10.7530322265625,
+        "p50_us": 10.625,
+        "p95_us": 10.875,
+        "p99_us": 14.75
+      },
+      "throughput_calls_per_second": 176092.51735775243,
+      "wall": {
+        "max_us": 30.834,
+        "mean_us": 11.032021484375,
+        "p50_us": 10.875,
+        "p95_us": 11.125,
+        "p99_us": 15.458
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 6.520083,
+      "measured_thread_cpu_core_equivalents": 2.3297399741690406,
+      "off_cpu": {
+        "max_us": 566.875,
+        "mean_us": 8.9928330078125,
+        "p50_us": 0.292,
+        "p95_us": 33.041,
+        "p99_us": 47.959
+      },
+      "operation": "native_model_catalog",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 55.042,
+        "mean_us": 14.834080078125,
+        "p50_us": 12.459,
+        "p95_us": 27.708,
+        "p99_us": 34.333
+      },
+      "throughput_calls_per_second": 157053.21542685883,
+      "wall": {
+        "max_us": 599.0,
+        "mean_us": 23.8269130859375,
+        "p50_us": 12.833,
+        "p95_us": 58.833,
+        "p99_us": 79.375
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 0.610833,
+      "measured_thread_cpu_core_equivalents": 0.2910697359180005,
+      "off_cpu": {
+        "max_us": 0.417,
+        "mean_us": 0.193130859375,
+        "p50_us": 0.208,
+        "p95_us": 0.249,
+        "p99_us": 0.291
+      },
+      "operation": "python_noop",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.417,
+        "mean_us": 0.1736279296875,
+        "p50_us": 0.167,
+        "p95_us": 0.208,
+        "p99_us": 0.25
+      },
+      "throughput_calls_per_second": 1676399.277707655,
+      "wall": {
+        "max_us": 0.834,
+        "mean_us": 0.3667587890625,
+        "p50_us": 0.375,
+        "p95_us": 0.416,
+        "p99_us": 0.541
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 1.003958,
+      "measured_thread_cpu_core_equivalents": 0.22460600941473646,
+      "off_cpu": {
+        "max_us": 2.416,
+        "mean_us": 0.2374462890625,
+        "p50_us": 0.25,
+        "p95_us": 0.293,
+        "p99_us": 0.375
+      },
+      "operation": "python_noop",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.416,
+        "mean_us": 0.2202099609375,
+        "p50_us": 0.209,
+        "p95_us": 0.25,
+        "p99_us": 0.333
+      },
+      "throughput_calls_per_second": 1019962.9864994353,
+      "wall": {
+        "max_us": 2.708,
+        "mean_us": 0.45765625,
+        "p50_us": 0.459,
+        "p95_us": 0.583,
+        "p99_us": 0.666
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 0.959208,
+      "measured_thread_cpu_core_equivalents": 0.19211474466434808,
+      "off_cpu": {
+        "max_us": 0.417,
+        "mean_us": 0.199767578125,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "operation": "python_noop",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.375,
+        "mean_us": 0.179958984375,
+        "p50_us": 0.167,
+        "p95_us": 0.209,
+        "p99_us": 0.209
+      },
+      "throughput_calls_per_second": 1067547.3932661111,
+      "wall": {
+        "max_us": 0.75,
+        "mean_us": 0.3797265625,
+        "p50_us": 0.375,
+        "p95_us": 0.417,
+        "p99_us": 0.5
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 8.964542,
+      "measured_thread_cpu_core_equivalents": 2.69390628099015,
+      "off_cpu": {
+        "max_us": 2183.291,
+        "mean_us": 216.406251953125,
+        "p50_us": 117.584,
+        "p95_us": 773.709,
+        "p99_us": 1297.541
+      },
+      "operation": "native_model_catalog",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 133.75,
+        "mean_us": 23.58362890625,
+        "p50_us": 18.583,
+        "p95_us": 49.542,
+        "p99_us": 82.75
+      },
+      "throughput_calls_per_second": 114227.80996508243,
+      "wall": {
+        "max_us": 2306.958,
+        "mean_us": 239.989880859375,
+        "p50_us": 142.667,
+        "p95_us": 817.584,
+        "p99_us": 1391.916
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 5.391916,
+      "measured_thread_cpu_core_equivalents": 1.829762555648122,
+      "off_cpu": {
+        "max_us": 502.708,
+        "mean_us": 65.68483984375,
+        "p50_us": 46.792,
+        "p95_us": 228.333,
+        "p99_us": 360.917
+      },
+      "operation": "native_audit_stats",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 60.5,
+        "mean_us": 9.634693359375,
+        "p50_us": 7.083,
+        "p95_us": 26.292,
+        "p99_us": 40.666
+      },
+      "throughput_calls_per_second": 189913.9378284083,
+      "wall": {
+        "max_us": 559.25,
+        "mean_us": 75.319533203125,
+        "p50_us": 53.333,
+        "p95_us": 257.333,
+        "p99_us": 383.167
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 0.755666,
+      "measured_thread_cpu_core_equivalents": 0.26370115897764357,
+      "off_cpu": {
+        "max_us": 2.333,
+        "mean_us": 0.2137822265625,
+        "p50_us": 0.208,
+        "p95_us": 0.292,
+        "p99_us": 0.334
+      },
+      "operation": "python_noop",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.583,
+        "mean_us": 0.194599609375,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_calls_per_second": 1355096.0344914286,
+      "wall": {
+        "max_us": 2.583,
+        "mean_us": 0.4083818359375,
+        "p50_us": 0.375,
+        "p95_us": 0.542,
+        "p99_us": 0.666
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 0.702083,
+      "measured_thread_cpu_core_equivalents": 0.27205187990593704,
+      "off_cpu": {
+        "max_us": 0.417,
+        "mean_us": 0.207529296875,
+        "p50_us": 0.208,
+        "p95_us": 0.291,
+        "p99_us": 0.333
+      },
+      "operation": "python_noop",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.375,
+        "mean_us": 0.1865263671875,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.25
+      },
+      "throughput_calls_per_second": 1458517.0129457628,
+      "wall": {
+        "max_us": 0.708,
+        "mean_us": 0.3940556640625,
+        "p50_us": 0.375,
+        "p95_us": 0.5,
+        "p99_us": 0.583
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 5.721041,
+      "measured_thread_cpu_core_equivalents": 1.748068926616677,
+      "off_cpu": {
+        "max_us": 1170.874,
+        "mean_us": 135.352716796875,
+        "p50_us": 82.75,
+        "p95_us": 498.25,
+        "p99_us": 793.166
+      },
+      "operation": "native_audit_stats",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 64.75,
+        "mean_us": 9.766380859375,
+        "p50_us": 7.125,
+        "p95_us": 25.583,
+        "p99_us": 40.625
+      },
+      "throughput_calls_per_second": 178988.40438304847,
+      "wall": {
+        "max_us": 1199.333,
+        "mean_us": 145.11909765625,
+        "p50_us": 89.333,
+        "p95_us": 518.375,
+        "p99_us": 817.208
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 1.867541,
+      "measured_thread_cpu_core_equivalents": 0.763274273496539,
+      "off_cpu": {
+        "max_us": 2.166,
+        "mean_us": 0.2031640625,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "operation": "native_audit_stats",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 5.583,
+        "mean_us": 1.392037109375,
+        "p50_us": 1.375,
+        "p95_us": 1.458,
+        "p99_us": 1.75
+      },
+      "throughput_calls_per_second": 548314.6019284182,
+      "wall": {
+        "max_us": 5.834,
+        "mean_us": 1.595201171875,
+        "p50_us": 1.583,
+        "p95_us": 1.666,
+        "p99_us": 2.166
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 3.065792,
+      "measured_thread_cpu_core_equivalents": 1.3379691120597874,
+      "off_cpu": {
+        "max_us": 53.459,
+        "mean_us": 1.5451044921875,
+        "p50_us": 1.25,
+        "p95_us": 6.541,
+        "p99_us": 10.542
+      },
+      "operation": "native_audit_stats",
+      "replication": 4,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 33.5,
+        "mean_us": 4.0057958984375,
+        "p50_us": 3.917,
+        "p95_us": 7.166,
+        "p99_us": 12.084
+      },
+      "throughput_calls_per_second": 334008.3084566729,
+      "wall": {
+        "max_us": 79.0,
+        "mean_us": 5.550900390625,
+        "p50_us": 5.208,
+        "p95_us": 12.708,
+        "p99_us": 23.292
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 5.772,
+      "measured_thread_cpu_core_equivalents": 1.898378031878032,
+      "off_cpu": {
+        "max_us": 16.708,
+        "mean_us": 0.257673828125,
+        "p50_us": 0.209,
+        "p95_us": 0.291,
+        "p99_us": 0.333
+      },
+      "operation": "native_model_catalog",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 23.5,
+        "mean_us": 10.700623046875,
+        "p50_us": 10.625,
+        "p95_us": 10.792,
+        "p99_us": 12.375
+      },
+      "throughput_calls_per_second": 177408.1774081774,
+      "wall": {
+        "max_us": 31.125,
+        "mean_us": 10.958296875,
+        "p50_us": 10.875,
+        "p95_us": 11.041,
+        "p99_us": 12.75
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 9.104708,
+      "measured_thread_cpu_core_equivalents": 2.6678364643874355,
+      "off_cpu": {
+        "max_us": 999.874,
+        "mean_us": 105.860115234375,
+        "p50_us": 100.416,
+        "p95_us": 344.208,
+        "p99_us": 548.5
+      },
+      "operation": "native_model_catalog",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 119.834,
+        "mean_us": 23.720578125,
+        "p50_us": 19.708,
+        "p95_us": 49.958,
+        "p99_us": 68.584
+      },
+      "throughput_calls_per_second": 112469.28512149978,
+      "wall": {
+        "max_us": 1084.541,
+        "mean_us": 129.580693359375,
+        "p50_us": 122.209,
+        "p95_us": 383.792,
+        "p99_us": 601.0
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 6.421875,
+      "measured_thread_cpu_core_equivalents": 2.4018681459854014,
+      "off_cpu": {
+        "max_us": 233.876,
+        "mean_us": 8.9494306640625,
+        "p50_us": 0.292,
+        "p95_us": 36.667,
+        "p99_us": 62.999
+      },
+      "operation": "native_model_catalog",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 42.667,
+        "mean_us": 15.0629853515625,
+        "p50_us": 13.667,
+        "p95_us": 27.167,
+        "p99_us": 33.875
+      },
+      "throughput_calls_per_second": 159454.9878345499,
+      "wall": {
+        "max_us": 265.167,
+        "mean_us": 24.012416015625,
+        "p50_us": 14.541,
+        "p95_us": 62.583,
+        "p99_us": 96.042
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 5.536375,
+      "measured_thread_cpu_core_equivalents": 1.8457971145379422,
+      "off_cpu": {
+        "max_us": 1095.751,
+        "mean_us": 136.9236494140625,
+        "p50_us": 102.542,
+        "p95_us": 512.042,
+        "p99_us": 724.167
+      },
+      "operation": "native_audit_stats",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 74.416,
+        "mean_us": 9.9795166015625,
+        "p50_us": 7.084,
+        "p95_us": 27.875,
+        "p99_us": 41.375
+      },
+      "throughput_calls_per_second": 184958.56946106433,
+      "wall": {
+        "max_us": 1137.917,
+        "mean_us": 146.903166015625,
+        "p50_us": 111.375,
+        "p95_us": 532.125,
+        "p99_us": 741.208
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 5.532041,
+      "measured_thread_cpu_core_equivalents": 1.849786905050053,
+      "off_cpu": {
+        "max_us": 276.166,
+        "mean_us": 30.23191015625,
+        "p50_us": 16.666,
+        "p95_us": 110.625,
+        "p99_us": 194.417
+      },
+      "operation": "native_audit_stats",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 87.0,
+        "mean_us": 9.9932587890625,
+        "p50_us": 6.875,
+        "p95_us": 29.5,
+        "p99_us": 47.833
+      },
+      "throughput_calls_per_second": 185103.47266045207,
+      "wall": {
+        "max_us": 348.083,
+        "mean_us": 40.2251689453125,
+        "p50_us": 24.625,
+        "p95_us": 137.958,
+        "p99_us": 232.0
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 1.862417,
+      "measured_thread_cpu_core_equivalents": 0.7582335212790691,
+      "off_cpu": {
+        "max_us": 2.042,
+        "mean_us": 0.20180859375,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.251
+      },
+      "operation": "native_audit_stats",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 2.417,
+        "mean_us": 1.3790498046875,
+        "p50_us": 1.375,
+        "p95_us": 1.417,
+        "p99_us": 1.5
+      },
+      "throughput_calls_per_second": 549823.1599045756,
+      "wall": {
+        "max_us": 3.417,
+        "mean_us": 1.5808583984375,
+        "p50_us": 1.583,
+        "p95_us": 1.666,
+        "p99_us": 1.708
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 8.981584,
+      "measured_thread_cpu_core_equivalents": 2.668414057030475,
+      "off_cpu": {
+        "max_us": 363.583,
+        "mean_us": 41.8398017578125,
+        "p50_us": 28.457,
+        "p95_us": 137.083,
+        "p99_us": 228.124
+      },
+      "operation": "native_model_catalog",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 94.417,
+        "mean_us": 23.4048681640625,
+        "p50_us": 18.542,
+        "p95_us": 50.458,
+        "p99_us": 68.959
+      },
+      "throughput_calls_per_second": 114011.06976230473,
+      "wall": {
+        "max_us": 447.75,
+        "mean_us": 65.244669921875,
+        "p50_us": 49.917,
+        "p95_us": 178.917,
+        "p99_us": 294.542
+      }
+    },
+    {
+      "concurrency": 8,
+      "group_elapsed_ms": 0.726417,
+      "measured_thread_cpu_core_equivalents": 0.2738440867986294,
+      "off_cpu": {
+        "max_us": 0.417,
+        "mean_us": 0.210466796875,
+        "p50_us": 0.208,
+        "p95_us": 0.292,
+        "p99_us": 0.334
+      },
+      "operation": "python_noop",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.458,
+        "mean_us": 0.1942626953125,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.291
+      },
+      "throughput_calls_per_second": 1409658.6395968157,
+      "wall": {
+        "max_us": 0.833,
+        "mean_us": 0.4047294921875,
+        "p50_us": 0.375,
+        "p95_us": 0.541,
+        "p99_us": 0.625
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 5.777458,
+      "measured_thread_cpu_core_equivalents": 1.9294324597426757,
+      "off_cpu": {
+        "max_us": 500.917,
+        "mean_us": 70.048583984375,
+        "p50_us": 55.167,
+        "p95_us": 245.001,
+        "p99_us": 370.458
+      },
+      "operation": "native_audit_stats",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 95.583,
+        "mean_us": 10.8859521484375,
+        "p50_us": 7.875,
+        "p95_us": 30.792,
+        "p99_us": 45.125
+      },
+      "throughput_calls_per_second": 177240.57881511212,
+      "wall": {
+        "max_us": 596.5,
+        "mean_us": 80.9345361328125,
+        "p50_us": 62.416,
+        "p95_us": 266.25,
+        "p99_us": 404.042
+      }
+    },
+    {
+      "concurrency": 16,
+      "group_elapsed_ms": 0.895375,
+      "measured_thread_cpu_core_equivalents": 0.24567583414770347,
+      "off_cpu": {
+        "max_us": 0.499,
+        "mean_us": 0.232115234375,
+        "p50_us": 0.25,
+        "p95_us": 0.292,
+        "p99_us": 0.374
+      },
+      "operation": "python_noop",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.417,
+        "mean_us": 0.21481640625,
+        "p50_us": 0.209,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_calls_per_second": 1143654.8932011726,
+      "wall": {
+        "max_us": 0.916,
+        "mean_us": 0.446931640625,
+        "p50_us": 0.458,
+        "p95_us": 0.542,
+        "p99_us": 0.625
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 0.614041,
+      "measured_thread_cpu_core_equivalents": 0.2947001910295892,
+      "off_cpu": {
+        "max_us": 1.582,
+        "mean_us": 0.1940830078125,
+        "p50_us": 0.208,
+        "p95_us": 0.249,
+        "p99_us": 0.292
+      },
+      "operation": "python_noop",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.5,
+        "mean_us": 0.176716796875,
+        "p50_us": 0.167,
+        "p95_us": 0.208,
+        "p99_us": 0.25
+      },
+      "throughput_calls_per_second": 1667641.0858558305,
+      "wall": {
+        "max_us": 1.791,
+        "mean_us": 0.3707998046875,
+        "p50_us": 0.375,
+        "p95_us": 0.416,
+        "p99_us": 0.542
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 3.159708,
+      "measured_thread_cpu_core_equivalents": 1.3152848301172133,
+      "off_cpu": {
+        "max_us": 18.333,
+        "mean_us": 1.644423828125,
+        "p50_us": 1.291,
+        "p95_us": 6.833,
+        "p99_us": 10.834
+      },
+      "operation": "native_audit_stats",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 17.5,
+        "mean_us": 4.05851171875,
+        "p50_us": 3.958,
+        "p95_us": 7.583,
+        "p99_us": 11.25
+      },
+      "throughput_calls_per_second": 324080.57959786156,
+      "wall": {
+        "max_us": 32.875,
+        "mean_us": 5.702935546875,
+        "p50_us": 5.25,
+        "p95_us": 13.25,
+        "p99_us": 22.125
+      }
+    },
+    {
+      "concurrency": 2,
+      "group_elapsed_ms": 0.638333,
+      "measured_thread_cpu_core_equivalents": 0.2842450570470272,
+      "off_cpu": {
+        "max_us": 0.499,
+        "mean_us": 0.19273828125,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "operation": "python_noop",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.5,
+        "mean_us": 0.1771904296875,
+        "p50_us": 0.167,
+        "p95_us": 0.209,
+        "p99_us": 0.25
+      },
+      "throughput_calls_per_second": 1604178.383382968,
+      "wall": {
+        "max_us": 0.958,
+        "mean_us": 0.3699287109375,
+        "p50_us": 0.375,
+        "p95_us": 0.417,
+        "p99_us": 0.542
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 5.191708,
+      "measured_thread_cpu_core_equivalents": 1.7176759555814773,
+      "off_cpu": {
+        "max_us": 124.167,
+        "mean_us": 10.6868916015625,
+        "p50_us": 5.666,
+        "p95_us": 39.667,
+        "p99_us": 70.709
+      },
+      "operation": "native_audit_stats",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 59.25,
+        "mean_us": 8.7086640625,
+        "p50_us": 6.5,
+        "p95_us": 22.959,
+        "p99_us": 33.708
+      },
+      "throughput_calls_per_second": 197237.59502653076,
+      "wall": {
+        "max_us": 172.917,
+        "mean_us": 19.3955556640625,
+        "p50_us": 12.209,
+        "p95_us": 60.375,
+        "p99_us": 104.208
+      }
+    },
+    {
+      "concurrency": 1,
+      "group_elapsed_ms": 10.380125,
+      "measured_thread_cpu_core_equivalents": 0.9541905323876158,
+      "off_cpu": {
+        "max_us": 4.375,
+        "mean_us": 0.216646484375,
+        "p50_us": 0.208,
+        "p95_us": 0.25,
+        "p99_us": 0.293
+      },
+      "operation": "native_model_catalog",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 33.5,
+        "mean_us": 9.6724775390625,
+        "p50_us": 9.542,
+        "p95_us": 9.959,
+        "p99_us": 11.291
+      },
+      "throughput_calls_per_second": 98650.06442600643,
+      "wall": {
+        "max_us": 33.667,
+        "mean_us": 9.8891240234375,
+        "p50_us": 9.75,
+        "p95_us": 10.208,
+        "p99_us": 11.792
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 1.052334,
+      "measured_thread_cpu_core_equivalents": 0.216339109066133,
+      "off_cpu": {
+        "max_us": 1.667,
+        "mean_us": 0.2386240234375,
+        "p50_us": 0.25,
+        "p95_us": 0.333,
+        "p99_us": 0.375
+      },
+      "operation": "python_noop",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.459,
+        "mean_us": 0.2223251953125,
+        "p50_us": 0.209,
+        "p95_us": 0.25,
+        "p99_us": 0.292
+      },
+      "throughput_calls_per_second": 973075.0883274701,
+      "wall": {
+        "max_us": 1.917,
+        "mean_us": 0.46094921875,
+        "p50_us": 0.459,
+        "p95_us": 0.583,
+        "p99_us": 0.666
+      }
+    },
+    {
+      "concurrency": 32,
+      "group_elapsed_ms": 9.348417,
+      "measured_thread_cpu_core_equivalents": 2.6096681395363515,
+      "off_cpu": {
+        "max_us": 1835.208,
+        "mean_us": 232.0903203125,
+        "p50_us": 220.792,
+        "p95_us": 773.001,
+        "p99_us": 1222.458
+      },
+      "operation": "native_model_catalog",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 93.042,
+        "mean_us": 23.824478515625,
+        "p50_us": 20.209,
+        "p95_us": 50.0,
+        "p99_us": 67.834
+      },
+      "throughput_calls_per_second": 109537.26176314129,
+      "wall": {
+        "max_us": 1897.5,
+        "mean_us": 255.914798828125,
+        "p50_us": 244.5,
+        "p95_us": 819.292,
+        "p99_us": 1276.792
+      }
+    },
+    {
+      "concurrency": 4,
+      "group_elapsed_ms": 0.676042,
+      "measured_thread_cpu_core_equivalents": 0.2806304933717136,
+      "off_cpu": {
+        "max_us": 3.708,
+        "mean_us": 0.202357421875,
+        "p50_us": 0.208,
+        "p95_us": 0.251,
+        "p99_us": 0.333
+      },
+      "operation": "python_noop",
+      "replication": 5,
+      "sample_count": 1024,
+      "thread_cpu": {
+        "max_us": 0.375,
+        "mean_us": 0.185271484375,
+        "p50_us": 0.167,
+        "p95_us": 0.25,
+        "p99_us": 0.25
+      },
+      "throughput_calls_per_second": 1514698.7909035238,
+      "wall": {
+        "max_us": 3.958,
+        "mean_us": 0.38762890625,
+        "p50_us": 0.375,
+        "p95_us": 0.5,
+        "p99_us": 0.583
+      }
+    }
+  ],
+  "runtime": {
+    "load_average_after": [
+      6.0087890625,
+      11.2900390625,
+      11.01904296875
+    ],
+    "load_average_before": [
+      6.2080078125,
+      11.50537109375,
+      11.0908203125
+    ],
+    "logical_cpu_count": 8,
+    "machine": "arm64",
+    "native_extension": "_native.cpython-313-darwin.so",
+    "native_extension_sha256": "3831cfb7db2f40f181f90a537f72db22f7570cad6af1dd408d41af08f9899100",
+    "operator_attested_build_profile": "release",
+    "perf_counter": {
+      "implementation": "mach_absolute_time()",
+      "resolution_seconds": 4.166666666666666e-08
+    },
+    "platform": "macOS-26.5-arm64-arm-64bit-Mach-O",
+    "processor": "arm",
+    "python": "3.13.1",
+    "thread_time": {
+      "implementation": "clock_gettime(CLOCK_THREAD_CPUTIME_ID)",
+      "resolution_seconds": 4.2000000000000006e-08
+    }
+  },
+  "schema_version": 1,
+  "settings": {
+    "bootstrap_resamples": 10000,
+    "calls_per_cell_per_replication": 1024,
+    "concurrency": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "operations": [
+      "python_noop",
+      "native_audit_stats",
+      "native_model_catalog"
+    ],
+    "realized_cell_order": [
+      [
+        "native_audit_stats/8",
+        "native_model_catalog/16",
+        "native_model_catalog/2",
+        "python_noop/32",
+        "native_model_catalog/32",
+        "native_audit_stats/1",
+        "native_model_catalog/1",
+        "python_noop/16",
+        "python_noop/1",
+        "python_noop/8",
+        "native_model_catalog/8",
+        "native_audit_stats/32",
+        "python_noop/2",
+        "native_audit_stats/2",
+        "native_model_catalog/4",
+        "native_audit_stats/16",
+        "python_noop/4",
+        "native_audit_stats/4"
+      ],
+      [
+        "python_noop/8",
+        "native_model_catalog/32",
+        "native_audit_stats/2",
+        "native_audit_stats/1",
+        "python_noop/32",
+        "python_noop/4",
+        "native_model_catalog/2",
+        "native_audit_stats/16",
+        "native_model_catalog/1",
+        "python_noop/16",
+        "native_audit_stats/4",
+        "native_model_catalog/8",
+        "python_noop/1",
+        "python_noop/2",
+        "native_model_catalog/16",
+        "native_model_catalog/4",
+        "native_audit_stats/8",
+        "native_audit_stats/32"
+      ],
+      [
+        "python_noop/1",
+        "python_noop/32",
+        "native_audit_stats/16",
+        "native_audit_stats/4",
+        "python_noop/4",
+        "native_model_catalog/16",
+        "native_model_catalog/8",
+        "python_noop/2",
+        "python_noop/16",
+        "native_model_catalog/32",
+        "native_model_catalog/4",
+        "native_audit_stats/8",
+        "native_audit_stats/32",
+        "native_model_catalog/1",
+        "python_noop/8",
+        "native_model_catalog/2",
+        "native_audit_stats/1",
+        "native_audit_stats/2"
+      ],
+      [
+        "native_model_catalog/1",
+        "native_model_catalog/8",
+        "native_model_catalog/16",
+        "python_noop/2",
+        "native_audit_stats/8",
+        "native_audit_stats/4",
+        "native_model_catalog/2",
+        "native_model_catalog/4",
+        "python_noop/1",
+        "python_noop/16",
+        "python_noop/32",
+        "native_model_catalog/32",
+        "native_audit_stats/16",
+        "python_noop/8",
+        "python_noop/4",
+        "native_audit_stats/32",
+        "native_audit_stats/1",
+        "native_audit_stats/2"
+      ],
+      [
+        "native_model_catalog/2",
+        "native_model_catalog/16",
+        "native_model_catalog/4",
+        "native_audit_stats/32",
+        "native_audit_stats/8",
+        "native_audit_stats/1",
+        "native_model_catalog/8",
+        "python_noop/8",
+        "native_audit_stats/16",
+        "python_noop/16",
+        "python_noop/1",
+        "native_audit_stats/2",
+        "python_noop/2",
+        "native_audit_stats/4",
+        "native_model_catalog/1",
+        "python_noop/32",
+        "native_model_catalog/32",
+        "python_noop/4"
+      ]
+    ],
+    "replications": 5,
+    "scenario_order": "seeded shuffle per replication",
+    "scenario_order_seed": 20260904,
+    "warmup_calls_per_cell": 100
+  }
+}

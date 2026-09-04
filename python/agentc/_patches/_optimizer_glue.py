@@ -42,6 +42,8 @@ ANTHROPIC_MESSAGES_PROTOCOL = "anthropic.messages.v1"
 LITELLM_COMPLETION_PROTOCOL = "litellm.completion.v1"
 _ROUTE_CONTEXT_KEY = "agentc_route_context"
 _ROUTED_TARGET_KEY = "agentc_routed_target"
+_JSON_UTF8_BYTES_BOUND_V1 = "json_utf8_bytes_v1"
+_UNKNOWN_INPUT_BOUND = "unknown"
 
 # Counterfactual calls are off the request path, but they are not allowed to
 # create an unbounded process-wide thread/task fan-out across many call sites.
@@ -351,14 +353,23 @@ def _route_context(
         kwargs.get("tools"),
     )
     image_input = _contains_image_input(native_values)
+    if image_input:
+        input_tokens_upper_bound = 2**32 - 1
+        input_tokens_upper_bound_basis = _UNKNOWN_INPUT_BOUND
+    else:
+        input_tokens_upper_bound = _input_tokens_upper_bound(*native_values)
+        input_tokens_upper_bound_basis = (
+            _UNKNOWN_INPUT_BOUND
+            if input_tokens_upper_bound == 2**32 - 1
+            else _JSON_UTF8_BYTES_BOUND_V1
+        )
     context = {
         "provider_protocol": provider_protocol,
         "provider_namespace": provider_namespace,
         # Provider image accounting cannot be bounded from a URL alone. Force
         # catalog abstention until the adapter has a provider-reported count.
-        "input_tokens_upper_bound": (
-            2**32 - 1 if image_input else _input_tokens_upper_bound(*native_values)
-        ),
+        "input_tokens_upper_bound": input_tokens_upper_bound,
+        "input_tokens_upper_bound_basis": input_tokens_upper_bound_basis,
         "image_input": image_input,
         "tool_calling": bool(kwargs.get("tools")),
         "structured_outputs": _structured_output_requested(kwargs),

@@ -483,6 +483,7 @@ def test_adapter_route_context_captures_provider_and_request_requirements() -> N
     assert context["tool_calling"] is True
     assert context["structured_outputs"] is True
     assert context["input_tokens_upper_bound"] == 2**32 - 1
+    assert context["input_tokens_upper_bound_basis"] == "unknown"
 
 
 def test_route_context_detects_typed_output_config() -> None:
@@ -502,6 +503,7 @@ def test_route_context_detects_typed_output_config() -> None:
     )
     context = call["parameters"]["extra"]["agentc_route_context"]
     assert context["structured_outputs"] is True
+    assert context["input_tokens_upper_bound_basis"] == "json_utf8_bytes_v1"
 
 
 def test_structured_output_schema_version_changes_with_contract_not_key_order() -> None:
@@ -552,6 +554,7 @@ def test_unencodable_route_input_forces_catalog_abstention_bound() -> None:
     )
     context = call["parameters"]["extra"]["agentc_route_context"]
     assert context["input_tokens_upper_bound"] == 2**32 - 1
+    assert context["input_tokens_upper_bound_basis"] == "unknown"
 
 
 def test_catalog_route_uses_target_output_token_convention() -> None:

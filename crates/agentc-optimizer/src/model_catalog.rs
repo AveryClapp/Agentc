@@ -20,6 +20,9 @@ pub const LITELLM_COMPLETION_PROTOCOL: &str = "litellm.completion.v1";
 pub const ROUTE_CONTEXT_KEY: &str = "agentc_route_context";
 pub const ROUTED_TARGET_KEY: &str = "agentc_routed_target";
 
+const INPUT_BOUND_BASIS_KEY: &str = "input_tokens_upper_bound_basis";
+const JSON_UTF8_BYTES_BOUND_V1: &str = "json_utf8_bytes_v1";
+
 pub const DEFAULT_MODEL_CATALOG_VERSION: &str = "agentc-model-catalog-2026-09-04-r2";
 pub const DEFAULT_PRICE_TABLE_VERSION: &str = "agentc-price-table-2026-09-03-r1";
 pub const DEFAULT_CATALOG_OBSERVED_AT_UTC: &str = "2026-09-04T00:00:00Z";
@@ -180,6 +183,131 @@ impl RequestRequirements {
             streaming: context.get("streaming")?.as_bool()?,
         })
     }
+
+    /// Lower only the adapter's original input bound by bytes that a lossless,
+    /// ordered message deletion is guaranteed to remove. Content-changing or
+    /// opaque-native rewrites retain the original bound and therefore cannot
+    /// unlock a smaller context window from an unverifiable projection.
+    pub(crate) fn apply_transformed_input_bound(reference: &Call, transformed: &mut Call) {
+        let Some(reference_requirements) = Self::from_call(reference) else {
+            return;
+        };
+        let Some(transformed_requirements) = Self::from_call(transformed) else {
+            return;
+        };
+        if reference.has_opaque_native_messages()
+            || transformed.has_opaque_native_messages()
+            || !has_json_byte_input_bound(reference)
+            || !has_json_byte_input_bound(transformed)
+            || transformed.model != reference.model
+            || transformed_requirements.provider_protocol
+                != reference_requirements.provider_protocol
+            || transformed_requirements.provider_namespace
+                != reference_requirements.provider_namespace
+            || transformed_requirements.input_tokens_upper_bound
+                != reference_requirements.input_tokens_upper_bound
+            || transformed_requirements.image_input != reference_requirements.image_input
+            || transformed_requirements.tool_calling != reference_requirements.tool_calling
+            || transformed_requirements.structured_outputs
+                != reference_requirements.structured_outputs
+            || transformed_requirements.streaming != reference_requirements.streaming
+        {
+            return;
+        }
+
+        // The Anthropic adapter lifts its top-level `system` value into the
+        // unified message list, but deliberately retains the native value when
+        // no transformed system message is present. Do not claim those bytes
+        // were removed.
+        if reference_requirements.provider_protocol == ANTHROPIC_MESSAGES_PROTOCOL
+            && reference
+                .messages
+                .iter()
+                .any(|message| message.role == "system")
+            && !transformed
+                .messages
+                .iter()
+                .any(|message| message.role == "system")
+        {
+            return;
+        }
+
+        let Some(removed_content_bytes) = ordered_deletion_bytes(
+            reference,
+            transformed,
+            reference_requirements.input_tokens_upper_bound,
+        ) else {
+            return;
+        };
+        let Ok(removed_content_bytes) = u32::try_from(removed_content_bytes) else {
+            return;
+        };
+        let Some(route_context) = transformed
+            .parameters
+            .extra
+            .as_object_mut()
+            .and_then(|extra| extra.get_mut(ROUTE_CONTEXT_KEY))
+            .and_then(serde_json::Value::as_object_mut)
+        else {
+            return;
+        };
+        route_context.insert(
+            "input_tokens_upper_bound".to_string(),
+            serde_json::Value::from(
+                reference_requirements
+                    .input_tokens_upper_bound
+                    .saturating_sub(removed_content_bytes),
+            ),
+        );
+    }
+}
+
+fn has_json_byte_input_bound(call: &Call) -> bool {
+    call.parameters
+        .extra
+        .as_object()
+        .and_then(|extra| extra.get(ROUTE_CONTEXT_KEY))
+        .and_then(serde_json::Value::as_object)
+        .and_then(|context| context.get(INPUT_BOUND_BASIS_KEY))
+        .and_then(serde_json::Value::as_str)
+        == Some(JSON_UTF8_BYTES_BOUND_V1)
+}
+
+fn ordered_deletion_bytes(
+    reference: &Call,
+    transformed: &Call,
+    reference_upper_bound: u32,
+) -> Option<usize> {
+    if transformed.messages.len() > reference.messages.len() {
+        return None;
+    }
+
+    let mut next_reference = 0;
+    for retained in &transformed.messages {
+        let relative_index = reference.messages[next_reference..]
+            .iter()
+            .position(|original| {
+                original.role == retained.role && original.content == retained.content
+            })?;
+        next_reference += relative_index + 1;
+    }
+
+    let reference_bytes = reference
+        .messages
+        .iter()
+        .try_fold(0usize, |total, message| {
+            total.checked_add(message.content.len())
+        })?;
+    let transformed_bytes = transformed
+        .messages
+        .iter()
+        .try_fold(0usize, |total, message| {
+            total.checked_add(message.content.len())
+        })?;
+    if reference_bytes > reference_upper_bound as usize {
+        return None;
+    }
+    reference_bytes.checked_sub(transformed_bytes)
 }
 
 /// Dispatch contract attached to a routed call and verified by Python.
@@ -799,7 +927,7 @@ fn text_tool_capabilities() -> ModelCapabilities {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dag::{Message, Parameters};
+    use crate::dag::{Message, Parameters, NATIVE_MESSAGES_OPAQUE_KEY};
 
     fn call(protocol: &str, namespace: &str, model: &str) -> Call {
         Call {
@@ -818,6 +946,7 @@ mod tests {
                         "provider_protocol": protocol,
                         "provider_namespace": namespace,
                         "input_tokens_upper_bound": 10,
+                        "input_tokens_upper_bound_basis": JSON_UTF8_BYTES_BOUND_V1,
                         "image_input": false,
                         "tool_calling": false,
                         "structured_outputs": false,
@@ -998,6 +1127,111 @@ mod tests {
         huge.parameters.extra[ROUTE_CONTEXT_KEY]["input_tokens_upper_bound"] =
             serde_json::json!(400_000);
         assert!(catalog.cheaper_targets(&huge).is_empty());
+    }
+
+    #[test]
+    fn transformed_bound_uses_only_verified_ordered_message_deletions() {
+        let mut reference = call(OPENAI_CHAT_COMPLETIONS_PROTOCOL, "openai", "gpt-5.4");
+        reference.messages = vec![
+            Message {
+                role: "system".into(),
+                content: "x".repeat(150),
+            },
+            Message {
+                role: "user".into(),
+                content: "y".repeat(100),
+            },
+        ];
+        reference.parameters.extra[ROUTE_CONTEXT_KEY]["input_tokens_upper_bound"] =
+            serde_json::json!(300);
+
+        let mut deletion = reference.clone();
+        deletion.messages.remove(0);
+        RequestRequirements::apply_transformed_input_bound(&reference, &mut deletion);
+        assert_eq!(
+            RequestRequirements::from_call(&deletion)
+                .unwrap()
+                .input_tokens_upper_bound,
+            150
+        );
+
+        let mut content_change = reference.clone();
+        content_change.messages[0].content = "shorter but not extractive".into();
+        RequestRequirements::apply_transformed_input_bound(&reference, &mut content_change);
+        assert_eq!(
+            RequestRequirements::from_call(&content_change)
+                .unwrap()
+                .input_tokens_upper_bound,
+            300
+        );
+
+        let mut unknown_basis = reference.clone();
+        unknown_basis.parameters.extra[ROUTE_CONTEXT_KEY]
+            .as_object_mut()
+            .unwrap()
+            .remove(INPUT_BOUND_BASIS_KEY);
+        unknown_basis.messages.remove(0);
+        RequestRequirements::apply_transformed_input_bound(&reference, &mut unknown_basis);
+        assert_eq!(
+            RequestRequirements::from_call(&unknown_basis)
+                .unwrap()
+                .input_tokens_upper_bound,
+            300
+        );
+    }
+
+    #[test]
+    fn transformed_bound_does_not_shrink_opaque_or_retained_native_content() {
+        let mut opaque = call(OPENAI_CHAT_COMPLETIONS_PROTOCOL, "openai", "gpt-5.4");
+        opaque.messages = vec![
+            Message {
+                role: "system".into(),
+                content: "x".repeat(150),
+            },
+            Message {
+                role: "user".into(),
+                content: "y".repeat(100),
+            },
+        ];
+        opaque.parameters.extra[ROUTE_CONTEXT_KEY]["input_tokens_upper_bound"] =
+            serde_json::json!(300);
+        opaque.parameters.extra[NATIVE_MESSAGES_OPAQUE_KEY] = serde_json::json!(true);
+        let mut opaque_deletion = opaque.clone();
+        opaque_deletion.messages.remove(0);
+        RequestRequirements::apply_transformed_input_bound(&opaque, &mut opaque_deletion);
+        assert_eq!(
+            RequestRequirements::from_call(&opaque_deletion)
+                .unwrap()
+                .input_tokens_upper_bound,
+            300
+        );
+
+        let mut anthropic = call(
+            ANTHROPIC_MESSAGES_PROTOCOL,
+            "anthropic",
+            "claude-sonnet-4-5",
+        );
+        anthropic.messages = vec![
+            Message {
+                role: "system".into(),
+                content: "x".repeat(150),
+            },
+            Message {
+                role: "user".into(),
+                content: "y".repeat(100),
+            },
+        ];
+        anthropic.parameters.extra[ROUTE_CONTEXT_KEY]["input_tokens_upper_bound"] =
+            serde_json::json!(300);
+        let mut missing_system = anthropic.clone();
+        missing_system.messages.remove(0);
+        RequestRequirements::apply_transformed_input_bound(&anthropic, &mut missing_system);
+        assert_eq!(
+            RequestRequirements::from_call(&missing_system)
+                .unwrap()
+                .input_tokens_upper_bound,
+            300
+        );
     }
 
     #[test]

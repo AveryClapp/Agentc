@@ -330,14 +330,20 @@ impl Optimizer {
             else {
                 continue;
             };
-            for target in catalog.compatible_targets(candidate_call) {
+            let mut bounded_call = candidate_call.clone();
+            RequestRequirements::apply_transformed_input_bound(call, &mut bounded_call);
+            for target in catalog.compatible_targets(&bounded_call) {
                 if target.model_id == source.model_id {
                     continue;
                 }
                 let projected_savings = projected_routing_savings(&profile, source, target);
-                if let Some(routed) =
-                    route_semantic_plan(&semantic_plan, candidate_call, target, catalog, projected_savings)
-                {
+                if let Some(routed) = route_semantic_plan(
+                    &semantic_plan,
+                    &bounded_call,
+                    target,
+                    catalog,
+                    projected_savings,
+                ) {
                     plans.push(routed);
                 }
                 if deadline.elapsed().as_micros() > max_overhead_us {
@@ -546,6 +552,10 @@ fn now_us() -> i64 {
 mod tests {
     use super::*;
     use crate::cost_model::CostModelUpdate;
+    use crate::dag::Message;
+    use crate::model_catalog::{
+        default_model_catalog, OPENAI_CHAT_COMPLETIONS_PROTOCOL, ROUTE_CONTEXT_KEY,
+    };
 
     fn sample_call(site: &str) -> Call {
         Call {
@@ -643,6 +653,52 @@ mod tests {
         }
         fn accuracy_budget(&self) -> f32 {
             0.01
+        }
+        fn preserves_native_messages(&self) -> bool {
+            true
+        }
+    }
+
+    struct DropFirstMessage;
+    impl RewriteRule for DropFirstMessage {
+        fn name(&self) -> &'static str {
+            "DropFirstMessage"
+        }
+        fn applies(&self, call: &Call, _: &CallSiteProfile) -> bool {
+            call.messages.len() >= 2
+        }
+        fn propose(&self, call: &Call, _: &CallSiteProfile) -> Option<Proposal> {
+            let mut rewritten = call.clone();
+            rewritten.messages.remove(0);
+            Some(Proposal {
+                rewritten: Plan::Rewritten {
+                    rule: self.name().to_string(),
+                    call: rewritten,
+                    projected_savings_usd: 0.1,
+                },
+                projected_savings_usd: 0.1,
+                cost_driver: CostDriver::InputTokens,
+                safety_check: Box::new(|_| true),
+            })
+        }
+        fn accuracy_budget(&self) -> f32 {
+            0.01
+        }
+    }
+
+    struct RoutingEnabled;
+    impl RewriteRule for RoutingEnabled {
+        fn name(&self) -> &'static str {
+            "ModelDowngrade"
+        }
+        fn applies(&self, _: &Call, _: &CallSiteProfile) -> bool {
+            false
+        }
+        fn propose(&self, _: &Call, _: &CallSiteProfile) -> Option<Proposal> {
+            None
+        }
+        fn accuracy_budget(&self) -> f32 {
+            0.05
         }
         fn preserves_native_messages(&self) -> bool {
             true
@@ -814,6 +870,88 @@ mod tests {
             }
             other => panic!("expected parameter-only rewrite, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn transformed_request_size_can_unlock_a_joint_route_only() {
+        let cm = Arc::new(CostModel::new());
+        observe(&cm, "transformed-route-site", 10);
+        let opt = Optimizer::new(
+            cm,
+            vec![Box::new(DropFirstMessage), Box::new(RoutingEnabled)],
+            OptimizerConfig::default(),
+        );
+        let mut catalog = default_model_catalog().unwrap();
+        for target in &mut catalog.targets {
+            if target.adapter_protocol != OPENAI_CHAT_COMPLETIONS_PROTOCOL {
+                continue;
+            }
+            match target.model_id.as_str() {
+                "gpt-4o-2024-11-20" => {
+                    target.context_window_tokens = 400;
+                    target.max_output_tokens = 100;
+                }
+                "gpt-4o-mini-2024-07-18" => {
+                    target.context_window_tokens = 180;
+                    target.max_output_tokens = 100;
+                }
+                _ => {}
+            }
+        }
+        let mut call = sample_call("transformed-route-site");
+        call.model = "gpt-4o".to_string();
+        call.messages = vec![
+            Message {
+                role: "system".to_string(),
+                content: "x".repeat(150),
+            },
+            Message {
+                role: "user".to_string(),
+                content: "y".repeat(100),
+            },
+        ];
+        call.parameters.max_output_tokens = Some(20);
+        call.parameters.extra = serde_json::json!({
+            ROUTE_CONTEXT_KEY: {
+                "provider_protocol": OPENAI_CHAT_COMPLETIONS_PROTOCOL,
+                "provider_namespace": "openai",
+                "input_tokens_upper_bound": 300,
+                "input_tokens_upper_bound_basis": "json_utf8_bytes_v1",
+                "image_input": false,
+                "tool_calling": false,
+                "structured_outputs": false,
+                "streaming": false
+            }
+        });
+
+        let plans = opt.candidate_plans(&call, &catalog);
+        assert!(
+            !plans.iter().any(|plan| matches!(
+                plan,
+                Plan::Rewritten { rule, call, .. }
+                    if rule == "ModelDowngrade"
+                        && call.model == "gpt-4o-mini-2024-07-18"
+            )),
+            "the original 300+20 token request must not fit the 180-token target"
+        );
+        let joint_call = plans.iter().find_map(|plan| match plan {
+            Plan::Composed { rules, call, .. }
+                if rules.iter().any(|rule| rule.rule == "DropFirstMessage")
+                    && rules.iter().any(|rule| rule.rule == "ModelDowngrade")
+                    && call.model == "gpt-4o-mini-2024-07-18" =>
+            {
+                Some(call)
+            }
+            _ => None,
+        });
+        let joint_call =
+            joint_call.expect("dropping 150 known content bytes should unlock the joint route");
+        assert_eq!(
+            RequestRequirements::from_call(joint_call)
+                .unwrap()
+                .input_tokens_upper_bound,
+            150
+        );
     }
 
     #[test]

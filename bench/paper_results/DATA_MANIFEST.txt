@@ -181,6 +181,58 @@ Complete optimizer call -- size/concurrency matrix, off-path audit rerun
             provider/network; paper_evidence=false; ordered flush is outside
             the timed scope and tail intervals remain wide.
 
+Complete optimizer call -- scheduler/thread-CPU attribution
+  Summary: bench/repro/optimizer-e2e-scaling-threadcpu-2026-09-04.json
+  Raw:     bench/repro/optimizer-e2e-scaling-threadcpu-2026-09-04.csv.gz
+  SHA256:  summary 6e12d70d500fe60c186096d068ae89fb917cbc440eadc8b0d12346d10e67d480
+           raw 6740d27589f877bcca302b3908ae25ebb11f5c6955b23e40b3d0a06d8a65f587
+  Source:  git b5cc2a4 (clean)
+  Script:  python -m bench.optimizer_e2e_scaling
+  Samples: 307,200 timed calls; exact 4/8/16/32/64 KiB x
+           C=1/2/4/8/16/32 x reference/admitted-rewrite x five replications
+  Result:  every cell has pooled thread-CPU p99 <=0.717 ms while C=32 wall
+           p99 is 11.116--20.589 ms and mean off-CPU share is 76--81%.
+  Audit accounting: 341,400 attempted = accepted = written rows; zero pending,
+                    dropped, disconnected, or write-failed rows.
+  Boundary: load averages 10.02/11.79/11.20 before and 9.68/11.37/11.12
+            after on eight logical CPUs; paper_evidence=false.
+
+Optimizer boundary controls -- scheduler attribution
+  Summary: bench/repro/optimizer-boundary-scheduler-attribution-2026-09-04.json
+  Raw:     bench/repro/optimizer-boundary-scheduler-attribution-2026-09-04.csv.gz
+  SHA256:  summary 95fac4e911dbbfcdc3c3deaa237b1a8cac12b22dc3fecf4a6aa96f6cc39af2bc
+           raw e128be44b02a048911b7fe441667f5efbd4fd8554d2c991bb65532311bef50d7
+  Source:  git d0be4b9 (clean)
+  Script:  python -m bench.optimizer_boundary_probe
+  Samples: 92,160 calls across Python no-op, native audit-stat, and native
+           model-catalog boundaries.
+  Result:  at C=32, Python no-op wall p99 is 0.625 us; native audit-stat
+           wall/thread-CPU p99 is 0.817 ms/40.7 us; native model-catalog is
+           1.258 ms/68.6 us. Mean off-CPU shares are 90--93% for native calls.
+  Boundary: load averages 6.21/11.51/11.09 before and 6.01/11.29/11.02
+            after on eight logical CPUs; paper_evidence=false.
+
+Complete optimizer call -- non-blocking admission control
+  Summary: bench/repro/optimizer-e2e-scaling-admission-control-2026-09-04.json
+  Raw:     bench/repro/optimizer-e2e-scaling-admission-control-2026-09-04.csv.gz
+  SHA256:  summary 2116ceb70fd36702d798f6e1f2d47c53d915aefe95423213041be1655761aa89
+           raw 00c8ae9b80f3cf04fb2716fc913559f69bf2de82bfc0318d9c3ec984bc4a890d
+  Source:  git 33aeb7478694946f1886216460148036bc6e6104 (clean);
+           native 66fdd5ed0a4cf9a3269f5dfdd3d81f4c88a0bdb6d6d5422613efdd995a7fde69
+  Script:  python -m bench.optimizer_e2e_scaling --max-inflight-plans 4
+  Samples: 153,600 timed calls; exact 4/8/16/32/64 KiB x C=1/8/32 x
+           reference/admitted-rewrite x five replications
+  Result:  versus the thread-CPU attribution run, matched C=32 p50 falls
+           85--98%, p99 falls 34--82%, and throughput rises 1.86--3.83x.
+           C=32 p50/p99 is 0.004--0.025/2.326--10.186 ms; all cells have
+           thread-CPU p99 <=0.619 ms. Saturation fallback is 54.6--81.4%.
+  Accounting: 170,700 audit attempts = writes with zero reported loss;
+              71,919 measured saturation rejections exactly match returned
+              plans and persisted runtime_fallback_reason values.
+  Boundary: load averages 7.13/7.15/8.17 before and 5.64/6.75/7.97 after
+            on eight logical CPUs; paper_evidence=false. Every C=32 cell still
+            misses 1.2 ms, and fallback rate is lost optimization coverage.
+
 The historical 1,818-row 76/120 us result measures the internal pre-audit clock.
 It is not complete-call overhead and must not be used as an end-to-end claim.
 

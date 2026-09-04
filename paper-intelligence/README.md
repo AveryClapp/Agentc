@@ -73,9 +73,9 @@ The best current evidence is:
 
 - `RES-001`: `ContextCompress` saves substantial tokens/cost on long-context stress workloads.
 - `RES-002`: `ModelDowngrade` saves substantial dollars on a routing workload.
-- `RES-004`: `StateDrop` is promising but partial/caveated.
+- `RES-004`: warmup-corrected `StateDrop` is complete but still semantically caveated.
 - `RES-005`: real HotpotQA near-zero savings is useful activation-boundary evidence.
-- `RES-013`: the complete-call audit bottleneck has been fixed and rerun at fixed shape and across 4–64 KiB, C=1/8/32. At C=32, off-path persistence cuts median latency 89–93% and raises absolute throughput 2.6–4.0× with zero observed audit loss; p99 remains 9.0–16.8ms and still misses the frozen target.
+- `RES-013`: the request path now has a full diagnostic progression. Off-path audit cuts C=32 median latency 89–93%; CPU/boundary controls attribute the residual to off-CPU scheduling/GIL delay; four-permit admission cuts matched C=32 p99 another 34–82% and raises throughput 1.86–3.83× with exact audit/fallback accounting. C=32 p99 still reaches 2.33–10.19ms and 54.6–81.4% of overloaded calls abstain, so the frozen target remains open.
 
 The paper is not ready to claim:
 
@@ -97,4 +97,4 @@ Do not add a new top-level paper-intelligence file unless it will stay active. P
 
 ## Next Work
 
-The highest-value next sequence is concrete: attribute and reduce the remaining high-concurrency scheduler/FFI tail, then run the held-out joint routing-plus-rewrite campaign against fixed, route-only, rewrite-only, both ordering controls, current greedy, and best-static policies. The positive joint-policy result is now the largest contribution gap. Routing baselines, the 2% risk-controller check, multi-host scaling, and the blind unengineered-workload gate follow.
+The highest-value next sequence is concrete: repeat the admission/coverage protocol on a quiet second host, then run the held-out joint routing-plus-rewrite campaign against fixed, route-only, rewrite-only, both ordering controls, current greedy, and best-static policies. The positive joint-policy result is the largest contribution gap. Routing baselines, the 2% risk-controller check, provider-backed admission behavior, and the blind unengineered-workload gate follow.

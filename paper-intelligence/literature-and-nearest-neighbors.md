@@ -52,15 +52,23 @@ flush, with zero observed drops or write failures. This removes observability
 serialization as the dominant median bottleneck and strengthens the claim that
 an application-side control plane can remain lightweight.
 
+Thread-CPU and boundary controls sharpen that systems comparison: pooled
+planner CPU p99 remains at or below 0.717 ms while the high-concurrency wall
+tail is dominated by off-CPU scheduling/GIL delay. A configurable four-permit
+fail-open gate cuts matched C=32 p99 another 34--82% and raises throughput
+1.86--3.83x, with exact persisted fallback accounting. It also passes through
+54.6--81.4% of overloaded C=32 calls, and wall p99 still reaches 2.33--10.19 ms.
+
 The comparison to Agentix, Murakkab, Parrot, SGLang, and related systems still
-sets an end-to-end bar rather than merely a related-work paragraph. C=32 p99
-remains 9.0--16.8 ms, the frozen 1.2 ms target still fails, and a one-host
-synthetic diagnostic cannot establish multi-host scalability. The remaining
-systems work is scheduler/FFI/oversubscription attribution plus confirmatory
-end-to-end measurement; the remaining scientific work is a held-out win for
-joint routing and semantic rewriting over the separate and sequential controls.
-The before/after result is recorded under `RES-013` and remains Stage E0
-diagnostic evidence, not a provider-latency or efficacy result.
+sets an end-to-end bar rather than merely a related-work paragraph. The frozen
+1.2 ms target still fails, and a loaded one-host synthetic diagnostic cannot
+establish multi-host scalability or that the fixed admission policy maximizes
+useful optimization. The remaining systems work is a quiet multi-host latency-
+versus-coverage result plus confirmatory end-to-end measurement; the remaining
+scientific work is a held-out win for joint routing and semantic rewriting over
+the separate and sequential controls. The progression is recorded under
+`RES-013` and remains Stage E0 diagnostic evidence, not a provider-latency or
+efficacy result.
 
 ## How To Use This File
 

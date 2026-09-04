@@ -795,6 +795,7 @@ def run(
         "timed_scope": [
             "Python call into _native.optimize_plan",
             "native optimizer-state lookup",
+            "non-blocking planner-admission decision",
             "JSON decode and encode",
             "complete-plan enumeration, guard lookup, and selection",
             "plan_audit row construction and bounded non-blocking enqueue",
@@ -806,7 +807,7 @@ def run(
             "excludes thread-pool construction and post-clock plan validation",
         ],
         "paired_internal_clock_scope": [
-            "native planning after optimizer-state lookup",
+            "admission decision and native planning after optimizer-state lookup",
             "optional exploration reservation (disabled in this experiment)",
             "excludes enqueue_plan_audit and the outer FFI boundary",
         ],
@@ -817,6 +818,8 @@ def run(
             "Inputs and outcomes are deterministic synthetic records; no provider or network is invoked.",
             "The paired residual combines boundary, state lookup, audit-row construction/enqueue, clock quantization, and return conversion; it is not an audit-only timer.",
             "Per-call thread CPU is enclosed by the wall clock; wall minus thread CPU estimates off-CPU delay but cannot distinguish scheduler delay, lock waiting, and GIL reacquisition.",
+            "The configured admission cap bounds concurrent semantic planning without waiting; saturated calls retain the GIL and return a versioned pass-through before semantic planning.",
+            "Saturation fallback reduces executed optimizer work, so its rate is lost optimization coverage and must accompany latency or throughput comparisons.",
             "The build profile is operator-attested; the native extension hash pins the measured binary.",
             "The ordered audit flush and SQLite commit are outside the request-path clock; normal host scheduling remains inside it.",
             "Host load averages are recorded before and after the matrix; overlapping external workloads can inflate off-CPU tails and invalidate a canonical run.",

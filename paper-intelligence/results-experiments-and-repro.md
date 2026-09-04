@@ -30,11 +30,11 @@ Supersedes:
 
 ## Evidence Verdict
 
-The evidence base is substantially stronger after the V2 experimental campaign (2026-05-10/11). The core headline pair (`RES-001`, `RES-002`) remains the cleanest per-rule savings story. V2 adds three validated contributions: the LLMLingua-2 comparison with exact paired statistics (`RES-007`), a natural-prose generalization that confirms ContextCompress correctly abstains when the structural precondition is absent (`RES-008`), and a planner ablation showing the CompositionPlanner avoids a concrete V1 greedy error (`RES-010`). The historical 1,818-decision overhead result is now correctly scoped as an internal pre-audit clock. The complete-call Stage E0 diagnostics under `RES-013` supersede it for systems debugging and now include a clean before/after result: a bounded off-path audit writer removes the dominant median/throughput bottleneck with exact post-flush row conservation, while C=8/C=32 p99 remains above the frozen target.
+The evidence base is substantially stronger after the warmup-corrected campaign. The core headline pair (`RES-001`, `RES-002`) remains the cleanest per-rule savings story. The campaign also adds the LLMLingua-2 comparison with exact paired statistics (`RES-007`), a natural-prose generalization that confirms ContextCompress correctly abstains when the structural precondition is absent (`RES-008`), additive CC+SD composition (`RES-009`), and a controlled planner ablation in which first-match and composition modes have identical accuracy (`RES-010`). The historical 1,818-decision overhead result is now correctly scoped as an internal pre-audit clock. The complete-call Stage E0 diagnostics under `RES-013` supersede it for systems debugging and now include a clean progression from synchronous audit, to off-path persistence, to thread-CPU attribution, to non-blocking planner admission. The mechanism has exact post-flush row and fallback conservation, while C=8/C=32 p99 remains above the frozen target on the measured host.
 
-`RES-004` (StateDrop n=50) has **contaminated cost columns** — use only the per-task accuracy data from that run; headline StateDrop savings come from `RES-003`. `RES-006` remains a diagnostic only.
+The warmup-corrected `RES-004` supersedes the retracted partial StateDrop matrix. `RES-012` still supplies the separate paired accuracy check; do not use its contaminated cost columns. `RES-006` remains a diagnostic only.
 
-Do not present `CacheHit` or `ParallelBranch` as empirically validated paper contributions until new `RES` entries exist.
+Do not present `CacheHit` or `ParallelBranch` as empirically validated paper contributions until canonical evidence is added to the manifest and this ledger. The `RES` namespace is frozen.
 
 ### Joint-planner engineering checkpoint (not paper evidence)
 
@@ -56,50 +56,63 @@ orders, best static joint, current greedy, and AgentOpt/other feasible
 baselines, with exploration and shadow cost charged. Until that result exists,
 the MLSys main-track assessment remains conditional.
 
-### Audit-path engineering checkpoint (not paper evidence)
+### Request-path engineering checkpoint (not paper evidence)
 
-The synchronous and off-path artifacts under `RES-013` contain 367,200 total
-timed calls on the same matrix shapes. At C=32, moving SQLite persistence behind
-a bounded non-blocking queue reduces matched p50 by 89--93% and raises absolute
-throughput by 2.6--4.0x. The clean reruns account for all 203,860 setup-plus-
-timed audit attempts across fixed-shape and scaling runs as accepted and
-written, with zero pending, dropped, disconnected, or failed rows after ordered
-flush. This validates the mechanism and its measured-host accounting contract.
+The synchronous and off-path artifacts under `RES-013` first establish that
+moving SQLite persistence behind a bounded non-blocking queue reduces matched
+C=32 p50 by 89--93% and raises absolute throughput by 2.6--4.0x. The subsequent
+307,200-call thread-CPU matrix keeps pooled planner CPU p99 at or below 0.717 ms
+in every cell even while C=32 wall p99 reaches 11.1--20.6 ms and mean off-CPU
+share reaches 76--81%. A separate 92,160-call boundary control likewise records
+only 40.7--68.6 us of C=32 thread CPU when wall p99 reaches 0.817--1.258 ms.
+Together these runs attribute the residual primarily to host scheduling and GIL
+reacquisition rather than SQLite or planner instruction count.
 
-It is not a paper-level scalability result. C=32 p99 remains 9.0--16.8 ms, all
-23 planning-deadline fallbacks occur at C=32, and neither a second host nor a
-provider-backed workload has been measured. The next systems step is tail
-attribution, not further tuning of the audit writer.
+The runtime now applies a configurable, non-blocking planner-admission limit
+before releasing the GIL. Saturated calls return the immutable reference request
+with a versioned, persisted `optimizer_saturated` reason. In the clean 153,600-
+call default-four-permit run, matched C=32 p50 falls another 85--98%, p99 falls
+34--82%, and absolute throughput rises 1.86--3.83x relative to the attribution
+run. C=32 p50 is 4--25 us and p99 is 2.33--10.19 ms; 54.6--81.4% of C=32 calls
+safely abstain from optimization. All 170,700 setup-plus-measured audit attempts
+are written with zero reported loss, and admission counters exactly match the
+returned and persisted reasons.
+
+This is still not a paper-level scalability result. The host was loaded at
+7.13/7.15/8.17 before and 5.64/6.75/7.97 after on eight logical CPUs, every C=32
+cell still misses 1.2 ms p99, and the abstention rate is a utility cost rather
+than a free speedup. A quiet second-host run and a latency-versus-optimization-
+coverage policy decision remain necessary.
 
 ## Current Results
 
 | ID | Status | Rule | Workload | n | Model | Source | Headline numbers | Paper use | Caveats |
 |---|---|---|---|---:|---|---|---|---|---|
-| `RES-001` | headline-ready | `ContextCompress` | `long_context_qa` | 100 | `gpt-4o-mini` | `ART-010` | all-on: 34.455% cost savings, 34.548% input-token savings, -2.000 pp accuracy; ContextCompress-only: 34.761% cost, 34.856% input-token, -2.000 pp | headline savings result | Purpose-built long prompts; needs uncertainty framing. |
-| `RES-002` | headline-ready | `ModelDowngrade` | `gaia_router` | 127 | `gpt-4o -> gpt-4o-mini` | `ART-011` | all-on: 33.499% cost savings; ModelDowngrade-only: 35.290% cost savings; near-zero input-token change | headline cost result | Savings are price-ratio driven; GAIA pass rate is low. |
+| `RES-001` | headline-ready, warmup-corrected | `ContextCompress` | `long_context_qa` | 300 | `gpt-4o-mini` | `bench/paper_results/long_context_qa-contextcompress-n300-warmup.csv` | all-on: 33.9% cost and 34.0% input-token savings; ContextCompress-only: 36.1% cost and 36.3% input-token savings, +1.7pp accuracy (McNemar p=0.4244), 280/300 fires | headline savings result | Purpose-built long prompts; all paired p-values are non-significant and this does not imply broad real-task savings. |
+| `RES-002` | headline-ready, warmup-corrected | `ModelDowngrade` | `gaia_router` | 127 | `gpt-4o -> gpt-4o-mini` | `bench/paper_results/gaia_router-modeldowngrade-n127-warmup.csv` | ModelDowngrade-only: 11.4% cost savings, approximately zero input-token change, 65/254 calls routed; −3.9pp accuracy, BF=7/FB=2, McNemar p=0.1797 | headline cost result | Savings are price-ratio driven; low baseline pass rate and non-significant quality uncertainty require careful framing. The earlier 35.3% cold-start result is retracted. |
 | `RES-003` | canonical | `StateDrop` | `iterative_refiner` | 30 | `gpt-4o-mini` | `ART-012` | all-on: 5.944% cost savings, 9.340% input-token savings, 0.000 pp accuracy; StateDrop-only: 4.011% cost, 7.795% input-token | supporting result | Older n=30 run; paper reference prefers n=50/temp=0 framing. |
-| `RES-004` | partial | `StateDrop` | `iterative_refiner` | 50 | `gpt-4o-mini` | `ART-013` | all-on: 6.000% cost savings, 9.630% input-token savings, 0.000 pp accuracy; StateDrop-off drops to 1.823% cost / 1.569% input-token | promising StateDrop evidence | Partial 10/11 matrix; metric is lenient. |
-| `RES-005` | partial | `ContextCompress` | real HotpotQA | 300 | `gpt-4o-mini` | `ART-014` | all-on: 0.170% cost savings, 0.195% input-token savings, +1.333 pp accuracy; ContextCompress-off: 0.005% cost, 0.000% input-token | activation-boundary diagnostic | Partial 7/11 matrix; not headline savings. |
+| `RES-004` | canonical, warmup-corrected | `StateDrop` | `iterative_refiner` | 50 | `gpt-4o-mini` | `bench/paper_results/iterative_refiner-statedrop-n50-warmup.csv` | StateDrop-only: 6.1% cost and 10.8% input-token savings with 0.0pp accuracy delta; StateDrop-off: 2.1% input-token savings and zero StateDrop fires | supporting isolation result | Use within-run comparisons; the metric remains lenient and the all-on accuracy delta is noisy. |
+| `RES-005` | canonical activation-boundary result | `ContextCompress` | real HotpotQA | 300 | `gpt-4o-mini` | `bench/paper_results/hotpot_real-contextcompress-n300-warmup.csv` | ContextCompress fires 0–1/300 calls per configuration; savings are 0.00–0.19%, and ContextCompress-only is −2.0pp with McNemar p=0.1796 | activation-boundary diagnostic | Full 11-config warmup-corrected matrix; not a headline savings result. |
 | `RES-006` | diagnostic | oracle compression | `hotpot_oracle` | 300 | `gpt-4o-mini` | `ART-015` | baseline passed 193/300; oracle/optimized passed 196/300; CSV costs almost identical | headroom diagnostic only | CSV alone does not encode the larger oracle-ceiling story. |
 | `RES-007` | headline-ready | `ContextCompress` vs LLMLingua-2 | HotpotQA distractor | 100 | `gpt-4o-mini` | `bench/paper_results/agentc_hotpot_n100.csv`, `llmlingua_accuracy_n100.csv` | CC: 68%→100% (BB=68 BF=0 FB=32 FF=0, McNemar exact p=4.7×10⁻¹⁰); LLMLingua-2: 68%→53% (BB=51 BF=17 FB=2 FF=30, p=0.0013); LLMLingua-2 53.1% token reduction, 11,400ms avg overhead | dual-regime LLMLingua comparison; CC favorable-fixture half | Fixture designed with injected distractors — favorable for IDF. Must be paired with RES-008. |
 | `RES-008` | canonical | `ContextCompress` abstention | Wikipedia QA (natural prose) | 39 | `gpt-4o-mini` | `bench/paper_results/wikipedia_qa_comparison.csv` | CC: 94.9%→94.9% (BB=37 BF=0 FB=0 FF=2, p=1.0, abstained entirely); LLMLingua-2: 94.9%→97.4% (BB=37 BF=0 FB=1 FF=1, p=1.0, 53.5% reduction, 13,678ms overhead) | dual-regime natural-prose half; confirms CC abstains when structural precondition absent | n=39 (SE ≈ 3.5pp); model already at 94.9% baseline leaving minimal headroom. |
-| `RES-009` | canonical | `ContextCompress` + `StateDrop` composition | `multirule_qa` (n=30) | 30 | `gpt-4o-mini` | `bench/paper_results/cc_sd_composition.csv` | baseline 43.3% acc, 379,880 input tokens; CC-only: +6.7pp, 33.1% token savings; SD-only: +3.3pp, 0.1% savings; CC+SD: +6.7pp, 21.7% savings (65.3% of additive ideal) | V2 orthogonality gate validation; multi-rule activation evidence | No accuracy delta is significant (SE ≈ 9pp). The 65.3% figure is fixture-specific (distractor volume >> state-token volume); do not cite as a general property of same-driver composition. Confirmatory: clean n=20 paired ablation (multirule_qa-cc_sd-n20-paired.csv) shows all-on=31.3% ≈ StateDrop-off=31.3%, SD-only=0.06% — CC dominates in both runs. |
-| `RES-010` | headline-ready | CompositionPlanner ablation (V1 vs V2) | `composition_qa` | 50 | `gpt-4o-mini` | `bench/paper_results/planner_ablation.csv` | baseline 32%; V2-CC: +12pp (p=0.0412*); V1-CC+OB: −2pp (p=1.0, BF=1 — greedy wrong pick); V2-CC+OB: +0pp (p=1.0 — gate corrects) | V2 correctness claim: orthogonality gate avoids greedy composition error | V2-CC+PD dropped (model drift at temp=0 makes shared-baseline impossible). Borderline p=0.0412 at n=50. |
+| `RES-009` | canonical, warmup-corrected | `ContextCompress` + `StateDrop` composition | `multirule_qa` | 30 | `gpt-4o-mini` | `bench/paper_results/multirule_qa-ccsd-n30-warmup.csv` | CC-only: 32.54% input-token savings; SD-only: 0.06%; CC+SD: 32.78%, or 100.5% of the 32.60% additive ideal; CC-only and CC+SD are both +3.3pp (p=1.0) | additive composition and multi-rule activation evidence | Small purpose-built fixture; the slight super-additivity is rounding/workload-specific, not a general interaction claim. |
+| `RES-010` | canonical control, not a planner-win claim | First-match vs composition planner | `composition_qa` | 50 | `gpt-4o-mini` | `bench/paper_results/composition_qa-planner-ablation-n50-warmup.csv` | baseline 32%; CC-only +18pp (p=0.0039); first-match CC+OB and composed CC+OB are identical at +14pp (p=0.0156) with 47 plans fired | controlled evidence that planner mode does not change accuracy on this fixture | Does not show the joint planner beating greedy. The CC+PlannerDispatch row is unrecoverable and omitted. |
 | `RES-011` | canonical | Agent diversity / rule activation rates | `rag_summarizer` + `autogen_bridge` | 63 + 83 optimizer calls | `gpt-4o-mini` | `bench/paper_results/agent_diversity.csv` | rag_summarizer: CC 54.0%, SD 9.5%, 1 composed (1.6%); autogen_bridge: CC 30.1%, SD 24.1% | Multi-rule activation on real-agent traces; GAP-011 closed | Activation rates, not accuracy; both agents require explicit state instrumentation for SD. |
 | `RES-012` | canonical | `StateDrop` isolation, paired | `iterative_refiner` | 50 | `gpt-4o-mini` | `bench/paper_results/iterative_refiner-statedrop-n50-paired.per_task.csv` | baseline 100%; SD-only 98% (−2pp, p=1.0, BF=1 FB=0); all 11 configs fail to reject McNemar at α=0.05 | Paired accuracy evidence for StateDrop | **Cost columns in the aggregate CSV are contaminated** (cross-process DB writes); use RES-003 for savings numbers. Per-task accuracy is from stdout and is clean. |
-| `RES-013` | diagnostic, before/after complete | Optimizer complete-call overhead and scaling | three fixed-shape paths plus exact 4/8/16/32/64 KiB calls at C=1/8/32, synchronous and off-path audit | 367,200 timed calls | n/a | `bench/repro/optimizer-e2e-overhead-2026-09-04.{json,csv}`, `bench/repro/optimizer-e2e-overhead-offpath-audit-2026-09-04.{json,csv}`, `bench/repro/optimizer-e2e-scaling-2026-09-04.{json,csv.gz}`, `bench/repro/optimizer-e2e-scaling-offpath-audit-2026-09-04.{json,csv.gz}`, `bench/paper_results/optimizer_overhead.txt`, `bench/paper_results/optimizer_e2e_scaling.txt` | Off-path fixed-shape p50/p99 is 73/162µs reference, 85/98µs admitted rewrite, and 51/62µs legacy. At C=32, reference p50/p99 is 164–184µs/9.0–11.1ms and rewrite is 186–312µs/10.4–16.8ms. Versus synchronous persistence, matched C=32 p50 falls 89–93% and absolute throughput rises 2.6–4.0×. All 170,700 scaling-run audit attempts are written after flush; 23/76,800 admitted calls (0.030%) safely hit the 5ms deadline, all at C=32. | Audit redesign validation plus an honest residual-tail result | One Apple M2 host, synthetic calls, no provider/network; `paper_evidence=false`. Ordered flush is outside the request clock, tail intervals are wide, and zero observed loss is bounded by the documented crash-loss contract. The older 76/120µs values use a pre-audit internal clock. |
+| `RES-013` | diagnostic, request-path progression complete; ship gate open | Optimizer complete-call overhead, tail attribution, and overload admission | fixed-shape calls, exact 4/8/16/32/64 KiB scaling at C=1/2/4/8/16/32, and three boundary controls | 828,000 complete calls + 92,160 boundary calls | n/a | `bench/repro/optimizer-e2e-overhead[-offpath-audit]-2026-09-04.{json,csv}`, `bench/repro/optimizer-e2e-scaling[-offpath-audit|-threadcpu|-admission-control]-2026-09-04.{json,csv.gz}`, `bench/repro/optimizer-boundary-scheduler-attribution-2026-09-04.{json,csv.gz}` | Off-path audit cuts matched C=32 p50 89–93% and raises throughput 2.6–4.0×. Thread-CPU p99 stays ≤0.717ms across all attribution cells while wall tails are mostly off-CPU. Default four-permit admission then cuts matched C=32 p50 another 85–98%, p99 34–82%, and raises throughput 1.86–3.83×; C=32 p50/p99 is 4–25µs/2.33–10.19ms with 54.6–81.4% safe saturation fallback. All 170,700 admission-run audit attempts persist with exact counter/reason conservation and zero reported loss. | Audit redesign, scheduler attribution, and safe-overload validation | One loaded Apple M2 host, synthetic calls, no provider/network; `paper_evidence=false`. Every C=32 cell still misses 1.2ms, overload abstention reduces optimization coverage, and zero observed loss is bounded by the documented crash-loss contract. |
 | `RES-014` | canonical | Cold-start curve | `ContextCompress` single call site | 20 obs | `gpt-4o-mini` | `bench/paper_results/coldstart_curve.csv` | PassThrough at obs 0–2; first fire at obs=3 (hot_threshold=3); savings stable by obs=5; max projected savings $0.0048 | Hot-threshold gate verification | Synthetic single-site measurement; not a real-trace result. |
 
 ## Interpretation Rules
 
 - Use `RES-001` and `RES-002` as the cleanest per-rule savings evidence.
 - Use `RES-007` and `RES-008` together as the dual-regime LLMLingua comparison — never cite `RES-007` alone.
-- Use `RES-009` to show multi-rule activation and gate-selection behavior under the orthogonality gate; do not claim statistical significance (SE ≈ 9pp, no McNemar test rejects). Do not claim the 65.3% figure proves sub-additivity as a general property — it is specific to this workload's token distribution. Pair with the confirmatory n=20 ablation (all-on=31.3% ≈ CC-only) to show CC dominance is reproducible.
-- Use `RES-010` for the V2 CompositionPlanner correctness claim (V1-CC+OB −2pp vs V2-CC+OB +0pp is the adversarial case).
-- Use `RES-004` only with the word `partial`; its cost columns predate the contamination bug and are usable, but the matrix is 10/11.
-- Use `RES-005` as a positive gating/boundary result, not as a failed compression result.
+- Use `RES-009` to show additive CC+SD composition on the controlled fixture: 32.78% savings versus a 32.60% additive ideal. Do not generalize the 100.5% ratio beyond this workload.
+- Use `RES-010` as a controlled non-difference: first-match and composed CC+OB have identical accuracy and activation. It is not evidence that the joint planner beats greedy.
+- Use warmup-corrected `RES-004` for StateDrop within-run savings and `RES-012` only for its separate paired accuracy check; never use `RES-012` cost columns.
+- Use the complete warmup-corrected `RES-005` as a positive gating/boundary result, not as a failed compression result.
 - Use `RES-006` only if trace-query evidence is found or reproduced.
-- Use all four before/after artifacts under `RES-013` as Stage E0 timing diagnostics. The fixed-shape pair isolates path cost; the scaling pair proves the off-path writer removes the dominant median/throughput bottleneck while showing that high-concurrency p99 still fails the frozen target. Do not promote the result to a confirmatory latency, multi-host, or universal-losslessness claim.
+- Use the full `RES-013` artifact sequence as Stage E0 timing diagnostics. The fixed-shape and scaling pairs isolate the synchronous audit bottleneck; the boundary and thread-CPU controls attribute the residual to off-CPU scheduling/GIL delay; the admission run validates bounded fail-open behavior and exposes its lost-coverage cost. High-concurrency p99 still fails the frozen target. Do not promote the result to a confirmatory latency, multi-host, optimal-policy, or universal-losslessness claim.
 - Separate cost savings from input-token savings; pricing and provider cache behavior can make them diverge.
 - Do not use "behavior-preserving" unless the metric, tolerance, and uncertainty treatment are explicit.
 - McNemar exact p-values (statsmodels `exact=True`) are preferred over the continuity-corrected chi-squared approximation. `RES-007` CC p-value is 4.7×10⁻¹⁰ exact (not the earlier "p<0.0001" estimate).
@@ -119,11 +132,11 @@ attribution, not further tuning of the audit writer.
 
 | ID | Path | Importance | Linked IDs | Notes |
 |---|---|---|---|---|
-| `ART-010` | `bench/paper_results/long_context_qa-contextcompress-n100.csv` | high | `RES-001`, `CLM-002` | ContextCompress matrix, 11 data rows. |
-| `ART-011` | `bench/paper_results/gaia_router-modeldowngrade-n127.csv` | high | `RES-002`, `CLM-003` | ModelDowngrade matrix, 11 data rows. |
+| `ART-010` | `bench/paper_results/long_context_qa-contextcompress-n300-warmup.csv` | high | `RES-001`, `CLM-002` | Canonical warmup-corrected ContextCompress matrix, 11 data rows. |
+| `ART-011` | `bench/paper_results/gaia_router-modeldowngrade-n127-warmup.csv` | high | `RES-002`, `CLM-003` | Canonical warmup-corrected ModelDowngrade matrix, 11 data rows. |
 | `ART-012` | `bench/paper_results/iterative_refiner-statedrop-n30.csv` | medium | `RES-003` | StateDrop n=30 matrix. |
-| `ART-013` | `bench/paper_results/iterative_refiner-statedrop-n50-partial10of11.csv` | high | `RES-004`, `GAP-002` | StateDrop n=50 partial matrix. |
-| `ART-014` | `bench/paper_results/hotpot_real-contextcompress-n300-partial7of11.csv` | high | `RES-005`, `GAP-003` | Real HotpotQA ContextCompress partial matrix. |
+| `ART-013` | `bench/paper_results/iterative_refiner-statedrop-n50-warmup.csv` | high | `RES-004`, `GAP-002` | Complete warmup-corrected StateDrop n=50 matrix; supersedes the retracted partial artifact. |
+| `ART-014` | `bench/paper_results/hotpot_real-contextcompress-n300-warmup.csv` | high | `RES-005`, `GAP-003` | Complete warmup-corrected real-HotpotQA ContextCompress matrix. |
 | `ART-015` | `bench/paper_results/hotpot_oracle-n300.csv` | high | `RES-006` | Oracle/manual-compression baseline. |
 
 ### Core Implementation Artifacts
@@ -167,12 +180,12 @@ attribution, not further tuning of the audit writer.
 | ID | Status | Gap closed | Experiment | Result | Remaining work |
 |---|---|---|---|---|---|
 | `EXP-001` | ✅ done | `GAP-002` | StateDrop n=50 full paired ablation. | `RES-012`: 11/11 configs, all McNemar fail to reject. Cost data contaminated; accuracy clean. | None. Use RES-003 for cost numbers. |
-| `EXP-002` | ✅ done | `GAP-011` | End-to-end multi-rule workload (CC+SD). | `RES-009` + `RES-011`: CC fires 30–54%, SD 9–24%; CC+SD 21.7% token savings; both activate on same trace. Confirmatory n=20 ablation: all-on=31.3% ≈ CC-only; SD marginal contribution ≈ 0. | None. Report gate-selection behavior on this fixture, not sub-additivity as a general property. |
-| `EXP-003` | ✅ done | `GAP-004` + V2 planner | CompositionPlanner ablation (V1 vs V2). | `RES-010`: V1-CC+OB −2pp (wrong pick), V2-CC+OB +0pp (corrected). V2-CC+PD dropped (model drift). | None. Four valid rows sufficient. |
+| `EXP-002` | ✅ done | `GAP-011` | End-to-end multi-rule workload (CC+SD). | `RES-009`: CC-only saves 32.54% input tokens, SD-only 0.06%, and CC+SD 32.78% versus a 32.60% additive ideal; both rules activate in the composed condition. | None. Report this as additive behavior on one controlled fixture, not a universal interaction law. |
+| `EXP-003` | ✅ done | `GAP-004` + planner control | First-match versus composition ablation. | `RES-010`: CC-only is +18pp; first-match CC+OB and composed CC+OB are identical at +14pp with the same 47 activations. | This is a non-difference/control result, not proof that composition beats greedy. The CC+PlannerDispatch row remains unrecoverable. |
 | `EXP-004` | ✅ done | design verification | Cold-start curve. | `RES-014`: first fire at obs=3, stable by obs=5. | None. |
 | `EXP-005` | ✅ done | `GAP-002` | StateDrop isolation (paired). | `RES-012`: SD-only 98% vs baseline 100%, p=1.0. | None. |
 | `EXP-006` | ✅ done | `GAP-014` | Paired McNemar / bootstrap CI across experiments. | Done for `RES-007`, `RES-008`, `RES-009`, `RES-010`, `RES-012`. Exact statsmodels tests used. | Apply exact p-values in paper draft (draft-paper-edits.md §11 has updated numbers). |
-| `EXP-007` | diagnostic rerun complete | `GAP-015` (median/throughput portion) | Optimizer overhead measurement and audit-path ablation. | `RES-013`: 367,200 before/after timed calls. Off-path persistence lowers matched C=32 p50 by 89–93%, raises absolute throughput 2.6–4.0×, and conserves all audit rows after flush. C=32 p99 remains 9.0–16.8ms and 23 admitted calls fail open at the deadline. | Attribute scheduler/FFI/oversubscription tails, repeat on another host, then execute the confirmatory campaign. Historical 76/120µs values remain pre-audit internal timings. |
+| `EXP-007` | diagnostic mechanism complete; confirmation open | `GAP-015` (attribution/admission portions) | Optimizer overhead progression from synchronous audit through off-path persistence, thread-CPU attribution, and non-blocking planner admission. | `RES-013`: 828,000 complete calls plus 92,160 boundary controls. CPU p99 stays ≤0.717ms; default admission reduces matched C=32 p99 34–82% and throughput improves 1.86–3.83×, but C=32 wall p99 is still 2.33–10.19ms and saturation fallback is 54.6–81.4%. | Repeat the frozen admission sweep on a quiet second host, select/report the latency-versus-coverage policy, then execute the provider-backed confirmatory campaign. Historical 76/120µs values remain pre-audit internal timings. |
 | `EXP-008` | ✅ done | `GAP-012` (compression only) | LLMLingua-2 direct baseline. | `RES-007` + `RES-008`: dual-regime comparison complete. | Routing (RouteLLM/FrugalGPT) and caching (vCache) baselines remain cite-only for now. |
 | `EXP-009` | open | `GAP-005` | Stronger StateDrop quality metric. | — | Low priority unless venue requires it. Current metric (substring match) is lenient but consistent. |
 | `EXP-010` | open | ModelDowngrade composition | MD+CC composition at adequate n. | MD+CC n=20 too underpowered (SE ≈ 11pp). Needs n≥100 on gpt-4o base without rate-limit issues. | Blocked by Tier-1 30K TPM ceiling on gpt-4o. Future work. |

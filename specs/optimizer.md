@@ -143,6 +143,7 @@ $ agentc optimize report
 Optimizer report (last 24h)
 ─────────────────────────────────────────────────────────
 Calls intercepted:       18,402
+Runtime fallback:             0    (0.0%)    # fail-open safety path
 Cold (profiling):         2,104    (11.4%)
 Hot, pass-through:        3,291    (17.9%)    # no rule fired
 Hot, optimized:          13,007    (70.7%)
@@ -223,6 +224,7 @@ cost_model_window = 50              # Rolling window for cost model fitting.
 divergence_window = 50              # Retained shadow samples per site/rule.
 plan_profile_window = 50            # Retained executions and, separately, paired divergences.
 max_overhead_ms = 5                 # Abort optimization if budget exceeded.
+max_inflight_plans = 4              # Fail open instead of queueing excess planners.
 shadow_rate = 0.02                  # 2% of optimized calls run shadow execution.
 compose = true
 
@@ -272,6 +274,7 @@ Environment overrides:
 | `AGENTC_OPTIMIZE_PLAN_PROFILE_FRESHNESS_HOURS=24` | Rejects plans whose newest paired observation is older than this finite positive horizon. |
 | `AGENTC_OPTIMIZE_MAX_REWRITE_DEPTH=3` | Bounds each candidate to one through three semantic rewrites. |
 | `AGENTC_OPTIMIZE_MAX_OVERHEAD_MS=5` | Sets the plan kill-switch budget. |
+| `AGENTC_OPTIMIZE_MAX_INFLIGHT_PLANS=4` | Sets the positive process-local cap on concurrent planners. Calls above the cap immediately execute the original request. |
 | `AGENTC_OPTIMIZE_EXPLORATION=0` | Disables initial off-path calibration. Exploration is enabled by default and issues real, billed candidate calls under the persisted site cap. |
 | `AGENTC_OPTIMIZE_EXPLORATION_CALLS_PER_SITE_24H=20` | Sets the positive rolling counterfactual call cap. |
 | `AGENTC_OPTIMIZE_MAX_CONCURRENT_COUNTERFACTUALS=1` | Sets the positive per-site live counterfactual cap. |
@@ -798,15 +801,29 @@ the lease eventually becomes abandoned and charged. This protects against
 pathological cases while keeping provider dispatch outside an over-budget
 decision.
 
+Before releasing the Python GIL for planning, `optimize_plan` acquires one of
+`max_inflight_plans` process-local permits with a non-blocking atomic compare-
+and-swap. The permit spans semantic planning, audit-row construction, and
+enqueue. If no permit is available, the call retains the GIL, returns the exact
+original request as a versioned `optimizer_saturated` pass-through, and records
+that reason in the audit stream. Saturated calls never wait for a permit. The
+`optimize_admission_stats()` surface exposes attempted, admitted, rejected,
+in-flight, high-water, and configured-limit counters; attempts must equal
+admissions plus saturation rejections after every completed benchmark group.
+
 The original 2026-09-04 release-mode Stage E0 matrix did not meet this target
 under contention. Sequential p50 is 0.108--0.253 ms, but 32-caller p50/p99 reaches
 1.74--2.85 ms/14.6--46.1 ms and throughput improves only 1.35--1.98× on an
 eight-core Apple M2. The internal pre-audit p99 remains at or below 0.721 ms;
 the combined boundary/state/audit residual accounts for 94--97% of mean time.
 The known global operation in that residual was the synchronous audit-DB mutex.
-The bounded writer rerun removes the median and throughput bottleneck, with the
-matched improvements reported below. The overhead acceptance gate remains open
-because scheduler/FFI p99 at C=8/32 still exceeds 1.2 ms.
+The bounded writer rerun removes the median and throughput bottleneck. Thread-
+CPU and boundary controls then attribute the residual primarily to off-CPU
+scheduler/GIL delay rather than planner instructions. The non-blocking admission
+gate reduces C=32 p50 by a further 85--98% and p99 by 34--82% relative to that
+attribution run, while raising throughput 1.86--3.83x. The overhead acceptance
+gate remains open because default four-permit C=32 p99 is 2.33--10.19 ms on the
+recorded loaded host, and 55--81% of C=32 calls safely abstain from optimization.
 
 ### Persistent storage
 
@@ -826,6 +843,9 @@ the last optimizer state drains the worker. A process crash can lose the current
 128-row batch plus the 4,096 queued rows (at most 4,224 accepted rows). SQLite
 WAL with `synchronous=NORMAL` keeps committed data consistent after process
 failure, but a host power failure may lose recently committed transactions.
+Planner admission is separately fail-open: it limits synchronous semantic work
+before the GIL is released, and it persists `runtime_fallback_reason` so overload
+abstention cannot be misclassified as a cold call in operator reports.
 
 ```sql
 -- cost_model.db
@@ -1070,14 +1090,15 @@ CREATE TABLE IF NOT EXISTS plan_audit (
     overhead_us           INTEGER NOT NULL,
     shadow_sampled        INTEGER NOT NULL DEFAULT 0,
     shadow_divergence     REAL,
-    planner_diagnostics_json TEXT
+    planner_diagnostics_json TEXT,
+    runtime_fallback_reason TEXT
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_audit_call_site ON plan_audit(call_site_id, ts_us DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON plan_audit(ts_us);
 ```
 
-Schema migration adds `window_observations`, both retained-sample tables,
+Schema migration adds `runtime_fallback_reason`, `window_observations`, both retained-sample tables,
 `rule_divergence.window_samples`, and
 `rule_divergence.consecutive_breaches` to existing databases. A divergence row
 from before breach persistence receives a zero streak. An unbounded legacy
@@ -1211,6 +1232,12 @@ A user's LLM call never fails because the optimizer failed.
   held only long enough to clone a profile summary; the retained sample window
   is shared through `Arc` and is not copied. Multiple threads then evaluate
   plans independently.
+- **Planner admission is bounded and non-blocking.** The process admits at most
+  `max_inflight_plans` concurrent evaluations (four by default). Excess calls
+  retain the GIL, emit a versioned `optimizer_saturated` pass-through, and
+  execute the immutable reference request instead of entering a scheduler
+  queue. Admission counters and the persisted runtime fallback reason make the
+  lost optimization opportunities observable.
 - **Cost model updates lock one call-site entry.** An update mutates that
   profile's copy-on-write sample window, recomputes its statistics, and records
   a monotonically increasing dirty generation. An older flush clears a dirty
@@ -1240,8 +1267,11 @@ A user's LLM call never fails because the optimizer failed.
   most 128 rows per transaction. The clean 153,600-call rerun reports zero
   pending, dropped, disconnected, or failed rows. At 32 callers, p50 falls
   89--93% and absolute throughput rises 2.6--4.0× versus the synchronous
-  baseline. The remaining 9--17 ms p99 tail is an open scheduler/FFI blocker,
-  not evidence that the audit path still serializes all callers.
+  baseline. Thread-CPU controls attribute the remaining tail primarily to
+  off-CPU scheduling/GIL delay. Admission reduces default-policy C=32 p99 to
+  2.33--10.19 ms on the loaded diagnostic host, but the frozen 1.2 ms target
+  remains open and the 55--81% saturation rate must be charged as lost
+  optimization coverage.
 - **Initial exploration runs in a background `asyncio.Task` or daemon thread.**
   The adapter schedules it only after the reference response is observed.
   **Post-admission shadow execution remains synchronous** in the provider
@@ -1310,6 +1340,8 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Auto-disabled rule re-enables after 24h | `tests/accuracy_budget.rs` |
 | Optimizer FFI panic yields PassThrough | `tests/fail_open.rs` |
 | Overhead kill switch activates above `max_overhead_ms` | `tests/fail_open.rs` |
+| Planner admission fails open without waiting, recovers permits, and never exceeds its configured high-water mark | `admission::tests` |
+| Saturation returns a decodable versioned pass-through and preserves audit identifiers without materializing prompt payloads | `tests::saturated_plan_is_pass_through_with_versioned_reason`, `tests::audit_metadata_decoder_skips_payload_and_preserves_escaped_site`, `tests/test_optimizer_shim.py::test_plan_call_decodes_runtime_saturation_fallback` |
 | All cost and shape statistics retain exactly the last configured N samples | `cost_model::tests::rolling_window_recomputes_every_stat_after_distribution_shift` |
 | Exact retained window survives restart and continues eviction | `cost_model::tests::retained_window_survives_restart_and_continues_eviction` |
 | Smaller runtime window is persisted on restart | `cost_model::tests::smaller_window_is_applied_and_persisted_on_restart` |
@@ -1355,6 +1387,7 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | An over-budget envelope is canceled before candidate dispatch without spending call capacity | `ffi::tests::over_budget_envelope_can_be_cancelled_before_candidate_dispatch`, `tests/test_live_exploration_preflight.py::test_zero_total_overhead_budget_never_dispatches_counterfactual` |
 | Every timed complete optimizer call pairs with exactly one WAL-backed audit row after an ordered flush, with zero reported queue/write loss and native state reset on benchmark failure | `tests/test_optimizer_e2e_overhead.py` |
 | Concurrent complete-call samples pair to exact audit rows by span ID, preserve deadline fallbacks, expose queue loss, and close the native writer before cross-driver WAL inspection | `tests/test_optimizer_e2e_scaling.py` |
+| Scaling runs conserve admission attempts exactly and correlate every saturation counter increment with the returned and persisted fallback reason | `tests/test_optimizer_e2e_scaling.py` |
 | Audit enqueue is non-blocking when full, flush makes accepted rows queryable, write failures are counted, and drop drains accepted work | `audit_writer::tests` |
 | Reconfigure and reset establish a durability barrier for the previous store | `tests/test_planner_diagnostics.py::test_reconfigure_and_reset_drain_the_previous_audit_writer` |
 | OpenAI, Anthropic, and LiteLLM adapters return the reference before scheduling the candidate | `tests/test_openai_patch.py`, `tests/test_anthropic_patch.py`, `tests/test_litellm_patch.py` |
@@ -1463,6 +1496,30 @@ SQLite serialization defect is closed, but the frozen p99 ship gate remains
 open for scheduler/FFI-tail attribution. Both artifacts are permanently labeled
 `paper_evidence=false`.
 
+The attribution run is
+`bench/repro/optimizer-e2e-scaling-threadcpu-2026-09-04.{json,csv.gz}`. It adds
+per-call thread CPU and wall-minus-CPU clocks across C=1/2/4/8/16/32. Every one
+of its 60 cells has pooled thread-CPU p99 at or below 0.717 ms, while C=32 wall
+p99 remains 11.12--20.59 ms and mean off-CPU share is 76--81%. The independent
+`optimizer-boundary-scheduler-attribution-2026-09-04` control reports only
+40.7 us and 68.6 us of C=32 thread-CPU p99 for audit-stat and catalog calls even
+when their wall p99 reaches 0.817 ms and 1.258 ms. These controls attribute the
+remaining tail to scheduling/GIL reacquisition on this host, not to hidden
+SQLite work or excessive planner instruction count.
+
+The first overload mitigation is
+`bench/repro/optimizer-e2e-scaling-admission-control-2026-09-04.{json,csv.gz}`.
+It measures 153,600 calls from clean commit `33aeb74` with the default four-
+permit non-blocking gate. Relative to the thread-CPU attribution run, matched
+C=32 p50 falls 85--98%, p99 falls 34--82%, and absolute throughput rises
+1.86--3.83x. C=32 p50 is 0.004--0.025 ms and p99 is 2.326--10.186 ms; all cells
+retain thread-CPU p99 at or below 0.619 ms. The gate rejects 54.6--81.4% of C=32
+calls to the exact reference request, and all 170,700 setup-plus-measured audit
+attempts persist with zero reported loss. Host load averages are 7.13/7.15/8.17
+before and 5.64/6.75/7.97 after on eight logical CPUs, so the artifact remains
+`paper_evidence=false`. It validates safe overload behavior and exact accounting,
+not the 1.2 ms ship gate or an optimal admission limit.
+
 ### Performance targets
 
 Plan benchmarks live in `bench/optimizer_bench.py`. The release-mode bounded
@@ -1477,11 +1534,14 @@ reference selection and 115.000/307.209 us for an admitted joint rewrite on the
 same class of host. The original size/concurrency companion shows 32-caller p99
 of 14.620--46.122 ms and only 1.35--1.98× throughput scaling. After moving
 SQLite off path, matched C=32 medians fall 89--93%, absolute throughput rises
-2.6--4.0×, and audit loss remains zero, but pooled p99 is still
-8.956--16.776 ms. These diagnostics measure the production request path but do
-not replace the frozen campaign's end-to-end latency measurements. The two
-artifacts form an explicit before/after systems diagnostic; neither is
-confirmatory paper evidence, and the 1.2 ms p99 ship target remains unmet.
+2.6--4.0×, and audit loss remains zero. Thread-CPU controls then show that every
+planner cell remains below 0.717 ms thread-CPU p99 while wall tails are dominated
+by off-CPU delay. The default admission gate reduces matched C=32 p50 another
+85--98%, p99 34--82%, and raises throughput 1.86--3.83×, at the cost of safely
+passing through 55--81% of C=32 calls. These diagnostics measure the production
+request path but do not replace the frozen campaign's end-to-end latency
+measurements. They remain non-confirmatory, and the 1.2 ms p99 ship target is
+unmet pending a quiet multi-host run and an admission-policy/coverage decision.
 
 | Metric | Target | Measurement |
 |---|---|---|

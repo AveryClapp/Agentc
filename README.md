@@ -56,13 +56,20 @@ an MLSys efficacy result; the held-out baseline/ablation campaign remains.
 | Provider generalization (Anthropic Claude, HF Llama) | 50 each | CC: 98% fire / 34% tok savings (HF, measured); 0% (Anthropic single-msg). MD cost reductions are cost-model *projections* (models absent from the pricing table), not billed measurements — see paper caveat | — |
 | StateDrop negative control (all-state-read variant) | 20 | 0/320 SD fires when all state writes have matching reads; confirms unread-state precondition | — |
 | Optimizer audit before/after (Stage E0, no provider) | 367,200 | off-path audit cuts matched C=32 p50 **89–93%** and raises absolute throughput **2.6–4.0×** with zero observed audit loss; C=32 p99 remains **9.0–16.8ms** | diagnostic only |
+| Optimizer tail attribution + admission (Stage E0, no provider) | 460,800 + 92,160 boundary controls | every planner cell is ≤**0.717ms thread-CPU p99**; a four-permit fail-open gate cuts matched C=32 p99 another **34–82%** and raises throughput **1.86–3.83×**, while safely passing through 55–81% of overloaded calls | diagnostic only |
 
 The old 76/120µs values timed only the internal planner. A 153,600-call baseline
 then exposed synchronous SQLite audit persistence: C=32 p50 reached 1.74–2.85ms.
 The matched clean-commit rerun moves persistence behind a bounded non-blocking
 queue, bringing C=32 p50 to 0.16–0.31ms while accepting and writing all 170,700
-setup-plus-measured audit rows. The 1.2ms p99 gate is still open because the
-oversubscribed eight-core host retains 9.0–16.8ms scheduler/FFI tails.
+setup-plus-measured audit rows. Thread-CPU and boundary controls then isolate the
+remaining tail as mostly off-CPU scheduling/GIL delay. The optimizer now admits
+at most four concurrent planners by default and immediately executes the exact
+reference request when saturated. In a clean-commit 153,600-call diagnostic,
+C=32 p50 falls to 4–25µs and p99 to 2.3–10.2ms, with exact fallback/audit
+accounting and zero audit loss. The 1.2ms p99 gate remains open: this loaded
+single-host result trades 55–81% of C=32 optimization opportunities for bounded
+request-path work and is not paper evidence.
 
 `ParallelBranch` ships and emits audit rows; the latency win currently comes from the user-side `parallel_map` ThreadPoolExecutor. `CacheHit` functions as a bridge between memoized and non-memoized callers; neither is a headline paper claim yet.
 

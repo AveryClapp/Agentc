@@ -31,7 +31,7 @@ Short version:
 - Best current evidence: `ContextCompress` and `ModelDowngrade`.
 - Most useful caveat: `StateDrop` is promising but not yet a sound compiler-style pass.
 - Biggest experiment gap: no held-out joint routing-plus-rewrite result against route-only, rewrite-only, ordering, and static controls.
-- Biggest engineering blocker: the audit median bottleneck is fixed, but scheduler/FFI/oversubscription tails still produce 9.0–16.8ms C=32 p99 in the Stage E0 rerun.
+- Biggest engineering blocker: the audit bottleneck is fixed and thread-CPU controls attribute the residual to off-CPU scheduler/GIL delay. Fail-open admission cuts matched C=32 p99 34–82%, but the loaded-host result still reaches 2.33–10.19ms and sacrifices 55–81% of optimization coverage.
 
 ## Venue Ladder
 
@@ -135,11 +135,11 @@ Rules to describe:
 
 ### Methodology
 
-Use rule-specific workloads to isolate behavior, then make the held-out joint-policy campaign the central test: fixed model, route only, rewrite only, both sequential orders, current greedy, learned/joint AgentC, and best static policy. Report complete-call overhead separately. The Stage E0 before/after diagnostic validates the off-path audit mechanism and isolates a remaining tail problem; it does not substitute for provider-backed or multi-host latency evidence.
+Use rule-specific workloads to isolate behavior, then make the held-out joint-policy campaign the central test: fixed model, route only, rewrite only, both sequential orders, current greedy, learned/joint AgentC, and best static policy. Report complete-call overhead and saturation abstention separately. The Stage E0 progression validates off-path audit, attributes the residual tail, and validates bounded fail-open admission; it does not substitute for provider-backed or quiet multi-host latency-versus-coverage evidence.
 
 ### Results
 
-Use `RES-001` and `RES-002` as the strongest current rule-level results. Use `RES-004` as promising but partial, `RES-005` as activation-boundary evidence, and `RES-006` only as diagnostic headroom until trace-query support exists. Treat the `RES-013` before/after result as evidence that off-path observability removes the dominant median bottleneck, paired with an honest admission that high-concurrency p99 still fails the target.
+Use `RES-001` and `RES-002` as the strongest current rule-level results. Use the complete warmup-corrected `RES-004` as promising but semantically caveated, `RES-005` as activation-boundary evidence, and `RES-006` only as diagnostic headroom until trace-query support exists. Treat `RES-010` as planner parity, not a planner win. Treat `RES-013` as a mechanism progression: off-path observability removes the dominant median bottleneck, CPU controls attribute the remaining tail, and admission bounds overload at a measurable coverage cost. High-concurrency p99 still fails the target.
 
 ### Related work
 
@@ -164,7 +164,7 @@ Keep limitations honest but contained:
 - StateDrop needs a dependency model;
 - provider pricing/cache behavior affects billed-cost interpretation;
 - CacheHit/ParallelBranch are not current headline results.
-- the audit redesign fixes median/throughput scaling on one host, but high-concurrency p99 still misses the target and multi-host behavior is unmeasured.
+- request-path attribution and admission improve overload behavior on one host, but high-concurrency p99 still misses the target, saturation drops many optimization opportunities, and multi-host behavior is unmeasured.
 
 ## Title Ideas
 

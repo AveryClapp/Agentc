@@ -16,6 +16,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let directory = tempfile::tempdir()?;
     let database_path = directory.path().join("cost_model.db");
     let call_site_version = CallSiteVersion::parse("1".repeat(64))?;
+    let reference_plan_id = ExecutionPlanId::parse("f".repeat(64))?;
     let mut candidates = vec![
         candidate(&call_site_version, 'a')?,
         candidate(&call_site_version, 'b')?,
@@ -42,6 +43,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let decision = controller.decide_and_reserve(
             &mut conn,
             &call_site_version,
+            &reference_plan_id,
             &candidates,
             now_us,
         );
@@ -85,6 +87,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cap_decision = controller.decide_and_reserve(
         &mut conn,
         &call_site_version,
+        &reference_plan_id,
         &candidates,
         START_US + 50,
     );
@@ -96,6 +99,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let restart_decision = restarted.decide_and_reserve(
         &mut restarted_conn,
         &call_site_version,
+        &reference_plan_id,
         &candidates,
         START_US + 60,
     );

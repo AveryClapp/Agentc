@@ -14,6 +14,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBe
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::execution_plan::ExecutionPlanId;
 use crate::plan_profile::{CallSiteVersion, PlanProfileKey};
 
 /// Rolling horizon for the per-call-site exploration budget.
@@ -314,13 +315,20 @@ impl ExplorationController {
         &self,
         conn: &mut Connection,
         call_site_version: &CallSiteVersion,
+        reference_plan_id: &ExecutionPlanId,
         candidates: &[ExplorationCandidate],
         now_us: i64,
     ) -> ExplorationDecision {
         if now_us < 0 {
             return ExplorationDecision::reference_only(ExplorationReason::InvalidClock);
         }
-        match self.try_decide_and_reserve(conn, call_site_version, candidates, now_us) {
+        match self.try_decide_and_reserve(
+            conn,
+            call_site_version,
+            reference_plan_id,
+            candidates,
+            now_us,
+        ) {
             Ok(decision) => decision,
             Err(_) => {
                 ExplorationDecision::reference_only(ExplorationReason::PersistenceFailure)
@@ -332,6 +340,7 @@ impl ExplorationController {
         &self,
         conn: &mut Connection,
         call_site_version: &CallSiteVersion,
+        reference_plan_id: &ExecutionPlanId,
         candidates: &[ExplorationCandidate],
         now_us: i64,
     ) -> Result<ExplorationDecision, ExplorationError> {
@@ -361,6 +370,7 @@ impl ExplorationController {
         let mut eligible = Vec::new();
         for candidate in candidates {
             if candidate.key.call_site_version != *call_site_version
+                || candidate.key.execution_plan_id == *reference_plan_id
                 || candidate.paired_observations >= self.policy.evidence_target
                 || !candidate.request_compatible
                 || candidate.forbidden
@@ -949,6 +959,10 @@ mod tests {
         }
     }
 
+    fn reference_plan_id() -> ExecutionPlanId {
+        ExecutionPlanId::parse("f".repeat(64)).unwrap()
+    }
+
     fn connection() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         ensure_cost_model_schema(&conn).unwrap();
@@ -1003,6 +1017,7 @@ mod tests {
         let first = controller.decide_and_reserve(
             &mut first_db,
             &call_site,
+            &reference_plan_id(),
             &candidates,
             NOW_US,
         );
@@ -1013,6 +1028,7 @@ mod tests {
         let second = controller.decide_and_reserve(
             &mut second_db,
             &call_site,
+            &reference_plan_id(),
             &reversed,
             NOW_US,
         );
@@ -1041,7 +1057,45 @@ mod tests {
         let mut conn = connection();
         let decision = ExplorationController::with_policy(policy())
             .unwrap()
-            .decide_and_reserve(&mut conn, &call_site, &candidates, NOW_US);
+            .decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id(),
+                &candidates,
+                NOW_US,
+            );
+        assert!(decision.return_reference);
+        assert!(decision.counterfactual.is_none());
+        assert_eq!(decision.reason, ExplorationReason::NoEligibleCandidate);
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM execution_plan_exploration",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn reference_plan_is_never_leased_as_its_own_counterfactual() {
+        let call_site = site(13);
+        let mut reference = candidate(&call_site, 1);
+        let reference_plan_id = reference.key.execution_plan_id.clone();
+        reference.paired_observations = 0;
+        let mut conn = connection();
+
+        let decision = ExplorationController::with_policy(policy())
+            .unwrap()
+            .decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id,
+                &[reference],
+                NOW_US,
+            );
+
         assert!(decision.return_reference);
         assert!(decision.counterfactual.is_none());
         assert_eq!(decision.reason, ExplorationReason::NoEligibleCandidate);
@@ -1066,12 +1120,14 @@ mod tests {
         let first = controller.decide_and_reserve(
             &mut conn,
             &call_site,
+            &reference_plan_id(),
             &candidates,
             NOW_US,
         );
         let blocked = controller.decide_and_reserve(
             &mut conn,
             &call_site,
+            &reference_plan_id(),
             &candidates,
             NOW_US + 1,
         );
@@ -1087,6 +1143,7 @@ mod tests {
         let next = controller.decide_and_reserve(
             &mut conn,
             &call_site,
+            &reference_plan_id(),
             &candidates,
             NOW_US + 3,
         );
@@ -1104,6 +1161,7 @@ mod tests {
             let decision = controller.decide_and_reserve(
                 &mut conn,
                 &call_site,
+                &reference_plan_id(),
                 &candidates,
                 NOW_US + offset * 10,
             );
@@ -1122,6 +1180,7 @@ mod tests {
         let blocked = restarted.decide_and_reserve(
             &mut conn,
             &call_site,
+            &reference_plan_id(),
             &candidates,
             NOW_US + 40,
         );
@@ -1140,7 +1199,13 @@ mod tests {
             let mut conn = Connection::open(&path).unwrap();
             ensure_cost_model_schema(&conn).unwrap();
             let lease = controller
-                .decide_and_reserve(&mut conn, &call_site, &candidates, NOW_US)
+                .decide_and_reserve(
+                    &mut conn,
+                    &call_site,
+                    &reference_plan_id(),
+                    &candidates,
+                    NOW_US,
+                )
                 .counterfactual
                 .unwrap();
             controller
@@ -1176,6 +1241,7 @@ mod tests {
         let reserved = controller.decide_and_reserve(
             &mut first,
             &call_site,
+            &reference_plan_id(),
             &candidates,
             NOW_US,
         );
@@ -1183,6 +1249,7 @@ mod tests {
         let blocked = controller.decide_and_reserve(
             &mut second,
             &call_site,
+            &reference_plan_id(),
             &candidates,
             NOW_US + 1,
         );
@@ -1196,11 +1263,18 @@ mod tests {
         let candidates = vec![candidate(&call_site, 1)];
         let controller = ExplorationController::with_policy(policy()).unwrap();
         let mut conn = connection();
-        controller.decide_and_reserve(&mut conn, &call_site, &candidates, NOW_US);
+        controller.decide_and_reserve(
+            &mut conn,
+            &call_site,
+            &reference_plan_id(),
+            &candidates,
+            NOW_US,
+        );
 
         let next = controller.decide_and_reserve(
             &mut conn,
             &call_site,
+            &reference_plan_id(),
             &candidates,
             NOW_US + 101,
         );
@@ -1219,7 +1293,13 @@ mod tests {
         let mut conn = connection();
 
         let observation = controller
-            .decide_and_reserve(&mut conn, &call_site, &candidates, NOW_US)
+            .decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id(),
+                &candidates,
+                NOW_US,
+            )
             .counterfactual
             .unwrap();
         controller
@@ -1232,7 +1312,13 @@ mod tests {
             .unwrap();
 
         let labeled = controller
-            .decide_and_reserve(&mut conn, &call_site, &candidates, NOW_US + 2)
+            .decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id(),
+                &candidates,
+                NOW_US + 2,
+            )
             .counterfactual
             .unwrap();
         controller
@@ -1273,6 +1359,7 @@ mod tests {
             .decide_and_reserve(
                 &mut conn,
                 &call_site,
+                &reference_plan_id(),
                 std::slice::from_ref(&risky),
                 NOW_US,
             )
@@ -1298,6 +1385,7 @@ mod tests {
         let decision = controller.decide_and_reserve(
             &mut conn,
             &call_site,
+            &reference_plan_id(),
             &[risky.clone(), safe.clone()],
             NOW_US + 2,
         );
@@ -1314,6 +1402,7 @@ mod tests {
             .decide_and_reserve(
                 &mut conn,
                 &call_site,
+                &reference_plan_id(),
                 std::slice::from_ref(&candidate),
                 NOW_US,
             )
@@ -1356,6 +1445,7 @@ mod tests {
             .decide_and_reserve(
                 &mut conn,
                 &call_site,
+                &reference_plan_id(),
                 std::slice::from_ref(&candidate),
                 NOW_US,
             )
@@ -1395,6 +1485,7 @@ mod tests {
             .decide_and_reserve(
                 &mut conn,
                 &call_site,
+                &reference_plan_id(),
                 &[candidate(&call_site, 1)],
                 NOW_US,
             );

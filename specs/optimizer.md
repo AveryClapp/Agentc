@@ -646,7 +646,9 @@ paired-evidence count, then the fewest attempts in the active window, then a
 seeded stable hash. Reordering the candidate list therefore does not change a
 seeded run. SQLite transaction serialization enforces the concurrency cap across
 controller instances and process restart; a storage failure returns only the
-reference and creates no lease.
+reference and creates no lease. The controller receives the immutable reference
+plan ID separately and excludes it even if candidate generation returns it by
+mistake.
 
 The controller tracks sampled divergence exposure:
 
@@ -876,13 +878,16 @@ CREATE TABLE IF NOT EXISTS execution_plan_exploration (
     ),
     CHECK (
         (feedback_kind = 'none' AND divergence IS NULL AND divergence_exposure IS NULL
-            AND reference_quality IS NULL AND candidate_quality IS NULL AND task_damage IS NULL)
+            AND reference_quality IS NULL AND candidate_quality IS NULL AND task_damage IS NULL
+            AND cost_usd IS NULL AND latency_ms IS NULL)
         OR (feedback_kind = 'observation_only' AND divergence IS NOT NULL
             AND divergence_exposure IS NOT NULL AND reference_quality IS NULL
-            AND candidate_quality IS NULL AND task_damage IS NULL)
+            AND candidate_quality IS NULL AND task_damage IS NULL
+            AND cost_usd IS NOT NULL AND latency_ms IS NOT NULL)
         OR (feedback_kind = 'task_quality' AND divergence IS NOT NULL
             AND divergence_exposure IS NOT NULL AND reference_quality IS NOT NULL
-            AND candidate_quality IS NOT NULL AND task_damage IS NOT NULL)
+            AND candidate_quality IS NOT NULL AND task_damage IS NOT NULL
+            AND cost_usd IS NOT NULL AND latency_ms IS NOT NULL)
     )
 ) STRICT, WITHOUT ROWID;
 
@@ -1189,6 +1194,7 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | The site call cap and feedback survive a database close and restart | `exploration::tests::rolling_state_survives_database_close_and_reopen` |
 | Independent database connections enforce one live counterfactual per site | `exploration::tests::independent_database_connections_share_concurrency_limit` |
 | Forbidden, incompatible, disabled, and sufficiently observed plans are never leased | `exploration::tests::forbidden_incompatible_disabled_and_warm_candidates_never_run` |
+| The immutable reference plan is never leased as its own counterfactual | `exploration::tests::reference_plan_is_never_leased_as_its_own_counterfactual` |
 | Divergence observations remain distinct from evaluation-only task-quality labels | `exploration::tests::observation_and_task_quality_feedback_remain_distinct` |
 | A failed selected target retries the exact original request once | `tests/test_optimizer_glue.py::test_routed_failure_replays_exact_original` |
 

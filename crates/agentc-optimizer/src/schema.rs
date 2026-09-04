@@ -197,13 +197,16 @@ CREATE TABLE IF NOT EXISTS execution_plan_exploration (
     ),
     CHECK (
         (feedback_kind = 'none' AND divergence IS NULL AND divergence_exposure IS NULL
-            AND reference_quality IS NULL AND candidate_quality IS NULL AND task_damage IS NULL)
+            AND reference_quality IS NULL AND candidate_quality IS NULL AND task_damage IS NULL
+            AND cost_usd IS NULL AND latency_ms IS NULL)
         OR (feedback_kind = 'observation_only' AND divergence IS NOT NULL
             AND divergence_exposure IS NOT NULL AND reference_quality IS NULL
-            AND candidate_quality IS NULL AND task_damage IS NULL)
+            AND candidate_quality IS NULL AND task_damage IS NULL
+            AND cost_usd IS NOT NULL AND latency_ms IS NOT NULL)
         OR (feedback_kind = 'task_quality' AND divergence IS NOT NULL
             AND divergence_exposure IS NOT NULL AND reference_quality IS NOT NULL
-            AND candidate_quality IS NOT NULL AND task_damage IS NOT NULL)
+            AND candidate_quality IS NOT NULL AND task_damage IS NOT NULL
+            AND cost_usd IS NOT NULL AND latency_ms IS NOT NULL)
     )
 ) STRICT, WITHOUT ROWID;
 
@@ -447,6 +450,36 @@ mod tests {
             )
             .unwrap();
         assert_eq!(tables, 14);
+    }
+
+    #[test]
+    fn exploration_schema_requires_spend_only_for_completed_feedback() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&conn).unwrap();
+
+        let missing_spend = conn.execute(
+            "INSERT INTO execution_plan_exploration (\
+                call_site_version, exploration_sequence, execution_plan_id, status, \
+                divergence_threshold, divergence, divergence_exposure, feedback_kind, \
+                reference_quality, candidate_quality, task_damage, cost_usd, latency_ms, \
+                started_at, lease_expires_at, completed_at\
+             ) VALUES (?1, 1, ?2, 'completed', 0.1, 0.0, 0.0, \
+                       'observation_only', NULL, NULL, NULL, NULL, NULL, 1, 2, 2)",
+            rusqlite::params!["a".repeat(64), "b".repeat(64)],
+        );
+        assert!(missing_spend.is_err());
+
+        let premature_spend = conn.execute(
+            "INSERT INTO execution_plan_exploration (\
+                call_site_version, exploration_sequence, execution_plan_id, status, \
+                divergence_threshold, divergence, divergence_exposure, feedback_kind, \
+                reference_quality, candidate_quality, task_damage, cost_usd, latency_ms, \
+                started_at, lease_expires_at, completed_at\
+             ) VALUES (?1, 2, ?2, 'reserved', 0.1, NULL, NULL, \
+                       'none', NULL, NULL, NULL, 0.01, 1.0, 1, 2, NULL)",
+            rusqlite::params!["a".repeat(64), "b".repeat(64)],
+        );
+        assert!(premature_spend.is_err());
     }
 
     #[test]

@@ -1380,6 +1380,57 @@ def _paired_statistic(
     return statistic
 
 
+def _paired_total_statistic(
+    field: str, reference_arm: str, candidate_arm: str
+) -> Callable[[dict[str, list[Mapping[str, Any]]]], float]:
+    def statistic(sample: dict[str, list[Mapping[str, Any]]]) -> float:
+        reference = sample[reference_arm]
+        candidate = sample[candidate_arm]
+        return sum(float(record[field]) for record in candidate) - sum(
+            float(record[field]) for record in reference
+        )
+
+    return statistic
+
+
+def _median_task_effect(
+    reference: Mapping[tuple[str, int], Mapping[str, Any]],
+    candidate: Mapping[tuple[str, int], Mapping[str, Any]],
+    field: str,
+) -> float:
+    task_ids = sorted(
+        {task_id for task_id, _ in reference}
+        & {task_id for task_id, _ in candidate}
+    )
+    effects: list[float] = []
+    for task_id in task_ids:
+        reference_repetitions = {
+            repetition
+            for candidate_task, repetition in reference
+            if candidate_task == task_id
+        }
+        candidate_repetitions = {
+            repetition
+            for candidate_task, repetition in candidate
+            if candidate_task == task_id
+        }
+        repetitions = sorted(reference_repetitions & candidate_repetitions)
+        if not repetitions:
+            continue
+        reference_mean = _mean(
+            float(reference[(task_id, repetition)][field])
+            for repetition in repetitions
+        )
+        candidate_mean = _mean(
+            float(candidate[(task_id, repetition)][field])
+            for repetition in repetitions
+        )
+        effects.append(candidate_mean - reference_mean)
+    if not effects:
+        raise CampaignError("no paired task effects")
+    return float(statistics.median(effects))
+
+
 def _paired_advantage_statistic(
     field: str, control_arm: str, candidate_arm: str
 ) -> Callable[[dict[str, list[Mapping[str, Any]]]], float]:
@@ -1573,13 +1624,54 @@ def analyze_campaign(
                     "big",
                 ),
             )
+            cost_total_interval = _bootstrap_hierarchical(
+                by_arm,
+                (REFERENCE_ARM, arm),
+                _paired_total_statistic("_task_cost_usd", REFERENCE_ARM, arm),
+                resamples=resamples,
+                seed=int.from_bytes(
+                    hashlib.sha256(
+                        f"cost-total\0{workload_id}\0{arm}".encode("utf-8")
+                    ).digest()[:8],
+                    "big",
+                ),
+            )
+            latency_interval = _bootstrap_hierarchical(
+                by_arm,
+                (REFERENCE_ARM, arm),
+                _paired_statistic("end_to_end_latency_ms", REFERENCE_ARM, arm),
+                resamples=resamples,
+                seed=int.from_bytes(
+                    hashlib.sha256(
+                        f"latency\0{workload_id}\0{arm}".encode("utf-8")
+                    ).digest()[:8],
+                    "big",
+                ),
+            )
+            latency_total_interval = _bootstrap_hierarchical(
+                by_arm,
+                (REFERENCE_ARM, arm),
+                _paired_total_statistic(
+                    "end_to_end_latency_ms", REFERENCE_ARM, arm
+                ),
+                resamples=resamples,
+                seed=int.from_bytes(
+                    hashlib.sha256(
+                        f"latency-total\0{workload_id}\0{arm}".encode("utf-8")
+                    ).digest()[:8],
+                    "big",
+                ),
+            )
             comparisons[arm] = {
                 "quality_delta_vs_reference": quality_interval.as_dict(),
-                "cost_delta_usd_vs_reference": cost_interval.as_dict(),
-                "cost_total_delta_usd_vs_reference": (
-                    float(arm_summaries[arm]["total_cost_usd"])
-                    - float(arm_summaries[REFERENCE_ARM]["total_cost_usd"])
+                "quality_median_task_delta_vs_reference": _median_task_effect(
+                    by_arm[REFERENCE_ARM], by_arm[arm], "official_score"
                 ),
+                "cost_delta_usd_vs_reference": cost_interval.as_dict(),
+                "cost_median_task_delta_usd_vs_reference": _median_task_effect(
+                    by_arm[REFERENCE_ARM], by_arm[arm], "_task_cost_usd"
+                ),
+                "cost_total_delta_usd_vs_reference": cost_total_interval.as_dict(),
                 "cost_geometric_mean_ratio_vs_reference": _geometric_ratio_interval(
                     by_arm,
                     field="_task_cost_usd",
@@ -1592,6 +1684,15 @@ def analyze_campaign(
                         ).digest()[:8],
                         "big",
                     ),
+                ),
+                "latency_delta_ms_vs_reference": latency_interval.as_dict(),
+                "latency_median_task_delta_ms_vs_reference": _median_task_effect(
+                    by_arm[REFERENCE_ARM],
+                    by_arm[arm],
+                    "end_to_end_latency_ms",
+                ),
+                "latency_total_delta_ms_vs_reference": (
+                    latency_total_interval.as_dict()
                 ),
                 "latency_geometric_mean_ratio_vs_reference": _geometric_ratio_interval(
                     by_arm,
@@ -1741,6 +1842,7 @@ def analyze_campaign(
             "bootstrap": "deterministic hierarchical percentile",
             "bootstrap_resamples": resamples,
             "selection_repeated_within_resample": True,
+            "mean_median_and_total_paired_effects": True,
             "held_out_tuning": "forbidden; P/T require a calibration lock",
         },
         "workloads": result_workloads,

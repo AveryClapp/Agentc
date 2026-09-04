@@ -13,6 +13,8 @@ from bench.joint_campaign import (
     CampaignError,
     _agentc_source_context,
     _artifact_stem,
+    _median_task_effect,
+    _paired_total_statistic,
     build_schedule,
     derive_run_seed,
     digest_file,
@@ -92,6 +94,29 @@ def test_seed_and_arm_order_are_deterministic() -> None:
     order = ordered_arms("workload", "task", 0, PRIMARY_ARMS)
     assert order == ordered_arms("workload", "task", 0, PRIMARY_ARMS)
     assert set(order) == set(PRIMARY_ARMS)
+
+
+def test_median_task_and_total_effects_keep_pairing() -> None:
+    reference = {
+        ("a", 0): {"metric": 1.0},
+        ("a", 1): {"metric": 3.0},
+        ("b", 0): {"metric": 0.0},
+        ("b", 1): {"metric": 0.0},
+    }
+    candidate = {
+        ("a", 0): {"metric": 3.0},
+        ("a", 1): {"metric": 5.0},
+        ("b", 0): {"metric": 1.0},
+        ("b", 1): {"metric": 1.0},
+    }
+    assert _median_task_effect(reference, candidate, "metric") == 1.5
+    total = _paired_total_statistic("metric", "reference", "candidate")
+    assert total(
+        {
+            "reference": list(reference.values()),
+            "candidate": list(candidate.values()),
+        }
+    ) == 6.0
 
 
 def test_schedule_pairs_every_arm_and_repetition(tmp_path: Path) -> None:
@@ -227,6 +252,15 @@ def test_one_command_emits_complete_raw_manifest_and_analysis(tmp_path: Path) ->
             "interaction_not_positive",
             "safety_failure_observed",
         }
+        reference = result["paired_comparisons"]["trace_only_fixed_strong"]
+        assert reference["quality_median_task_delta_vs_reference"] == 0.0
+        assert reference["cost_median_task_delta_usd_vs_reference"] == 0.0
+        assert reference["latency_median_task_delta_ms_vs_reference"] == 0.0
+        for field in (
+            "cost_total_delta_usd_vs_reference",
+            "latency_total_delta_ms_vs_reference",
+        ):
+            assert reference[field] == {"estimate": 0.0, "low": 0.0, "high": 0.0}
 
     lines = (output / "raw-records.jsonl").read_text().splitlines()
     records = [json.loads(line) for line in lines]

@@ -52,6 +52,7 @@
       },
       "quality_margin": -0.03,
       "network_policy": "forbidden",
+      "expected_spend_usd": 0.0,
       "timeout_seconds": 120
     },
     {
@@ -83,6 +84,7 @@
       },
       "quality_margin": -0.02,
       "network_policy": "forbidden",
+      "expected_spend_usd": 0.0,
       "timeout_seconds": 120
     }
   ],

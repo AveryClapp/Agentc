@@ -274,6 +274,12 @@ artifacts:
   digests plus frozen expected spend, actual billed-spend basis, the 125% stop
   threshold, stop reason, and completeness.
 
+Expected spend is frozen both for the campaign and for each workload/model
+cell. Before every provider-backed task, the worker receives that cell's limit
+and spend-to-date. Crossing 125% seals a partial `manifest.json`, preserves the
+intention-to-treat records already observed, and refuses further execution or
+resume under the old budget.
+
 Held-out Stage P/T configurations are rejected unless they contain a Stage-C
 calibration lock. The runner never derives policy settings from held-out
 outcomes, and it rejects any paper-evidence run from a dirty source tree. It

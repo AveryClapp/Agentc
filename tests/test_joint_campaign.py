@@ -63,6 +63,7 @@ def _write_campaign(
                 "model_pair": {"strong": "strong-model", "cheap": "cheap-model"},
                 "quality_margin": -0.03 if family == "stateful_tool_use" else -0.02,
                 "network_policy": "forbidden",
+                "expected_spend_usd": 0.5 if stage in {"C", "P", "T"} else 0.0,
                 "timeout_seconds": 30,
                 "worker_configuration": {
                     "interaction_strength": 0.2,
@@ -211,16 +212,20 @@ def test_one_command_emits_complete_raw_manifest_and_analysis(tmp_path: Path) ->
     assert manifest["completeness"]["scheduled_runs"] == 40
     assert manifest["completeness"]["distinct_unengineered_families"] == 0
     assert manifest["completeness"]["call_records"] >= 40
-    assert manifest["spend"] == {
-        "actual_spend_basis": "network_forbidden_no_billed_calls",
-        "actual_spend_usd": 0.0,
-        "expected_usd": 0.0,
-        "recorded_cost_usd": manifest["spend"]["recorded_cost_usd"],
-        "stop_reason": "schedule_complete",
-        "stop_threshold_usd": 0.0,
-        "threshold_exceeded": False,
-    }
+    assert manifest["spend"]["actual_spend_basis"] == (
+        "network_forbidden_no_billed_calls"
+    )
+    assert manifest["spend"]["actual_spend_usd"] == 0.0
+    assert manifest["spend"]["expected_usd"] == 0.0
+    assert manifest["spend"]["stop_reason"] == "schedule_complete"
+    assert manifest["spend"]["stop_threshold_usd"] == 0.0
+    assert manifest["spend"]["threshold_exceeded"] is False
+    assert manifest["spend"]["threshold_exceeded_workloads"] == []
     assert manifest["spend"]["recorded_cost_usd"] > 0.0
+    assert all(
+        workload_spend["actual_spend_usd"] == 0.0
+        for workload_spend in manifest["spend"]["workloads"].values()
+    )
     for artifact in (
         "campaign.json",
         "run-context.json",
@@ -295,6 +300,102 @@ def test_cli_refuses_to_overwrite_nonempty_output(tmp_path: Path) -> None:
     assert completed.returncode == 2
     assert "not empty" in completed.stderr
     assert (output / "keep.txt").read_text() == "user data"
+
+
+def test_provider_spend_stops_campaign_and_seals_partial_manifest(
+    tmp_path: Path,
+) -> None:
+    worker = tmp_path / "provider_worker.py"
+    worker.write_text(
+        """import argparse, json
+p = argparse.ArgumentParser()
+p.add_argument('--request', required=True)
+p.add_argument('--output', required=True)
+a = p.parse_args()
+task = {
+    'schema_version': 1,
+    'record_type': 'task',
+    'task_status': 'completed',
+    'official_score': 1.0,
+    'end_to_end_latency_ms': 1.0,
+    'safety_failure': False,
+    'network_calls': 1,
+    'conformance': {
+        'worker_kind': 'provider-accounting-test',
+        'upstream_source_modified': False,
+        'official_task': False,
+        'official_score': False,
+        'provider_accounting': True,
+    },
+}
+call = {
+    'schema_version': 1,
+    'record_type': 'call',
+    'call_index': 0,
+    'requested_model': 'strong',
+    'selected_model': 'strong',
+    'call_site_id': 'test.site',
+    'execution_plan_id': '1' * 64,
+    'ordered_rewrites': [],
+    'input_tokens': 1,
+    'cached_input_tokens': 0,
+    'output_tokens': 1,
+    'reasoning_tokens': 0,
+    'tool_tokens': 0,
+    'retry_count': 0,
+    'candidate_count': 1,
+    'cost_usd': 1.0,
+    'request_latency_ms': 1.0,
+    'planning_overhead_us': 0.0,
+    'eligible': True,
+    'is_exploration': False,
+    'is_shadow': False,
+    'failed': False,
+    'dispatch_fallback': False,
+    'abstention_reason': None,
+    'request_digest': '2' * 64,
+    'response_digest': '3' * 64,
+    'network_calls': 1,
+}
+with open(a.output, 'w') as out:
+    out.write(json.dumps(task) + '\\n')
+    out.write(json.dumps(call) + '\\n')
+"""
+    )
+    campaign = _write_campaign(tmp_path, stage="E1")
+    raw = json.loads(campaign.read_text())
+    raw["expected_spend_usd"] = 0.02
+    for workload in raw["workloads"]:
+        workload["network_policy"] = "provider_allowed"
+        workload["expected_spend_usd"] = 0.01
+        workload["worker_command"] = [sys.executable, str(worker)]
+    campaign.write_text(json.dumps(raw))
+    output = tmp_path / "output"
+
+    with pytest.raises(CampaignError, match="campaign stopped"):
+        run_campaign(campaign, output)
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert manifest["completeness"]["status"] == "stopped"
+    assert manifest["completeness"]["task_records"] == 1
+    assert manifest["completeness"]["missing_scheduled_runs"] == 39
+    assert manifest["spend"]["actual_spend_usd"] == 1.0
+    assert manifest["spend"]["threshold_exceeded"] is True
+    assert manifest["spend"]["stop_reason"].startswith(
+        "spend_threshold_exceeded:"
+    )
+    assert manifest["schedule"]["digest"]
+    assert manifest["workloads"][0]["expected_spend_usd"] == 0.01
+    with pytest.raises(CampaignError, match="stopped by its frozen spend contract"):
+        run_campaign(campaign, output, resume=True)
+
+    ledger = output / "raw-records.jsonl"
+    ledger_before_recovery = ledger.read_bytes()
+    (output / "manifest.json").unlink()
+    with pytest.raises(CampaignError, match="existing ledger exceeds"):
+        run_campaign(campaign, output, resume=True)
+    assert ledger.read_bytes() == ledger_before_recovery
+    recovered_manifest = json.loads((output / "manifest.json").read_text())
+    assert recovered_manifest["completeness"]["task_records"] == 1
 
 
 def test_resume_rejects_changed_campaign_and_poisoned_ledger(tmp_path: Path) -> None:

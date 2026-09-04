@@ -288,6 +288,7 @@ def load_campaign(path: Path) -> JsonObject:
     seen_ids: set[str] = set()
     seen_families: set[str] = set()
     unengineered_families: set[str] = set()
+    summed_workload_spend = 0.0
     for index, raw_workload in enumerate(workloads):
         workload = _require_object(raw_workload, f"workloads[{index}]")
         workload_id = _require_string(
@@ -370,11 +371,31 @@ def load_campaign(path: Path) -> JsonObject:
             raise CampaignError(
                 f"{workload_id}: Stage {stage} requires provider_allowed network policy"
             )
+        workload_spend = _finite_number(
+            workload.get("expected_spend_usd"),
+            f"{workload_id}.expected_spend_usd",
+            minimum=0.0,
+        )
+        if network_policy == "provider_allowed" and workload_spend <= 0.0:
+            raise CampaignError(
+                f"{workload_id}: provider_allowed requires positive expected_spend_usd"
+            )
+        workload["expected_spend_usd"] = workload_spend
+        summed_workload_spend += workload_spend
     if len(seen_families) < 2:
         raise CampaignError("campaign must contain at least two distinct workload families")
     if stage in {"C", "P", "T"} and len(unengineered_families) < 2:
         raise CampaignError(
             f"Stage {stage} requires at least two distinct unengineered workload families"
+        )
+    if not math.isclose(
+        expected_spend_usd,
+        summed_workload_spend,
+        rel_tol=0.0,
+        abs_tol=1e-9,
+    ):
+        raise CampaignError(
+            "expected_spend_usd must equal the sum of workload expected spend"
         )
     return spec
 
@@ -505,6 +526,11 @@ def _request_payload(
         "model_pair": workload["model_pair"],
         "workload_provenance": workload["provenance"],
         "network_policy": workload.get("network_policy", "forbidden"),
+        "spend_contract": {
+            "expected_cell_usd": workload["expected_spend_usd"],
+            "stop_threshold_cell_usd": float(workload["expected_spend_usd"])
+            * 1.25,
+        },
         "storage_path": str(_cell_storage_path(output_dir, run)),
         "arm_configuration": cast(Mapping[str, Any], spec.get("arm_configurations", {})).get(
             run.arm, {}
@@ -626,6 +652,12 @@ def validate_worker_records(
         for field in ("official_task", "official_score", "provider_accounting"):
             if not conformance[field]:
                 raise CampaignError(f"paper stage requires task.conformance.{field}=true")
+    if request["network_policy"] == "provider_allowed" and not conformance[
+        "provider_accounting"
+    ]:
+        raise CampaignError(
+            "provider-allowed worker requires task.conformance.provider_accounting=true"
+        )
     if status == "completed" and not call_records:
         raise CampaignError("completed task must emit at least one call record")
 
@@ -894,43 +926,187 @@ def _digest_tree(root: Path) -> JsonObject:
 
 
 def _spend_summary(
-    spec: Mapping[str, Any], records: Sequence[Mapping[str, Any]]
+    spec: Mapping[str, Any],
+    records: Sequence[Mapping[str, Any]],
+    *,
+    stop_reason: str = "schedule_complete",
 ) -> JsonObject:
-    expected = float(spec["expected_spend_usd"])
-    stop_threshold = expected * 1.25
     recorded = sum(
         float(record["cost_usd"])
         for record in records
         if record.get("record_type") == "call"
     )
-    network_policies = {
-        cast(str, workload.get("network_policy", "forbidden"))
-        for workload in cast(Sequence[Mapping[str, Any]], spec["workloads"])
-    }
-    tasks = [record for record in records if record.get("record_type") == "task"]
-    provider_accounted = bool(tasks) and all(
-        bool(cast(Mapping[str, Any], task["conformance"])["provider_accounting"])
-        for task in tasks
-    )
-    if network_policies == {"forbidden"}:
-        actual: float | None = 0.0
-        basis = "network_forbidden_no_billed_calls"
-    elif provider_accounted:
-        actual = recorded
-        basis = "worker_provider_accounting"
+    by_workload: JsonObject = {}
+    actual_total = 0.0
+    provider_workloads = 0
+    exceeded_workloads: list[str] = []
+    for workload in cast(Sequence[Mapping[str, Any]], spec["workloads"]):
+        workload_id = cast(str, workload["workload_id"])
+        policy = cast(str, workload.get("network_policy", "forbidden"))
+        expected = float(workload["expected_spend_usd"])
+        stop_threshold = expected * 1.25
+        workload_calls = [
+            record
+            for record in records
+            if record.get("record_type") == "call"
+            and record.get("workload_id") == workload_id
+        ]
+        workload_recorded = sum(float(record["cost_usd"]) for record in workload_calls)
+        if policy == "provider_allowed":
+            provider_workloads += 1
+            workload_tasks = [
+                record
+                for record in records
+                if record.get("record_type") == "task"
+                and record.get("workload_id") == workload_id
+            ]
+            if not all(
+                bool(
+                    cast(Mapping[str, Any], task["conformance"])[
+                        "provider_accounting"
+                    ]
+                )
+                for task in workload_tasks
+            ):
+                raise CampaignError(
+                    f"{workload_id}: provider spend lacks conforming accounting"
+                )
+            actual = workload_recorded
+            basis = "worker_provider_accounting"
+        else:
+            actual = 0.0
+            basis = "network_forbidden_no_billed_calls"
+        threshold_exceeded = actual > stop_threshold
+        if threshold_exceeded:
+            exceeded_workloads.append(workload_id)
+        actual_total += actual
+        by_workload[workload_id] = {
+            "expected_usd": expected,
+            "stop_threshold_usd": stop_threshold,
+            "recorded_cost_usd": workload_recorded,
+            "actual_spend_usd": actual,
+            "actual_spend_basis": basis,
+            "threshold_exceeded": threshold_exceeded,
+        }
+
+    if provider_workloads == 0:
+        total_basis = "network_forbidden_no_billed_calls"
+    elif provider_workloads == len(by_workload):
+        total_basis = "worker_provider_accounting"
     else:
-        actual = None
-        basis = "unavailable_nonconforming_worker"
-    threshold_exceeded = actual is not None and actual > stop_threshold
+        total_basis = "mixed_network_policy_per_workload_accounting"
     return {
-        "expected_usd": expected,
-        "stop_threshold_usd": stop_threshold,
+        "expected_usd": float(spec["expected_spend_usd"]),
+        "stop_threshold_usd": float(spec["expected_spend_usd"]) * 1.25,
         "recorded_cost_usd": recorded,
-        "actual_spend_usd": actual,
-        "actual_spend_basis": basis,
-        "threshold_exceeded": threshold_exceeded,
-        "stop_reason": "schedule_complete",
+        "actual_spend_usd": actual_total,
+        "actual_spend_basis": total_basis,
+        "threshold_exceeded": bool(exceeded_workloads),
+        "threshold_exceeded_workloads": exceeded_workloads,
+        "stop_reason": stop_reason,
+        "workloads": by_workload,
     }
+
+
+def _workload_manifest_entries(spec: Mapping[str, Any]) -> list[JsonObject]:
+    return [
+        {
+            "workload_id": workload["workload_id"],
+            "family": workload["family"],
+            "unengineered_upstream": workload["unengineered_upstream"],
+            "split": workload.get("split", "unspecified"),
+            "task_count": len(cast(Sequence[str], workload["task_ids"])),
+            "task_ids_sha256": workload["task_ids_sha256"],
+            "repetitions": workload["repetitions"],
+            "model_pair": workload["model_pair"],
+            "network_policy": workload.get("network_policy", "forbidden"),
+            "expected_spend_usd": workload["expected_spend_usd"],
+            "provenance": workload["provenance"],
+        }
+        for workload in cast(Sequence[Mapping[str, Any]], spec["workloads"])
+    ]
+
+
+def _schedule_manifest(schedule: Sequence[ScheduledRun]) -> JsonObject:
+    return {
+        "runs": len(schedule),
+        "digest": digest_value(
+            [
+                {
+                    "workload_id": run.workload_id,
+                    "task_id": run.task_id,
+                    "arm": run.arm,
+                    "repetition": run.repetition,
+                    "run_seed": run.run_seed,
+                    "ordinal": run.ordinal,
+                }
+                for run in schedule
+            ]
+        ),
+        "arms": list(PRIMARY_ARMS),
+    }
+
+
+def _write_spend_stop_manifest(
+    *,
+    output_dir: Path,
+    spec: Mapping[str, Any],
+    frozen_spec: Mapping[str, Any],
+    frozen_spec_path: Path,
+    source_context: Mapping[str, Any],
+    source_context_path: Path,
+    schedule: Sequence[ScheduledRun],
+    records: Sequence[Mapping[str, Any]],
+    portable_commands: Mapping[str, Sequence[str]],
+    started: float,
+    workload_id: str,
+) -> None:
+    spend = _spend_summary(
+        spec,
+        records,
+        stop_reason=f"spend_threshold_exceeded:{workload_id}",
+    )
+    manifest: JsonObject = {
+        "schema_version": SCHEMA_VERSION,
+        "record_kind": "joint_campaign_manifest",
+        "campaign_id": spec["campaign_id"],
+        "stage": spec["stage"],
+        "paper_evidence": spec["paper_evidence"],
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "elapsed_seconds": time.monotonic() - started,
+        "agentc_git_commit": source_context["agentc_git_commit"],
+        "agentc_git_dirty": source_context["agentc_git_dirty"],
+        "agentc_source_state_sha256": source_context["agentc_source_state_sha256"],
+        "runtime": source_context["runtime"],
+        "protocol": dict(cast(Mapping[str, Any], frozen_spec["protocol"])),
+        "workloads": _workload_manifest_entries(spec),
+        "worker_commands": {
+            key: list(value) for key, value in portable_commands.items()
+        },
+        "schedule": _schedule_manifest(schedule),
+        "spend": spend,
+        "artifacts": {
+            "campaign.json": digest_file(frozen_spec_path),
+            "run-context.json": digest_file(source_context_path),
+            "raw-records.jsonl": digest_file(output_dir / "raw-records.jsonl"),
+            "state": _digest_tree(output_dir / "state"),
+        },
+        "completeness": {
+            "status": "stopped",
+            "task_records": sum(
+                record.get("record_type") == "task" for record in records
+            ),
+            "call_records": sum(
+                record.get("record_type") == "call" for record in records
+            ),
+            "scheduled_runs": len(schedule),
+            "missing_scheduled_runs": len(schedule)
+            - sum(record.get("record_type") == "task" for record in records),
+            "stopped_workload_id": workload_id,
+        },
+        "interpretation_limits": spec.get("interpretation_limits", []),
+    }
+    (output_dir / "manifest.json").write_bytes(_canonical_bytes(manifest) + b"\n")
 
 
 def run_campaign(
@@ -976,6 +1152,17 @@ def run_campaign(
             )
     else:
         source_context_path.write_bytes(source_context_payload)
+    manifest_path = output_dir / "manifest.json"
+    if resume and manifest_path.is_file():
+        previous_manifest = _load_json(manifest_path)
+        previous_completeness = _require_object(
+            previous_manifest.get("completeness"), "manifest.completeness"
+        )
+        if previous_completeness.get("status") == "stopped":
+            raise CampaignError(
+                "campaign was stopped by its frozen spend contract; "
+                "resume requires a newly reviewed campaign and output directory"
+            )
     requests_dir = output_dir / "requests"
     worker_dir = output_dir / "worker-results"
     requests_dir.mkdir(exist_ok=True)
@@ -994,6 +1181,7 @@ def run_campaign(
         if resume
         else set()
     )
+    records_so_far = _read_jsonl(ledger_path) if ledger_path.is_file() else []
     workload_map = _workload_by_id(spec)
     started = time.monotonic()
     portable_commands = {
@@ -1002,6 +1190,34 @@ def run_campaign(
         )
         for workload in cast(Sequence[Mapping[str, Any]], spec["workloads"])
     }
+
+    initial_spend = _spend_summary(
+        spec,
+        records_so_far,
+        stop_reason="in_progress",
+    )
+    initially_exceeded = cast(
+        Sequence[str], initial_spend["threshold_exceeded_workloads"]
+    )
+    if initially_exceeded:
+        stopped_workload = initially_exceeded[0]
+        _write_spend_stop_manifest(
+            output_dir=output_dir,
+            spec=spec,
+            frozen_spec=frozen_spec,
+            frozen_spec_path=frozen_spec_path,
+            source_context=source_context,
+            source_context_path=source_context_path,
+            schedule=schedule,
+            records=records_so_far,
+            portable_commands=portable_commands,
+            started=started,
+            workload_id=stopped_workload,
+        )
+        raise CampaignError(
+            f"{stopped_workload}: existing ledger exceeds 125% of the frozen "
+            "cell estimate; campaign stopped"
+        )
 
     for run in schedule:
         if run.key in completed:
@@ -1015,6 +1231,17 @@ def run_campaign(
             repo_root=repo_root,
             spec_dir=spec_path.parent,
         )
+        spend_before = _spend_summary(
+            spec,
+            records_so_far,
+            stop_reason="in_progress",
+        )
+        request_spend = _require_object(
+            request["spend_contract"], "request.spend_contract"
+        )
+        request_spend["actual_before_run_usd"] = cast(
+            Mapping[str, Any], spend_before["workloads"]
+        )[run.workload_id]["actual_spend_usd"]
         stem = _artifact_stem(run)
         request_path = requests_dir / f"{stem}.json"
         result_path = worker_dir / f"{stem}.jsonl"
@@ -1059,10 +1286,37 @@ def run_campaign(
             )
         normalized = validate_worker_records(_read_jsonl(result_path), request)
         _append_records(ledger_path, normalized)
+        records_so_far.extend(normalized)
         request_path.unlink()
         result_path.unlink()
         (worker_dir / f"{stem}.stdout").unlink()
         (worker_dir / f"{stem}.stderr").unlink()
+
+        spend_after = _spend_summary(
+            spec,
+            records_so_far,
+            stop_reason="in_progress",
+        )
+        exceeded = cast(Sequence[str], spend_after["threshold_exceeded_workloads"])
+        if exceeded:
+            stopped_workload = exceeded[0]
+            _write_spend_stop_manifest(
+                output_dir=output_dir,
+                spec=spec,
+                frozen_spec=frozen_spec,
+                frozen_spec_path=frozen_spec_path,
+                source_context=source_context,
+                source_context_path=source_context_path,
+                schedule=schedule,
+                records=records_so_far,
+                portable_commands=portable_commands,
+                started=started,
+                workload_id=stopped_workload,
+            )
+            raise CampaignError(
+                f"{stopped_workload}: actual provider spend exceeded 125% "
+                "of the frozen cell estimate; campaign stopped"
+            )
 
     records = _read_jsonl(ledger_path)
     validate_complete_ledger(records, schedule)
@@ -1092,38 +1346,9 @@ def run_campaign(
         "agentc_source_state_sha256": source_context["agentc_source_state_sha256"],
         "runtime": source_context["runtime"],
         "protocol": protocol_copy,
-        "workloads": [
-            {
-                "workload_id": workload["workload_id"],
-                "family": workload["family"],
-                "unengineered_upstream": workload["unengineered_upstream"],
-                "split": workload.get("split", "unspecified"),
-                "task_count": len(cast(Sequence[str], workload["task_ids"])),
-                "task_ids_sha256": workload["task_ids_sha256"],
-                "repetitions": workload["repetitions"],
-                "model_pair": workload["model_pair"],
-                "provenance": workload["provenance"],
-            }
-            for workload in cast(Sequence[Mapping[str, Any]], spec["workloads"])
-        ],
+        "workloads": _workload_manifest_entries(spec),
         "worker_commands": portable_commands,
-        "schedule": {
-            "runs": len(schedule),
-            "digest": digest_value(
-                [
-                    {
-                        "workload_id": run.workload_id,
-                        "task_id": run.task_id,
-                        "arm": run.arm,
-                        "repetition": run.repetition,
-                        "run_seed": run.run_seed,
-                        "ordinal": run.ordinal,
-                    }
-                    for run in schedule
-                ]
-            ),
-            "arms": list(PRIMARY_ARMS),
-        },
+        "schedule": _schedule_manifest(schedule),
         "spend": spend,
         "artifacts": {
             "campaign.json": digest_file(frozen_spec_path),
@@ -1150,7 +1375,6 @@ def run_campaign(
         },
         "interpretation_limits": spec.get("interpretation_limits", []),
     }
-    manifest_path = output_dir / "manifest.json"
     manifest_path.write_bytes(_canonical_bytes(manifest) + b"\n")
     return manifest
 

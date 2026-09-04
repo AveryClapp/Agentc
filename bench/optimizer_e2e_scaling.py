@@ -25,6 +25,7 @@ import gzip
 import io
 import json
 import math
+import os
 import platform
 import random
 import sqlite3
@@ -523,6 +524,8 @@ def run(
             "python": platform.python_version(),
             "platform": platform.platform(),
             "machine": platform.machine(),
+            "processor": platform.processor(),
+            "logical_cpu_count": os.cpu_count(),
             "sqlite": sqlite3.sqlite_version,
             "native_extension": native_path.name,
             "native_extension_sha256": e2e._sha256(native_path),

@@ -23,7 +23,7 @@ the historical guard results described below.
 |---|---|---|
 | `guard_frontier.sh` | `tab:guard`, `fig:metric-tradeoff` | gpt-4o-mini, n=200, budget frontier tau in {0.10,0.20,0.30,0.50} |
 | `crossmodel_selectivity.sh` | `tab:xmodel` (one row) | n=100; run once per model family (below) |
-| `../guard_overhead_bench.py` | guard overhead (18 us/sample) | `python -m bench.guard_overhead_bench`; CPU only, no API |
+| `../guard_overhead_bench.py` | fresh complete-plan feedback overhead | `python -m bench.guard_overhead_bench`; structured Stage E0 output, CPU/SQLite only, no API |
 | `../paper_figures/fig9_metric_tradeoff.py` | renders `fig:metric-tradeoff` | reads the `gsweep_tradeoff_*` CSVs |
 
 ## Reproducing `tab:guard` + `fig:metric-tradeoff`
@@ -143,3 +143,33 @@ The persisted p95/p99 now equal the three observed 80-token completions and the
 resulting cap is 96 rather than 143. The file also states the conservative
 all-history-maximum contract, legacy-profile implications, and the bounded-
 window work deferred to `bd-bwgu`.
+
+### Complete-plan guard preflights
+
+Three zero-network Stage E0 checks exercise the complete-plan controller rather
+than the retained per-rule compatibility path:
+
+```bash
+python -m bench.guard_persistence_preflight \
+  --output /tmp/complete-plan-guard-persistence.json
+python -m bench.guard_input_validation_preflight \
+  --output /tmp/complete-plan-guard-input-validation.json
+python -m bench.guard_overhead_bench \
+  --output /tmp/complete-plan-guard-overhead.json
+```
+
+The persistence check warms a canonical `ContextCompress+OutputBudget` plan,
+persists two positive-exposure samples (`E=0.8`), restarts, crosses the plan
+budget on the third (`E=1.2`), and verifies the exact-plan disable across a
+second restart. The input check rejects invalid divergence values without any
+paired or guard state and verifies that invalid configured thresholds resolve
+to the composed plan's declared `0.01` minimum. Both require zero legacy rule
+rows. The overhead check issues a fresh observation token per sample and times
+token validation, exact-plan profile/guard updates, and synchronous SQLite
+durability separately from the divergence metric.
+
+These checks are deliberately marked `paper_evidence=false`. In particular,
+the overhead result is a single-machine local diagnostic that excludes the
+shadow provider call, request dispatch, contention, and billed tokens. The
+historical `18 us/sample` claim came from replaying one synthetic token through
+the legacy idempotence path and is superseded; do not cite it.

@@ -43,7 +43,7 @@ Manifest currently covers only Tables 5/6/7/13/14 + mdcc + figs 3/6. MISSING (ad
 - **tab:guard** (accuracy guard): lcqa_cc_guard.csv, analyst_qa_sd_gen.csv, gsweep_tradeoff_{lexical,normalized,off}_{rp,an}_*.csv; `run_guard_eval.py` via repro/guard_frontier.sh.
 - **tab:xmodel** (cross-model): gsweep_{xmodel,claude,qwen3}_{lexical,normalized}_{rp,an}_*.csv (+ gpt row reuses gsweep_tradeoff_*); via repro/crossmodel_selectivity.sh.
 - **fig:metric-tradeoff (fig9)**: gsweep_tradeoff_* ; fig9_metric_tradeoff.py.
-- **overhead (76µs/120µs) + fig:overhead(fig7) + fig:throughput(fig8)**: optimizer_overhead.txt, overhead_scaling.csv, concurrency_bench_summary.csv; overhead.py / run_concurrency_bench.py; guard_overhead_bench.py for the 18µs figure.
+- **overhead (76µs/120µs) + fig:overhead(fig7) + fig:throughput(fig8)**: optimizer_overhead.txt, overhead_scaling.csv, concurrency_bench_summary.csv; overhead.py / run_concurrency_bench.py. The historical 18µs guard figure is invalid (replayed-token legacy fast path); the corrected guard harness is Stage E0 only and must not supply a paper claim.
 - **tab:oracle**: hotpot_oracle-n300.csv + hotpot_real-contextcompress-n300-warmup.csv; run_oracle_baseline.py + run_hotpot_warmup_n300.py.
 - **tab:hotpot-matrix**: hotpot_real-contextcompress-n300-warmup.csv; run_hotpot_warmup_n300.py.
 - **tab:llmlingua-***: llmlingua_accuracy_n100.csv, llmlingua_comparison.csv, wikipedia_qa_comparison.csv; bench.agents.llmlingua_baseline.

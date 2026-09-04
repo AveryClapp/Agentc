@@ -644,7 +644,7 @@ The controller tracks sampled divergence exposure:
 E_t = sum(max(0, divergence_i - threshold)).
 ```
 
-Crossing `E_t = 1.0` in 24 hours durably disables that complete plan. A
+Reaching `E_t = 1.0` in 24 hours durably disables that complete plan. A
 provider/model version, prompt-shape version, tool schema, or rewrite
 implementation change starts a cold profile immediately. The 24-hour cooldown
 ends in cold re-admission, not automatic full-rate reuse.
@@ -1118,9 +1118,21 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | A failed selected target retries the exact original request once | `tests/test_optimizer_glue.py::test_routed_failure_replays_exact_original` |
 
 `bench/guard_persistence_preflight.py` is the deterministic Stage E0 replay for
-the restart boundary. It records four breaches, restarts, records the fifth,
-and verifies both immediate SQLite state and a second-restart pass-through. It
-uses no provider calls and is permanently labeled `paper_evidence=false`.
+the restart boundary. It warms a canonical composed plan, records two excess
+samples (`E=0.8`), restarts, records the third (`E=1.2`), and verifies both the
+exact-plan disable and a second-restart pass-through with no legacy rule rows.
+`bench/guard_input_validation_preflight.py` similarly exercises canonical
+complete-plan tokens: invalid divergence samples create no paired or guard
+state, while invalid configured thresholds resolve to the plan's declared
+minimum. Both use no provider calls and are permanently labeled
+`paper_evidence=false`.
+
+`bench/guard_overhead_bench.py` measures a fresh accepted feedback sample,
+including opaque-token validation, exact-plan paired-profile and exposure
+updates, and synchronous SQLite durability. It isolates that path from the
+text-divergence metric and verifies that no legacy rule row was touched. This
+single-machine Stage E0 diagnostic excludes provider inference, dispatch,
+contention, and billed tokens; it is not a paper latency result.
 
 `crates/agentc-optimizer/examples/divergence_window_preflight.rs` is the
 deterministic Stage E0 replay for estimator drift and restart equivalence. It

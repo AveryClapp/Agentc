@@ -1,7 +1,7 @@
 ---
 title: Guard Frontier Sweep Findings
 status: active
-last-updated: 2026-06-10
+last-updated: 2026-09-03
 ---
 
 ## CROSS-MODEL GENERALIZATION (added 2026-06-10, commits a981394 + 7bf2673)
@@ -34,10 +34,16 @@ Qwen3 anomaly was an operating-point shift, not a failure -- characterized via a
 deliberate sweep (reported in full, not fished). Data: gsweep_{xmodel,claude,qwen3}_*.csv.
 Integrated: tab:xmodel + upgraded "selectivity generalizes" para + abstract (4 families).
 
-GUARD OVERHEAD (venue-fit): bench/guard_overhead_bench.py measures per-sample
-bookkeeping = 18us (17.8us divergence metric + 0.7us PyO3->Rust budget fold), ~5 orders
-of magnitude below an LLM call. Wired into the guard mechanism para: bounded-cost claim
-now MEASURED. Only material cost is the tunable 2% shadow inference.
+GUARD OVERHEAD (SUPERSEDED 2026-09-03): the historical 18us result is invalid
+for the current controller. The harness replayed one synthetic observation
+token, so its 0.7us fold measured the legacy idempotence fast path and skipped
+fresh complete-plan profiling, exposure accounting, and durable writes. The
+corrected harness issues one canonical composed-plan token per sample and times
+the synchronous SQLite persistence boundary. Its output is a single-machine
+Stage E0 diagnostic, explicitly not paper evidence; remove the 18us / five-orders
+claim until a release-mode, end-to-end, contention-aware measurement is run.
+Shadow inference remains excluded from this local diagnostic and must be
+accounted as a real provider call.
 
 Providers used: Together (Llama, Qwen3; ~$2.39+$2) and Anthropic compat endpoint
 (Claude Haiku; HF PRO plan was cancelled -- use Together/Anthropic, not HF). All via

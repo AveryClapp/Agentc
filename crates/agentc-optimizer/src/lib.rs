@@ -20,6 +20,7 @@ pub mod dag_context;
 pub mod execution_plan;
 pub mod ffi;
 pub mod model_catalog;
+pub mod plan_guard;
 pub mod plan_profile;
 pub mod planner;
 pub mod reporting;
@@ -48,6 +49,11 @@ pub use model_catalog::{
     RoutedModelTarget, ANTHROPIC_MESSAGES_PROTOCOL, DEFAULT_MODEL_CATALOG_VERSION,
     DEFAULT_PRICE_TABLE_VERSION, LITELLM_COMPLETION_PROTOCOL, OPENAI_CHAT_COMPLETIONS_PROTOCOL,
     ROUTED_TARGET_KEY, ROUTE_CONTEXT_KEY,
+};
+pub use plan_guard::{
+    PlanDisabledEntry, PlanExposureSample, PlanGuard, PlanGuardDecision, PlanGuardEntry,
+    PlanGuardError, PlanGuardOutcome, DEFAULT_PLAN_EXPOSURE_BUDGET, PLAN_DISABLE_COOLDOWN_US,
+    PLAN_EXPOSURE_WINDOW_US,
 };
 pub use plan_profile::{
     load_plan_profile, CallSiteVersion, CallSiteVersionError, CallSiteVersionSpec,

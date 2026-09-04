@@ -498,7 +498,7 @@ fn rejection_reason(
     if !is_nonnegative_finite(candidate.admission.divergence_exposure) {
         return Some(CandidateRejectionReason::InvalidExposure);
     }
-    if candidate.admission.divergence_exposure > policy.divergence_exposure_budget {
+    if candidate.admission.divergence_exposure >= policy.divergence_exposure_budget {
         return Some(CandidateRejectionReason::ExposureBudgetExceeded {
             exposure: candidate.admission.divergence_exposure,
             budget: policy.divergence_exposure_budget,
@@ -876,7 +876,7 @@ mod tests {
         let mut divergent = candidate("divergent", vec![], 0.01, 100.0);
         divergent.estimate.as_mut().unwrap().divergence_upper_p95 = 0.2;
         let mut exposed = candidate("exposed", vec![], 0.01, 100.0);
-        exposed.admission.divergence_exposure = 1.1;
+        exposed.admission.divergence_exposure = 1.0;
         let expensive = candidate("expensive", vec![], 0.03, 100.0);
         let alternatives = vec![incompatible, divergent, exposed, expensive];
         let selected = select_candidate(

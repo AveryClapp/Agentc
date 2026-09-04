@@ -1133,10 +1133,10 @@ def maybe_shadow_record(
 
     On a fraction (``AGENTC_OPTIMIZE_SHADOW``, default 0.02) of rewritten /
     composed calls, run the *unrewritten* call, measure output divergence
-    against the optimized result, and feed it to the Rust accuracy budget
-    via :func:`record_divergence`. After ``BREACH_STREAK`` consecutive
-    over-budget samples the budget auto-disables the rule, so subsequent
-    calls to this site pass it through.
+    against the optimized result, and feed it to the Rust complete-plan
+    exposure guard via :func:`record_divergence`. Crossing the rolling exposure
+    budget disables that exact model-and-rewrite plan; identifiable solo plans
+    also feed the legacy per-rule compatibility guard.
 
     Cost note: ``run_original()`` issues a second, real and billed LLM call.
     It runs synchronously here — after the optimized response is obtained but

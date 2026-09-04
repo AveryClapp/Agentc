@@ -14,6 +14,8 @@ use rusqlite::Connection;
 /// - `execution_plan_profile` — one summary per exact call-site-version/plan.
 /// - `execution_plan_observation` — exact retained complete-plan samples.
 /// - `execution_plan_divergence_observation` — independent paired samples.
+/// - `execution_plan_guard` — rolling complete-plan exposure summaries.
+/// - `execution_plan_guard_observation` — exact positive-exposure events.
 /// - `execution_plan_disabled` — durable plan-level guard state.
 /// - `rule_divergence` — one summary row per `(call_site, rule)`.
 /// - `rule_divergence_observation` — exact retained divergence samples.
@@ -119,6 +121,34 @@ CREATE TABLE IF NOT EXISTS execution_plan_divergence_observation (
     observed_at                INTEGER NOT NULL CHECK (observed_at >= 0),
     PRIMARY KEY (call_site_version, execution_plan_id, sample_sequence),
     UNIQUE (call_site_version, execution_plan_id, plan_observation_sequence)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_guard (
+    call_site_version       TEXT NOT NULL,
+    execution_plan_id       TEXT NOT NULL,
+    divergence_threshold    REAL NOT NULL CHECK (divergence_threshold BETWEEN 0.0 AND 1.0),
+    divergence_exposure     REAL NOT NULL CHECK (divergence_exposure >= 0.0),
+    window_samples          INTEGER NOT NULL CHECK (window_samples >= 0),
+    provider_protocol       TEXT NOT NULL,
+    target_model_id         TEXT NOT NULL,
+    target_model_version    TEXT NOT NULL,
+    price_table_version     TEXT NOT NULL,
+    updated_at              INTEGER NOT NULL CHECK (updated_at >= 0),
+    PRIMARY KEY (call_site_version, execution_plan_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_guard_observation (
+    call_site_version          TEXT NOT NULL,
+    execution_plan_id          TEXT NOT NULL,
+    plan_observation_sequence  INTEGER NOT NULL CHECK (plan_observation_sequence > 0),
+    divergence                 REAL NOT NULL CHECK (divergence BETWEEN 0.0 AND 1.0),
+    excess                     REAL NOT NULL CHECK (excess > 0.0),
+    provider_protocol          TEXT NOT NULL,
+    target_model_id            TEXT NOT NULL,
+    target_model_version       TEXT NOT NULL,
+    price_table_version        TEXT NOT NULL,
+    observed_at                INTEGER NOT NULL CHECK (observed_at >= 0),
+    PRIMARY KEY (call_site_version, execution_plan_id, plan_observation_sequence)
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS execution_plan_disabled (
@@ -299,6 +329,26 @@ pub fn ensure_cost_model_schema(conn: &Connection) -> Result<()> {
         [],
     )
     .context("removing orphaned plan-divergence observations")?;
+    conn.execute(
+        "DELETE FROM execution_plan_guard_observation \
+         WHERE NOT EXISTS (\
+            SELECT 1 FROM execution_plan_guard AS guard \
+            WHERE guard.call_site_version = execution_plan_guard_observation.call_site_version \
+              AND guard.execution_plan_id = execution_plan_guard_observation.execution_plan_id\
+         )",
+        [],
+    )
+    .context("removing orphaned plan-guard observations")?;
+    conn.execute(
+        "DELETE FROM execution_plan_disabled \
+         WHERE NOT EXISTS (\
+            SELECT 1 FROM execution_plan_guard AS guard \
+            WHERE guard.call_site_version = execution_plan_disabled.call_site_version \
+              AND guard.execution_plan_id = execution_plan_disabled.execution_plan_id\
+         )",
+        [],
+    )
+    .context("removing orphaned plan disables")?;
     Ok(())
 }
 
@@ -334,6 +384,7 @@ mod tests {
                  AND name IN ('call_site_profile','call_site_observation',\
                               'execution_plan_profile','execution_plan_observation',\
                               'execution_plan_divergence_observation',\
+                              'execution_plan_guard','execution_plan_guard_observation',\
                               'execution_plan_disabled','rule_divergence',\
                               'rule_divergence_observation','optimizer_disabled',\
                               'rule_set_stats')",
@@ -341,7 +392,7 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(tables, 10);
+        assert_eq!(tables, 12);
     }
 
     #[test]

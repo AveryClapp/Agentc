@@ -652,6 +652,14 @@ ends in cold re-admission, not automatic full-rate reuse.
 Each comparison updates one complete-plan history. A composed result is never
 copied into every constituent rule as if it were causal evidence. Solo-rule
 guard rows remain available for the routing-only and rewrite-only baselines.
+The explicit calibrated plan threshold takes precedence. Until a calibrated
+entry is configured, the runtime uses the minimum declared budget among the
+plan's rules, or `0.05` when the plan has no rule-level declaration. This is a
+conservative threshold for the complete plan only; it does not copy the outcome
+or disable state into constituent rule histories. The resolved numeric
+threshold is part of the execution-plan identity and opaque observation token;
+delayed feedback therefore cannot be reinterpreted under a later environment
+or rule-policy value.
 
 Divergence and thresholds are finite fractions in `[0,1]`; invalid values do not
 create or mutate state. Text divergence uses the calibration-selected metric.
@@ -782,6 +790,34 @@ CREATE TABLE IF NOT EXISTS execution_plan_divergence_observation (
     UNIQUE (call_site_version, execution_plan_id, plan_observation_sequence)
 ) STRICT, WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS execution_plan_guard (
+    call_site_version       TEXT NOT NULL,
+    execution_plan_id       TEXT NOT NULL,
+    divergence_threshold    REAL NOT NULL CHECK (divergence_threshold BETWEEN 0.0 AND 1.0),
+    divergence_exposure     REAL NOT NULL CHECK (divergence_exposure >= 0.0),
+    window_samples          INTEGER NOT NULL CHECK (window_samples >= 0),
+    provider_protocol       TEXT NOT NULL,
+    target_model_id         TEXT NOT NULL,
+    target_model_version    TEXT NOT NULL,
+    price_table_version     TEXT NOT NULL,
+    updated_at              INTEGER NOT NULL CHECK (updated_at >= 0),
+    PRIMARY KEY (call_site_version, execution_plan_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_guard_observation (
+    call_site_version          TEXT NOT NULL,
+    execution_plan_id          TEXT NOT NULL,
+    plan_observation_sequence  INTEGER NOT NULL CHECK (plan_observation_sequence > 0),
+    divergence                 REAL NOT NULL CHECK (divergence BETWEEN 0.0 AND 1.0),
+    excess                     REAL NOT NULL CHECK (excess > 0.0),
+    provider_protocol          TEXT NOT NULL,
+    target_model_id            TEXT NOT NULL,
+    target_model_version       TEXT NOT NULL,
+    price_table_version        TEXT NOT NULL,
+    observed_at                INTEGER NOT NULL CHECK (observed_at >= 0),
+    PRIMARY KEY (call_site_version, execution_plan_id, plan_observation_sequence)
+) STRICT, WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS execution_plan_disabled (
     call_site_version       TEXT NOT NULL,
     execution_plan_id       TEXT NOT NULL,
@@ -859,11 +895,18 @@ migration preserves its lifetime count, zeros its window statistics, and
 retains any already-persisted breach streak. Changing either configured window
 to a smaller value truncates and persists the newest samples at startup.
 
-The joint planner adds the four `execution_plan_*` tables above without
+The joint planner adds the complete-plan profile, guard, observation, and
+disable tables above without
 promoting legacy `call_site_profile`, `rule_divergence`, or `rule_set_stats`
 rows into plan evidence. Those rows remain reporting and baseline state. Every
 new complete plan starts cold because the old schema cannot identify the target,
 ordered transformations, or validation policy that produced an observation.
+
+`execution_plan_guard_observation` retains only positive excess events inside
+the rolling 24-hour horizon. The guard reconstructs `divergence_exposure` from
+those exact events at restart. `execution_plan_disabled` remains present after
+cooldown expiry until the selector explicitly completes cold re-admission; time
+alone never restores full-rate use.
 
 `plan_audit` supports pruning to a 10,000-row cap through `audit::prune`.
 Pruning is an explicit maintenance operation; the runtime does not silently
@@ -881,6 +924,7 @@ crates/
 │   │   ├── cost_model.rs            # CallSiteProfile, WelfordStats
 │   │   ├── execution_plan.rs         # Canonical plan identity + selector
 │   │   ├── plan_profile.rs           # Exact complete-plan evidence windows
+│   │   ├── plan_guard.rs             # Rolling exposure + durable plan disable
 │   │   ├── dag.rs                   # Call, DepSource, DAG context queries
 │   │   ├── budget.rs                # Accuracy budget enforcement
 │   │   ├── shadow.rs                # Shadow-mode sampling + divergence
@@ -964,10 +1008,15 @@ A user's LLM call never fails because the optimizer failed.
   the new sample is added. A flush snapshots dirty generations and atomically
   replaces each summary and both retained windows; a post-snapshot execution
   or paired comparison remains dirty.
+- **Plan-guard updates lock one exact plan entry.** The guard retains exact
+  positive-exposure events for 24 hours, recomputes exposure from that rolling
+  set, and persists the summary, events, and disable row together. Cooldown
+  expiry remains blocked until the selector explicitly completes cold
+  re-admission.
 - **SQLite cost-model flushes are serialized** by the native profiler's cost-DB
   mutex. Each transaction replaces the exact retained samples and summary for
   every captured dirty site.
-- **Guard updates lock one site/rule entry.** Each shadow sample mutates a
+- **Legacy solo-rule guard updates lock one site/rule entry.** Each solo shadow sample mutates a
   copy-on-write retained window, recomputes its statistics, updates the raw
   breach streak, records a dirty generation, and then uses the native cost-DB
   mutex to persist the summary and exact samples atomically. A flush clears
@@ -1052,6 +1101,7 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | A concurrent post-snapshot divergence remains dirty | `budget::tests::flush_keeps_post_snapshot_sample_dirty` |
 | The fifth breach after restart disables durably | `tests/test_lifecycle.py::TestInit::test_guard_breach_streak_survives_reinit` |
 | Canonical plan identity includes target, ordered rewrites, versions, parameters, and validation policy | `execution_plan::tests::canonical_identity_*` |
+| A resolved divergence threshold is identity-bearing and delayed feedback retains it | `ffi::tests::resolved_divergence_threshold_is_identity_bearing` |
 | Cost and latency objectives select the best admissible complete plan | `execution_plan::tests::selects_*` |
 | Missing, non-finite, stale, under-evidenced, or non-positive candidates abstain | `execution_plan::tests::rejects_*` |
 | Reference, routing-only, rewrite-only, and joint evidence stay isolated | `plan_profile::tests::complete_plan_evidence_is_not_synthesized` |
@@ -1064,6 +1114,7 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Prompt-shape changes use a cold call-site-version key | `plan_profile::tests::changed_prompt_shape_uses_a_cold_key` |
 | Concurrent post-snapshot plan observations remain dirty | `plan_profile::tests::concurrent_post_snapshot_observation_remains_dirty` |
 | A harmful composed interaction updates only its complete-plan guard | `plan_guard::tests::composed_sample_has_single_causal_identity` |
+| Complete-plan exposure disables the exact plan across restart without disabling its solo rule | `tests/test_lifecycle.py::TestInit::test_complete_plan_exposure_disable_survives_reinit` |
 | A failed selected target retries the exact original request once | `tests/test_optimizer_glue.py::test_routed_failure_replays_exact_original` |
 
 `bench/guard_persistence_preflight.py` is the deterministic Stage E0 replay for

@@ -23,10 +23,11 @@ use agentc_optimizer::{
     config::OptimizerConfig,
     cost_model::CostModel,
     ffi::{
-        attach_observation_context, optimize_observe as rust_observe, optimize_plan as rust_plan,
-        record_observation_divergence, PASS_THROUGH_JSON,
+        guard_and_attach_observation_context, optimize_observe as rust_observe,
+        optimize_plan as rust_plan, plan_rules, record_observation_divergence, PASS_THROUGH_JSON,
     },
     model_catalog::{default_model_catalog, ModelCatalog},
+    plan_guard::{PlanGuard, PlanGuardOutcome},
     plan_profile::PlanProfiles,
     planner::{Optimizer, Plan},
     Budget, SampleOutcome, Wired,
@@ -691,6 +692,7 @@ struct OptimizerState {
     optimizer: Arc<Optimizer>,
     cost_model: Arc<CostModel>,
     plan_profiles: Arc<PlanProfiles>,
+    plan_guard: Arc<PlanGuard>,
     model_catalog: Option<Arc<ModelCatalog>>,
     #[allow(dead_code)]
     budget: Arc<Budget>,
@@ -725,6 +727,7 @@ fn build_optimizer_state(
             optimizer,
             cost_model,
             plan_profiles,
+            plan_guard,
             model_catalog,
             budget,
             audit_conn,
@@ -738,6 +741,7 @@ fn build_optimizer_state(
                 optimizer,
                 cost_model,
                 plan_profiles,
+                plan_guard,
                 model_catalog: Some(model_catalog),
                 budget,
                 audit: Some(Mutex::new(audit_conn)),
@@ -750,12 +754,14 @@ fn build_optimizer_state(
             eprintln!("[agentc-profiler] optimizer wiring failed: {e}");
             let cost_model = Arc::new(CostModel::with_window(config.cost_model_window));
             let plan_profiles = Arc::new(PlanProfiles::with_window(config.plan_profile_window));
+            let plan_guard = Arc::new(PlanGuard::new());
             let budget = Arc::new(Budget::with_window(config.divergence_window));
             let optimizer = Arc::new(Optimizer::empty(cost_model.clone(), config));
             OptimizerState {
                 optimizer,
                 cost_model,
                 plan_profiles,
+                plan_guard,
                 model_catalog: default_model_catalog().ok().map(Arc::new),
                 budget,
                 audit: None,
@@ -797,6 +803,9 @@ fn flush_optimizer_state(state: &OptimizerState) {
                 }
                 if let Err(e) = state.plan_profiles.flush_dirty(&mut conn) {
                     eprintln!("[agentc-profiler] plan_profiles flush failed: {e}");
+                }
+                if let Err(e) = state.plan_guard.flush_dirty(&mut conn) {
+                    eprintln!("[agentc-profiler] plan_guard flush failed: {e}");
                 }
                 if let Err(e) = state.budget.flush_divergence(&mut conn) {
                     eprintln!("[agentc-profiler] divergence flush failed: {e}");
@@ -855,6 +864,14 @@ fn now_us_i64() -> i64 {
         .unwrap_or(0)
 }
 
+fn guard_plan_fail_safe<F>(guard_plan: F) -> String
+where
+    F: FnOnce() -> String,
+{
+    std::panic::catch_unwind(AssertUnwindSafe(guard_plan))
+        .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
+}
+
 /// Plan an intercepted LLM call. JSON-in, JSON-out; any panic on the Rust
 /// side is swallowed and the caller receives `{"kind":"pass_through"}`.
 ///
@@ -872,10 +889,20 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
         let base_plan_json =
             std::panic::catch_unwind(AssertUnwindSafe(|| rust_plan(&state.optimizer, call_json)))
                 .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string());
-        let plan_json = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            attach_observation_context(state.model_catalog.as_deref(), call_json, &base_plan_json)
-        }))
-        .unwrap_or(base_plan_json);
+        let plan_json = guard_plan_fail_safe(|| {
+            let divergence_threshold = serde_json::from_str::<Plan>(&base_plan_json)
+                .ok()
+                .map(|plan| divergence_threshold_for_plan(&state, &plan_rules(&plan)))
+                .unwrap_or(0.05);
+            guard_and_attach_observation_context(
+                state.model_catalog.as_deref(),
+                &state.plan_guard,
+                call_json,
+                &base_plan_json,
+                divergence_threshold,
+                now_us_i64(),
+            )
+        });
         let overhead_us = t0.elapsed().as_micros() as i64;
 
         // Best-effort audit. The plan is always returned regardless of
@@ -1034,6 +1061,9 @@ fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) -> Stri
                         if let Err(e) = state.plan_profiles.flush_dirty(&mut conn) {
                             eprintln!("[agentc-profiler] plan_profiles flush failed: {e}");
                         }
+                        if let Err(e) = state.plan_guard.flush_dirty(&mut conn) {
+                            eprintln!("[agentc-profiler] plan_guard flush failed: {e}");
+                        }
                     }
                 }));
             }
@@ -1048,11 +1078,14 @@ fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) -> Stri
 /// profile. Solo plans also feed the compatibility rule budget; composed plans
 /// deliberately do not fabricate identical causal evidence for every rule.
 ///
-/// Threshold precedence: `AGENTC_SHADOW_DIVERGENCE_BUDGET` env override,
-/// else the firing rule's own `accuracy_budget()`, else a conservative
-/// 0.05. Non-finite and out-of-range divergence is discarded; an invalid
-/// threshold falls through to the next source. Never raises — the user-visible
-/// call has already returned.
+/// The numeric threshold was resolved when the plan was returned and is bound
+/// into both its canonical identity and opaque observation token. Precedence at
+/// planning is `AGENTC_SHADOW_DIVERGENCE_BUDGET`, then the minimum declared
+/// budget among the plan's rules, then 0.05. The minimum is a plan-level policy;
+/// it does not propagate a composed outcome into constituent rule evidence.
+/// Non-finite and out-of-range divergence is discarded; an invalid threshold
+/// falls through to the next source. Never raises — the user-visible call has
+/// already returned.
 fn unit_fraction_f32(value: f32) -> Option<f32> {
     (value.is_finite() && (0.0..=1.0).contains(&value)).then_some(value)
 }
@@ -1074,6 +1107,38 @@ fn optimize_record_divergence(py: Python<'_>, observation_token: &str, divergenc
             else {
                 return;
             };
+            let now = now_us_i64();
+            let plan_guard_outcome = if attribution.newly_recorded && attribution.guard_eligible {
+                attribution
+                    .plan_observation
+                    .as_ref()
+                    .zip(attribution.divergence_threshold)
+                    .and_then(|(observation, plan_threshold)| {
+                        match state.plan_guard.record_sample(
+                            observation,
+                            divergence,
+                            plan_threshold,
+                            Some(now),
+                        ) {
+                            Ok(outcome) => Some(outcome),
+                            Err(error) => {
+                                eprintln!("[agentc-profiler] plan guard update failed: {error}");
+                                None
+                            }
+                        }
+                    })
+            } else {
+                None
+            };
+            if let Some(PlanGuardOutcome::Disabled(disabled)) = plan_guard_outcome {
+                eprintln!(
+                    "[agentc] shadow guard auto-disabled complete plan \
+                     (exposure={:.3} >= budget={:.3}, cooldown_until={})",
+                    disabled.exposure,
+                    state.plan_guard.exposure_budget(),
+                    disabled.reenable_at_us,
+                );
+            }
             let mut disable = None;
             if attribution.newly_recorded {
                 if let Some(rule) = attribution.solo_rule.as_deref() {
@@ -1088,7 +1153,6 @@ fn optimize_record_divergence(py: Python<'_>, observation_token: &str, divergenc
                                 .and_then(unit_fraction_f32)
                         })
                         .unwrap_or(0.05);
-                    let now = now_us_i64();
                     let outcome = state.budget.record_sample(
                         &attribution.call_site_id,
                         rule,
@@ -1129,6 +1193,9 @@ fn optimize_record_divergence(py: Python<'_>, observation_token: &str, divergenc
                     if let Err(e) = state.budget.flush_divergence(&mut conn) {
                         eprintln!("[agentc-profiler] divergence flush failed: {e}");
                     }
+                    if let Err(e) = state.plan_guard.flush_dirty(&mut conn) {
+                        eprintln!("[agentc-profiler] plan_guard flush failed: {e}");
+                    }
                     if let Err(e) = state.plan_profiles.flush_dirty(&mut conn) {
                         eprintln!("[agentc-profiler] plan_profiles flush failed: {e}");
                     }
@@ -1136,6 +1203,22 @@ fn optimize_record_divergence(py: Python<'_>, observation_token: &str, divergenc
             }
         }));
     });
+}
+
+fn divergence_threshold_for_plan(state: &OptimizerState, rules: &[String]) -> f64 {
+    std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
+        .ok()
+        .and_then(|value| value.trim().parse::<f64>().ok())
+        .filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
+        .or_else(|| {
+            rules
+                .iter()
+                .filter_map(|rule| state.optimizer.accuracy_budget_for(rule))
+                .filter_map(unit_fraction_f32)
+                .map(f64::from)
+                .min_by(f64::total_cmp)
+        })
+        .unwrap_or(0.05)
 }
 
 /// Force-flush cost profiles, plan profiles, and guard divergence to
@@ -1214,6 +1297,12 @@ mod tests {
         for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -0.1, 1.1] {
             assert!(unit_fraction_f32(invalid).is_none());
         }
+    }
+
+    #[test]
+    fn plan_guard_panic_falls_back_to_reference() {
+        let plan = guard_plan_fail_safe(|| panic!("injected plan-guard failure"));
+        assert_eq!(plan, PASS_THROUGH_JSON);
     }
 }
 

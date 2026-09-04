@@ -24,6 +24,7 @@ use crate::execution_plan::{
     EXECUTION_PLAN_SCHEMA_VERSION,
 };
 use crate::model_catalog::{ModelCatalog, RequestRequirements, ROUTE_CONTEXT_KEY};
+use crate::plan_guard::PlanGuard;
 use crate::plan_profile::{
     CallSiteVersion, CallSiteVersionSpec, PlanObservationToken, PlanProfileKey, PlanProfileUpdate,
     PlanProfiles, PlanRuntimeVersion,
@@ -34,40 +35,48 @@ use crate::planner::{Optimizer, Plan};
 pub const PASS_THROUGH_JSON: &str = "{\"kind\":\"pass_through\"}";
 
 const OBSERVATION_CONTEXT_KEY: &str = "agentc_observation_context";
-const OBSERVATION_TOKEN_SCHEMA_VERSION: u16 = 1;
+const OBSERVATION_TOKEN_SCHEMA_VERSION: u16 = 2;
 const PROMPT_SHAPE_SCHEMA_VERSION: u16 = 1;
 const PLAN_IMPLEMENTATION_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Identity and runtime metadata embedded in a returned Plan as an internal
 /// JSON field. Python carries this field opaquely in ``Plan.raw_json``; it does
 /// not need to understand or reconstruct any profile key.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct EmbeddedObservationContext {
     call_site_id: String,
     key: PlanProfileKey,
     runtime_version: PlanRuntimeVersion,
+    divergence_threshold: f64,
 }
 
 /// Opaque handle returned by ``optimize_observe`` and consumed by
 /// ``optimize_record_divergence``. It binds delayed feedback to one exact
 /// execution while retaining the legacy solo-rule attribution needed until the
 /// plan-level guard replaces the compatibility guard.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct OpaqueObservationToken {
     schema_version: u16,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     plan_observation: Option<PlanObservationToken>,
     call_site_id: String,
+    guard_eligible: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    divergence_threshold: Option<f64>,
     #[serde(default)]
     rules: Vec<String>,
 }
 
 /// Validated attribution returned to the PyO3 adapter after a divergence is
 /// attached to its complete-plan profile.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DivergenceAttribution {
     pub call_site_id: String,
     pub solo_rule: Option<String>,
+    pub rules: Vec<String>,
+    pub plan_observation: Option<PlanObservationToken>,
+    pub guard_eligible: bool,
+    pub divergence_threshold: Option<f64>,
     /// False when the same token/value pair was replayed idempotently.
     pub newly_recorded: bool,
 }
@@ -100,7 +109,11 @@ pub fn attach_observation_context(
     catalog: Option<&ModelCatalog>,
     call_json: &str,
     plan_json: &str,
+    divergence_threshold: f64,
 ) -> String {
+    if !divergence_threshold.is_finite() || !(0.0..=1.0).contains(&divergence_threshold) {
+        return plan_json.to_string();
+    }
     let Some(catalog) = catalog else {
         return plan_json.to_string();
     };
@@ -110,7 +123,12 @@ pub fn attach_observation_context(
     let Ok(plan) = serde_json::from_str::<Plan>(plan_json) else {
         return plan_json.to_string();
     };
-    let Some(context) = build_observation_context(catalog, &original_call, &plan) else {
+    let Some(context) = build_observation_context(
+        catalog,
+        &original_call,
+        &plan,
+        divergence_threshold,
+    ) else {
         return plan_json.to_string();
     };
     let Ok(mut value) = serde_json::from_str::<serde_json::Value>(plan_json) else {
@@ -126,10 +144,64 @@ pub fn attach_observation_context(
     serde_json::to_string(&value).unwrap_or_else(|_| plan_json.to_string())
 }
 
+/// Apply the persisted complete-plan guard and attach observation context to
+/// the plan that will actually execute.
+///
+/// Active disables and cooldown-expired plans awaiting cold re-admission both
+/// fall back to the immutable reference request. Because lookup uses the exact
+/// [`PlanProfileKey`], a harmful interaction does not suppress either of its
+/// solo constituents.
+pub fn guard_and_attach_observation_context(
+    catalog: Option<&ModelCatalog>,
+    plan_guard: &PlanGuard,
+    call_json: &str,
+    plan_json: &str,
+    divergence_threshold: f64,
+    now_us: i64,
+) -> String {
+    let attached = attach_observation_context(
+        catalog,
+        call_json,
+        plan_json,
+        divergence_threshold,
+    );
+    let Ok(plan) = serde_json::from_str::<Plan>(&attached) else {
+        return PASS_THROUGH_JSON.to_string();
+    };
+    // Parallel is currently an observe-only certificate: Python's driver has
+    // already scheduled the calls, and executing this Plan falls through to
+    // the unchanged request. A real multi-call plan needs its own identity
+    // before it can become a guarded semantic alternative (bd-6m0o).
+    if matches!(plan, Plan::PassThrough | Plan::Parallel { .. }) {
+        return attached;
+    }
+    let Ok(Some(context)) = embedded_observation_context(&attached) else {
+        return attach_observation_context(
+            catalog,
+            call_json,
+            PASS_THROUGH_JSON,
+            divergence_threshold,
+        );
+    };
+    if plan_guard
+        .decision(&context.key, now_us)
+        .blocks_user_visible()
+    {
+        return attach_observation_context(
+            catalog,
+            call_json,
+            PASS_THROUGH_JSON,
+            divergence_threshold,
+        );
+    }
+    attached
+}
+
 fn build_observation_context(
     catalog: &ModelCatalog,
     original_call: &Call,
     plan: &Plan,
+    divergence_threshold: f64,
 ) -> Option<EmbeddedObservationContext> {
     let requirements = RequestRequirements::from_call(original_call)?;
     let selected_call = selected_call(original_call, plan)?;
@@ -165,8 +237,9 @@ fn build_observation_context(
     let rewrites = rules
         .iter()
         // Model routing is represented by target_model_id, not duplicated as
-        // a semantic rewrite in the same identity.
-        .filter(|rule| rule.as_str() != "ModelDowngrade")
+        // a semantic rewrite in the same identity. Cache behavior is likewise
+        // represented by cache_policy rather than a duplicate rewrite.
+        .filter(|rule| !matches!(rule.as_str(), "ModelDowngrade" | "CacheHit"))
         .map(|rule| RewriteApplication {
             stable_name: rule.clone(),
             implementation_version: PLAN_IMPLEMENTATION_VERSION.to_string(),
@@ -203,7 +276,7 @@ fn build_observation_context(
             .to_string(),
             implementation_version: "1".to_string(),
             parameters: if has_alternative {
-                validation_policy_parameters()
+                validation_policy_parameters(divergence_threshold)
             } else {
                 serde_json::json!({})
             },
@@ -222,6 +295,7 @@ fn build_observation_context(
             target_model_version,
             price_table_version: catalog.price_table_version.clone(),
         },
+        divergence_threshold,
     })
 }
 
@@ -236,11 +310,12 @@ fn selected_call<'a>(original_call: &'a Call, plan: &'a Plan) -> Option<&'a Call
     }
 }
 
-fn plan_rules(plan: &Plan) -> Vec<String> {
+pub fn plan_rules(plan: &Plan) -> Vec<String> {
     match plan {
         Plan::Rewritten { rule, .. } | Plan::Parallel { rule, .. } => vec![rule.clone()],
         Plan::Composed { rules, .. } => rules.iter().map(|rule| rule.rule.clone()).collect(),
-        Plan::PassThrough | Plan::Cached { .. } => Vec::new(),
+        Plan::Cached { .. } => vec!["CacheHit".to_string()],
+        Plan::PassThrough => Vec::new(),
     }
 }
 
@@ -327,7 +402,7 @@ fn rewrite_parameters(rule: &str, original_call: &Call, selected_call: &Call) ->
     }
 }
 
-fn validation_policy_parameters() -> serde_json::Value {
+fn validation_policy_parameters(divergence_threshold: f64) -> serde_json::Value {
     let rate = std::env::var("AGENTC_OPTIMIZE_SHADOW")
         .ok()
         .and_then(|value| value.trim().parse::<f64>().ok())
@@ -342,17 +417,11 @@ fn validation_policy_parameters() -> serde_json::Value {
         "normalized" | "embedding" => mode,
         _ => "lexical".to_string(),
     };
-    let divergence_threshold = std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
-        .ok()
-        .and_then(|value| value.trim().parse::<f64>().ok())
-        .filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
-        .map(|value| serde_json::json!({"source": "environment", "value": value}))
-        // The firing rule is already part of the execution-plan identity, so
-        // this symbolic source remains exact for stable rule defaults while
-        // avoiding a made-up common threshold for composed plans.
-        .unwrap_or_else(|| serde_json::json!({"source": "rule-default"}));
     serde_json::json!({
-        "divergence_threshold": divergence_threshold,
+        "divergence_threshold": {
+            "source": "resolved-plan-policy",
+            "value": divergence_threshold,
+        },
         "divergence_mode": mode,
         "sampling_rate": rate,
     })
@@ -419,6 +488,9 @@ pub fn optimize_observe(
         cost_model.observe_rule_set(&call_site_id, &rule_names, *net_savings_usd as f64);
     }
 
+    let divergence_threshold = observation_context
+        .as_ref()
+        .map(|context| context.divergence_threshold);
     let plan_observation = observation_context
         .map(|context| {
             let runtime_version = observed_runtime_version(&context.runtime_version, &outcome);
@@ -438,10 +510,13 @@ pub fn optimize_observe(
         })
         .transpose()
         .map_err(|error| error.to_string())?;
+    let guard_eligible = plan_observation.is_some() && !matches!(&plan, Plan::PassThrough);
     serde_json::to_string(&OpaqueObservationToken {
         schema_version: OBSERVATION_TOKEN_SCHEMA_VERSION,
         plan_observation,
         call_site_id,
+        guard_eligible,
+        divergence_threshold,
         rules: plan_rules(&plan),
     })
     .map_err(|error| error.to_string())
@@ -496,6 +571,14 @@ pub fn record_observation_divergence(
     if !divergence.is_finite() || !(0.0..=1.0).contains(&divergence) {
         return Err("divergence must be finite and in [0, 1]".to_string());
     }
+    if token.guard_eligible
+        && (token.plan_observation.is_none()
+            || token
+                .divergence_threshold
+                .is_none_or(|value| !value.is_finite() || !(0.0..=1.0).contains(&value)))
+    {
+        return Err("guard-eligible token is missing its plan binding or threshold".to_string());
+    }
     let newly_recorded = token
         .plan_observation
         .as_ref()
@@ -510,6 +593,10 @@ pub fn record_observation_divergence(
     Ok(DivergenceAttribution {
         call_site_id: token.call_site_id,
         solo_rule,
+        rules: token.rules,
+        plan_observation: token.plan_observation,
+        guard_eligible: token.guard_eligible,
+        divergence_threshold: token.divergence_threshold,
         newly_recorded,
     })
 }
@@ -653,11 +740,13 @@ mod tests {
             Some(&catalog),
             &serde_json::to_string(&first).unwrap(),
             &plan,
+            0.05,
         );
         let second_json = attach_observation_context(
             Some(&catalog),
             &serde_json::to_string(&second).unwrap(),
             &plan,
+            0.05,
         );
         let first_context = embedded_observation_context(&first_json).unwrap().unwrap();
         let second_context = embedded_observation_context(&second_json).unwrap().unwrap();
@@ -665,6 +754,28 @@ mod tests {
         assert_eq!(first_context.key, second_context.key);
         assert!(!first_json.contains("first private value"));
         assert!(!second_json.contains("different private value"));
+    }
+
+    #[test]
+    fn resolved_divergence_threshold_is_identity_bearing() {
+        let catalog = default_model_catalog().unwrap();
+        let original = observable_call("threshold-site", "private value");
+        let plan = Plan::Rewritten {
+            rule: "OutputBudget".to_string(),
+            call: original.clone(),
+            projected_savings_usd: 0.01,
+        };
+        let call_json = serde_json::to_string(&original).unwrap();
+        let plan_json = serde_json::to_string(&plan).unwrap();
+
+        let first = attach_observation_context(Some(&catalog), &call_json, &plan_json, 0.05);
+        let second = attach_observation_context(Some(&catalog), &call_json, &plan_json, 0.10);
+        let first = embedded_observation_context(&first).unwrap().unwrap();
+        let second = embedded_observation_context(&second).unwrap().unwrap();
+
+        assert_eq!(first.divergence_threshold, 0.05);
+        assert_eq!(second.divergence_threshold, 0.10);
+        assert_ne!(first.key.execution_plan_id, second.key.execution_plan_id);
     }
 
     #[test]
@@ -686,11 +797,13 @@ mod tests {
             Some(&catalog),
             &serde_json::to_string(&first).unwrap(),
             &plan,
+            0.05,
         );
         let second_json = attach_observation_context(
             Some(&catalog),
             &serde_json::to_string(&second).unwrap(),
             &plan,
+            0.05,
         );
         let first_context = embedded_observation_context(&first_json).unwrap().unwrap();
         let second_context = embedded_observation_context(&second_json).unwrap().unwrap();
@@ -721,11 +834,13 @@ mod tests {
             Some(&catalog),
             &serde_json::to_string(&first).unwrap(),
             &plan,
+            0.05,
         );
         let second_json = attach_observation_context(
             Some(&catalog),
             &serde_json::to_string(&second).unwrap(),
             &plan,
+            0.05,
         );
         let first_context = embedded_observation_context(&first_json).unwrap().unwrap();
         let second_context = embedded_observation_context(&second_json).unwrap().unwrap();
@@ -734,6 +849,32 @@ mod tests {
             first_context.key.call_site_version,
             second_context.key.call_site_version
         );
+    }
+
+    #[test]
+    fn optimized_plan_without_canonical_identity_abstains() {
+        let catalog = default_model_catalog().unwrap();
+        let mut original = observable_call("unknown-model-site", "private value");
+        original.model = "provider-model-not-in-catalog".to_string();
+        let plan = Plan::Rewritten {
+            rule: "ContextCompress".to_string(),
+            call: original.clone(),
+            projected_savings_usd: 0.01,
+        };
+
+        let guarded = guard_and_attach_observation_context(
+            Some(&catalog),
+            &PlanGuard::new(),
+            &serde_json::to_string(&original).unwrap(),
+            &serde_json::to_string(&plan).unwrap(),
+            0.05,
+            1,
+        );
+        assert!(matches!(
+            serde_json::from_str::<Plan>(&guarded).unwrap(),
+            Plan::PassThrough
+        ));
+        assert!(embedded_observation_context(&guarded).unwrap().is_none());
     }
 
     #[test]
@@ -750,6 +891,7 @@ mod tests {
             Some(&catalog),
             &serde_json::to_string(&original).unwrap(),
             &serde_json::to_string(&plan).unwrap(),
+            0.125,
         );
         let cost_model = Arc::new(CostModel::new());
         let profiles = PlanProfiles::new();
@@ -772,6 +914,7 @@ mod tests {
         let after = profiles.get_for_reporting(observation.key()).unwrap();
 
         assert_eq!(first.solo_rule.as_deref(), Some("OutputBudget"));
+        assert_eq!(first.divergence_threshold, Some(0.125));
         assert!(first.newly_recorded);
         assert!(!replay.newly_recorded);
         assert_eq!(after.paired_observations, 1);
@@ -791,6 +934,7 @@ mod tests {
             Some(&catalog),
             &serde_json::to_string(&original).unwrap(),
             &serde_json::to_string(&plan).unwrap(),
+            0.05,
         );
         let profiles = PlanProfiles::new();
         let token = optimize_observe(
@@ -818,6 +962,7 @@ mod tests {
             Some(&catalog),
             &serde_json::to_string(&original).unwrap(),
             &plan,
+            0.05,
         );
         let context = embedded_observation_context(&observable_plan)
             .unwrap()
@@ -870,6 +1015,7 @@ mod tests {
             Some(&catalog),
             &serde_json::to_string(&original).unwrap(),
             &serde_json::to_string(&plan).unwrap(),
+            0.0,
         );
         let profiles = PlanProfiles::new();
         let token = optimize_observe(
@@ -883,5 +1029,47 @@ mod tests {
         let attribution = record_observation_divergence(&profiles, &token, 0.2).unwrap();
         assert!(attribution.solo_rule.is_none());
         assert!(attribution.newly_recorded);
+
+        let guard = PlanGuard::with_limits(0.1, 100, 100).unwrap();
+        guard
+            .record_sample(
+                attribution.plan_observation.as_ref().unwrap(),
+                0.2,
+                0.0,
+                Some(1),
+            )
+            .unwrap();
+        let original_json = serde_json::to_string(&original).unwrap();
+        let plan_json = serde_json::to_string(&plan).unwrap();
+        let blocked = guard_and_attach_observation_context(
+            Some(&catalog),
+            &guard,
+            &original_json,
+            &plan_json,
+            0.0,
+            1,
+        );
+        assert!(matches!(
+            serde_json::from_str::<Plan>(&blocked).unwrap(),
+            Plan::PassThrough
+        ));
+
+        let solo = Plan::Rewritten {
+            rule: "ContextCompress".to_string(),
+            call: original.clone(),
+            projected_savings_usd: 0.01,
+        };
+        let allowed = guard_and_attach_observation_context(
+            Some(&catalog),
+            &guard,
+            &original_json,
+            &serde_json::to_string(&solo).unwrap(),
+            0.0,
+            1,
+        );
+        assert!(matches!(
+            serde_json::from_str::<Plan>(&allowed).unwrap(),
+            Plan::Rewritten { .. }
+        ));
     }
 }

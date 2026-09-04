@@ -26,6 +26,7 @@ use crate::config::OptimizerConfig;
 use crate::cost_model::CostModel;
 use crate::dag::Call;
 use crate::model_catalog::{default_model_catalog, ModelCatalog};
+use crate::plan_guard::PlanGuard;
 use crate::plan_profile::PlanProfiles;
 use crate::planner::{Optimizer, RewriteRule};
 use crate::rules::cache_hit::CacheKeyBuilder;
@@ -83,6 +84,7 @@ pub struct Wired {
     pub optimizer: Arc<Optimizer>,
     pub cost_model: Arc<CostModel>,
     pub plan_profiles: Arc<PlanProfiles>,
+    pub plan_guard: Arc<PlanGuard>,
     pub model_catalog: Arc<ModelCatalog>,
     pub budget: Arc<Budget>,
     /// Connection to `optimizer_audit.db`. The FFI layer wraps it in a
@@ -135,6 +137,14 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
     let _ = plan_profiles
         .flush_dirty(&mut cost_conn)
         .context("persist resized execution-plan windows")?;
+
+    let plan_guard = Arc::new(PlanGuard::new());
+    let _ = plan_guard
+        .warm_from_db(&cost_conn)
+        .context("warm execution-plan guard")?;
+    let _ = plan_guard
+        .flush_dirty(&mut cost_conn)
+        .context("persist normalized execution-plan guard")?;
 
     let budget = Arc::new(Budget::with_window(config.divergence_window));
     let _ = budget.warm_from_db(&cost_conn).context("warm budget")?;
@@ -236,6 +246,7 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
         optimizer,
         cost_model,
         plan_profiles,
+        plan_guard,
         model_catalog,
         budget,
         audit_conn,

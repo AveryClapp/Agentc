@@ -184,7 +184,20 @@ class TestInit:
             "span_id": "0" * 16,
             "model": "gpt-4o",
             "messages": [{"role": "user", "content": "warm"}],
-            "parameters": {"max_output_tokens": 256},
+            "parameters": {
+                "max_output_tokens": 256,
+                "extra": {
+                    "agentc_route_context": {
+                        "provider_protocol": "openai.chat.completions.v1",
+                        "provider_namespace": "openai",
+                        "input_tokens_upper_bound": 10,
+                        "image_input": False,
+                        "tool_calling": False,
+                        "structured_outputs": False,
+                        "streaming": False,
+                    }
+                },
+            },
             "tools": [],
             "input_deps": [],
             "occurrence_ix": 0,
@@ -294,6 +307,97 @@ class TestInit:
 
         assert summary == pytest.approx((7, 3, 0.1, 0))
         assert retained == (3, 5, 7)
+
+    def test_complete_plan_exposure_disable_survives_reinit(
+        self, tmp_storage: Path
+    ) -> None:
+        from agentc._optimizer import observe_outcome, plan_call, record_divergence
+
+        call = {
+            "call_site_id": "complete-plan-guard-site",
+            "trace_id": "0" * 32,
+            "span_id": "0" * 16,
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "warm"}],
+            "parameters": {
+                "max_output_tokens": 256,
+                "extra": {
+                    "agentc_route_context": {
+                        "provider_protocol": "openai.chat.completions.v1",
+                        "provider_namespace": "openai",
+                        "input_tokens_upper_bound": 10,
+                        "image_input": False,
+                        "tool_calling": False,
+                        "structured_outputs": False,
+                        "streaming": False,
+                    }
+                },
+            },
+            "tools": [],
+            "input_deps": [],
+            "occurrence_ix": 0,
+        }
+        outcome = {
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "latency_ms": 1.0,
+            "cost_usd": 0.001,
+            "output_is_structured": False,
+            "output_is_short": True,
+            "call_site_id": "complete-plan-guard-site",
+        }
+        controls = {
+            "AGENTC_ENABLED_RULES": "OutputBudget",
+            "AGENTC_OPTIMIZE_HOT_THRESHOLD": "3",
+            "AGENTC_OPTIMIZE_MAX_OVERHEAD_MS": "1000",
+            "AGENTC_OPTIMIZE_SHADOW": "0.02",
+            "AGENTC_SHADOW_DIVERGENCE_BUDGET": "0.0",
+        }
+
+        with patch.dict(os.environ, controls):
+            agentc.init(storage_path=str(tmp_storage))
+            for _ in range(3):
+                observe_outcome(plan_call(call), outcome)
+
+            selected = plan_call(call)
+            assert selected.kind == "rewritten"
+            observe_outcome(selected, outcome)
+            assert selected.observation_token
+            # Delayed feedback must use the threshold bound when the plan was
+            # selected, not reinterpret it under a later process setting.
+            os.environ["AGENTC_SHADOW_DIVERGENCE_BUDGET"] = "1.0"
+            record_divergence(selected.observation_token, 1.0)
+            os.environ["AGENTC_SHADOW_DIVERGENCE_BUDGET"] = "0.0"
+
+            # One sample exhausts the plan budget, but not the legacy
+            # five-strike solo-rule guard. The exact plan guard causes this
+            # fallback.
+            assert plan_call(call).kind == "pass_through"
+            agentc.shutdown()
+
+            agentc.init(storage_path=str(tmp_storage))
+            assert plan_call(call).kind == "pass_through"
+            agentc.shutdown()
+
+        with sqlite3.connect(tmp_storage / "cost_model.db") as connection:
+            guard = connection.execute(
+                "SELECT divergence_threshold, divergence_exposure, window_samples "
+                "FROM execution_plan_guard"
+            ).fetchone()
+            disabled = connection.execute(
+                "SELECT reason, exposure FROM execution_plan_disabled"
+            ).fetchone()
+            legacy_disabled = connection.execute(
+                "SELECT COUNT(*) FROM optimizer_disabled "
+                "WHERE call_site_id = ? AND rule = ?",
+                ("complete-plan-guard-site", "OutputBudget"),
+            ).fetchone()
+
+        assert guard == pytest.approx((0.0, 1.0, 1))
+        assert disabled is not None
+        assert disabled[0] == "divergence_exposure"
+        assert disabled[1] == pytest.approx(1.0)
+        assert legacy_disabled == (0,)
 
     def test_invalid_guard_divergence_does_not_create_state(
         self, tmp_storage: Path

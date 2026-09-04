@@ -6,6 +6,8 @@
 
 #![allow(clippy::useless_conversion)] // PyO3 macro-generated code triggers this
 
+mod audit_writer;
+
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -18,7 +20,7 @@ use rusqlite::Connection;
 use agentc_core::storage::{self, SpanInput, WriteSpanOptions};
 use agentc_memo::key::InvalidationPattern;
 use agentc_optimizer::{
-    audit::{insert as audit_insert, PlanAudit, PlanKind},
+    audit::{PlanAudit, PlanKind},
     build_optimizer,
     config::OptimizerConfig,
     cost_model::CostModel,
@@ -37,6 +39,10 @@ use agentc_optimizer::{
     plan_profile::PlanProfiles,
     planner::{Optimizer, Plan},
     Budget, ExplorationController, SampleOutcome, Wired,
+};
+
+use audit_writer::{
+    AuditWriter, AUDIT_BATCH_SIZE_ROWS, AUDIT_FLUSH_TIMEOUT, AUDIT_QUEUE_CAPACITY_ROWS,
 };
 
 /// Package version, exposed as `agentc._native.__version__`.
@@ -684,10 +690,9 @@ fn canonicalize_parameters_bytes<'py>(
 /// - A fully-wired `Optimizer` with all five rewrite rules.
 /// - The `CostModel` and `Budget` warmed from `cost_model.db` on init.
 /// - Complete-plan profiles warmed from their exact retained windows.
-/// - A `Mutex<Connection>` for `optimizer_audit.db`. We write `plan_audit`
-///   rows synchronously from the hot path. WAL keeps an uncontended insert
-///   small, but callers serialize on this mutex; the complete-call scaling
-///   benchmark treats that queueing as production-path overhead.
+/// - A bounded `AuditWriter` for `optimizer_audit.db`. The call path constructs
+///   one content-free row and attempts a non-blocking enqueue; one background
+///   worker owns SQLite and batches accepted rows.
 /// - An `AtomicU64` observe counter so we can periodically flush dirty cost
 ///   profiles without spawning a thread. Shadow divergence is persisted on
 ///   each sampled comparison and flushed again at lifecycle boundaries.
@@ -705,7 +710,7 @@ struct OptimizerState {
     exploration_enabled: bool,
     #[allow(dead_code)]
     budget: Arc<Budget>,
-    audit: Option<Mutex<Connection>>,
+    audit: Option<AuditWriter>,
     cost_db: Option<Mutex<Connection>>,
     observe_counter: std::sync::atomic::AtomicU64,
     storage_dir: std::path::PathBuf,
@@ -748,6 +753,13 @@ fn build_optimizer_state(
             let cost_db = Connection::open(storage.join("cost_model.db"))
                 .ok()
                 .map(Mutex::new);
+            let audit = match AuditWriter::start(audit_conn) {
+                Ok(writer) => Some(writer),
+                Err(error) => {
+                    eprintln!("[agentc-profiler] plan-audit writer failed to start: {error}");
+                    None
+                }
+            };
             OptimizerState {
                 optimizer,
                 cost_model,
@@ -757,7 +769,7 @@ fn build_optimizer_state(
                 exploration_controller,
                 exploration_enabled,
                 budget,
-                audit: Some(Mutex::new(audit_conn)),
+                audit,
                 cost_db,
                 observe_counter: std::sync::atomic::AtomicU64::new(0),
                 storage_dir: storage,
@@ -813,6 +825,11 @@ fn optimizer_state() -> Arc<OptimizerState> {
 }
 
 fn flush_optimizer_state(state: &OptimizerState) {
+    if let Some(audit) = state.audit.as_ref() {
+        if let Err(error) = audit.flush(AUDIT_FLUSH_TIMEOUT) {
+            eprintln!("[agentc-profiler] plan-audit flush failed: {error}");
+        }
+    }
     if let Some(mu) = state.cost_db.as_ref() {
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
             if let Ok(mut conn) = mu.lock() {
@@ -937,9 +954,10 @@ fn projected_greedy_plan(state: &OptimizerState, call_json: &str, now_us: i64) -
 /// Fail-open is a hard requirement: a user's LLM call must never raise
 /// because the optimizer itself crashed.
 ///
-/// Side effect: writes one row to `optimizer_audit.db::plan_audit` per
-/// invocation (synchronous; lock-protected). Audit failures are logged
-/// but never propagated.
+/// Side effect: tries to enqueue one row for
+/// `optimizer_audit.db::plan_audit` per invocation. The bounded enqueue never
+/// waits for SQLite. Queue-full, disconnected-worker, and persistence failures
+/// are counted but never propagated into the user call.
 #[pyfunction]
 fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
     py.allow_threads(|| {
@@ -1019,7 +1037,7 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
         // Best-effort audit. The plan is always returned regardless of
         // whether the audit row lands.
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            write_plan_audit(&state, call_json, &plan_json, overhead_us);
+            enqueue_plan_audit(&state, call_json, &plan_json, overhead_us);
         }));
 
         plan_json
@@ -1046,8 +1064,8 @@ fn optimize_model_catalog(py: Python<'_>) -> String {
 /// Decode just enough of the call/plan to log one audit row. Anything
 /// missing is treated as "pass-through, no rule" — we'd rather log a
 /// partial truth than skip the row entirely.
-fn write_plan_audit(state: &OptimizerState, call_json: &str, plan_json: &str, overhead_us: i64) {
-    let Some(audit_mu) = state.audit.as_ref() else { return; };
+fn enqueue_plan_audit(state: &OptimizerState, call_json: &str, plan_json: &str, overhead_us: i64) {
+    let Some(audit) = state.audit.as_ref() else { return; };
 
     // Pull call_site_id + span_id from the call. If the call is malformed
     // we already returned PassThrough; record it as such with empty IDs so
@@ -1107,10 +1125,7 @@ fn write_plan_audit(state: &OptimizerState, call_json: &str, plan_json: &str, ov
         planner_diagnostics_json,
     };
 
-    let Ok(conn) = audit_mu.lock() else { return; };
-    if let Err(e) = audit_insert(&conn, &row) {
-        eprintln!("[agentc-profiler] plan_audit insert failed: {e}");
-    }
+    let _ = audit.try_enqueue(row);
 }
 
 fn decode_hex8(s: &str) -> Option<[u8; 8]> {
@@ -1420,15 +1435,47 @@ fn optimize_fail_exploration(py: Python<'_>, lease_token: &str) -> bool {
     })
 }
 
-/// Force-flush cost profiles, plan profiles, and guard divergence to
-/// `cost_model.db`. Called from Python at process shutdown so final partial
-/// state isn't lost. No-op when the optimizer wasn't successfully wired.
+/// Force an ordered plan-audit barrier, then flush cost profiles, plan profiles,
+/// and guard divergence. Called from Python at process shutdown so final partial
+/// state isn't lost. No-op for stores that could not be wired.
 #[pyfunction]
 fn optimize_flush(py: Python<'_>) {
     py.allow_threads(|| {
         let state = optimizer_state();
         flush_optimizer_state(&state);
     });
+}
+
+/// Return process-local queue and loss counters for plan-audit persistence.
+#[pyfunction]
+fn optimize_audit_stats(py: Python<'_>) -> String {
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        let stats = state.audit.as_ref().map(AuditWriter::stats);
+        serde_json::json!({
+            "available": stats.is_some(),
+            "queue_capacity_rows": stats
+                .map(|value| value.queue_capacity_rows)
+                .unwrap_or(AUDIT_QUEUE_CAPACITY_ROWS),
+            "batch_size_rows": stats
+                .map(|value| value.batch_size_rows)
+                .unwrap_or(AUDIT_BATCH_SIZE_ROWS),
+            "attempted_rows": stats.map(|value| value.attempted_rows).unwrap_or(0),
+            "accepted_rows": stats.map(|value| value.accepted_rows).unwrap_or(0),
+            "written_rows": stats.map(|value| value.written_rows).unwrap_or(0),
+            "pending_rows": stats.map(|value| value.pending_rows).unwrap_or(0),
+            "dropped_full_rows": stats
+                .map(|value| value.dropped_full_rows)
+                .unwrap_or(0),
+            "dropped_disconnected_rows": stats
+                .map(|value| value.dropped_disconnected_rows)
+                .unwrap_or(0),
+            "write_failed_rows": stats
+                .map(|value| value.write_failed_rows)
+                .unwrap_or(0),
+        })
+        .to_string()
+    })
 }
 
 /// The `_native` Python module.
@@ -1459,6 +1506,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(optimize_complete_exploration, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_fail_exploration, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_flush, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_audit_stats, m)?)?;
     Ok(())
 }
 

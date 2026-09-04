@@ -216,8 +216,12 @@ def optimize_fail_exploration(lease_token: str) -> bool:
     ...
 
 def optimize_flush() -> None:
-    """Flush buffered cost-model and guard-divergence writes to disk.
+    """Flush accepted plan audits, cost-model, and guard writes to disk.
 
     Called on shutdown. Internally fail-open — any error is dropped.
     """
+    ...
+
+def optimize_audit_stats() -> str:
+    """Return bounded audit-writer queue and loss counters as JSON."""
     ...

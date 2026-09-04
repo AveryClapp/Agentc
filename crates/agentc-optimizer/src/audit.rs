@@ -60,6 +60,8 @@ pub struct PlanAudit {
     pub overhead_us: i64,
     pub shadow_sampled: bool,
     pub shadow_divergence: Option<f64>,
+    /// Content-free complete-plan decision trace serialized as JSON.
+    pub planner_diagnostics_json: Option<String>,
 }
 
 /// Append one audit row. Does **not** prune; pruning is a separate maintenance
@@ -69,8 +71,9 @@ pub fn insert(conn: &Connection, audit: &PlanAudit) -> Result<i64> {
         "INSERT INTO plan_audit (\
             ts_us, call_site_id, span_id, plan_kind, rule, \
             projected_savings_usd, measured_savings_usd, \
-            overhead_us, shadow_sampled, shadow_divergence\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            overhead_us, shadow_sampled, shadow_divergence, \
+            planner_diagnostics_json\
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             audit.ts_us,
             audit.call_site_id,
@@ -82,6 +85,7 @@ pub fn insert(conn: &Connection, audit: &PlanAudit) -> Result<i64> {
             audit.overhead_us,
             audit.shadow_sampled as i64,
             audit.shadow_divergence,
+            audit.planner_diagnostics_json,
         ],
     )
     .context("insert plan_audit")?;
@@ -100,8 +104,9 @@ pub fn insert_batch(conn: &mut Connection, rows: &[PlanAudit]) -> Result<usize> 
             "INSERT INTO plan_audit (\
                 ts_us, call_site_id, span_id, plan_kind, rule, \
                 projected_savings_usd, measured_savings_usd, \
-                overhead_us, shadow_sampled, shadow_divergence\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                overhead_us, shadow_sampled, shadow_divergence, \
+                planner_diagnostics_json\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         )?;
         for r in rows {
             stmt.execute(params![
@@ -115,6 +120,7 @@ pub fn insert_batch(conn: &mut Connection, rows: &[PlanAudit]) -> Result<usize> 
                 r.overhead_us,
                 r.shadow_sampled as i64,
                 r.shadow_divergence,
+                r.planner_diagnostics_json,
             ])?;
         }
     }
@@ -181,6 +187,7 @@ mod tests {
             overhead_us: 42,
             shadow_sampled: false,
             shadow_divergence: None,
+            planner_diagnostics_json: None,
         }
     }
 

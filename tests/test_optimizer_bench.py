@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import sqlite3
 import sys
 from pathlib import Path
@@ -94,3 +95,40 @@ def test_shadow_divergence_weights_sites_by_retained_window(tmp_path: Path) -> N
     assert summary.rule == "OutputBudget"
     assert summary.n_samples == 4
     assert summary.divergence_mean == pytest.approx(0.5)
+
+
+def test_guard_eval_records_explicit_sampling_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GE_AGENT", "bench.agents.long_context_qa")
+    monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "1")
+    monkeypatch.setenv("AGENTC_SHADOW_DIVERGENCE_MODE", "normalized")
+    monkeypatch.setenv("AGENTC_SHADOW_DIVERGENCE_BUDGET", "0.2")
+    module = importlib.import_module("bench.run_guard_eval")
+    module = importlib.reload(module)
+
+    assert module._CSV_COLUMNS[-5:] == [
+        "shadow_rate",
+        "divergence_mode",
+        "configured_divergence_budget",
+        "shadow_calls_in_cost_totals",
+        "agentc_git_commit",
+    ]
+    assert module.SHADOW_RATE == 1.0
+    assert module.DIVERGENCE_MODE == "normalized"
+    assert module.CONFIGURED_DIVERGENCE_BUDGET == "0.2"
+
+
+def test_guard_eval_records_effective_defaults_for_invalid_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GE_AGENT", "bench.agents.long_context_qa")
+    monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "nan")
+    monkeypatch.setenv("AGENTC_SHADOW_DIVERGENCE_MODE", "unknown")
+    monkeypatch.delenv("AGENTC_SHADOW_DIVERGENCE_BUDGET", raising=False)
+    module = importlib.import_module("bench.run_guard_eval")
+    module = importlib.reload(module)
+
+    assert module.SHADOW_RATE == 0.02
+    assert module.DIVERGENCE_MODE == "lexical"
+    assert module.CONFIGURED_DIVERGENCE_BUDGET == "rule_default"

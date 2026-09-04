@@ -123,7 +123,7 @@ JIT runtime that intercepts LLM calls on hot call sites and applies cost-ranked 
 
 **V2 CompositionPlanner:** classifies rules by `CostDriver`, allows orthogonal rules (different drivers = non-overlapping `Call` fields) to apply in a single pass as `Plan::Composed`. Same-driver rules are gated unless explicitly allowlisted (e.g., `StateDrop → ContextCompress`). Controlled by `AGENTC_COMPOSE=1` (default). V1 first-match behavior available via `AGENTC_COMPOSE=0`.
 
-Cold calls pass through; optimization engages after `hot_threshold` observations (default 3), when the empirical cost model has real per-call-site data. On ~2% of rewritten calls (`AGENTC_OPTIMIZE_SHADOW`, default 0.02) shadow-mode sampling runs the *unrewritten* call to measure output divergence for the accuracy budget — note this is a second, **real and billed** LLM call issued synchronously inline, so it adds that call's latency and cost to the sampled request, not a free sample. Spec: [specs/optimizer.md](specs/optimizer.md).
+Cold calls pass through; optimization engages after `hot_threshold` observations (default 3), when the empirical cost model has real per-call-site data. On ~2% of rewritten calls (`AGENTC_OPTIMIZE_SHADOW`, default 0.02) shadow-mode sampling runs the *unrewritten* call to measure output divergence for the accuracy budget — note this is a second, **real and billed** LLM call issued synchronously inline, so it adds that call's latency and cost to the sampled request, not a free sample. The 2% value is a deployment default, not an empirically validated damage bound; the historical guard experiments used full shadow sampling. Spec: [specs/optimizer.md](specs/optimizer.md).
 
 ---
 

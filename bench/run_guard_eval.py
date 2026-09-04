@@ -16,6 +16,9 @@ Env:
 Outputs:
   bench/paper_results/<GE_TAG>.csv
   bench/paper_results/<GE_TAG>.per_task.csv
+
+The summary records the effective shadow rate, divergence mode, configured
+budget, source commit, and whether shadow calls are included in cost totals.
 """
 from __future__ import annotations
 
@@ -31,8 +34,12 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "python"))
 
-from bench.optimizer_bench import _find_agentc_binary, _aggregate_from_db, _parse_per_task_pass_fail
-from bench.optimizer_ablation import _disable
+from bench.optimizer_bench import (  # noqa: E402
+    _aggregate_from_db,
+    _find_agentc_binary,
+    _parse_per_task_pass_fail,
+)
+from bench.optimizer_ablation import _disable  # noqa: E402
 
 AGENT = os.environ["GE_AGENT"]
 FIXTURE = os.environ.get("GE_FIXTURE", "")
@@ -45,6 +52,39 @@ PAPER_RESULTS = _REPO / "bench" / "paper_results"
 STORAGE_ROOT = Path(f"/tmp/agentc-{TAG}")
 OUT_PATH = PAPER_RESULTS / f"{TAG}.csv"
 PER_TASK_PATH = PAPER_RESULTS / f"{TAG}.per_task.csv"
+
+
+def _effective_shadow_rate() -> float:
+    try:
+        rate = float(os.environ.get("AGENTC_OPTIMIZE_SHADOW", "0.02"))
+    except (TypeError, ValueError):
+        rate = 0.02
+    if not math.isfinite(rate):
+        rate = 0.02
+    return min(max(rate, 0.0), 1.0)
+
+
+def _effective_divergence_mode() -> str:
+    mode = os.environ.get("AGENTC_SHADOW_DIVERGENCE_MODE", "lexical").strip().lower()
+    return mode if mode in {"lexical", "normalized", "embedding"} else "lexical"
+
+
+def _git_commit() -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(_REPO), "rev-parse", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else "unknown"
+
+
+SHADOW_RATE = _effective_shadow_rate()
+DIVERGENCE_MODE = _effective_divergence_mode()
+CONFIGURED_DIVERGENCE_BUDGET = os.environ.get(
+    "AGENTC_SHADOW_DIVERGENCE_BUDGET", "rule_default"
+)
+AGENTC_GIT_COMMIT = _git_commit()
 
 _ALL_RULES = [
     "CacheHit", "ContextCompress", "ParallelBranch", "ModelDowngrade", "StateDrop",
@@ -59,6 +99,8 @@ _CSV_COLUMNS = [
     "input_tokens_baseline", "input_tokens_optimized", "input_token_savings_pct",
     "cc_fire_count", "sd_fire_count", "total_calls",
     "guard_disable_count", "guard_disable_rules", "guard_disable_sites",
+    "shadow_rate", "divergence_mode", "configured_divergence_budget",
+    "shadow_calls_in_cost_totals", "agentc_git_commit",
 ]
 _PER_TASK_COLS = ["agent_module", "config", "task_id", "baseline_passed", "optimized_passed"]
 
@@ -83,7 +125,8 @@ def _load_env() -> dict[str, str]:
             if not line or line.startswith("#") or "=" not in line:
                 continue
             k, _, v = line.partition("=")
-            k = k.strip(); v = v.strip().strip('"').strip("'")
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
             if k and k not in env:
                 env[k] = v
     return env
@@ -215,7 +258,11 @@ def main() -> int:
         if cumulative > ABORT_CEILING_USD:
             raise RuntimeError(f"ABORT CEILING at {label}: ${cumulative:.4f}")
 
-    print(f"\n=== baseline (OPTIMIZE=0, N={N_TASKS}) agent={AGENT} shadow={os.environ.get('AGENTC_OPTIMIZE_SHADOW','0.02')} ===")
+    print(
+        f"\n=== baseline (OPTIMIZE=0, N={N_TASKS}) agent={AGENT} "
+        f"shadow={SHADOW_RATE} mode={DIVERGENCE_MODE} "
+        f"budget={CONFIGURED_DIVERGENCE_BUDGET} ==="
+    )
     baseline_dir = STORAGE_ROOT / "baseline"
     baseline_per, baseline_cost, baseline_tokens = _run_phase(baseline_dir, optimize=False, n_tasks=N_TASKS)
     _check("baseline", baseline_cost)
@@ -252,14 +299,19 @@ def main() -> int:
         cc, sd, total = _fires(opt_dir)
         dis_count, dis_rules, dis_sites = _guard_disables(opt_dir)
         print(f"  {n_pass}/{n}  BF={n_BF} FB={n_FB} p={p_val:.4f}  cost={cost_pct:+.1f}% tok={tok_pct:+.1f}%  CC={cc} SD={sd}/{total}  disables={dis_count}")
+        summary_row = [
+            config, n_pass, n, f"{acc:.1f}", f"{acc-b_acc:.1f}", f"{se:.1f}",
+            f"{p_val:.4f}", n_BF, n_FB,
+            f"{baseline_cost*1000:.4f}", f"{opt_cost*1000:.4f}", f"{cost_pct:.2f}",
+            baseline_tokens, opt_tokens, f"{tok_pct:.2f}", cc, sd, total,
+            dis_count, dis_rules, dis_sites,
+            SHADOW_RATE, DIVERGENCE_MODE, CONFIGURED_DIVERGENCE_BUDGET,
+            0, AGENTC_GIT_COMMIT,
+        ]
+        if len(summary_row) != len(_CSV_COLUMNS):
+            raise RuntimeError("guard summary row does not match its CSV schema")
         with OUT_PATH.open("a", newline="") as f:
-            csv.writer(f).writerow([
-                config, n_pass, n, f"{acc:.1f}", f"{acc-b_acc:.1f}", f"{se:.1f}",
-                f"{p_val:.4f}", n_BF, n_FB,
-                f"{baseline_cost*1000:.4f}", f"{opt_cost*1000:.4f}", f"{cost_pct:.2f}",
-                baseline_tokens, opt_tokens, f"{tok_pct:.2f}", cc, sd, total,
-                dis_count, dis_rules, dis_sites,
-            ])
+            csv.writer(f).writerow(summary_row)
         with PER_TASK_PATH.open("a", newline="") as f:
             w = csv.writer(f)
             for tid, bp in baseline_per:

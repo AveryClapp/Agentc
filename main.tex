@@ -44,9 +44,10 @@ production agents, and one unseen third-party agent instrumented with a single
 long-context workloads, with rule-specific savings on routing and state-accumulation
 workloads; real-agent accuracy deltas are not statistically significant across three
 model providers (OpenAI, Anthropic, open-source Llama-3.3-70B), and an automatic,
-label-free accuracy guard, at a bounded 2\% shadow-sampling cost, converts a $-$42.7\,pp
-StateDrop catastrophe to $-$1.3\,pp (97\% of the damage prevented) while keeping beneficial
-compression enabled; the containment metric that makes it selective reproduces across four
+label-free accuracy guard, evaluated with full shadow sampling to characterize its
+disable decisions, converts a $-$42.7\,pp StateDrop catastrophe to $-$1.3\,pp (97\%
+of the damage prevented) while keeping beneficial compression enabled; the containment
+metric that makes it selective reproduces across four
 model families (OpenAI, Meta, Anthropic, Alibaba) at a per-model budget. On
 HotpotQA-distractor at $n$=100, Agentc improves accuracy from 68\% to 100\% (McNemar
 exact $p=4.66\times10^{-10}$, BF=0) while LLMLingua-2 degrades accuracy to 53\%
@@ -163,7 +164,9 @@ ground-truth labels, while \textit{preserving} beneficial compression (ContextCo
 stays enabled at 32.4--37.6\% savings on two agents under the guard). With a
 normalization-robust divergence metric the guard is \textit{selective}, keeping benign
 output-changing rules and still blocking catastrophic ones using a dependency-free signal;
-the remaining limit is lexically-invisible semantic disagreement
+the remaining limit is lexically-invisible semantic disagreement. All guard-on cells use
+full shadow sampling, so they establish selectivity under dense feedback rather than
+detection delay, damage, latency, or cost at the runtime's 2\% deployment default
 (Section~\ref{sec:eval-guard}).
 \end{itemize}
 
@@ -1471,16 +1474,16 @@ rewritten calls: it runs the unrewritten call alongside the optimized one, measu
 output divergence (1\,$-$\,Jaccard on output tokens) between them, and folds the
 divergence into a per-(call-site, rule) budget. When a rule's divergence exceeds its
 budget for five consecutive samples, the planner auto-disables it for that call site.
-The mechanism is rule-agnostic and requires no ground-truth labels. It samples at a
-configurable rate (2\% in production), so the guard's safety costs roughly 2\% extra
-inference in the steady state, a bounded and tunable cost/safety knob; a rule that
-auto-disables thereafter incurs no further shadow cost. The local feedback path is
-separated from provider overhead in \path{bench/guard_overhead_bench.py}, but its current
-result is a single-machine Stage~E0 diagnostic rather than paper evidence, so we do not
-use it for a quantitative claim. The
-shadow \emph{inference} call itself, however, is a real (billed) API call issued
-synchronously on the sampled requests, so it adds that call's full latency and cost to
-those $\approx$2\% of requests; unsampled calls are unaffected, and the rate is tunable.
+The mechanism is rule-agnostic and requires no ground-truth labels. Every guard-on
+experiment reported below sets the shadow rate to 1.0 so enough comparisons arrive to
+characterize a disable decision within $n\leq300$ calls. The runtime's 0.02 default is
+a deployment setting, not an operating point evaluated in this paper: these results do
+not establish detection delay, damage before disable, or net savings at 2\%. Each sampled
+shadow is a second, real, billed API call issued synchronously, and the guard CSVs do not
+include that call in their token or cost totals; their savings columns are therefore gross
+main-path quantities. The local feedback path is separated from provider overhead in
+\path{bench/guard_overhead_bench.py}, but its current result is a single-machine Stage~E0
+diagnostic rather than paper evidence, so we do not use it for a quantitative claim.
 
 \textbf{The guard prevents catastrophic misfires.} Re-running \texttt{analyst\_qa} with
 the guard active, StateDrop is auto-disabled after roughly ten fires and accuracy
@@ -1550,7 +1553,9 @@ normalized containment metric preserves it (32.4\% retained) and still catches S
 this holds across the full divergence-budget frontier (Fig.~\ref{fig:metric-tradeoff}). The
 $n$=200 \texttt{research\_planner} guard rows are the frontier-sweep configuration; the
 $n$=100 per-agent evaluation finds CC mildly beneficial ($+$4\,pp), consistent with benign
-compression. All guard-on accuracy deltas are non-degrading.}
+compression. All guard-on accuracy deltas are non-degrading. Every guard-on row uses
+full shadow sampling (rate 1.0); the table does not measure
+2\% deployment behavior or net shadow cost.}
 \label{tab:guard}
 \small
 \begin{tabular}{lllr}
@@ -1579,7 +1584,9 @@ catastrophe at every budget ($y\!\approx\!92\%$) but disables the benign rule at
 budget ($x\!=\!5$--$63\%$, top-left); the normalized containment metric occupies the
 benign-and-safe region at every budget ($x\!\ge\!96\%$, top-right). Unguarded keeps the
 benign rule but prevents no damage (bottom-right). No lexical operating point reaches the
-desired region.}
+desired region. All guard-on points use full shadow sampling; the figure characterizes
+metric selectivity under dense feedback, not detection delay at the 2\% deployment
+default.}
 \label{fig:metric-tradeoff}
 \end{figure}
 
@@ -1590,7 +1597,8 @@ four---benign ContextCompress (on \texttt{research\_planner}) kept at its full f
 catastrophic StateDrop (on \texttt{analyst\_qa}) disabled---while lexical over-disables benign
 CC everywhere. Catastrophe-recovery completeness is model-dependent (35--93\% of the unguarded
 damage prevented). Qwen3-235B's more verbose output regime calibrates to a tighter
-$\tau$=0.10. $n$=100 ($n$=200 for gpt-4o-mini).}
+$\tau$=0.10. Every guard-on cell uses full shadow sampling. $n$=100 ($n$=200 for
+gpt-4o-mini).}
 \label{tab:xmodel}
 \small
 \begin{tabular}{llllr}
@@ -1830,6 +1838,15 @@ token overlap would read as divergence); a learned divergence meter would close 
 cost of the dependency-free property. The threshold and metric tune the safety/savings
 tradeoff, and label-free gating still cannot certify accuracy without ground truth.
 
+\textbf{Guard sampling and controller scope.} Every guard-on result in this paper
+uses a shadow rate of 1.0 to obtain dense feedback within a short experimental run.
+The results demonstrate metric selectivity conditional on that feedback; they do not
+measure calls or time to disable, cumulative task damage, false disables, request-tail
+latency, or net cost at the runtime's 0.02 default. Shadow calls are absent from the
+reported token and cost totals. Moreover, these CSVs evaluate the predecessor per-rule,
+five-breach controller; the artifact's newer complete-plan exposure controller requires
+a fresh rate-sweep evaluation before it can support a paper claim.
+
 \textbf{ContextCompress requires multi-message prompt structure.} Providers or agents
 that concatenate context into a single message, as the Anthropic API convention does
 with multi-paragraph documents, will see ContextCompress correctly abstain, since
@@ -2034,7 +2051,7 @@ in-script \texttt{agentc.shutdown()} seeds the cache between runs \\
 
 \addlinespace
 \S\ref{sec:eval-guard} (guard overhead) &
-CPU microbenchmark (no API) &
+Stage~E0 local diagnostic (no API; not paper evidence) &
 \texttt{python -m bench.guard\_\allowbreak overhead\_\allowbreak bench} \\
 
 \addlinespace

@@ -1,7 +1,7 @@
 ---
 title: Re-run Ledger — code fixes vs committed experiments
 status: active
-last-updated: 2026-07-15
+last-updated: 2026-09-03
 ---
 
 # Re-run Ledger
@@ -30,7 +30,7 @@ data*, so a bug that would have silently disabled a rule would show `fire_count=
 |---|---|---|---|---|
 | **bd-4xr** P8-8 | remove per-plan heap allocations on the hot path | `overhead_scaling.csv` / `optimizer_overhead.txt` (the 76µs/120µs figure) | **RE-VERIFY (free)** | Fix only *lowers* overhead, so the "3 orders below an LLM call" claim survives regardless. Re-run the local overhead bench (no API). |
 | **bd-lu8** P12-3 | reset `optimizer_audit.db` between phases | the illustrative "SD fires 58 times" in `cc_sd_subadditivity_warmup.csv` (`main.tex:1357`) | **CAVEAT** | The 58 is warmup-inflated. Headline token-savings (32.5%/32.8%) come from `traces.db` (correctly reset) and are clean. Caveat the count, or optional paid re-run for an exact number. |
-| **bd-y1v** P12-4 | add warmup to the guard sweeps (currently W=0) | ~60 `gsweep_*` CSVs | **CAVEAT** | The guard is *online* — disable decisions and fire-retention are sampling-rate-independent, so the behavioral results stand. Savings magnitude already cited from clean runs (`lcqa_cc_guard.csv`). State the config; no re-run required. |
+| **bd-y1v** P12-4 | add warmup to the guard sweeps (currently W=0) | ~60 `gsweep_*` CSVs | **CAVEAT** | The cells use shadow rate 1.0 and support metric selectivity only under dense feedback. Disable timing, damage, fire retention, latency, and net savings over a fixed call horizon are sampling-rate-dependent. Disclose the configuration; a 2% deployment claim requires a new rate sweep with shadow cost included. |
 | **bd-0qm** P12-5 | align composition vs single-rule task windows | `cc_sd_subadditivity_warmup.csv`, `md_cc_orthogonality_warmup.csv` | **CAVEAT** | Within each file the compared rows share a window, so the efficiency ratio (100.6% additive) is like-for-like. Cross-table window mismatch is a methodology caveat, not a validity re-run. |
 | **bd-yqr** P8-11 (C3) | shared `project_savings()` helper across rules | `planner_ablation.csv`, `generalization_activation.csv` (OutputBudget fires 92–97%) | **HAZARD** | OB and DeadOutputTruncation carry an extra `*0.5` the other 7 rules lack (MNT-145). Preserve it or plan selection flips. Done right → no output change. DeadOutputTruncation never fires in committed data, so only OB is live. |
 | **bd-lcd** P3-1 | ParallelBranch projects a latency ratio as USD | only `rag_summarizer_warmup_n200.csv` | **CONTINGENT** | rag is **dropped from the paper / not cited quantitatively**. PB is structurally incapable of firing on any cited-table agent (none register a parallel peer). Blocked on **V4** (does PB fire?). A rag re-run is warranted only if that dropped file is ever resurrected. |

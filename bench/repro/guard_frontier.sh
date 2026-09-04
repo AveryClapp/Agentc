@@ -7,7 +7,9 @@
 # analyst_qa / StateDrop (catastrophic). For each, runs the unguarded baseline
 # (shadow off) plus the lexical and normalized divergence metrics across the
 # budget frontier tau in {0.10,0.20,0.30,0.50}, n=200, full shadow sampling
-# (AGENTC_OPTIMIZE_SHADOW=1) so disables actually trigger.
+# (AGENTC_OPTIMIZE_SHADOW=1) so disables trigger within the short run. These
+# historical cells characterize dense-feedback selectivity, not behavior or
+# net cost at the runtime's 0.02 default.
 #
 # Requires OPENAI_API_KEY. Outputs gsweep_tradeoff_*.csv in bench/paper_results/.
 # Build the figure afterwards with: python bench/paper_figures/fig9_metric_tradeoff.py

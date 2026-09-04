@@ -8,6 +8,8 @@
 # Provider routing uses the existing OpenAI-compatible plumbing. Set MODEL,
 # BASE (base_url) and the matching key, then run. The exact per-family
 # invocations used in the paper are documented in bench/repro/README.md.
+# Guard-on cells use full shadow sampling to characterize dense-feedback
+# selectivity; they do not validate the runtime's 0.02 default.
 #
 #   MODEL  e.g. meta-llama/Llama-3.3-70B-Instruct-Turbo
 #   BASE   e.g. https://api.together.xyz/v1   (key: TOGETHER_API_KEY)

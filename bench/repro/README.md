@@ -58,11 +58,13 @@ MODEL=Qwen/Qwen3-235B-A22B-Instruct-2507-tput BASE=https://api.together.xyz/v1 \
 
 ## Notes
 
-- `AGENTC_OPTIMIZE_SHADOW=1` (full sampling) is set so the guard's auto-disable
-  triggers within a single run; production default is 0.02. Raw `cost_savings_pct`
-  is therefore not directly comparable across cells -- use the behavioral columns
-  (`cc_fire_count`, `guard_disable_count`, `input_token_savings_pct`, `acc_delta_pp`),
-  which are sampling-rate-independent.
+- `AGENTC_OPTIMIZE_SHADOW=1` (full sampling) is set so the predecessor guard's
+  auto-disable triggers within a single run; the runtime default is 0.02. The
+  disable timing, damage, fire retention, latency, and net cost are all
+  sampling-rate-dependent, so these cells support only metric selectivity under
+  dense feedback. They do not validate the 2% operating point. Shadow calls are
+  absent from the reported token and cost totals, making guarded savings gross
+  main-path quantities rather than net deployment savings.
 - Temperature-1 stochasticity gives ~+/-2-3 pp accuracy noise at these n; the
   decision (rule kept vs disabled) is robust, recovery completeness is not.
 - Qwen3-235B served via Together throughput tier can occasionally stall a request;

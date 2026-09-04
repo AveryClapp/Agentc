@@ -15,7 +15,7 @@ code). Result: the metric selectivity is MODEL-AGNOSTIC.
   recovery less complete than gpt-4o-mini (honest caveat, stated in the paper).
 Data: gsweep_xmodel_{off,lexical,normalized}_{rp,an}*.csv. Wired into sec:eval-guard
 ("The selectivity is model-agnostic" para) + abstract (reproduces across model families
-+ bounded 2% cost + 97% damage-prevented reframe).
++ dense-feedback damage-prevention result; 2% behavior remains unmeasured).
 
 ## 4-FAMILY CROSS-MODEL + OVERHEAD (added 2026-06-11, commits a981394..ddabccf)
 
@@ -85,8 +85,9 @@ filed. Both are paper-integration blockers, not research.
   NON-disabled (kept) benign case the savings are clean and corroborated two ways:
   off_rp (shadow=0, zero twins) = 30.15% cost / 33.82% input-token savings; the
   full-shadow normalized frontier rp cells (shadow=1.0, kept) = 29-30% cost /
-  32-34% input tokens. They agree to ~1pp, so shadow overhead is negligible when the
-  rule is kept, and the production-rate (0.02) number lies in the same band.
+  32-34% input tokens. They agree to ~1pp on the main path when the rule is kept.
+  This does not establish the production-rate (0.02) operating point because the
+  shadow call is absent from the reported cost.
   **Honest guarded-benign savings = ~30% cost / ~34% input tokens** (n=200, same run
   family as the frontier and the off baseline). Use input-token savings as the
   headline magnitude (pricing-independent). Disabled-cell savings are still garbage
@@ -252,10 +253,12 @@ output-changing rule; the selective metric can.
 disables actually trigger), each rewritten call gets a full-cost shadow twin for
 measurement. cost_savings_pct is dominated by that overhead, not compression:
 lexical@0.05 (10 fires) shows +25% while lexical@0.15 (49 fires) shows -15% --
-non-monotonic, driven purely by fire-count -> shadow-twin count. Use **behavioral
-axes** (rule retention = fires/total; disabled yes/no; accuracy delta) which are
-sampling-rate-independent. A clean savings magnitude needs a production-rate
-(shadow~=0.02) run, which is a separate measurement.
+non-monotonic, driven purely by fire-count -> shadow-twin count. The **behavioral
+axes** (rule retention = fires/total; disabled yes/no; accuracy delta) describe
+these dense-feedback cells but are not sampling-rate-independent over a fixed
+call horizon: a lower rate delays evidence, disables, and damage containment. A
+clean deployment claim needs a production-rate (shadow~=0.02) run that includes
+shadow cost, which is a separate measurement.
 
 Data: bench/paper_results/gsweep_n300_{lexical,normalized,embedding}_rp_0.15.csv,
 gsweep_n300_lexical_rp_0.05.csv.

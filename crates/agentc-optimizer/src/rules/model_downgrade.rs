@@ -205,8 +205,8 @@ mod tests {
     use crate::cost_model::WelfordStats;
     use crate::dag::Parameters;
     use crate::model_catalog::{
-        default_model_catalog, OPENAI_CHAT_COMPLETIONS_PROTOCOL, ROUTED_TARGET_KEY,
-        ROUTE_CONTEXT_KEY,
+        default_model_catalog, DEFAULT_MODEL_CATALOG_VERSION,
+        OPENAI_CHAT_COMPLETIONS_PROTOCOL, ROUTED_TARGET_KEY, ROUTE_CONTEXT_KEY,
     };
 
     fn routes() -> Vec<ModelDowngradeRoute> {
@@ -374,9 +374,6 @@ mod tests {
         assert_eq!(metadata["requested_model_id"], "gpt-5.4");
         assert_eq!(metadata["provider_namespace"], "openai");
         assert_eq!(metadata["output_token_parameter"], "max_completion_tokens");
-        assert!(metadata["catalog_version"]
-            .as_str()
-            .unwrap()
-            .contains("2026-09-03"));
+        assert_eq!(metadata["catalog_version"], DEFAULT_MODEL_CATALOG_VERSION);
     }
 }

@@ -147,6 +147,9 @@ objective and risk limits used by the latest decision, the selected and fallback
 plan IDs, and every candidate's evidence, estimate, guard state, and rejection
 reason. Invalid optimizer environment values disable optimization and paid
 exploration for the process instead of silently reverting to another policy.
+The same planner contract can be persisted under `[optimizer]` in the shared
+`~/.agentc/config.toml`; environment variables override TOML. See
+[CONFIG.md](CONFIG.md) for the schema and bootstrap-path rules.
 
 ---
 

@@ -208,8 +208,12 @@ Accuracy:     baseline 82.0% → optimized 81.2% (within budget)
 
 ### Configuration
 
-Frozen configuration shape (loading this TOML representation is tracked in
-`bd-217q`; the implemented runtime interface is the environment table below):
+The optimizer reads the `[optimizer]` subtree from the same canonical
+`config.toml` used by the profiler (`~/.agentc/config.toml` by default).
+Defaults are applied first, then TOML, then environment overrides. The Python
+lifecycle passes Rust the exact bootstrap file it read, so a root-level
+`storage_path` relocation does not make the two runtimes consult different
+files.
 
 ```toml
 [optimizer]
@@ -217,55 +221,47 @@ enabled = true
 hot_threshold = 3                   # Invocations before a call site is eligible.
 cost_model_window = 50              # Rolling window for cost model fitting.
 divergence_window = 50              # Retained shadow samples per site/rule.
-plan_profile_window = 50             # Retained executions and, separately, paired divergences.
-min_plan_evidence = 20               # Paired samples before admission.
-plan_profile_freshness_hours = 24
+plan_profile_window = 50            # Retained executions and, separately, paired divergences.
 max_overhead_ms = 5                 # Abort optimization if budget exceeded.
 shadow_rate = 0.02                  # 2% of optimized calls run shadow execution.
+compose = true
 
 [optimizer.selection]
 objective = "cost"                   # "cost" or "latency".
+min_plan_evidence = 20               # Paired samples before admission.
+plan_profile_freshness_hours = 24
 max_rewrite_depth = 3
-exploration_calls_per_site_24h = 20
-max_concurrent_counterfactuals = 1
 divergence_exposure_budget = 1.0
 # Optional global override; omit to use the strictest threshold in each plan.
 # global_divergence_threshold = 0.03
+
+[optimizer.exploration]
+enabled = true
+calls_per_site_24h = 20
+max_concurrent_counterfactuals = 1
 
 [optimizer.evaluation]
 # Evaluation-only: production has no task-quality label.
 task_damage_budget = 5.0
 # Workload-specific: tau2=-0.03, SWE-bench=-0.02, OSWorld=-0.02.
-non_inferiority_margin = -0.03
-
-[optimizer.accuracy_budget]
-# Maximum allowed shadow-mode divergence per rule, as a fraction.
-# Optimizer auto-disables a rule on a call site if observed divergence exceeds budget.
-CacheHit            = 0.01
-ContextCompress     = 0.02
-ParallelBranch      = 0.00          # pure reordering; divergence is a bug.
-ModelDowngrade      = 0.03
-StateDrop           = 0.01
-
-[optimizer.rules]
-# Individual rule enable/disable and rule-specific tuning.
-CacheHit.enabled            = true
-ContextCompress.enabled     = true
-ContextCompress.min_prompt_bytes = 8192
-ParallelBranch.enabled      = true
-ParallelBranch.max_fanout   = 4
-ModelDowngrade.enabled      = true
-ModelDowngrade.route = [
-  { from = "gpt-4o",           to = "gpt-4o-mini",          max_output_tokens = 512 },
-  { from = "claude-opus-4-7",  to = "claude-haiku-4-5",     max_output_tokens = 1024 },
-]
-StateDrop.enabled           = true
+# non_inferiority_margin = -0.03
 ```
+
+All fields are optional. Root profiler keys coexist in the same document.
+Unknown root keys are ignored by Rust (and warned about by Python); unknown
+keys anywhere inside `[optimizer]`, malformed TOML, and invalid final ranges
+fail safe by disabling optimization and exploration. The diagnostic error is
+sanitized and never includes the config path or file contents.
+
+The schema rejects `[optimizer.rules]` and `[optimizer.accuracy_budget]`.
+Rule-specific configuration remains module-owned; the supported process-wide
+ablation surface is `AGENTC_ENABLED_RULES`.
 
 Environment overrides:
 
 | Variable | Effect |
 |---|---|
+| `AGENTC_CONFIG_PATH=/path/config.toml` | Direct native/CLI override for the shared bootstrap file; `agentc.init()` installs this automatically. |
 | `AGENTC_OPTIMIZE=0` | Disables the optimizer. Profiling still runs. |
 | `AGENTC_OPTIMIZE_HOT_THRESHOLD=10` | Overrides `hot_threshold`. |
 | `AGENTC_OPTIMIZE_COST_MODEL_WINDOW=50` | Sets the exact retained sample count per cost profile. |

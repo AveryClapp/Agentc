@@ -24,8 +24,8 @@ _init_lock = threading.Lock()
 _config: Config | None = None
 _prev_sigterm: Any = None
 _prev_sigint: Any = None
-_storage_env_previous: tuple[bool, str | None] | None = None
-_storage_env_installed: str | None = None
+_native_env_previous: dict[str, tuple[bool, str | None]] | None = None
+_native_env_installed: dict[str, str] | None = None
 
 
 def is_initialized() -> bool:
@@ -38,18 +38,26 @@ def get_config() -> Config | None:
     return _config
 
 
-def _configure_native_storage(storage_path: os.PathLike[str]) -> None:
-    """Make one resolved path authoritative for every native subsystem."""
-    global _storage_env_previous, _storage_env_installed
-    key = "AGENTC_STORAGE_PATH"
+def _configure_native_storage(
+    storage_path: os.PathLike[str], config_path: os.PathLike[str]
+) -> None:
+    """Make the lifecycle's resolved data and bootstrap paths authoritative."""
+    global _native_env_previous, _native_env_installed
     resolved = str(storage_path)
-    _storage_env_previous = (key in os.environ, os.environ.get(key))
-    _storage_env_installed = resolved
-    os.environ[key] = resolved
+    resolved_config = str(config_path)
+    installed = {
+        "AGENTC_STORAGE_PATH": resolved,
+        "AGENTC_CONFIG_PATH": resolved_config,
+    }
+    _native_env_previous = {
+        key: (key in os.environ, os.environ.get(key)) for key in installed
+    }
+    _native_env_installed = installed
+    os.environ.update(installed)
     try:
         from agentc import _native
 
-        native_path = _native.optimize_configure(resolved)
+        native_path = _native.optimize_configure(resolved, resolved_config)
         if native_path != resolved:
             raise RuntimeError(
                 "native optimizer storage mismatch: "
@@ -61,22 +69,22 @@ def _configure_native_storage(storage_path: os.PathLike[str]) -> None:
 
 
 def _restore_storage_environment() -> None:
-    """Restore the caller's storage environment unless it changed meanwhile."""
-    global _storage_env_previous, _storage_env_installed
-    previous = _storage_env_previous
-    installed = _storage_env_installed
-    _storage_env_previous = None
-    _storage_env_installed = None
+    """Restore lifecycle-installed environment values unless callers changed them."""
+    global _native_env_previous, _native_env_installed
+    previous = _native_env_previous
+    installed = _native_env_installed
+    _native_env_previous = None
+    _native_env_installed = None
     if previous is None or installed is None:
         return
-    key = "AGENTC_STORAGE_PATH"
-    if os.environ.get(key) != installed:
-        return
-    existed, value = previous
-    if existed and value is not None:
-        os.environ[key] = value
-    else:
-        os.environ.pop(key, None)
+    for key, installed_value in installed.items():
+        if os.environ.get(key) != installed_value:
+            continue
+        existed, value = previous[key]
+        if existed and value is not None:
+            os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
 
 
 def init(
@@ -118,6 +126,7 @@ def init(
             capture_embeddings=config.capture_embeddings,
             fail_open=config.fail_open,
             storage_path=config.storage_path.resolve(),
+            config_path=config.config_path.resolve(),
         )
 
         # Create directories
@@ -140,7 +149,7 @@ def init(
         # Native trace merging, memoization, and optimizer wiring otherwise
         # resolve storage independently from the process environment. Install
         # the resolved lifecycle path before any of those components start.
-        _configure_native_storage(config.storage_path)
+        _configure_native_storage(config.storage_path, config.config_path)
 
         try:
             # Store config

@@ -8,6 +8,10 @@
 use std::env;
 use std::error::Error;
 use std::fmt;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use serde::Deserialize;
 
 use crate::execution_plan::{SelectionObjective, SelectionPolicy};
 use crate::exploration::{
@@ -26,6 +30,59 @@ pub const SWE_BENCH_NON_INFERIORITY_MARGIN: f64 = -0.02;
 pub const OSWORLD_NON_INFERIORITY_MARGIN: f64 = -0.02;
 
 const MICROS_PER_HOUR: f64 = 3_600_000_000.0;
+pub const CONFIG_PATH_ENV: &str = "AGENTC_CONFIG_PATH";
+pub const CONFIG_FILE_NAME: &str = "config.toml";
+
+/// Root document shared with the Python profiler. Unknown root keys belong to
+/// other subsystems and are intentionally ignored here; the optimizer subtree
+/// is strict so a misspelled risk control cannot silently become a default.
+#[derive(Debug, Default, Deserialize)]
+struct ConfigDocument {
+    #[serde(default)]
+    optimizer: Option<OptimizerFileConfig>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OptimizerFileConfig {
+    enabled: Option<bool>,
+    hot_threshold: Option<u32>,
+    cost_model_window: Option<u32>,
+    plan_profile_window: Option<u32>,
+    divergence_window: Option<u32>,
+    max_overhead_ms: Option<f32>,
+    shadow_rate: Option<f32>,
+    compose: Option<bool>,
+    selection: Option<SelectionFileConfig>,
+    exploration: Option<ExplorationFileConfig>,
+    evaluation: Option<EvaluationFileConfig>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SelectionFileConfig {
+    objective: Option<SelectionObjective>,
+    min_plan_evidence: Option<u32>,
+    plan_profile_freshness_hours: Option<f64>,
+    max_rewrite_depth: Option<usize>,
+    divergence_exposure_budget: Option<f64>,
+    global_divergence_threshold: Option<f64>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExplorationFileConfig {
+    enabled: Option<bool>,
+    calls_per_site_24h: Option<u32>,
+    max_concurrent_counterfactuals: Option<u32>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EvaluationFileConfig {
+    task_damage_budget: Option<f64>,
+    non_inferiority_margin: Option<f64>,
+}
 
 /// Planner-visible tunables. Rule-specific settings live in separate config
 /// structs in their owning modules.
@@ -72,8 +129,8 @@ pub struct OptimizerConfig {
     /// Workload-specific evaluation margin. There is no universal production
     /// default; campaign workers set it from their frozen workload contract.
     pub evaluation_non_inferiority_margin: Option<f64>,
-    /// Present only when strict environment resolution failed. The resulting
-    /// config is disabled but remains inspectable.
+    /// Present only when strict TOML or environment resolution failed. The
+    /// resulting config is disabled but remains inspectable.
     pub configuration_error: Option<String>,
 }
 
@@ -106,6 +163,8 @@ impl Default for OptimizerConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OptimizerConfigError {
+    ConfigFileRead,
+    ConfigFileInvalid,
     InvalidEnvironment {
         variable: &'static str,
         expected: &'static str,
@@ -119,6 +178,12 @@ pub enum OptimizerConfigError {
 impl fmt::Display for OptimizerConfigError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ConfigFileRead => {
+                formatter.write_str("optimizer configuration file is unreadable")
+            }
+            Self::ConfigFileInvalid => {
+                formatter.write_str("optimizer configuration file is invalid")
+            }
             Self::InvalidEnvironment { variable, expected } => {
                 write!(formatter, "{variable} must be {expected}")
             }
@@ -132,6 +197,92 @@ impl fmt::Display for OptimizerConfigError {
 impl Error for OptimizerConfigError {}
 
 impl OptimizerConfig {
+    /// Resolve the canonical configuration next to a storage directory, unless
+    /// the embedding lifecycle supplied the exact bootstrap path explicitly.
+    pub fn from_storage(storage_dir: &Path) -> Self {
+        let path = env::var_os(CONFIG_PATH_ENV)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| storage_dir.join(CONFIG_FILE_NAME));
+        Self::from_file(&path)
+    }
+
+    /// Resolve defaults, a shared TOML document, then environment overrides.
+    /// Missing files are normal. Every other file failure disables optimizer
+    /// activity without retaining the path or file contents in diagnostics.
+    pub fn from_file(path: &Path) -> Self {
+        match Self::try_from_file(path) {
+            Ok(config) => config,
+            Err(error) => {
+                eprintln!("[agentc-optimizer] invalid configuration; disabled: {error}");
+                Self::safe_disabled(error.to_string())
+            }
+        }
+    }
+
+    pub fn try_from_file(path: &Path) -> Result<Self, OptimizerConfigError> {
+        let mut config = Self::default();
+        match fs::read_to_string(path) {
+            Ok(raw) => {
+                let document: ConfigDocument =
+                    toml::from_str(&raw).map_err(|_| OptimizerConfigError::ConfigFileInvalid)?;
+                if let Some(file_config) = document.optimizer {
+                    config.apply_file_config(file_config);
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err(OptimizerConfigError::ConfigFileRead),
+        }
+        config.apply_env_overrides()?;
+        Ok(config)
+    }
+
+    fn apply_file_config(&mut self, file: OptimizerFileConfig) {
+        apply_option(&mut self.enabled, file.enabled);
+        apply_option(&mut self.hot_threshold, file.hot_threshold);
+        apply_option(&mut self.cost_model_window, file.cost_model_window);
+        apply_option(&mut self.plan_profile_window, file.plan_profile_window);
+        apply_option(&mut self.divergence_window, file.divergence_window);
+        apply_option(&mut self.max_overhead_ms, file.max_overhead_ms);
+        apply_option(&mut self.shadow_rate, file.shadow_rate);
+        apply_option(&mut self.compose, file.compose);
+        if let Some(selection) = file.selection {
+            apply_option(&mut self.objective, selection.objective);
+            apply_option(&mut self.min_plan_evidence, selection.min_plan_evidence);
+            apply_option(
+                &mut self.plan_profile_freshness_hours,
+                selection.plan_profile_freshness_hours,
+            );
+            apply_option(&mut self.max_rewrite_depth, selection.max_rewrite_depth);
+            apply_option(
+                &mut self.divergence_exposure_budget,
+                selection.divergence_exposure_budget,
+            );
+            if selection.global_divergence_threshold.is_some() {
+                self.global_divergence_threshold = selection.global_divergence_threshold;
+            }
+        }
+        if let Some(exploration) = file.exploration {
+            apply_option(&mut self.exploration_enabled, exploration.enabled);
+            apply_option(
+                &mut self.exploration_calls_per_site_24h,
+                exploration.calls_per_site_24h,
+            );
+            apply_option(
+                &mut self.max_concurrent_counterfactuals,
+                exploration.max_concurrent_counterfactuals,
+            );
+        }
+        if let Some(evaluation) = file.evaluation {
+            apply_option(
+                &mut self.evaluation_task_damage_budget,
+                evaluation.task_damage_budget,
+            );
+            if evaluation.non_inferiority_margin.is_some() {
+                self.evaluation_non_inferiority_margin = evaluation.non_inferiority_margin;
+            }
+        }
+    }
+
     /// Apply strict environment overrides and validate the complete contract.
     /// A present but malformed variable is an error; it is never silently
     /// treated as if the operator had not set it.
@@ -332,6 +483,12 @@ impl OptimizerConfig {
 
 fn invalid<T>(field: &'static str, expected: &'static str) -> Result<T, OptimizerConfigError> {
     Err(OptimizerConfigError::InvalidField { field, expected })
+}
+
+fn apply_option<T>(destination: &mut T, value: Option<T>) {
+    if let Some(value) = value {
+        *destination = value;
+    }
 }
 
 fn require_positive_u32(field: &'static str, value: u32) -> Result<(), OptimizerConfigError> {
@@ -554,6 +711,175 @@ mod tests {
         assert!(!config.exploration_enabled);
         assert_eq!(config.configuration_error.as_deref(), Some("bad objective"));
         config.validate().unwrap();
+    }
+
+    #[test]
+    fn shared_toml_maps_every_planner_contract_section() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CONFIG_FILE_NAME);
+        fs::write(
+            &path,
+            r#"
+capture_content = false
+storage_path = "/tmp/owned-by-profiler"
+
+[optimizer]
+enabled = true
+hot_threshold = 7
+cost_model_window = 41
+plan_profile_window = 31
+divergence_window = 29
+max_overhead_ms = 8.5
+shadow_rate = 0.04
+compose = false
+
+[optimizer.selection]
+objective = "latency"
+min_plan_evidence = 11
+plan_profile_freshness_hours = 6.5
+max_rewrite_depth = 2
+divergence_exposure_budget = 0.75
+global_divergence_threshold = 0.08
+
+[optimizer.exploration]
+enabled = false
+calls_per_site_24h = 9
+max_concurrent_counterfactuals = 2
+
+[optimizer.evaluation]
+task_damage_budget = 3.5
+non_inferiority_margin = -0.02
+"#,
+        )
+        .unwrap();
+
+        let config = OptimizerConfig::try_from_file(&path).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.hot_threshold, 7);
+        assert_eq!(config.cost_model_window, 41);
+        assert_eq!(config.plan_profile_window, 31);
+        assert_eq!(config.divergence_window, 29);
+        assert_eq!(config.max_overhead_ms, 8.5);
+        assert_eq!(config.shadow_rate, 0.04);
+        assert!(!config.compose);
+        assert_eq!(config.objective, SelectionObjective::Latency);
+        assert_eq!(config.min_plan_evidence, 11);
+        assert_eq!(config.plan_profile_freshness_hours, 6.5);
+        assert_eq!(config.max_rewrite_depth, 2);
+        assert!(!config.exploration_enabled);
+        assert_eq!(config.exploration_calls_per_site_24h, 9);
+        assert_eq!(config.max_concurrent_counterfactuals, 2);
+        assert_eq!(config.divergence_exposure_budget, 0.75);
+        assert_eq!(config.global_divergence_threshold, Some(0.08));
+        assert_eq!(config.evaluation_task_damage_budget, 3.5);
+        assert_eq!(config.evaluation_non_inferiority_margin, Some(-0.02));
+    }
+
+    #[test]
+    fn environment_overrides_valid_toml() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let name = "AGENTC_OPTIMIZE_OBJECTIVE";
+        let _restore = EnvRestore {
+            name,
+            value: env::var_os(name),
+        };
+        env::set_var(name, "cost");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CONFIG_FILE_NAME);
+        fs::write(&path, "[optimizer.selection]\nobjective = \"latency\"\n").unwrap();
+
+        let config = OptimizerConfig::try_from_file(&path).unwrap();
+        assert_eq!(config.objective, SelectionObjective::Cost);
+    }
+
+    #[test]
+    fn missing_toml_uses_defaults_and_environment() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let name = "AGENTC_OPTIMIZE_HOT_THRESHOLD";
+        let _restore = EnvRestore {
+            name,
+            value: env::var_os(name),
+        };
+        env::set_var(name, "12");
+        let dir = tempfile::tempdir().unwrap();
+
+        let config = OptimizerConfig::try_from_file(&dir.path().join("missing.toml")).unwrap();
+        assert_eq!(config.hot_threshold, 12);
+        assert_eq!(config.objective, SelectionObjective::Cost);
+    }
+
+    #[test]
+    fn malformed_or_unknown_optimizer_toml_fails_safe_without_echoing_source() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let malformed = dir.path().join("malformed.toml");
+        fs::write(&malformed, "[optimizer.selection\nsecret = 'do-not-echo'").unwrap();
+        let malformed_config = OptimizerConfig::from_file(&malformed);
+        assert!(!malformed_config.enabled);
+        assert!(!malformed_config.exploration_enabled);
+        assert_eq!(
+            malformed_config.configuration_error.as_deref(),
+            Some("optimizer configuration file is invalid")
+        );
+
+        let unknown = dir.path().join("unknown.toml");
+        fs::write(&unknown, "[optimizer.selection]\nobjectiv = \"latency\"\n").unwrap();
+        let unknown_config = OptimizerConfig::from_file(&unknown);
+        assert!(!unknown_config.enabled);
+        assert!(!unknown_config.exploration_enabled);
+        assert_eq!(
+            unknown_config.configuration_error.as_deref(),
+            Some("optimizer configuration file is invalid")
+        );
+    }
+
+    #[test]
+    fn unreadable_or_out_of_range_toml_fails_safe() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let unreadable = OptimizerConfig::from_file(dir.path());
+        assert!(!unreadable.enabled);
+        assert!(!unreadable.exploration_enabled);
+        assert_eq!(
+            unreadable.configuration_error.as_deref(),
+            Some("optimizer configuration file is unreadable")
+        );
+
+        let path = dir.path().join(CONFIG_FILE_NAME);
+        fs::write(
+            &path,
+            "[optimizer]\nplan_profile_window = 5\n\
+             [optimizer.selection]\nmin_plan_evidence = 6\n",
+        )
+        .unwrap();
+        let invalid_range = OptimizerConfig::from_file(&path);
+        assert!(!invalid_range.enabled);
+        assert!(!invalid_range.exploration_enabled);
+        assert_eq!(
+            invalid_range.configuration_error.as_deref(),
+            Some("optimizer.min_plan_evidence must be no larger than plan_profile_window")
+        );
+    }
+
+    #[test]
+    fn from_storage_honors_exact_bootstrap_path() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _restore = EnvRestore {
+            name: CONFIG_PATH_ENV,
+            value: env::var_os(CONFIG_PATH_ENV),
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let bootstrap = dir.path().join("bootstrap.toml");
+        fs::write(
+            &bootstrap,
+            "[optimizer.selection]\nobjective = \"latency\"\n",
+        )
+        .unwrap();
+        env::set_var(CONFIG_PATH_ENV, &bootstrap);
+
+        let config = OptimizerConfig::from_storage(&dir.path().join("relocated-data"));
+        assert_eq!(config.objective, SelectionObjective::Latency);
     }
 
     #[test]

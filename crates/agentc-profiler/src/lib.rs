@@ -804,10 +804,9 @@ fn optimizer_state() -> Arc<OptimizerState> {
     if let Some(state) = slot.as_ref() {
         return Arc::clone(state);
     }
-    let state = Arc::new(build_optimizer_state(
-        resolve_storage_dir(),
-        OptimizerConfig::from_env(),
-    ));
+    let storage = resolve_storage_dir();
+    let config = OptimizerConfig::from_storage(&storage);
+    let state = Arc::new(build_optimizer_state(storage, config));
     *slot = Some(Arc::clone(&state));
     state
 }
@@ -835,20 +834,22 @@ fn flush_optimizer_state(state: &OptimizerState) {
 
 /// Configure a fresh optimizer at the lifecycle's resolved storage path.
 /// Replaces any prior process-local optimizer after flushing its dirty state.
-#[pyfunction]
-fn optimize_configure(py: Python<'_>, storage_path: &str) -> String {
+#[pyfunction(signature = (storage_path, config_path=None))]
+fn optimize_configure(py: Python<'_>, storage_path: &str, config_path: Option<&str>) -> String {
     let storage = std::path::PathBuf::from(storage_path);
+    let config_path = config_path.map(std::path::PathBuf::from);
     py.allow_threads(|| {
+        let config = config_path
+            .as_deref()
+            .map(OptimizerConfig::from_file)
+            .unwrap_or_else(|| OptimizerConfig::from_storage(&storage));
         let mut slot = optimizer_slot()
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(previous) = slot.as_ref() {
             flush_optimizer_state(previous);
         }
-        let state = Arc::new(build_optimizer_state(
-            storage,
-            OptimizerConfig::from_env(),
-        ));
+        let state = Arc::new(build_optimizer_state(storage, config));
         let resolved = state.storage_dir.to_string_lossy().into_owned();
         *slot = Some(state);
         resolved

@@ -78,6 +78,7 @@ class TestConfig:
         assert config.capture_embeddings is True  # follows capture_content
         assert config.fail_open is True
         assert str(config.storage_path).endswith(".agentc")
+        assert config.config_path == config.storage_path / "config.toml"
 
     def test_capture_embeddings_follows_content(self) -> None:
         config = resolve_config(capture_content=False)
@@ -100,6 +101,57 @@ class TestConfig:
     def test_storage_path_custom(self, tmp_storage: Path) -> None:
         config = resolve_config(storage_path=str(tmp_storage))
         assert config.storage_path == tmp_storage
+        assert config.config_path == tmp_storage / "config.toml"
+
+    def test_environment_storage_selects_its_config_file(self, tmp_storage: Path) -> None:
+        tmp_storage.mkdir()
+        (tmp_storage / "config.toml").write_text(
+            "capture_content = false\n[optimizer]\nenabled = false\n",
+            encoding="utf-8",
+        )
+        with patch.dict(os.environ, {"AGENTC_STORAGE_PATH": str(tmp_storage)}):
+            config = resolve_config()
+
+        assert config.capture_content is False
+        assert config.config_path == tmp_storage / "config.toml"
+
+    def test_kwarg_storage_selects_config_before_environment(
+        self, tmp_storage: Path, tmp_path: Path
+    ) -> None:
+        environment_storage = tmp_path / "environment"
+        environment_storage.mkdir()
+        (environment_storage / "config.toml").write_text(
+            "capture_content = false\n", encoding="utf-8"
+        )
+        tmp_storage.mkdir()
+        (tmp_storage / "config.toml").write_text(
+            "capture_content = true\n", encoding="utf-8"
+        )
+        with patch.dict(
+            os.environ, {"AGENTC_STORAGE_PATH": str(environment_storage)}
+        ):
+            config = resolve_config(storage_path=str(tmp_storage))
+
+        assert config.capture_content is True
+        assert config.config_path == tmp_storage / "config.toml"
+
+    def test_toml_storage_relocation_retains_bootstrap_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        tmp_storage = home / ".agentc"
+        relocated = tmp_path / "relocated"
+        tmp_storage.mkdir(parents=True)
+        (tmp_storage / "config.toml").write_text(
+            f'storage_path = "{relocated}"\n', encoding="utf-8"
+        )
+        monkeypatch.delenv("AGENTC_STORAGE_PATH", raising=False)
+
+        with patch("pathlib.Path.home", return_value=home):
+            config = resolve_config()
+
+        assert config.storage_path == relocated
+        assert config.config_path == tmp_storage / "config.toml"
 
     def test_storage_path_home_fallback(self) -> None:
         """When HOME is not set, falls back to temp directory."""
@@ -149,6 +201,62 @@ class TestInit:
         assert config.fail_open is False
         assert config.storage_path == tmp_storage
 
+    def test_toml_relocation_preserves_optimizer_bootstrap(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        tmp_storage = home / ".agentc"
+        relocated = tmp_path / "relocated-data"
+        tmp_storage.mkdir(parents=True)
+        (tmp_storage / "config.toml").write_text(
+            f"""
+storage_path = "{relocated}"
+
+[optimizer.selection]
+objective = "latency"
+
+[optimizer.exploration]
+enabled = false
+""",
+            encoding="utf-8",
+        )
+
+        monkeypatch.delenv("AGENTC_STORAGE_PATH", raising=False)
+        with patch("pathlib.Path.home", return_value=home):
+            agentc.init()
+        config = get_config()
+        assert config is not None
+        assert config.storage_path == relocated
+        assert config.config_path == (tmp_storage / "config.toml").resolve()
+        assert Path(agentc._native.optimize_storage_path()) == relocated
+        call = {
+            "call_site_id": "tests.lifecycle:bootstrap",
+            "trace_id": "0" * 32,
+            "span_id": "0" * 16,
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "bootstrap"}],
+            "parameters": {
+                "extra": {
+                    "agentc_route_context": {
+                        "provider_protocol": "openai.chat.completions.v1",
+                        "provider_namespace": "openai",
+                        "input_tokens_upper_bound": 16,
+                        "image_input": False,
+                        "tool_calling": False,
+                        "structured_outputs": False,
+                        "streaming": False,
+                    }
+                }
+            },
+            "tools": [],
+            "input_deps": [],
+            "occurrence_ix": 0,
+        }
+        plan = json.loads(agentc._native.optimize_plan(json.dumps(call)))
+        risk = plan["agentc_planner_diagnostics"]["risk"]
+        assert risk["objective"] == "latency"
+        assert risk["exploration_enabled"] is False
+
     def test_reinit_after_shutdown(self, tmp_storage: Path) -> None:
         agentc.init(storage_path=str(tmp_storage))
         assert is_initialized()
@@ -163,12 +271,23 @@ class TestInit:
         tmp_path: Path,
     ) -> None:
         previous = str(tmp_path / "caller-storage")
-        with patch.dict(os.environ, {"AGENTC_STORAGE_PATH": previous}):
+        previous_config = str(tmp_path / "caller-config.toml")
+        with patch.dict(
+            os.environ,
+            {
+                "AGENTC_STORAGE_PATH": previous,
+                "AGENTC_CONFIG_PATH": previous_config,
+            },
+        ):
             agentc.init(storage_path=str(tmp_storage))
             assert os.environ["AGENTC_STORAGE_PATH"] == str(tmp_storage)
+            assert os.environ["AGENTC_CONFIG_PATH"] == str(
+                (tmp_storage / "config.toml").resolve()
+            )
             assert Path(agentc._native.optimize_storage_path()) == tmp_storage
             agentc.shutdown()
             assert os.environ["AGENTC_STORAGE_PATH"] == previous
+            assert os.environ["AGENTC_CONFIG_PATH"] == previous_config
 
     def test_reinit_does_not_leak_optimizer_warm_state(
         self,

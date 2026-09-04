@@ -15,6 +15,7 @@ from bench.joint_campaign import (
     _artifact_stem,
     _median_task_effect,
     _paired_total_statistic,
+    _worker_environment,
     build_schedule,
     derive_run_seed,
     digest_file,
@@ -24,6 +25,16 @@ from bench.joint_campaign import (
     run_campaign,
 )
 from bench.litellm_joint_preflight_worker import _arm_settings
+
+
+def test_forbidden_worker_has_no_openrouter_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret-not-a-live-key")
+    assert "OPENROUTER_API_KEY" not in _worker_environment("forbidden", tmp_path)
+    assert _worker_environment("provider_allowed", tmp_path)["OPENROUTER_API_KEY"] == (
+        "test-secret-not-a-live-key"
+    )
 
 
 def _write_campaign(

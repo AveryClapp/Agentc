@@ -738,10 +738,17 @@ fn optimizer_slot() -> &'static RwLock<Option<Arc<OptimizerState>>> {
 fn build_optimizer_state(
     storage: std::path::PathBuf,
     config: OptimizerConfig,
+    catalog: Option<ModelCatalog>,
 ) -> OptimizerState {
     let exploration_enabled = config.exploration_enabled;
     let max_inflight_plans = config.max_inflight_plans;
-    match build_optimizer(&storage, config.clone()) {
+    let wired = match catalog.as_ref() {
+        Some(snapshot) => agentc_optimizer::wiring::build_optimizer_with_catalog(
+            &storage, config.clone(), snapshot.clone(),
+        ),
+        None => build_optimizer(&storage, config.clone()),
+    };
+    match wired {
         Ok(Wired {
             optimizer,
             cost_model,
@@ -796,7 +803,7 @@ fn build_optimizer_state(
                 cost_model,
                 plan_profiles,
                 plan_guard,
-                model_catalog: default_model_catalog().ok().map(Arc::new),
+                model_catalog: catalog.or_else(|| default_model_catalog().ok()).map(Arc::new),
                 exploration_controller,
                 exploration_enabled: false,
                 budget,
@@ -825,7 +832,7 @@ fn optimizer_state() -> Arc<OptimizerState> {
     }
     let storage = resolve_storage_dir();
     let config = OptimizerConfig::from_storage(&storage);
-    let state = Arc::new(build_optimizer_state(storage, config));
+    let state = Arc::new(build_optimizer_state(storage, config, None));
     *slot = Some(Arc::clone(&state));
     state
 }
@@ -858,8 +865,17 @@ fn flush_optimizer_state(state: &OptimizerState) {
 
 /// Configure a fresh optimizer at the lifecycle's resolved storage path.
 /// Replaces any prior process-local optimizer after flushing its dirty state.
-#[pyfunction(signature = (storage_path, config_path=None))]
-fn optimize_configure(py: Python<'_>, storage_path: &str, config_path: Option<&str>) -> String {
+#[pyfunction(signature = (storage_path, config_path=None, catalog_json=None))]
+fn optimize_configure(
+    py: Python<'_>,
+    storage_path: &str,
+    config_path: Option<&str>,
+    catalog_json: Option<&str>,
+) -> PyResult<String> {
+    // Validate before replacing the running optimizer: an invalid catalog must
+    // neither silently select defaults nor discard the previous lifecycle.
+    let catalog = catalog_json.map(ModelCatalog::from_json).transpose()
+        .map_err(|error| pyo3::exceptions::PyValueError::new_err(error.to_string()))?;
     let storage = std::path::PathBuf::from(storage_path);
     let config_path = config_path.map(std::path::PathBuf::from);
     py.allow_threads(|| {
@@ -873,10 +889,10 @@ fn optimize_configure(py: Python<'_>, storage_path: &str, config_path: Option<&s
         if let Some(previous) = slot.as_ref() {
             flush_optimizer_state(previous);
         }
-        let state = Arc::new(build_optimizer_state(storage, config));
+        let state = Arc::new(build_optimizer_state(storage, config, catalog));
         let resolved = state.storage_dir.to_string_lossy().into_owned();
         *slot = Some(state);
-        resolved
+        Ok(resolved)
     })
 }
 

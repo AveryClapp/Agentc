@@ -114,6 +114,18 @@ fn set_write_pragmas(conn: &Connection) -> Result<()> {
 /// where `@memoize` already writes — so a CacheHit served by the rule and
 /// a CacheHit served by `@memoize` look identical to a downstream reader.
 pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wired> {
+    build_optimizer_with_catalog(storage_dir, config, default_model_catalog()?)
+}
+
+/// Configure an explicit, validated catalog snapshot, immutable for this state.
+/// Invalid snapshots fail before storage is created or existing state is read.
+pub fn build_optimizer_with_catalog(
+    storage_dir: &Path,
+    config: OptimizerConfig,
+    catalog: ModelCatalog,
+) -> Result<Wired> {
+    catalog.validate().context("validate model catalog")?;
+    let model_catalog = Arc::new(catalog);
     config.validate().context("validate optimizer configuration")?;
     let exploration_controller = ExplorationController::with_policy(config.exploration_policy())
         .context("validate exploration configuration")?;
@@ -165,8 +177,6 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
     let _ = budget
         .flush_divergence(&mut cost_conn)
         .context("persist resized divergence windows")?;
-
-    let model_catalog = Arc::new(default_model_catalog().context("build model catalog")?);
 
     let audit_path = storage_dir.join("optimizer_audit.db");
     let audit_conn =
@@ -277,6 +287,31 @@ fn tracing_warn(msg: &str) {
 mod tests {
     use super::*;
     use crate::cost_model::CostModelUpdate;
+
+    #[test]
+    fn explicit_catalog_is_used_without_default_namespace_aliases() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut catalog = default_model_catalog().unwrap();
+        for target in &mut catalog.targets {
+            target.provider_namespace = format!("pilot-{}", target.provider_namespace);
+        }
+        let wired = build_optimizer_with_catalog(
+            dir.path(), OptimizerConfig::default(), catalog.clone(),
+        ).unwrap();
+        assert_eq!(wired.model_catalog.as_ref(), &catalog);
+    }
+
+    #[test]
+    fn invalid_catalog_does_not_create_storage() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let storage = dir.path().join("must-not-exist");
+        let mut catalog = default_model_catalog().unwrap();
+        catalog.targets.clear();
+        assert!(build_optimizer_with_catalog(
+            &storage, OptimizerConfig::default(), catalog,
+        ).is_err());
+        assert!(!storage.exists());
+    }
 
     #[test]
     fn writable_dbs_are_wal_mode() {

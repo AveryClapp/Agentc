@@ -341,6 +341,14 @@ pub struct ModelCatalog {
 }
 
 impl ModelCatalog {
+    /// Decode an explicit snapshot without allowing serde to bypass validation.
+    pub fn from_json(json: &str) -> Result<Self, CatalogError> {
+        let catalog: Self = serde_json::from_str(json)
+            .map_err(|error| CatalogError::Serialization(error.to_string()))?;
+        catalog.validate()?;
+        Ok(catalog)
+    }
+
     pub fn new(
         catalog_version: impl Into<String>,
         price_table_version: impl Into<String>,
@@ -485,7 +493,7 @@ impl ModelCatalog {
         })
     }
 
-    fn validate(&self) -> Result<(), CatalogError> {
+    pub(crate) fn validate(&self) -> Result<(), CatalogError> {
         for (field, value) in [
             ("catalog_version", self.catalog_version.as_str()),
             ("price_table_version", self.price_table_version.as_str()),
@@ -962,6 +970,25 @@ mod tests {
                 && target.price.table_version == catalog.price_table_version
                 && target.provenance.catalog_version == catalog.catalog_version
         }));
+    }
+
+    #[test]
+    fn explicit_catalog_json_must_pass_all_catalog_invariants() {
+        let catalog = default_model_catalog().unwrap();
+        let json = serde_json::to_string(&catalog).unwrap();
+        assert_eq!(ModelCatalog::from_json(&json).unwrap(), catalog);
+        for invalid in ["{}", "{", r#"{"targets":[]}"#] {
+            assert!(ModelCatalog::from_json(invalid).is_err());
+        }
+        let mut bad = catalog.clone();
+        bad.targets[0].price.input_per_million_tokens_usd = -1.0;
+        assert!(ModelCatalog::from_json(&serde_json::to_string(&bad).unwrap()).is_err());
+        bad = catalog.clone();
+        bad.targets.push(bad.targets[0].clone());
+        assert!(ModelCatalog::from_json(&serde_json::to_string(&bad).unwrap()).is_err());
+        bad = catalog;
+        bad.catalog_version = "changed-without-target-provenance".into();
+        assert!(ModelCatalog::from_json(&serde_json::to_string(&bad).unwrap()).is_err());
     }
 
     #[test]

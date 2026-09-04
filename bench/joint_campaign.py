@@ -69,6 +69,7 @@ KNOWN_STAGES = frozenset({"E0", "E1", "C", "P", "T"})
 SECRET_NAMES = frozenset(
     {
         "OPENAI_API_KEY",
+        "OPENROUTER_API_KEY",
         "ANTHROPIC_API_KEY",
         "TOGETHER_API_KEY",
         "HF_TOKEN",

@@ -235,11 +235,43 @@ def analyze(rows: list[dict[str, Any]], manifest: dict[str, Any]) -> dict[str, A
             "aggregates": aggregates, "limitations": manifest["limitations"]}
 
 
+def saved_rows(output: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Validate existing evidence before replay; never truncate it to a prefix."""
+    path = output / "results.json"
+    if not path.exists():
+        return []
+    rows = json.loads(path.read_text())
+    if not isinstance(rows, list) or len(rows) > len(manifest["schedule"]):
+        raise PilotError("saved results exceed the frozen schedule")
+    stage = "matrix-v1-" + digest(manifest)[:20]
+    for index, row in enumerate(rows):
+        item = manifest["schedule"][index]
+        if (not isinstance(row, dict) or any(row.get(k) != v for k, v in item.items())
+                or row.get("stage") != stage or row.get("id") != stage + f"-{index:04d}"
+                or row.get("paper_evidence") is not False
+                or not row.get("native_plan", {}).get("agentc_observation_context")):
+            raise PilotError("saved results do not match the frozen schedule")
+    return rows
+
+
+def preserve_replayed_row(saved: dict[str, Any], replayed: dict[str, Any]) -> dict[str, Any]:
+    # Exact provider payloads are checked separately by the ledger fingerprint.
+    # Compare every persisted result field plus plan identity. Diagnostic plan
+    # fields can vary with execution timing; retain their original evidence.
+    original = {k: v for k, v in saved.items() if k != "native_plan"}
+    current = {k: v for k, v in replayed.items() if k != "native_plan"}
+    if original != current or any(saved["native_plan"].get(k) != replayed["native_plan"].get(k)
+                                  for k in ("kind", "agentc_observation_context")):
+        raise PilotError("replay differs from saved result or plan identity; evidence preserved")
+    return saved
+
+
 def run(args: argparse.Namespace, key: str) -> dict[str, Any]:
     manifest = json.loads((args.output / "manifest.json").read_text())
     if (manifest["source_files"] != source_hashes() or manifest["native_sha256"] != file_hash(args.native)
             or manifest["fixture_sha256"] != file_hash(args.fixture)):
         raise PilotError("source, native build, or fixture changed after freezing")
+    existing = saved_rows(args.output, manifest)
     tasks = {t["task_id"]: t for t in json.loads(args.fixture.read_text())}
     native = load_module("_native", args.native, native=True)
     attention = load_module("pilot_attention", ROOT / "python/agentc/_attention.py")
@@ -290,9 +322,12 @@ def run(args: argparse.Namespace, key: str) -> dict[str, Any]:
                        **score(result["answer"], task["expected"]), "native_plan": plan,
                        "expected": task["expected"], "original_message_count": len(call["messages"]),
                        "selected_message_count": len(selected["messages"])}
+                if index < len(existing):
+                    row = preserve_replayed_row(existing[index], row)
                 rows.append(row)
-                write_json(args.output / "results.json", rows)
-                write_json(args.output / "summary.json", analyze(rows, manifest))
+                if len(rows) > len(existing):
+                    write_json(args.output / "results.json", rows)
+                    write_json(args.output / "summary.json", analyze(rows, manifest))
                 print(json.dumps({"completed": len(rows), "total": len(manifest["schedule"]),
                     "phase": item["phase"], "model": item["model"], "arm": item["arm"],
                     "plan": plan["kind"], "em": row["em"], "cost_usd": result["cost_usd"]}), flush=True)

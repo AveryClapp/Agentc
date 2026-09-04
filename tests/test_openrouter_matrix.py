@@ -1,12 +1,17 @@
 """No-network checks for the frozen factorial pilot protocol."""
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
+from contextlib import ExitStack, contextmanager, redirect_stdout
+from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from bench.openrouter_matrix import (
-    MODELS, PilotError, analyze, make_schedule, messages_for, native_call, score, write_json,
+    MODELS, PilotError, analyze, make_schedule, messages_for, native_call, run, score, write_json,
 )
 
 
@@ -69,6 +74,100 @@ class MatrixTests(unittest.TestCase):
         self.assertFalse(summary["paper_evidence"])
         self.assertEqual(summary["cost_usd"], "0")
         self.assertEqual(summary["completed_calls"], 0)
+
+
+@contextmanager
+def fake_run():
+    """Exercise actual run/checkpoint logic with no native extension or network."""
+    with ExitStack() as stack:
+        directory = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+        args = SimpleNamespace(output=directory / "output", fixture=directory / "fixture.json",
+                               native=directory / "native", ledger=directory / "ledger", max_calls=None)
+        tasks = [task(0), task(1)]
+        schedule = [{"task_id": t["task_id"], "phase": "warmup", "model": MODELS[0][0],
+                     "provider_tag": MODELS[0][1], "arm": "full"} for t in tasks]
+        manifest = {"source_files": {}, "native_sha256": "hash", "fixture_sha256": "hash",
+                    "settings": {}, "catalog": {}, "stage_cap_usd": "5", "schedule": schedule,
+                    "limitations": [], "endpoints": {MODELS[0][0]: {"provider_name": "Provider", "name": "Provider | model"}}}
+        write_json(args.fixture, tasks)
+        write_json(args.output / "manifest.json", manifest)
+        native = Mock()
+        native.optimize_model_catalog.return_value = "{}"
+        native.optimize_observe.return_value = "observation-token"
+        plan = {"kind": "pass_through", "agentc_observation_context": {"identity": "fixed"}, "diagnostic_ms": 1}
+        native.optimize_plan.side_effect = lambda _: json.dumps(plan)
+        attention = Mock()
+        attention.compute_attention_scores.return_value = ([0, 0, 1], ["question"])
+        ledger = Mock()
+        def result(key, call_id, stage, cap, payload, metadata):
+            return {"id": call_id, "stage": stage, "model": payload["model"], "provider": "Provider",
+                    "answer": "gold secret", "cost_usd": "0.01", "latency_ms": 1,
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 2, "cost": "0.01"},
+                    "finish_reason": "stop", "paper_evidence": False}
+        ledger.call.side_effect = result
+        ledger.summary.return_value = {}
+        stack.enter_context(patch("bench.openrouter_matrix.Ledger", return_value=ledger))
+        stack.enter_context(patch("bench.openrouter_matrix.source_hashes", return_value={}))
+        stack.enter_context(patch("bench.openrouter_matrix.file_hash", return_value="hash"))
+        stack.enter_context(patch("bench.openrouter_matrix.load_module",
+                                  side_effect=lambda name, path, **kwargs: native if kwargs.get("native") else attention))
+        stack.enter_context(redirect_stdout(StringIO()))
+        yield args, native, plan
+
+
+class ResumeEvidenceTests(unittest.TestCase):
+    def test_short_replay_does_not_truncate_longer_artifacts(self):
+        with fake_run() as (args, native, plan):
+            run(args, "fake-key")
+            before = {name: (args.output / name).read_bytes() for name in ("results.json", "summary.json")}
+            args.max_calls = 1
+            self.assertEqual(run(args, "fake-key")["completed_calls"], 1)
+            for name, content in before.items():
+                self.assertEqual((args.output / name).read_bytes(), content)
+
+    def test_interrupted_replay_preserves_complete_artifact(self):
+        with fake_run() as (args, native, plan):
+            run(args, "fake-key")
+            before = (args.output / "results.json").read_bytes()
+            native.optimize_plan.side_effect = [json.dumps(plan), PilotError("interrupted")]
+            with self.assertRaises(PilotError):
+                run(args, "fake-key")
+            self.assertEqual((args.output / "results.json").read_bytes(), before)
+
+    def test_extension_retains_original_prefix_plans(self):
+        with fake_run() as (args, native, plan):
+            args.max_calls = 1
+            run(args, "fake-key")
+            original = json.loads((args.output / "results.json").read_text())[0]
+            plan["diagnostic_ms"] = 99
+            args.max_calls = None
+            run(args, "fake-key")
+            rows = json.loads((args.output / "results.json").read_text())
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0], original)
+            self.assertEqual(rows[1]["native_plan"]["diagnostic_ms"], 99)
+
+    def test_changed_plan_identity_does_not_replace_evidence(self):
+        with fake_run() as (args, native, plan):
+            run(args, "fake-key")
+            before = (args.output / "results.json").read_bytes()
+            plan["agentc_observation_context"]["identity"] = "changed"
+            with self.assertRaisesRegex(PilotError, "evidence preserved"):
+                run(args, "fake-key")
+            self.assertEqual((args.output / "results.json").read_bytes(), before)
+
+    def test_wrong_schedule_rejected_before_native_or_provider_calls(self):
+        with fake_run() as (args, native, plan):
+            run(args, "fake-key")
+            rows = json.loads((args.output / "results.json").read_text())
+            rows[1]["task_id"] = "unknown"
+            write_json(args.output / "results.json", rows)
+            native.reset_mock()
+            with patch("bench.openrouter_matrix.Ledger") as ledger:
+                with self.assertRaises(PilotError):
+                    run(args, "fake-key")
+                ledger.assert_not_called()
+            native.optimize_configure.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -787,10 +787,93 @@ def _run_git(repo_root: Path, *args: str) -> str | None:
     return completed.stdout.strip() if completed.returncode == 0 else None
 
 
+def _run_git_bytes(repo_root: Path, *args: str) -> bytes | None:
+    completed = subprocess.run(
+        ["git", "-C", str(repo_root), *args],
+        check=False,
+        capture_output=True,
+    )
+    return completed.stdout if completed.returncode == 0 else None
+
+
+def _agentc_source_context(
+    repo_root: Path,
+    output_dir: Path,
+    *,
+    paper_evidence: bool,
+) -> JsonObject:
+    commit = _run_git(repo_root, "rev-parse", "HEAD")
+    tracked_diff = _run_git_bytes(
+        repo_root, "diff", "--binary", "--no-ext-diff", "HEAD", "--"
+    )
+    untracked_raw = _run_git_bytes(
+        repo_root, "ls-files", "--others", "--exclude-standard", "-z"
+    )
+    if commit is None or tracked_diff is None or untracked_raw is None:
+        raise CampaignError("cannot freeze the Agentc Git source context")
+
+    try:
+        output_relative = output_dir.relative_to(repo_root)
+    except ValueError:
+        output_relative = None
+    untracked: list[JsonObject] = []
+    for raw_path in untracked_raw.split(b"\0"):
+        if not raw_path:
+            continue
+        relative = Path(os.fsdecode(raw_path))
+        if output_relative is not None and (
+            relative == output_relative or output_relative in relative.parents
+        ):
+            continue
+        source_path = (repo_root / relative).resolve()
+        try:
+            source_path.relative_to(repo_root)
+        except ValueError as error:
+            raise CampaignError("Git reported an untracked path outside the repo") from error
+        if source_path.is_file():
+            untracked.append(
+                {
+                    "path": relative.as_posix(),
+                    "sha256": digest_file(source_path),
+                }
+            )
+    untracked.sort(key=lambda entry: cast(str, entry["path"]))
+    dirty = bool(tracked_diff or untracked)
+    if paper_evidence and dirty:
+        raise CampaignError(
+            "paper-evidence campaigns require a clean Agentc source tree"
+        )
+    tracked_diff_sha256 = hashlib.sha256(tracked_diff).hexdigest()
+    source_state_sha256 = digest_value(
+        {
+            "commit": commit,
+            "tracked_diff_sha256": tracked_diff_sha256,
+            "untracked": untracked,
+        }
+    )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "record_kind": "joint_campaign_source_context",
+        "agentc_git_commit": commit,
+        "agentc_git_dirty": dirty,
+        "agentc_source_state_sha256": source_state_sha256,
+        "tracked_diff_sha256": tracked_diff_sha256,
+        "untracked_file_count": len(untracked),
+        "runner_sha256": digest_file(Path(__file__).resolve()),
+        "runtime": {
+            "python": platform.python_version(),
+            "python_implementation": platform.python_implementation(),
+            "platform": platform.platform(),
+        },
+    }
+
+
 def _digest_tree(root: Path) -> JsonObject:
     entries: list[JsonObject] = []
     if root.is_dir():
-        for path in sorted(candidate for candidate in root.rglob("*") if candidate.is_file()):
+        for path in sorted(
+            candidate for candidate in root.rglob("*") if candidate.is_file()
+        ):
             entries.append(
                 {
                     "path": path.relative_to(root).as_posix(),
@@ -856,6 +939,11 @@ def run_campaign(
     spec = load_campaign(spec_path)
     repo_root = Path(__file__).resolve().parent.parent
     output_dir = output_dir.resolve()
+    source_context = _agentc_source_context(
+        repo_root,
+        output_dir,
+        paper_evidence=bool(spec["paper_evidence"]),
+    )
     if output_dir.exists() and any(output_dir.iterdir()) and not resume:
         raise CampaignError(
             f"output directory is not empty: {output_dir}; use --resume or a fresh path"
@@ -871,6 +959,18 @@ def run_campaign(
             raise CampaignError("resume campaign does not match the frozen output campaign.json")
     else:
         frozen_spec_path.write_bytes(frozen_spec_payload)
+    source_context_path = output_dir / "run-context.json"
+    source_context_payload = _canonical_bytes(source_context) + b"\n"
+    if resume:
+        if not source_context_path.is_file():
+            raise CampaignError("resume requires the original output run-context.json")
+        if source_context_path.read_bytes() != source_context_payload:
+            raise CampaignError(
+                "resume source context does not match the implementation that "
+                "produced the existing ledger"
+            )
+    else:
+        source_context_path.write_bytes(source_context_payload)
     requests_dir = output_dir / "requests"
     worker_dir = output_dir / "worker-results"
     requests_dir.mkdir(exist_ok=True)
@@ -980,12 +1080,10 @@ def run_campaign(
         "paper_evidence": spec["paper_evidence"],
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "elapsed_seconds": time.monotonic() - started,
-        "agentc_git_commit": _run_git(repo_root, "rev-parse", "HEAD"),
-        "agentc_git_dirty": bool(_run_git(repo_root, "status", "--short")),
-        "runtime": {
-            "python": platform.python_version(),
-            "platform": platform.platform(),
-        },
+        "agentc_git_commit": source_context["agentc_git_commit"],
+        "agentc_git_dirty": source_context["agentc_git_dirty"],
+        "agentc_source_state_sha256": source_context["agentc_source_state_sha256"],
+        "runtime": source_context["runtime"],
         "protocol": protocol_copy,
         "workloads": [
             {
@@ -1022,6 +1120,7 @@ def run_campaign(
         "spend": spend,
         "artifacts": {
             "campaign.json": digest_file(frozen_spec_path),
+            "run-context.json": digest_file(source_context_path),
             "raw-records.jsonl": digest_file(ledger_path),
             "analysis.json": digest_file(analysis_path),
             "report.md": digest_file(report_path),

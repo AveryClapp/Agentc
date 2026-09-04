@@ -10,6 +10,7 @@ import pytest
 
 from bench.optimizer_e2e_scaling import (
     _partition_calls,
+    _plan_result,
     _sized_call_json,
     _write_raw,
     run,
@@ -32,6 +33,22 @@ def test_partition_calls_is_balanced_and_lossless() -> None:
 
     assert [len(partition) for partition in partitions] == [4, 3, 3]
     assert sorted(row for partition in partitions for row in partition) == calls
+
+
+def test_plan_result_preserves_an_overhead_fallback_reason() -> None:
+    plan_json = json.dumps(
+        {
+            "kind": "pass_through",
+            "agentc_planner_diagnostics": {
+                "fallback_reason": "planning_overhead_exceeded"
+            },
+        }
+    )
+
+    assert _plan_result(plan_json) == (
+        "pass_through",
+        "planning_overhead_exceeded",
+    )
 
 
 def test_raw_gzip_is_reproducible_and_uses_lf(tmp_path: Path) -> None:
@@ -68,10 +85,12 @@ def test_small_run_pairs_concurrent_calls_by_span() -> None:
     )
     assert all(row["e2e_ns"] >= row["internal_pre_audit_ns"] for row in raw)
     assert all(row["boundary_state_audit_residual_ns"] >= 0 for row in raw)
+    assert not any(row["fell_back_from_expected"] for row in raw)
     aggregates = result["aggregate_measurements_us_and_throughput"]
     assert len(aggregates) == 4
     assert all(row["sample_count"] == 8 for row in aggregates)
     assert all(row["replication_count"] == 1 for row in aggregates)
+    assert all(row["fallback_rate_pct"] == 0.0 for row in aggregates)
     assert all(row["e2e"]["p99_us"] >= row["e2e"]["p50_us"] for row in aggregates)
     assert all(
         replication["audit_journal_mode"] == "wal"

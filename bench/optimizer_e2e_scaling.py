@@ -32,6 +32,7 @@ import sqlite3
 import tempfile
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -104,20 +105,41 @@ def _settings(*, scenario: str, max_overhead_ms: float) -> dict[str, str]:
 
 def _read_correlated_audit_rows(
     audit_path: Path, after_id: int
-) -> dict[str, tuple[int, str]]:
+) -> dict[str, tuple[int, str, str | None]]:
     with sqlite3.connect(audit_path) as connection:
         rows = connection.execute(
-            "SELECT lower(hex(span_id)), overhead_us, plan_kind "
+            "SELECT lower(hex(span_id)), overhead_us, plan_kind, "
+            "planner_diagnostics_json "
             "FROM plan_audit WHERE audit_id > ? ORDER BY audit_id",
             (after_id,),
         ).fetchall()
-    correlated: dict[str, tuple[int, str]] = {}
-    for span_id, overhead_us, plan_kind in rows:
+    correlated: dict[str, tuple[int, str, str | None]] = {}
+    for span_id, overhead_us, plan_kind, diagnostics_json in rows:
         key = str(span_id)
         if key in correlated:
             raise RuntimeError(f"duplicate measured span ID in plan_audit: {key}")
-        correlated[key] = (int(overhead_us), str(plan_kind))
+        fallback_reason: str | None = None
+        if diagnostics_json is not None:
+            diagnostics = json.loads(str(diagnostics_json))
+            reason = diagnostics.get("fallback_reason")
+            if isinstance(reason, str):
+                fallback_reason = reason
+        correlated[key] = (int(overhead_us), str(plan_kind), fallback_reason)
     return correlated
+
+
+def _plan_result(plan_json: str) -> tuple[str, str | None]:
+    value = json.loads(plan_json)
+    kind = value.get("kind")
+    if not isinstance(kind, str):
+        raise RuntimeError("optimizer returned a plan without a string kind")
+    fallback_reason: str | None = None
+    diagnostics = value.get("agentc_planner_diagnostics")
+    if isinstance(diagnostics, dict):
+        reason = diagnostics.get("fallback_reason")
+        if isinstance(reason, str):
+            fallback_reason = reason
+    return kind, fallback_reason
 
 
 def _partition_calls(
@@ -270,15 +292,32 @@ def _measure_replication(
 
         raw: list[dict[str, Any]] = []
         for row in measured:
-            returned_kind = e2e._plan_kind(str(row.pop("plan_json")))
+            returned_kind, returned_fallback_reason = _plan_result(
+                str(row.pop("plan_json"))
+            )
             span_id = str(row["span_id"])
             if span_id not in audit_rows:
                 raise RuntimeError(f"measured span missing from plan_audit: {span_id}")
-            overhead_us, audit_kind = audit_rows[span_id]
-            if returned_kind != expected_kind or audit_kind != expected_kind:
+            overhead_us, audit_kind, audit_fallback_reason = audit_rows[span_id]
+            if returned_kind != audit_kind:
                 raise RuntimeError(
-                    f"{scenario} plan kind drifted for {span_id}: "
-                    f"returned={returned_kind}, audit={audit_kind}"
+                    f"returned/audited plan kind mismatch for {span_id}: "
+                    f"returned={returned_kind}, audited={audit_kind}"
+                )
+            if returned_fallback_reason != audit_fallback_reason:
+                raise RuntimeError(
+                    f"returned/audited fallback mismatch for {span_id}: "
+                    f"returned={returned_fallback_reason}, "
+                    f"audited={audit_fallback_reason}"
+                )
+            allowed_kinds = (
+                {"pass_through"}
+                if scenario == "joint_reference"
+                else {"rewritten", "pass_through"}
+            )
+            if returned_kind not in allowed_kinds:
+                raise RuntimeError(
+                    f"{scenario} returned unsupported plan kind: {returned_kind}"
                 )
             internal_ns = overhead_us * 1_000
             e2e_ns = int(row["e2e_ns"])
@@ -297,7 +336,10 @@ def _measure_replication(
                     "worker": int(row["worker"]),
                     "worker_iteration": int(row["worker_iteration"]),
                     "span_id": span_id,
-                    "plan_kind": expected_kind,
+                    "expected_plan_kind": expected_kind,
+                    "plan_kind": returned_kind,
+                    "fell_back_from_expected": returned_kind != expected_kind,
+                    "planner_fallback_reason": returned_fallback_reason,
                     "e2e_ns": e2e_ns,
                     "internal_pre_audit_ns": internal_ns,
                     "boundary_state_audit_residual_ns": residual_ns,
@@ -312,13 +354,28 @@ def _measure_replication(
         residual_ns_values = [
             int(row["boundary_state_audit_residual_ns"]) for row in raw
         ]
+        plan_kind_counts = Counter(str(row["plan_kind"]) for row in raw)
+        fallback_reason_counts = Counter(
+            (
+                str(row["planner_fallback_reason"])
+                if row["planner_fallback_reason"] is not None
+                else "unattributed"
+            )
+            for row in raw
+            if row["fell_back_from_expected"]
+        )
+        fallback_count = sum(bool(row["fell_back_from_expected"]) for row in raw)
         summary = {
             "scenario": scenario,
             "target_call_json_bytes": target_bytes,
             "concurrency": concurrency,
             "replication": replication,
             "sample_count": len(raw),
-            "plan_kind": expected_kind,
+            "expected_plan_kind": expected_kind,
+            "plan_kind_counts": dict(sorted(plan_kind_counts.items())),
+            "fallback_reason_counts": dict(sorted(fallback_reason_counts.items())),
+            "fallback_count": fallback_count,
+            "fallback_rate_pct": 100.0 * fallback_count / len(raw),
             "configure_us": configure_ns / 1_000.0,
             "first_cold_call_us": first_call_ns / 1_000.0,
             "audit_journal_mode": journal_mode,
@@ -380,6 +437,22 @@ def _aggregate_cells(
                 residual_summary = e2e._summarize_ns(
                     [int(row["boundary_state_audit_residual_ns"]) for row in cell_raw]
                 )
+                expected_kind = (
+                    "pass_through" if scenario == "joint_reference" else "rewritten"
+                )
+                plan_kind_counts = Counter(str(row["plan_kind"]) for row in cell_raw)
+                fallback_reason_counts = Counter(
+                    (
+                        str(row["planner_fallback_reason"])
+                        if row["planner_fallback_reason"] is not None
+                        else "unattributed"
+                    )
+                    for row in cell_raw
+                    if row["fell_back_from_expected"]
+                )
+                fallback_count = sum(
+                    bool(row["fell_back_from_expected"]) for row in cell_raw
+                )
                 aggregate.append(
                     {
                         "scenario": scenario,
@@ -387,6 +460,13 @@ def _aggregate_cells(
                         "concurrency": concurrency,
                         "sample_count": len(cell_raw),
                         "replication_count": len(cell_replications),
+                        "expected_plan_kind": expected_kind,
+                        "plan_kind_counts": dict(sorted(plan_kind_counts.items())),
+                        "fallback_reason_counts": dict(
+                            sorted(fallback_reason_counts.items())
+                        ),
+                        "fallback_count": fallback_count,
+                        "fallback_rate_pct": 100.0 * fallback_count / len(cell_raw),
                         "e2e": e2e_summary,
                         "internal_pre_audit": internal_summary,
                         "boundary_state_audit_residual": residual_summary,
@@ -656,7 +736,10 @@ _RAW_FIELDS = (
     "worker",
     "worker_iteration",
     "span_id",
+    "expected_plan_kind",
     "plan_kind",
+    "fell_back_from_expected",
+    "planner_fallback_reason",
     "e2e_ns",
     "internal_pre_audit_ns",
     "boundary_state_audit_residual_ns",

@@ -3,7 +3,7 @@
 This is the scaling companion to :mod:`bench.optimizer_e2e_overhead`. It times
 the complete ``_native.optimize_plan`` FFI call while varying the exact
 serialized call size and the number of Python threads issuing calls against one
-hot call site. Every timed call carries a unique span ID, which pairs its outer
+hot call site. Every timed call carries a replication-unique span ID, which pairs its outer
 wall-clock duration with the exact ``plan_audit.overhead_us`` row written by
 that call even when completion order differs from audit order.
 

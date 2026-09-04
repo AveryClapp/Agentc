@@ -25,6 +25,7 @@ the historical guard results described below.
 | `crossmodel_selectivity.sh` | `tab:xmodel` (one row) | n=100; run once per model family (below) |
 | `../guard_overhead_bench.py` | fresh complete-plan feedback overhead | `python -m bench.guard_overhead_bench`; structured Stage E0 output, CPU/SQLite only, no API |
 | `../optimizer_e2e_overhead.py` | complete native planning-call overhead, paired with the internal pre-audit clock | `python -m bench.optimizer_e2e_overhead`; release extension, SQLite only, no API |
+| `../optimizer_e2e_scaling.py` | complete-call size/concurrency scaling, paired by span with audit rows | `python -m bench.optimizer_e2e_scaling`; release extension, threaded SQLite contention, no API |
 | `../../crates/agentc-optimizer/examples/exploration_preflight.rs` | bounded exploration persistence and accounting | `cargo run -p agentc-optimizer --example exploration_preflight --quiet`; structured Stage E0 output, SQLite only, no API |
 | `../../crates/agentc-optimizer/examples/joint_planner_preflight.rs` | live exact-profile joint selection and planning overhead | `cargo run --release -p agentc-optimizer --example joint_planner_preflight --quiet`; structured Stage E0 output, no API |
 | `../live_exploration_preflight.py` | production-adapter reference-visible exploration and restart admission | `python bench/live_exploration_preflight.py --output /tmp/live-exploration.json`; deterministic fake provider, no network |
@@ -284,6 +285,35 @@ not be interpreted as an audit-only timer.
 This is a release-mode, zero-network, single-machine Stage E0 diagnostic. It
 validates full-call timing mechanics and shows sub-millisecond p99 on the
 recorded host, but remains `paper_evidence=false` under the frozen protocol.
+
+### Complete optimizer-call size/concurrency preflight
+
+The scaling companion crosses exact 4/8/16/32/64 KiB serialized calls with
+1/8/32 Python callers and guarded-reference/admitted-joint-rewrite paths:
+
+```bash
+maturin develop --release --manifest-path crates/agentc-profiler/Cargo.toml
+python -m bench.optimizer_e2e_scaling \
+  --build-profile release \
+  --output /tmp/optimizer-e2e-scaling.json \
+  --raw-output /tmp/optimizer-e2e-scaling.csv.gz
+```
+
+The committed [summary](optimizer-e2e-scaling-2026-09-04.json) and
+[153,600 paired samples](optimizer-e2e-scaling-2026-09-04.csv.gz) contain five
+randomized 1,024-call replications per cell. Replication-unique span IDs pair concurrent
+outer timings to exact audit rows. Sequential p50 is 0.108--0.253 ms across
+paths and sizes. At 32 callers, p50 is 1.744--2.853 ms, pooled p99 is
+14.620--46.122 ms, and throughput improves only 1.35--1.98x over one caller.
+The internal pre-audit p99 remains at or below 0.721 ms at 32 callers, while
+the combined boundary/state/audit residual accounts for 94--97% of mean time.
+Two of 76,800 admitted calls (0.0026%) safely fall back because planning exceeds
+the configured 5 ms deadline.
+
+This is a release-mode, zero-network, single-machine Stage E0 diagnostic with
+fixed-structure synthetic inputs. It identifies synchronous audit persistence
+as a scaling target but remains `paper_evidence=false`; it is not task-quality,
+provider-latency, or savings evidence.
 
 ### Joint policy campaign harness
 

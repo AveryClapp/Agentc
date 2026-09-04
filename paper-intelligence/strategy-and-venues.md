@@ -1,7 +1,7 @@
 ---
 title: Strategy and Venues
 status: active
-last-updated: 2026-05-09
+last-updated: 2026-09-04
 owner: paper-intelligence
 ---
 
@@ -23,21 +23,21 @@ Supersedes:
 
 ## Current Strategic Read
 
-The default paper angle should be `ANG-001`: **runtime optimizer for compound AI systems**. Use `ANG-003` as the practical motivation and `ANG-004` as the evaluation-strengthening thread. Do not make `ANG-005` the main claim until every rewrite is clearly labeled as validated, promising, or future work.
+The default paper angle should be a narrowed `ANG-001`: **a guarded, application-side rewrite control plane over opaque LLM APIs**. Use `ANG-003` as the practical motivation and `ANG-004` as the evaluation-strengthening thread. Routing is one action in the joint policy, not the novelty by itself. Do not make `ANG-005` the main claim until every rewrite is clearly labeled as validated, promising, or future work.
 
 Short version:
 
-- Best current story: AgentC is a runtime control plane over multi-step LLM agent traces.
+- Best current story: AgentC profiles call sites online and jointly chooses model targets and semantic rewrites under explicit abstention and damage limits.
 - Best current evidence: `ContextCompress` and `ModelDowngrade`.
 - Most useful caveat: `StateDrop` is promising but not yet a sound compiler-style pass.
-- Biggest paper gap: no end-to-end multi-rule workload yet.
-- Biggest venue risk: systems venues need overhead, failure modes, artifact readiness, and rule-interaction evidence.
+- Biggest experiment gap: no held-out joint routing-plus-rewrite result against route-only, rewrite-only, ordering, and static controls.
+- Biggest engineering blocker: synchronous audit persistence creates 14.6–46.1ms C=32 p99 complete-call latency and weak throughput scaling in the current Stage E0 diagnostic.
 
 ## Venue Ladder
 
 | ID | Venue/family | Recommendation | Best framing | Current readiness | Must improve |
 |---|---|---|---|---|---|
-| `VEN-001` | MLSys | strongest long-run topical fit | runtime optimizer for compound AI systems | promising but not comfortable yet | end-to-end optimizer result, artifact polish, overhead/tail latency, baselines |
+| `VEN-001` | MLSys | strongest long-run topical fit | guarded joint routing-and-rewrite control plane | promising but not comfortable yet | positive held-out joint-policy result, non-blocking audit path, post-fix scaling, baselines |
 | `VEN-002` | Systems venues broadly | mixed | systems/runtime infrastructure | ATC/EuroSys plausible; OSDI/SOSP/NSDI weak right now | deeper systems evidence and operational realism |
 | `VEN-003` | NLP/LLM venues | possible | LM cost-quality optimizer and evaluation methodology | COLM strongest | LM-facing breadth, stochastic quality, baseline comparisons |
 | `VEN-004` | Broad AI/ML venues | weak-main, possible workshop | agent optimization method | not a main default | stronger algorithmic novelty and broad benchmarks |
@@ -65,7 +65,7 @@ Short version:
 
 | ID | Angle | Central claim | Current status | Best audience | Red-flag objection |
 |---|---|---|---|---|---|
-| `ANG-001` | Runtime optimizer for compound AI systems | AgentC optimizes application-level agent traces under one runtime control plane. | promising default | MLSys, ATC, agent systems | Is this just a wrapper around existing tricks? |
+| `ANG-001` | Guarded optimizer for compound AI systems | AgentC profiles opaque application call sites online and jointly selects model targets and semantic rewrites under one persistent risk contract. | promising default | MLSys, ATC, agent systems | Is the joint policy measurably better than routing and rewriting separately? |
 | `ANG-002` | JIT-style optimizer for LLM workloads | Hot call sites can be profiled and rewritten under safety checks. | promising but risky | MLSys/PL-ish systems | Is JIT language too strong? |
 | `ANG-003` | Practical cost optimizer for AI agents | AgentC saves cost on suitable agent call sites with low application-code burden. | strong practical story | ATC/workshops | Why not just routing/compression/caching glued together? |
 | `ANG-004` | Evaluation methodology for LLM-runtime optimizers | Optimizer evaluation must report cost, quality, activation boundaries, and stochastic uncertainty. | promising support thread | COLM/MLSys workshops | Do current results prove behavior preservation? |
@@ -113,7 +113,7 @@ Backup outlines:
 
 ### Contribution framing
 
-Lead with AgentC as a runtime optimizer for compound AI systems. The contribution is not routing, compression, caching, or parallelism alone; it is a transparent trace-level control plane that can choose among multiple conservative rewrites.
+Lead with AgentC as a guarded runtime optimizer for compound AI systems. The contribution is not routing, compression, caching, or parallelism alone; it is application-side, call-conditional joint selection across model targets and semantic rewrites, with interaction handling, abstention, and persistent damage control despite opaque provider internals.
 
 Evidence hooks: `CLM-001`, `CLM-007`, `RES-001`, `RES-002`, `GAP-010`, `LIT-024`, `LIT-025`, `LIT-040`, `LIT-043`, `LIT-044`.
 
@@ -135,11 +135,11 @@ Rules to describe:
 
 ### Methodology
 
-Use rule-specific workloads to isolate behavior, then explain why systems venues need more: end-to-end rule composition, overhead, repeated/paired quality analysis, and baseline feasibility.
+Use rule-specific workloads to isolate behavior, then make the held-out joint-policy campaign the central test: fixed model, route only, rewrite only, both sequential orders, current greedy, learned/joint AgentC, and best static policy. Report complete-call overhead separately; the current Stage E0 scaling diagnostic is a negative result until audit persistence is moved off the request path and rerun.
 
 ### Results
 
-Use `RES-001` and `RES-002` as headline results. Use `RES-004` as promising but partial. Use `RES-005` as activation-boundary evidence. Use `RES-006` only as diagnostic headroom until trace-query support exists.
+Use `RES-001` and `RES-002` as the strongest current rule-level results. Use `RES-004` as promising but partial, `RES-005` as activation-boundary evidence, and `RES-006` only as diagnostic headroom until trace-query support exists. Treat the `RES-013` size/concurrency artifact as an honest negative systems diagnostic, not a latency win.
 
 ### Related work
 
@@ -164,6 +164,7 @@ Keep limitations honest but contained:
 - StateDrop needs a dependency model;
 - provider pricing/cache behavior affects billed-cost interpretation;
 - CacheHit/ParallelBranch are not current headline results.
+- the synchronous audit writer does not yet meet the complete-call scaling target.
 
 ## Title Ideas
 
@@ -197,8 +198,7 @@ Keep limitations honest but contained:
 
 ## Next Strategy Decisions
 
-1. Choose near-term lane: ATC-style operational systems, longer-run MLSys, or LM-native COLM.
-2. Decide whether to finish partial matrices before writing.
-3. Decide whether `CacheHit` and `ParallelBranch` stay future work.
-4. Decide whether StateDrop gets stronger evidence or stays a caveated supporting result.
-5. Choose whether the paper foregrounds system contribution, practical cost savings, or evaluation methodology.
+1. Treat MLSys as the primary long-run lane only if the audit-path fix and held-out joint-policy result both land.
+2. Decide whether `CacheHit` and `ParallelBranch` stay future work.
+3. Decide whether StateDrop gets stronger evidence or stays a caveated supporting result.
+4. Keep the system contribution foregrounded: joint online choice under an explicit risk contract, supported by practical cost savings and rigorous evaluation.

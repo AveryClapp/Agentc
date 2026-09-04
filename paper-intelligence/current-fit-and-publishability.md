@@ -1,7 +1,7 @@
 ---
 title: Current Fit And Publishability
 status: active
-last-updated: 2026-05-09
+last-updated: 2026-09-04
 owner: paper-intelligence
 ---
 
@@ -13,7 +13,7 @@ This is the short reality check for AgentC after the current experiment review a
 
 AgentC has a plausible paper shape, but it is not ready for a confident main-conference systems submission yet.
 
-The current alpha is strongest as a **runtime trace optimizer for multi-step LLM agents**. The literature says the individual tricks are already known: routing, prompt compression, semantic caching, parallel tool calls, and serving optimization. AgentC's opening is the control plane: apply several of those ideas at the framework-call boundary over observed agent traces.
+The current alpha is strongest as a **guarded, application-side rewrite control plane for opaque LLM-agent calls**. The literature says the individual tricks and the broad agent-runtime/JIT story are already known: routing, prompt compression, semantic caching, parallel tool calls, workflow compilation, and serving optimization. AgentC's narrower opening is online, call-conditional, interaction-aware selection across model targets and semantic rewrites, with explicit abstention and persistent damage control at an existing provider boundary.
 
 ## How Current Results Fit The Literature
 
@@ -26,6 +26,7 @@ The current alpha is strongest as a **runtime trace optimizer for multi-step LLM
 | Hotpot oracle compression | Compression headroom / idea generation | There is likely useful headroom if AgentC can identify irrelevant context better. | The current automated rule does not achieve oracle-level compression. |
 | `CacheHit` | GPTCache, ContextCache, MeanCache, vCache | Important future direction and likely useful runtime pass. | Needs false-hit, invalidation, and context-key evidence before becoming a paper claim. |
 | `ParallelBranch` | LLMCompiler, LLM-Tool Compiler, LangGraph, LLMOrch | Important future direction for latency. | Needs dependency, side-effect, and idempotence policy before strong claims. |
+| Complete-call size/concurrency diagnostic (`RES-013`) | Agentix, Murakkab, Parrot, SGLang, serving/runtime scaling work | Sequential planner cost is small and the deadline fails open safely. | The synchronous audit connection is a real bottleneck: C=32 p99 reaches 46.1ms and throughput gains at most 1.98x. |
 
 ## Publishability Read
 
@@ -33,7 +34,7 @@ The current alpha is strongest as a **runtime trace optimizer for multi-step LLM
 |---|---|---|
 | Workshop / short paper | plausible | The trace-optimizer framing, verified literature map, and two strong rule-level results are enough for useful feedback. |
 | ATC operational track | possible but rushed | Needs operational lessons, overhead, failure modes, and a tighter deployed-runtime story. |
-| MLSys / EuroSys / strong systems venue | not yet | Needs end-to-end multi-rule evidence, overhead/tail-latency numbers, artifact polish, and stronger baselines. |
+| MLSys / EuroSys / strong systems venue | not yet | Needs a positive held-out joint-policy result, a non-blocking audit path with a post-fix scaling rerun, artifact polish, and stronger baselines. |
 | COLM / LM-facing venue | possible later | Needs clearer cost-quality frontier, stochastic evaluation, and comparisons against routing/compression baselines. |
 | Broad AI/ML main venue | weak right now | The contribution currently reads more like systems infrastructure than a new AI method. |
 
@@ -42,6 +43,7 @@ The current alpha is strongest as a **runtime trace optimizer for multi-step LLM
 - `RES-001`: ContextCompress has the cleanest token-savings story.
 - `RES-002`: ModelDowngrade has the cleanest dollar-savings story.
 - `RES-005`: HotpotQA near-zero savings can be used as an activation-boundary diagnostic.
+- `RES-013`: complete-call timing is now auditable at fixed shape and across size/concurrency; the scaling artifact is an honest negative result that identifies synchronous persistence as the next systems fix.
 - `literature-and-nearest-neighbors.md`: the related-work map is now strong enough to guide writing and experiment selection.
 
 ## What Is Not Ready
@@ -54,11 +56,11 @@ The current alpha is strongest as a **runtime trace optimizer for multi-step LLM
 
 ## Best Next Contributions
 
-1. Run or design one end-to-end workload where multiple rules can fire together.
-2. Measure interception/planner overhead and latency-tail impact.
-3. Convert the strongest runnable baselines into a feasibility matrix: RouteLLM, FrugalGPT, LLMSelector, LLMLingua/LongLLMLingua/LLMLingua-2, GPTCache/vCache, and LLMCompiler.
-4. Add paired or repeated-run uncertainty for headline accuracy deltas.
-5. Write the StateDrop dependency model in plain language before trying to sell it as principled.
+1. Remove or batch the synchronous per-call audit write, preserve bounded-loss durability, and rerun the frozen 153,600-call matrix.
+2. Run the held-out joint model-routing plus semantic-rewrite campaign against fixed, route-only, rewrite-only, both sequential orders, current greedy, and best-static controls.
+3. Convert the strongest runnable baselines into a feasibility matrix: AgentOpt, RouteLLM, FrugalGPT, LLMSelector, LLMLingua/LongLLMLingua/LLMLingua-2, GPTCache/vCache, and LLMCompiler.
+4. Validate the persistent risk controller at its advertised 2% sampling rate, charging counterfactual calls and damage.
+5. Run the blind unengineered workload gate before investing further in the broad MLSys story.
 
 ## Avery Read Path
 

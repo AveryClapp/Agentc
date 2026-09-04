@@ -32,6 +32,11 @@ User authorized up to $15 of API spend; left to do as much as possible.
 
 ## Tier 1 results — overhead (free, done)
 
+> **Superseded 2026-09-04:** this section reports the internal pre-audit planner
+> clock, not complete-call overhead. Use the fixed-shape and size/concurrency
+> artifacts under `RES-013`; the latter reaches 46.1 ms p99 at 32 callers and
+> identifies synchronous audit persistence as a bottleneck.
+
 **File**: `bench/paper_results/optimizer_overhead.txt`
 **Source**: aggregated across 4 `optimizer_audit.db` files (1,818 plan decisions).
 

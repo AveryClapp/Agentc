@@ -1,0 +1,86 @@
+Optimizer size/concurrency scaling -- paired complete-call Stage E0 diagnostic
+=============================================================================
+
+Canonical summary:
+  bench/repro/optimizer-e2e-scaling-2026-09-04.json
+Compressed raw samples:
+  bench/repro/optimizer-e2e-scaling-2026-09-04.csv.gz
+Source commit:
+  994f9e85f6b20ce9ffc54542b39bd0caf4824fad
+Native extension SHA-256:
+  770e20b7d7bb2eb4bd65172af2f2f1869856298c36f35a2c2efc498c60e5cee8
+
+Method
+------
+Release-built CPython 3.13 extension on an eight-core Apple M2 with 16 GB RAM.
+The full factorial crosses exact 4/8/16/32/64 KiB serialized calls, 1/8/32
+Python callers, and guarded-reference/admitted-joint-rewrite paths. Each cell
+has five seeded-random-order replications of 1,024 timed calls, for 153,600
+samples. One hundred untimed calls warm each cell. All callers share one hot
+call site and the production WAL-backed audit connection. There are no provider
+or network calls.
+
+Each timed call has a span ID unique within its timed replication. Its outer
+`_native.optimize_plan` duration
+is paired with the exact internal `plan_audit.overhead_us` row even when thread
+completion and audit order differ. The native writer is closed after the timed
+group and before the separately linked Python SQLite reader inspects its WAL;
+that checkpoint is outside both clocks.
+
+Admitted joint rewrite -- pooled complete-call order statistics
+---------------------------------------------------------------
+
+ Size   C       p50       p99    mean throughput    speedup vs C=1
+ 4 KiB  1    0.128 ms   0.377 ms       5,148/s          1.00x
+ 4 KiB  8    0.483 ms  13.338 ms       7,551/s          1.47x
+ 4 KiB 32    2.070 ms  36.398 ms       7,085/s          1.38x
+ 8 KiB  1    0.142 ms   1.578 ms       4,396/s          1.00x
+ 8 KiB  8    0.490 ms   9.334 ms       8,852/s          2.01x
+ 8 KiB 32    2.453 ms  23.655 ms       7,251/s          1.65x
+16 KiB  1    0.157 ms   1.183 ms       4,167/s          1.00x
+16 KiB  8    0.510 ms  14.693 ms       7,720/s          1.85x
+16 KiB 32    2.122 ms  41.815 ms       7,276/s          1.75x
+32 KiB  1    0.187 ms   0.642 ms       4,058/s          1.00x
+32 KiB  8    0.581 ms  16.037 ms       6,599/s          1.63x
+32 KiB 32    2.458 ms  30.183 ms       6,379/s          1.57x
+64 KiB  1    0.253 ms   1.181 ms       2,986/s          1.00x
+64 KiB  8    0.689 ms  15.189 ms       6,493/s          2.17x
+64 KiB 32    2.853 ms  46.122 ms       5,909/s          1.98x
+
+Guarded-reference p50 spans 0.108--0.135 ms at C=1 and 1.744--2.388 ms
+at C=32. Its C=32 pooled p99 spans 14.620--41.436 ms and throughput speedup
+is 1.35--1.69x. The admitted path's corresponding C=32 speedup is 1.38--1.98x,
+only 4.3--6.2% efficiency relative to ideal 32-way scaling.
+
+Interpretation
+--------------
+Sequential medians remain below 0.3 ms over the full 16x byte range. Under
+contention, complete-call medians become millisecond-scale and p99 becomes
+10--50 ms scale. Replication p50s are stable, while replication p99s and
+throughput vary materially; the JSON therefore retains seeded 10,000-resample
+95% intervals over replication-level values rather than presenting a single
+tail as exact.
+
+At C=32, the internal pre-audit planner p99 is 0.363--0.721 ms, but the paired
+boundary/state/audit residual accounts for 94.2--96.9% of mean complete-call
+time. The residual is not an audit-only timer. Still, the production code's
+single mutex-protected synchronous audit connection is the known serialized
+operation in that scope and is the first optimization target.
+
+Two of 76,800 admitted-path calls (0.0026%) returned the immutable reference
+with `planning_overhead_exceeded`: one 64 KiB/C=1 call and one 16 KiB/C=32 call.
+The harness preserves these events rather than aborting or excluding them.
+
+Evidence boundary
+-----------------
+This artifact has `paper_evidence=false`. It is a zero-network, single-machine
+Stage E0 diagnostic with synthetic fixed-structure ASCII payloads. It measures
+request-byte scaling and a deliberately contended hot site, not semantic
+complexity, provider latency, task quality, savings, or multi-host behavior.
+
+Reproduction
+------------
+maturin develop --release --manifest-path crates/agentc-profiler/Cargo.toml
+python -m bench.optimizer_e2e_scaling --build-profile release \
+  --output bench/repro/optimizer-e2e-scaling-2026-09-04.json \
+  --raw-output bench/repro/optimizer-e2e-scaling-2026-09-04.csv.gz

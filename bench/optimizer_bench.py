@@ -61,7 +61,7 @@ class ShadowDivergence:
     optimized side's ``cost_model.db``. ``audit_mean`` is the mean of
     ``plan_audit.shadow_divergence`` for the same rule — redundant when
     everything is working, but useful to catch a drift between the
-    shadow-audit ring buffer and the aggregated estimator."""
+    append-only shadow audit log and the aggregated estimator."""
 
     rule: str
     n_samples: int
@@ -191,7 +191,7 @@ def _read_shadow_divergence(storage_dir: Path) -> list[ShadowDivergence]:
     """Read per-rule shadow divergence from a storage dir.
 
     Joins ``cost_model.db:rule_divergence`` (the aggregated estimator)
-    with ``optimizer_audit.db:plan_audit`` (the ring buffer) so we can
+    with ``optimizer_audit.db:plan_audit`` (the append-only audit log) so we can
     see both sources in one view. Returns ``[]`` if either DB is missing
     — that's expected on the baseline side, where the optimizer never
     ran."""

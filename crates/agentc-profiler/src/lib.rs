@@ -685,8 +685,9 @@ fn canonicalize_parameters_bytes<'py>(
 /// - The `CostModel` and `Budget` warmed from `cost_model.db` on init.
 /// - Complete-plan profiles warmed from their exact retained windows.
 /// - A `Mutex<Connection>` for `optimizer_audit.db`. We write `plan_audit`
-///   rows synchronously from the hot path; SQLite WAL mode keeps the
-///   per-row latency well under a millisecond.
+///   rows synchronously from the hot path. WAL keeps an uncontended insert
+///   small, but callers serialize on this mutex; the complete-call scaling
+///   benchmark treats that queueing as production-path overhead.
 /// - An `AtomicU64` observe counter so we can periodically flush dirty cost
 ///   profiles without spawning a thread. Shadow divergence is persisted on
 ///   each sampled comparison and flushed again at lifecycle boundaries.

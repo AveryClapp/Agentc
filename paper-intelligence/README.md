@@ -1,7 +1,7 @@
 ---
 title: Paper Intelligence README
 status: active
-last-updated: 2026-05-09
+last-updated: 2026-09-04
 owner: paper-intelligence
 ---
 
@@ -67,7 +67,7 @@ Read the 30-minute path, then add:
 
 ## Current Paper Read
 
-AgentC is currently strongest as a **runtime trace optimizer for multi-step LLM agents**. The individual rewrite families are known in the literature; AgentC's possible contribution is the control plane over framework-emitted calls.
+AgentC is currently strongest as a **guarded, application-side rewrite control plane for opaque LLM-agent calls**. The individual rewrite families and routing are known in the literature; AgentC's possible contribution is online, interaction-aware joint choice across model targets and semantic rewrites, with explicit abstention and persistent damage control.
 
 The best current evidence is:
 
@@ -75,6 +75,7 @@ The best current evidence is:
 - `RES-002`: `ModelDowngrade` saves substantial dollars on a routing workload.
 - `RES-004`: `StateDrop` is promising but partial/caveated.
 - `RES-005`: real HotpotQA near-zero savings is useful activation-boundary evidence.
+- `RES-013`: complete-call timing is now measured at fixed shape and across 4–64 KiB, C=1/8/32. Sequential medians are small, but the current synchronous audit path produces C=32 p99 up to 46.1ms and must be fixed.
 
 The paper is not ready to claim:
 
@@ -96,4 +97,4 @@ Do not add a new top-level paper-intelligence file unless it will stay active. P
 
 ## Next Work
 
-The durable task graph starts at `bd-399`: consolidate Paper Intelligence into a reader-first packet. The highest-value follow-up after consolidation is still experimental: end-to-end multi-rule evidence, overhead/tail-latency measurement, baseline feasibility, paired uncertainty, and a StateDrop dependency model.
+The highest-value next sequence is concrete: move audit persistence off the request path and rerun the frozen scaling matrix; then run the held-out joint routing-plus-rewrite campaign against fixed, route-only, rewrite-only, both ordering controls, current greedy, and best-static policies. Routing/compression baselines, the 2% risk-controller check, and the blind unengineered-workload gate follow.

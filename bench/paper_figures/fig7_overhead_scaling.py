@@ -1,105 +1,127 @@
-"""Figure 7: Planner overhead scaling vs prompt size.
+"""Figure 7: complete optimizer-call scaling by request size and concurrency.
 
-Line chart with p50, p95, p99 percentile lines across five prompt-size
-buckets: 4KB, 8KB, 16KB, 32KB, 64KB.
-
-Data from bench/paper_results/overhead_scaling.csv:
-  size_label,bytes,n_messages,mean_ms,p50_ms,p95_ms,p99_ms
-  4KB,4096,4,0.384,0.333,0.619,0.721
-  8KB,8192,8,0.560,0.368,0.704,5.273  <- isolated p99 tail
-  16KB,16384,12,0.460,0.457,0.590,0.597
-  32KB,32768,16,0.595,0.526,0.870,1.685
-  64KB,65536,24,0.769,0.710,1.105,1.263
-
-This historical data uses the internal pre-audit planner clock. It does not
-include the outer FFI boundary or audit persistence, so the source of the 8 KB
-p99 tail cannot be inferred from this dataset alone.
+The source is the committed Stage E0 artifact produced by
+``bench.optimizer_e2e_scaling``. The figure shows the admitted joint-rewrite
+path because it is the production path with the most planning work. Values are
+pooled order statistics across five randomized 1,024-call replications per
+cell. The JSON retains replication-level intervals and the guarded-reference
+control.
 """
 
+from __future__ import annotations
+
+import json
 from pathlib import Path
-import csv
+from typing import Any
 
 import matplotlib.pyplot as plt
-import numpy as np
 
-plt.rcParams.update({
-    "font.family": "serif",
-    "font.size": 9,
-    "axes.labelsize": 9,
-    "axes.titlesize": 10,
-    "legend.fontsize": 8,
-    "mathtext.fontset": "cm",
-    "pdf.fonttype": 42,
-    "ps.fonttype": 42,
-    "axes.linewidth": 0.7,
-})
+
+plt.rcParams.update(
+    {
+        "font.family": "serif",
+        "font.size": 8,
+        "axes.labelsize": 8,
+        "axes.titlesize": 9,
+        "legend.fontsize": 7.5,
+        "mathtext.fontset": "cm",
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+        "axes.linewidth": 0.7,
+    }
+)
 
 OUT = Path(__file__).resolve().parent / "fig7_overhead_scaling.pdf"
-DATA = Path(__file__).resolve().parents[1] / "paper_results" / "overhead_scaling.csv"
+DATA = (
+    Path(__file__).resolve().parents[1]
+    / "repro"
+    / "optimizer-e2e-scaling-2026-09-04.json"
+)
 
-DARK  = "#2c3e50"
-MED   = "#7f8c8d"
-LIGHT = "#bcc6cf"
-EDGE  = "#1a242f"
-GRID  = "#9a9a9a"
+COLORS = {1: "#174a52", 8: "#4f7f86", 32: "#b45f3c"}
+MARKERS = {1: "o", 8: "s", 32: "^"}
+GRID = "#9a9a9a"
+REFERENCE = "#8e3b46"
+
+
+def _load_rows() -> list[dict[str, Any]]:
+    payload = json.loads(DATA.read_text(encoding="utf-8"))
+    if payload.get("paper_evidence") is not False:
+        raise RuntimeError("Figure 7 expects the explicitly diagnostic Stage E0 run")
+    rows = [
+        row
+        for row in payload["aggregate_measurements_us_and_throughput"]
+        if row["scenario"] == "joint_admitted_rewrite"
+    ]
+    if len(rows) != 15:
+        raise RuntimeError(
+            f"expected 15 admitted-rewrite matrix cells, found {len(rows)}"
+        )
+    return rows
 
 
 def main() -> None:
-    rows = []
-    with open(DATA) as f:
-        for row in csv.DictReader(f):
-            rows.append({
-                "label": row["size_label"],
-                "p50": float(row["p50_ms"]),
-                "p95": float(row["p95_ms"]),
-                "p99": float(row["p99_ms"]),
-            })
+    rows = _load_rows()
+    sizes = sorted({int(row["target_call_json_bytes"]) // 1_024 for row in rows})
+    concurrencies = sorted({int(row["concurrency"]) for row in rows})
 
-    labels = [r["label"] for r in rows]
-    p50 = [r["p50"] for r in rows]
-    p95 = [r["p95"] for r in rows]
-    p99 = [r["p99"] for r in rows]
-    x = np.arange(len(labels))
+    fig, axes = plt.subplots(1, 2, figsize=(5.5, 2.75), sharex=True, sharey=True)
+    for axis, percentile in zip(axes, ("p50_us", "p99_us"), strict=True):
+        for concurrency in concurrencies:
+            by_size = {
+                int(row["target_call_json_bytes"]) // 1_024: row
+                for row in rows
+                if int(row["concurrency"]) == concurrency
+            }
+            latency_ms = [
+                float(by_size[size]["e2e"][percentile]) / 1_000 for size in sizes
+            ]
+            axis.plot(
+                range(len(sizes)),
+                latency_ms,
+                marker=MARKERS[concurrency],
+                color=COLORS[concurrency],
+                linewidth=1.35,
+                markersize=4.2,
+                label=(
+                    f"{concurrency} caller"
+                    if concurrency == 1
+                    else f"{concurrency} callers"
+                ),
+                zorder=3,
+            )
+        axis.axhline(
+            1.0,
+            color=REFERENCE,
+            alpha=0.7,
+            linewidth=0.75,
+            linestyle="--",
+            zorder=1,
+        )
+        axis.set_yscale("log")
+        axis.set_ylim(0.08, 100)
+        axis.set_xticks(range(len(sizes)))
+        axis.set_xticklabels([str(size) for size in sizes])
+        axis.set_xlabel("Serialized call size (KiB)")
+        axis.grid(axis="y", which="major", color=GRID, alpha=0.28, linewidth=0.5)
+        axis.spines["top"].set_visible(False)
+        axis.spines["right"].set_visible(False)
 
-    fig, ax = plt.subplots(figsize=(5.5, 3.6))
-
-    for y_grid in (1, 2, 3, 4, 5):
-        ax.axhline(y_grid, color=GRID, alpha=0.3, lw=0.5, zorder=0)
-
-    # 2 ms reference line.
-    ax.axhline(2.0, color="firebrick", alpha=0.55, lw=0.8, ls="--", zorder=1,
-               label="2 ms reference")
-
-    ax.plot(x, p50, "o-", color=DARK,  lw=1.4, ms=5, label="p50",  zorder=3)
-    ax.plot(x, p95, "s--", color=MED,  lw=1.2, ms=4, label="p95",  zorder=3)
-    ax.plot(x, p99, "^:",  color=LIGHT, lw=1.2, ms=4, label="p99",  zorder=3,
-            markeredgecolor=EDGE, markeredgewidth=0.5)
-
-    # Annotate the isolated 8KB p99 tail without asserting an unmeasured cause.
-    spike_idx = 1  # 8KB
-    ax.annotate(
-        "isolated\np99 tail",
-        xy=(x[spike_idx], p99[spike_idx]),
-        xytext=(x[spike_idx] + 0.5, p99[spike_idx] - 0.6),
-        ha="left", va="top",
-        fontsize=7.5, color=EDGE, style="italic",
-        arrowprops=dict(arrowstyle="-", color=EDGE, lw=0.6),
+    axes[0].set_title("Median (p50)")
+    axes[1].set_title("Tail (p99)")
+    axes[0].set_ylabel("Complete-call latency (ms, log scale)")
+    axes[0].text(
+        0.03,
+        1.08,
+        "1 ms",
+        color=REFERENCE,
+        fontsize=7,
+        transform=axes[0].get_yaxis_transform(),
     )
+    axes[0].legend(loc="upper left", frameon=False, ncol=1)
 
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels)
-    ax.set_xlabel("Prompt size")
-    ax.set_ylabel("Internal planner time (ms)")
-    ax.set_ylim(0, 6.2)
-    ax.set_yticks([0, 1, 2, 3, 4, 5, 6])
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-
-    ax.legend(loc="upper left", fontsize=8, frameon=True,
-              framealpha=0.9, edgecolor=EDGE)
-
-    fig.tight_layout()
-    fig.savefig(OUT, format="pdf", dpi=300, bbox_inches="tight", pad_inches=0.05)
+    fig.tight_layout(w_pad=1.0)
+    fig.savefig(OUT, format="pdf", dpi=300, bbox_inches="tight", pad_inches=0.04)
     plt.close(fig)
     print(f"wrote {OUT}")
 

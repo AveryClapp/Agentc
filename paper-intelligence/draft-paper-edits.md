@@ -60,6 +60,11 @@ sentence about the same pipeline.
 
 ## 4. §6 Evaluation — add overhead paragraph after the spend note
 
+> **Superseded 2026-09-04:** do not insert the paragraph below. Its 76/120 µs
+> values stop before audit persistence and the outer FFI return. The active
+> manuscript and `RES-013` now use paired complete-call diagnostics, including
+> the negative 4–64 KiB x C=1/8/32 scaling result.
+
 **Insert** (between the existing "Total API spend" sentence and §6.1):
 
 > Optimizer overhead, measured across 1,818 plan decisions captured

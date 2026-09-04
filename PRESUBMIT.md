@@ -105,6 +105,7 @@ These are the highest-value improvements for MLSys review strength.
 | Prefix-cache interaction documented | OpenAI prefix caching is disclosed; Agentc savings are measured on top of it. | `OPEN` |
 | Provider generalization checked | Provider rows state what generalized and what abstained because preconditions were absent. | `OPEN` |
 | Guard overhead checked | CPU microbenchmark and request-path overhead are both framed correctly. | `OPEN` |
+| Optimizer scaling checked | The complete-call 4–64 KiB x C=1/8/32 matrix meets the frozen tail target after audit-path remediation. | `OPEN` |
 
 Recommended final experiment commands:
 
@@ -115,6 +116,8 @@ python bench/run_refiner_warmup.py
 python bench/run_cc_sd_subadditivity_warmup.py
 python bench/run_planner_ablation_rerun.py
 python -m bench.guard_overhead_bench
+python -m bench.optimizer_e2e_overhead
+python -m bench.optimizer_e2e_scaling
 bash bench/repro/guard_frontier.sh
 bash bench/repro/crossmodel_selectivity.sh
 python -m bench.run_concurrency_bench --concurrency 1 8 32

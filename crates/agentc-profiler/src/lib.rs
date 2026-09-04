@@ -981,83 +981,93 @@ fn saturated_plan_json(max_inflight_plans: usize) -> String {
 /// are counted but never propagated into the user call.
 #[pyfunction]
 fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
+    let state = optimizer_state();
+    let t0 = std::time::Instant::now();
+    let Some(admission_permit) = state.admission.try_acquire() else {
+        // Keep the GIL for the bounded fail-open path. Releasing it here would
+        // make a rejected call join the very scheduler/GIL queue that the
+        // admission gate exists to avoid.
+        let plan_json = saturated_plan_json(state.admission.limit());
+        let overhead_us = t0.elapsed().as_micros() as i64;
+        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            enqueue_plan_audit(
+                &state,
+                call_json,
+                &plan_json,
+                overhead_us,
+                Some(OPTIMIZER_SATURATED_REASON),
+            );
+        }));
+        return plan_json;
+    };
+
     py.allow_threads(|| {
-        let state = optimizer_state();
-        let t0 = std::time::Instant::now();
-        let admission_permit = state.admission.try_acquire();
-        let runtime_fallback_reason = admission_permit
-            .is_none()
-            .then_some(OPTIMIZER_SATURATED_REASON);
         let max_overhead_us = if state.optimizer.config().max_overhead_ms.is_finite() {
             (state.optimizer.config().max_overhead_ms.max(0.0) * 1_000.0) as u128
         } else {
             0
         };
-        let plan_json = if admission_permit.is_none() {
-            saturated_plan_json(state.admission.limit())
-        } else {
-            let evaluation_mode = evaluation_planner_mode();
-            let primary_plan_json = guard_plan_fail_safe(|| match evaluation_mode {
-                EvaluationPlannerMode::JointGuarded => rust_profiled_plan(
-                    &state.optimizer,
-                    state.model_catalog.as_deref(),
-                    &state.plan_profiles,
-                    &state.plan_guard,
-                    call_json,
-                    now_us_i64(),
-                ),
-                EvaluationPlannerMode::CurrentGreedy => {
-                    projected_greedy_plan(&state, call_json, now_us_i64())
-                }
-                EvaluationPlannerMode::Invalid => PASS_THROUGH_JSON.to_string(),
-            });
-            if evaluation_mode == EvaluationPlannerMode::JointGuarded
-                && state.exploration_enabled
-                && t0.elapsed().as_micros() <= max_overhead_us
-            {
-                state
-                    .cost_db
-                    .as_ref()
-                    // Exploration is optional calibration work. Never make a user
-                    // call wait behind a background completion holding the DB.
-                    .and_then(|mutex| mutex.try_lock().ok())
-                    .map(|mut connection| {
-                        if t0.elapsed().as_micros() > max_overhead_us {
-                            return primary_plan_json.clone();
-                        }
-                        guard_plan_fail_safe(|| {
-                            let explored = rust_reserve_exploration(
-                                &state.optimizer,
-                                state.model_catalog.as_deref(),
-                                &state.plan_profiles,
-                                &state.plan_guard,
+        let evaluation_mode = evaluation_planner_mode();
+        let primary_plan_json = guard_plan_fail_safe(|| match evaluation_mode {
+            EvaluationPlannerMode::JointGuarded => rust_profiled_plan(
+                &state.optimizer,
+                state.model_catalog.as_deref(),
+                &state.plan_profiles,
+                &state.plan_guard,
+                call_json,
+                now_us_i64(),
+            ),
+            EvaluationPlannerMode::CurrentGreedy => {
+                projected_greedy_plan(&state, call_json, now_us_i64())
+            }
+            EvaluationPlannerMode::Invalid => PASS_THROUGH_JSON.to_string(),
+        });
+        let plan_json = if evaluation_mode == EvaluationPlannerMode::JointGuarded
+            && state.exploration_enabled
+            && t0.elapsed().as_micros() <= max_overhead_us
+        {
+            state
+                .cost_db
+                .as_ref()
+                // Exploration is optional calibration work. Never make a user
+                // call wait behind a background completion holding the DB.
+                .and_then(|mutex| mutex.try_lock().ok())
+                .map(|mut connection| {
+                    if t0.elapsed().as_micros() > max_overhead_us {
+                        return primary_plan_json.clone();
+                    }
+                    guard_plan_fail_safe(|| {
+                        let explored = rust_reserve_exploration(
+                            &state.optimizer,
+                            state.model_catalog.as_deref(),
+                            &state.plan_profiles,
+                            &state.plan_guard,
+                            &state.exploration_controller,
+                            &mut connection,
+                            call_json,
+                            &primary_plan_json,
+                            now_us_i64(),
+                        );
+                        if explored != primary_plan_json
+                            && t0.elapsed().as_micros() > max_overhead_us
+                        {
+                            // Reservation is already durable, but the envelope
+                            // has not crossed into Python/provider dispatch.
+                            // Cancel it before stripping the candidate.
+                            let _ = rust_cancel_embedded_exploration(
                                 &state.exploration_controller,
                                 &mut connection,
-                                call_json,
-                                &primary_plan_json,
-                                now_us_i64(),
+                                &explored,
                             );
-                            if explored != primary_plan_json
-                                && t0.elapsed().as_micros() > max_overhead_us
-                            {
-                                // Reservation is already durable, but the envelope
-                                // has not crossed into Python/provider dispatch.
-                                // Cancel it before stripping the candidate.
-                                let _ = rust_cancel_embedded_exploration(
-                                    &state.exploration_controller,
-                                    &mut connection,
-                                    &explored,
-                                );
-                                primary_plan_json.clone()
-                            } else {
-                                explored
-                            }
-                        })
+                            primary_plan_json.clone()
+                        } else {
+                            explored
+                        }
                     })
-                    .unwrap_or_else(|| primary_plan_json.clone())
-            } else {
-                primary_plan_json
-            }
+                })
+                .unwrap_or_else(|| primary_plan_json.clone())
+        } else {
+            primary_plan_json
         };
         let overhead_us = t0.elapsed().as_micros() as i64;
 
@@ -1069,7 +1079,7 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
                 call_json,
                 &plan_json,
                 overhead_us,
-                runtime_fallback_reason,
+                None,
             );
         }));
         drop(admission_permit);

@@ -17,6 +17,8 @@ import json
 import logging
 import math
 import sys
+import threading
+import time
 from types import FrameType
 from typing import Any, Awaitable, Callable, Optional
 
@@ -40,6 +42,15 @@ ANTHROPIC_MESSAGES_PROTOCOL = "anthropic.messages.v1"
 LITELLM_COMPLETION_PROTOCOL = "litellm.completion.v1"
 _ROUTE_CONTEXT_KEY = "agentc_route_context"
 _ROUTED_TARGET_KEY = "agentc_routed_target"
+
+# Counterfactual calls are off the request path, but they are not allowed to
+# create an unbounded process-wide thread/task fan-out across many call sites.
+# SQLite independently enforces the stricter one-live-call limit per site.
+_EXPLORATION_WORKER_LIMIT = 4
+_exploration_worker_slots = threading.BoundedSemaphore(_EXPLORATION_WORKER_LIMIT)
+_exploration_workers_lock = threading.Lock()
+_exploration_threads: dict[threading.Thread, Any] = {}
+_exploration_tasks: dict[Any, Any] = {}
 
 
 class UnsafeModelRouteError(ValueError):
@@ -959,6 +970,8 @@ def _response_output_text(response: Any) -> Optional[str]:
     maximal divergence and could auto-disable a working rule (bd-kq7).
     """
     try:
+        if isinstance(response, str):
+            return response
         # OpenAI ChatCompletion shape: choices[0].message.content.
         choices = getattr(response, "choices", None) or []
         if choices:
@@ -1123,6 +1136,268 @@ def _record_shadow_comparison(
         record_divergence(observation_token, divergence)
 
 
+def _exploration_parts(plan: Any) -> tuple[Any, str] | None:
+    candidate = getattr(plan, "counterfactual", None)
+    lease_token = getattr(plan, "exploration_lease_token", None)
+    if (
+        getattr(plan, "kind", None) != "pass_through"
+        or not isinstance(lease_token, str)
+        or not lease_token
+        or candidate is None
+        or getattr(candidate, "kind", None) not in ("rewritten", "composed")
+        or not isinstance(getattr(candidate, "call", None), dict)
+    ):
+        return None
+    return candidate, lease_token
+
+
+def cancel_exploration(plan: Any) -> None:
+    """Best-effort release when the reference call never produced a result."""
+    if _exploration_parts(plan) is None:
+        return
+    from agentc._optimizer import fail_exploration
+
+    fail_exploration(plan)
+
+
+def _record_exploration_result(
+    plan: Any,
+    candidate: Any,
+    reference_text: str,
+    candidate_response: Any,
+    elapsed_s: float,
+    extract_outcome: Callable[[Any, Any, float], dict[str, Any]],
+) -> None:
+    from agentc._optimizer import complete_exploration, fail_exploration
+
+    candidate_text = _response_output_text(candidate_response)
+    if candidate_text is None:
+        fail_exploration(plan)
+        return
+    outcome = extract_outcome(candidate, candidate_response, elapsed_s)
+    if not isinstance(outcome, dict):
+        fail_exploration(plan)
+        return
+    divergence = _text_divergence(candidate_text, reference_text)
+    if not complete_exploration(plan, outcome, divergence):
+        fail_exploration(plan)
+
+
+def _maybe_explore_record(
+    plan: Any,
+    reference_response: Any,
+    run_mutated: Callable[[dict[str, Any]], Any],
+    extract_outcome: Callable[[Any, Any, float], dict[str, Any]],
+) -> threading.Thread | None:
+    """Schedule one leased sync counterfactual after returning the reference.
+
+    The daemon worker calls only the provider's mutated-call adapter. It never
+    retries the original request and never changes the response held by the
+    caller. The returned thread exists for deterministic tests; production
+    wrappers deliberately do not join it.
+    """
+    parts = _exploration_parts(plan)
+    if parts is None:
+        return None
+    candidate, _lease_token = parts
+    reference_text = _response_output_text(reference_response)
+    if reference_text is None:
+        cancel_exploration(plan)
+        return None
+    if not _exploration_worker_slots.acquire(blocking=False):
+        cancel_exploration(plan)
+        return None
+
+    def worker() -> None:
+        try:
+            started = time.perf_counter()
+            candidate_response = run_mutated(candidate.call)
+            candidate.executed_model_id = str(candidate.call.get("model") or "") or None
+            _record_exploration_result(
+                plan,
+                candidate,
+                reference_text,
+                candidate_response,
+                time.perf_counter() - started,
+                extract_outcome,
+            )
+        except BaseException:
+            cancel_exploration(plan)
+            log.debug("counterfactual exploration failed; lease closed", exc_info=True)
+        finally:
+            with _exploration_workers_lock:
+                _exploration_threads.pop(threading.current_thread(), None)
+            _exploration_worker_slots.release()
+
+    thread: threading.Thread | None = None
+    try:
+        thread = threading.Thread(
+            target=worker,
+            name="agentc-counterfactual",
+            daemon=True,
+        )
+        with _exploration_workers_lock:
+            _exploration_threads[thread] = plan
+        thread.start()
+    except BaseException:
+        if thread is not None:
+            with _exploration_workers_lock:
+                _exploration_threads.pop(thread, None)
+        _exploration_worker_slots.release()
+        cancel_exploration(plan)
+        log.debug("counterfactual worker start failed; lease closed", exc_info=True)
+        return None
+    return thread
+
+
+def maybe_explore_record(
+    plan: Any,
+    reference_response: Any,
+    run_mutated: Callable[[dict[str, Any]], Any],
+    extract_outcome: Callable[[Any, Any, float], dict[str, Any]],
+) -> threading.Thread | None:
+    """Fail-open boundary for sync counterfactual worker setup."""
+    try:
+        return _maybe_explore_record(
+            plan,
+            reference_response,
+            run_mutated,
+            extract_outcome,
+        )
+    except BaseException:
+        try:
+            cancel_exploration(plan)
+        except BaseException:
+            log.debug("counterfactual setup lease close failed", exc_info=True)
+        log.debug("counterfactual worker setup failed; reference preserved", exc_info=True)
+        return None
+
+
+def _maybe_explore_record_async(
+    plan: Any,
+    reference_response: Any,
+    run_mutated: Callable[[dict[str, Any]], Awaitable[Any]],
+    extract_outcome: Callable[[Any, Any, float], dict[str, Any]],
+) -> Any | None:
+    """Schedule the async counterpart without extending request latency."""
+    import asyncio
+
+    parts = _exploration_parts(plan)
+    if parts is None:
+        return None
+    candidate, _lease_token = parts
+    reference_text = _response_output_text(reference_response)
+    if reference_text is None:
+        cancel_exploration(plan)
+        return None
+    if not _exploration_worker_slots.acquire(blocking=False):
+        cancel_exploration(plan)
+        return None
+
+    async def worker() -> None:
+        try:
+            started = time.perf_counter()
+            candidate_response = await run_mutated(candidate.call)
+            candidate.executed_model_id = str(candidate.call.get("model") or "") or None
+            _record_exploration_result(
+                plan,
+                candidate,
+                reference_text,
+                candidate_response,
+                time.perf_counter() - started,
+                extract_outcome,
+            )
+        except asyncio.CancelledError:
+            cancel_exploration(plan)
+            raise
+        except BaseException:
+            cancel_exploration(plan)
+            log.debug("async counterfactual exploration failed; lease closed", exc_info=True)
+        finally:
+            _exploration_worker_slots.release()
+
+    worker_coro = worker()
+    try:
+        task = asyncio.create_task(worker_coro, name="agentc-counterfactual")
+    except BaseException:
+        worker_coro.close()
+        _exploration_worker_slots.release()
+        cancel_exploration(plan)
+        log.debug("async counterfactual task start failed; lease closed", exc_info=True)
+        return None
+    with _exploration_workers_lock:
+        _exploration_tasks[task] = plan
+
+    def forget(done: Any) -> None:
+        with _exploration_workers_lock:
+            _exploration_tasks.pop(done, None)
+
+    task.add_done_callback(forget)
+    return task
+
+
+def maybe_explore_record_async(
+    plan: Any,
+    reference_response: Any,
+    run_mutated: Callable[[dict[str, Any]], Awaitable[Any]],
+    extract_outcome: Callable[[Any, Any, float], dict[str, Any]],
+) -> Any | None:
+    """Fail-open boundary for async counterfactual task setup."""
+    try:
+        return _maybe_explore_record_async(
+            plan,
+            reference_response,
+            run_mutated,
+            extract_outcome,
+        )
+    except BaseException:
+        try:
+            cancel_exploration(plan)
+        except BaseException:
+            log.debug("async counterfactual setup lease close failed", exc_info=True)
+        log.debug("async counterfactual task setup failed; reference preserved", exc_info=True)
+        return None
+
+
+def drain_exploration(timeout_ms: int) -> None:
+    """Bound shutdown wait and close leases for work that cannot finish."""
+    timeout_s = max(timeout_ms, 0) / 1000.0
+    deadline = time.monotonic() + timeout_s
+    with _exploration_workers_lock:
+        threads = list(_exploration_threads.items())
+        tasks = list(_exploration_tasks.items())
+
+    current = threading.current_thread()
+    for thread, _plan in threads:
+        if thread is current:
+            continue
+        remaining = max(deadline - time.monotonic(), 0.0)
+        thread.join(timeout=remaining)
+
+    with _exploration_workers_lock:
+        unfinished_threads = list(_exploration_threads.items())
+        unfinished_tasks = list(_exploration_tasks.items())
+    for _thread, plan in unfinished_threads:
+        cancel_exploration(plan)
+    for task, plan in unfinished_tasks:
+        cancel_exploration(plan)
+        _cancel_async_exploration_task(task)
+
+
+def _cancel_async_exploration_task(task: Any) -> None:
+    """Cancel on the task's owning loop when shutdown runs elsewhere."""
+    try:
+        loop = task.get_loop()
+        if loop.is_closed():
+            return
+        if loop.is_running():
+            loop.call_soon_threadsafe(task.cancel)
+        else:
+            task.cancel()
+    except BaseException:
+        log.debug("async counterfactual task cancellation failed", exc_info=True)
+
+
 def maybe_shadow_record(
     plan: Any,
     call_site_id: Optional[str],
@@ -1208,7 +1483,11 @@ def dispatch_sync(
     decode = decode_cached or (lambda v: v)
 
     if plan.kind == "pass_through":
-        return run_original()
+        try:
+            return run_original()
+        except BaseException:
+            cancel_exploration(plan)
+            raise
     if plan.kind == "cached":
         try:
             decoded = decode(plan.value)

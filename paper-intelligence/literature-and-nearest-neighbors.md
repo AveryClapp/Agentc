@@ -1,7 +1,7 @@
 ---
 title: Literature and Nearest Neighbors
 status: active
-last-updated: 2026-09-03
+last-updated: 2026-09-04
 owner: paper-intelligence
 ---
 
@@ -533,6 +533,12 @@ The entries below are checked source blurbs. They preserve the `LIT` IDs, citati
 - Verdict: verified 2026 technical report and official artifact; the report's evaluated core is combinatorial model assignment, while the artifact also exposes runtime routing, tracking, caching, and in-process/proxy interception.
 - Citation blurb: AgentOpt is the closest deployment neighbor for framework-agnostic client-side interception and cost/latency/quality-aware model selection across agent pipeline roles.
 - AgentC difference: transparent interception and routing are no longer differentiators; AgentC must demonstrate online per-call-site learning across heterogeneous semantic rewrites, interaction-aware complete plans, persistent drift adaptation, and an explicit damage contract.
+- Implementation checkpoint (2026-09-04): the production interceptor now
+  enumerates joint model-and-rewrite candidates, gathers bounded
+  reference-visible counterfactuals, persists exact complete-plan profiles,
+  and admits only evidenced plans after restart. This changes the gap from
+  *unimplemented* to *unevaluated*: the no-network Stage E0 preflight proves
+  mechanics, not superiority to AgentOpt or any MLSys contribution claim.
 - Use: must-cite and mandatory runnable baseline for routing or transparent-deployment claims. Baseline: `run`. Evidence: 5. Threat: 5.
 
 ### `LIT-073` - Agent JIT Compilation for Latency-Optimizing Web Agent Planning and Scheduling

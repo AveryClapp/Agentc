@@ -63,7 +63,9 @@ This is a **JIT** optimizer in the literal compiler sense: cold code runs interp
 
 - Does not rewrite tool implementations, prompt templates, or agent code.
 - Does not speculate across call sites that have not yet executed.
-- Does not apply rewrites on the first N invocations of a call site; those are always pass-through.
+- Does not expose rewrites on the first N invocations of a call site; those are
+  pass-through. Once the site is hot, bounded initial calibration may issue a
+  second, off-path provider call while still returning the reference response.
 - Does not learn rewrite rules. The rule set is fixed; complete-plan behavior is observed online.
 - Does not operate without the profiler — a cold-start workspace with no trace data always runs pass-through.
 - Does not call output divergence task quality or promise semantic equivalence.
@@ -246,6 +248,7 @@ Environment overrides:
 | `AGENTC_OPTIMIZE_MIN_PLAN_EVIDENCE=20` | Sets the paired evidence floor for a non-reference plan. |
 | `AGENTC_OPTIMIZE_OBJECTIVE=cost` | Selects `cost` or `latency` minimization. |
 | `AGENTC_OPTIMIZE_MAX_OVERHEAD_MS=5` | Sets the plan kill-switch budget. |
+| `AGENTC_OPTIMIZE_EXPLORATION=0` | Disables initial off-path calibration. Exploration is enabled by default and issues real, billed candidate calls under the persisted site cap. |
 | `AGENTC_OPTIMIZE_SHADOW=0.1` | Overrides `shadow_rate`. |
 | `AGENTC_COMPOSE=0` | Selects the independent first-match compatibility baseline; it is not a joint-planner mode. |
 
@@ -326,7 +329,7 @@ the optimizer.
 
 ### FFI surface
 
-The native extension exposes seven optimizer functions:
+The native extension exposes ten optimizer functions:
 
 ```python
 # python/agentc/_native.pyi
@@ -343,7 +346,12 @@ def optimize_plan(call_json: str) -> str:
     """
     Input: JSON-serialized Call (call_site_id, model, messages, parameters, tools).
     Output: JSON-serialized Plan. "pass_through" for cold or no-fire cases.
+    A pass-through result may carry one opaque, durably leased exploration
+    candidate for provider-adapter execution after the reference completes.
     """
+
+def optimize_model_catalog() -> str:
+    """Return the exact versioned routing catalog used by the planner."""
 
 def optimize_observe(plan_json: str, outcome_json: str) -> str:
     """
@@ -353,6 +361,14 @@ def optimize_observe(plan_json: str, outcome_json: str) -> str:
 
 def optimize_record_divergence(observation_token: str, divergence: float) -> None:
     """Attach one sampled counterfactual to its exact observed plan execution."""
+
+def optimize_complete_exploration(
+    lease_token: str, outcome_json: str, divergence: float
+) -> bool:
+    """Persist one leased candidate outcome and its paired divergence."""
+
+def optimize_fail_exploration(lease_token: str) -> bool:
+    """Close a failed lease without refunding its rolling call-cap charge."""
 
 def optimize_flush() -> None:
     """Flush buffered cost-profile and guard-divergence state."""
@@ -404,6 +420,11 @@ All plan execution happens in Python — the SDK receives the `Plan` back from R
     │ → profiler emits span           │
     │ → exact plan profile updates    │
     └─────────────────────────────────┘
+                 │
+                 └── cold alternative leased?
+                       return reference now
+                       run candidate off-path
+                       compare text + persist exact paired evidence
 ```
 
 ### DAG IR
@@ -638,6 +659,15 @@ per call site in 24 hours and one concurrent counterfactual. After admission,
 the selected result is returned and the reference is sampled at `shadow_rate`
 (default 2%) for drift detection.
 
+Exploration is enabled by default through `AGENTC_OPTIMIZE_EXPLORATION=1`.
+Every counterfactual is a real provider request and may be billed. Setting the
+variable to `0`, `false`, `no`, or `off` disables those calls without disabling
+profiling or already-admissible plan selection. Python bounds sync and async
+off-path work to four process-wide workers in addition to the controller's one
+active lease per site. Shutdown drains that work for the configured timeout,
+closes unfinished leases, and schedules async cancellation on each task's
+owning event loop.
+
 The exploration controller persists a lease before the candidate call starts.
 A failed, expired, or abandoned lease still consumes one call from the rolling
 site cap because provider work may already have started. Lease expiry releases
@@ -674,10 +704,12 @@ delayed feedback therefore cannot be reinterpreted under a later environment
 or rule-policy value.
 
 Divergence and thresholds are finite fractions in `[0,1]`; invalid values do not
-create or mutate state. Text divergence uses the calibration-selected metric.
-Tool calls compare tool identity and schema-valid arguments. The runtime calls
-this quantity divergence, not quality. Workload-level task damage is measured
-only by the evaluation harness where labels or official scores exist.
+create or mutate state. Production exploration currently compares assistant
+text with the configured text-divergence metric. It does not yet validate tool
+identity or arguments, so tool-bearing and streaming requests receive no
+exploration candidate. The runtime calls this quantity divergence, not quality.
+Workload-level task damage is measured only by the evaluation harness where
+labels or official scores exist.
 Exploration feedback stores either `observation_only` or `task_quality`; only
 the latter contains reference/candidate quality and debits the evaluation-only
 task-damage budget. Both record candidate cost and latency so exploration spend
@@ -697,7 +729,14 @@ The optimizer targets < 1 ms p99 per intercepted call. The `plan` path's work:
 | FFI boundary (JSON out) | 100 μs | |
 | **p99 total** | **≤ 1 ms** | |
 
-`max_overhead_ms` (default 5 ms) is the kill switch: if the measured plan time exceeds it, the optimizer returns `Plan::PassThrough` and logs. This protects against pathological cases (huge prompts, slow SQLite pages) while keeping the runtime honest.
+`max_overhead_ms` (default 5 ms) is the kill switch over joint selection plus
+exploration reservation. Exploration uses a non-blocking cost-DB lock, so a
+background completion never stalls the user path. If total planning work
+crosses the budget after a lease was persisted, the runtime marks that lease
+failed, strips the candidate envelope, and returns `Plan::PassThrough`. The
+failed attempt remains charged to the rolling cap. This protects against
+pathological cases while keeping provider dispatch outside an over-budget
+decision.
 
 ### Persistent storage
 
@@ -1061,10 +1100,15 @@ python/agentc/
 Every optimizer path is wrapped to fail open:
 
 1. **`optimize_plan` FFI raises** → SDK treats as `PassThrough`, logs at debug.
-2. **Rule panics** (PyO3 `PanicException`) → the optimizer treats that rule as inapplicable for the call, logs at warn, and falls back to the next rule or `PassThrough`.
+2. **Rule panics** → the Rust FFI catches the planner panic and returns
+   `PassThrough`; no candidate from that planning attempt is dispatched.
 3. **Cost-model DB corruption** → in-memory cache continues; persistence is disabled until restart.
-4. **Plan dispatch fails** (e.g., downgraded model is unavailable) → executor catches, retries the original call once, logs at warn.
-5. **Shadow-mode execution fails** → the primary result still returns; divergence is not recorded for that call.
+4. **User-visible plan dispatch fails** (e.g., downgraded model is unavailable)
+   → executor catches, retries the original call once, and records the fallback.
+5. **Initial exploration dispatch fails** → the already-completed reference is
+   returned unchanged, the lease is failed, and the reference is not retried.
+6. **Shadow-mode execution fails** → the primary result still returns;
+   divergence is not recorded for that call.
 
 A user's LLM call never fails because the optimizer failed.
 
@@ -1090,7 +1134,8 @@ A user's LLM call never fails because the optimizer failed.
   re-admission.
 - **SQLite cost-model flushes are serialized** by the native profiler's cost-DB
   mutex. Each transaction replaces the exact retained samples and summary for
-  every captured dirty site.
+  every captured dirty site. User-path exploration reservation uses `try_lock`
+  and abstains instead of waiting behind a completion.
 - **Legacy solo-rule guard updates lock one site/rule entry.** Each solo shadow sample mutates a
   copy-on-write retained window, recomputes its statistics, updates the raw
   breach streak, records a dirty generation, and then uses the native cost-DB
@@ -1098,7 +1143,10 @@ A user's LLM call never fails because the optimizer failed.
   only the captured generation, so a concurrent post-snapshot sample remains
   dirty.
 - **Audit writes are synchronous and serialized** by a separate audit-DB mutex.
-- **Shadow execution runs in a background `asyncio.Task`** or thread (depending on the SDK), so it never blocks the primary return. If the shadow task doesn't complete within 2× the primary latency, it's dropped.
+- **Initial exploration runs in a background `asyncio.Task` or daemon thread.**
+  The adapter schedules it only after the reference response is observed.
+  **Post-admission shadow execution remains synchronous** in the provider
+  wrapper and adds latency to sampled calls; this cost belongs in evaluation.
 
 ---
 
@@ -1196,6 +1244,13 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Forbidden, incompatible, disabled, and sufficiently observed plans are never leased | `exploration::tests::forbidden_incompatible_disabled_and_warm_candidates_never_run` |
 | The immutable reference plan is never leased as its own counterfactual | `exploration::tests::reference_plan_is_never_leased_as_its_own_counterfactual` |
 | Divergence observations remain distinct from evaluation-only task-quality labels | `exploration::tests::observation_and_task_quality_feedback_remain_distinct` |
+| A cold live candidate is durably leased without replacing the reference response | `ffi::tests::cold_candidate_is_leased_without_replacing_the_reference_plan` |
+| A completed lease updates its exact paired plan profile once across replay | `ffi::tests::completed_counterfactual_updates_only_its_exact_paired_profile_once` |
+| Tool-bearing requests never receive the text-only exploration comparator | `ffi::tests::tool_bearing_request_never_receives_a_text_only_counterfactual` |
+| An over-budget envelope is failed before candidate dispatch | `ffi::tests::over_budget_envelope_can_be_failed_before_candidate_dispatch`, `tests/test_live_exploration_preflight.py::test_zero_total_overhead_budget_never_dispatches_counterfactual` |
+| OpenAI, Anthropic, and LiteLLM adapters return the reference before scheduling the candidate | `tests/test_openai_patch.py`, `tests/test_anthropic_patch.py`, `tests/test_litellm_patch.py` |
+| Sync and async candidate failure closes the lease without retrying the reference | `tests/test_optimizer_glue.py::TestBoundedExplorationPythonEntry` |
+| Async shutdown routes cancellation through the task's owning event loop | `tests/test_optimizer_glue.py::TestBoundedExplorationPythonEntry::test_cross_thread_async_cancel_is_scheduled_on_owning_loop` |
 | Bounded enumeration emits every effective compatible subset and never credits a discarded rewrite | `composition::tests::joint_enumerator_*` |
 | The live FFI abstains without evidence, then selects only the exact persisted joint profile after restart | `ffi::tests::live_profiled_path_selects_only_the_exact_evidenced_joint_plan` |
 | A failed selected target retries the exact original request once | `tests/test_optimizer_glue.py::test_routed_failure_replays_exact_original` |
@@ -1230,6 +1285,16 @@ seeded candidate allocation, exact-plan exposure/task-damage stopping, the
 rolling site call cap, counterfactual cost accounting, and restart persistence
 without provider calls. It does not exercise live candidate generation and is
 permanently labeled `paper_evidence=false`.
+
+`bench/live_exploration_preflight.py` is the no-network production-adapter
+counterpart. A deterministic fake OpenAI provider drives the real Python patch
+and native optimizer through three warmups and 20 off-path `OutputBudget`
+comparisons. All 23 calibration responses remain the immutable reference; the
+20 exact paired observations persist across a full native reset; and the next
+call admits the evidenced candidate. The committed development artifact is
+`bench/repro/live-exploration-preflight-2026-09-04.json`. It validates wiring,
+accounting, and restart semantics only and is permanently labeled
+`paper_evidence=false`.
 
 `crates/agentc-optimizer/examples/joint_planner_preflight.rs` exercises the live
 profile-backed production planning function after persisting and reloading one

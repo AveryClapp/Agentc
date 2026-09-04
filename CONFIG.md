@@ -36,7 +36,9 @@ profiler four) in `~/.agentc/config.toml`.
 | `AGENTC_OPTIMIZE_HOT_THRESHOLD` | `3` | Observations before a call site is "hot" enough to optimize. |
 | `AGENTC_OPTIMIZE_COST_MODEL_WINDOW` | `50` | Rolling per-call-site cost-model sample window. |
 | `AGENTC_OPTIMIZE_DIVERGENCE_WINDOW` | `50` | Exact newest shadow samples retained per call-site/rule divergence estimate. |
+| `AGENTC_OPTIMIZE_PLAN_PROFILE_WINDOW` | `50` | Independent exact execution-outcome and paired-divergence windows per complete plan. |
 | `AGENTC_OPTIMIZE_MAX_OVERHEAD_MS` | `5` (release) / `50` (debug) | Plan-overhead kill-switch budget. |
+| `AGENTC_OPTIMIZE_EXPLORATION` | `true` | Initial reference-visible calibration. Each leased candidate is a second, **real and potentially billed** provider call; `0/false/no/off` disables it. The persisted default cap is 20 attempts per call-site version per 24h, with one active lease per site and four workers process-wide. |
 | `AGENTC_OPTIMIZE_SHADOW` | `0.02` | Bernoulli shadow-sampling rate. A sampled call issues a second, **real and billed** un-rewritten call inline to measure divergence. |
 | `AGENTC_COMPOSE` | `true` | V2 composition (`1`) vs V1 first-match (`0`). |
 | `AGENTC_SHADOW_DIVERGENCE_MODE` | `lexical` | Guard divergence metric: `lexical`, `normalized`, or `embedding`. `embedding` falls back to `normalized` if the embedder is unavailable. |

@@ -193,6 +193,79 @@ class TestStreamOptionsInjection:
 
 
 class TestSyncCreateWrapper:
+    def test_live_cold_plan_runs_reference_visible_counterfactual_off_path(
+        self,
+        tmp_storage: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from contextlib import closing
+        import sqlite3
+        import threading
+
+        monkeypatch.setenv("AGENTC_ENABLED_RULES", "OutputBudget")
+        monkeypatch.setenv("AGENTC_OPTIMIZE_EXPLORATION", "1")
+        monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "0")
+        with patch("agentc._lifecycle._apply_patches"):
+            agentc.init(storage_path=str(tmp_storage))
+
+        candidate_entered = threading.Event()
+        release_candidate = threading.Event()
+        calls: list[int] = []
+
+        def provider(**kwargs: Any) -> MockChatCompletion:
+            cap = int(kwargs.get("max_tokens", 0) or 0)
+            calls.append(cap)
+            if cap == 64:
+                candidate_entered.set()
+                assert release_candidate.wait(timeout=2)
+                return MockChatCompletion(
+                    model="gpt-4o",
+                    choices=[MockChoice(MockMessage(content="discarded candidate"))],
+                )
+            return MockChatCompletion(
+                model="gpt-4o",
+                choices=[MockChoice(MockMessage(content="reference visible"))],
+            )
+
+        request = {
+            "model": "gpt-4o",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "same shaped prompt"}],
+        }
+        responses = []
+        with patch("agentc._patches._openai._write_root_span"):
+            for _ in range(4):
+                responses.append(_wrap_create(provider, None, (), request))
+
+        assert all(
+            response.choices[0].message.content == "reference visible"
+            for response in responses
+        )
+        assert candidate_entered.wait(timeout=2)
+        assert calls.count(1024) == 4
+        assert calls.count(64) == 1
+
+        release_candidate.set()
+        from agentc._patches._optimizer_glue import drain_exploration
+
+        drain_exploration(2_000)
+        agentc.shutdown()
+
+        database = tmp_storage / "cost_model.db"
+        with closing(sqlite3.connect(database)) as connection:
+            completed = connection.execute(
+                "SELECT status, execution_plan_id FROM execution_plan_exploration"
+            ).fetchone()
+            assert completed is not None
+            paired = connection.execute(
+                "SELECT paired_observations FROM execution_plan_profile "
+                "WHERE execution_plan_id = ?",
+                (completed[1],),
+            ).fetchone()
+
+        assert completed[0] == "completed"
+        assert paired == (1,)
+
     def test_excluded_scope_preserves_request_and_span(self, initialized: Path) -> None:
         from agentc import optimization_scope
 
@@ -240,6 +313,9 @@ class TestSyncCreateWrapper:
             "agentc._patches._openai._observe_openai_outcome",
             new=observe,
         ), patch(
+            "agentc._patches._optimizer_glue.maybe_explore_record",
+            side_effect=lambda *_: events.append("explore"),
+        ), patch(
             "agentc._patches._optimizer_glue.maybe_shadow_record",
             side_effect=lambda *_: events.append("shadow"),
         ), patch(
@@ -254,7 +330,7 @@ class TestSyncCreateWrapper:
             )
 
         assert result is response
-        assert events == ["observe", "shadow"]
+        assert events == ["observe", "explore", "shadow"]
         assert observe.call_args.kwargs["elapsed_s"] == pytest.approx(0.1)
 
     def test_captures_span(self, initialized: Path) -> None:
@@ -371,6 +447,7 @@ class TestAsyncCreateWrapper:
         events: list[str] = []
         shadow = AsyncMock(side_effect=lambda *_: events.append("shadow"))
         observe = MagicMock(side_effect=lambda **_: events.append("observe"))
+        explore = MagicMock(side_effect=lambda *_: events.append("explore"))
 
         with patch("agentc._patches._openai._write_root_span"), patch(
             "agentc._patches._openai._plan_openai_call",
@@ -381,6 +458,9 @@ class TestAsyncCreateWrapper:
         ), patch(
             "agentc._patches._optimizer_glue.maybe_shadow_record_async",
             new=shadow,
+        ), patch(
+            "agentc._patches._optimizer_glue.maybe_explore_record_async",
+            new=explore,
         ), patch(
             "agentc._patches._openai._observe_openai_outcome",
             new=observe,
@@ -394,8 +474,10 @@ class TestAsyncCreateWrapper:
 
         assert result is response
         shadow.assert_awaited_once()
+        explore.assert_called_once()
         assert shadow.await_args.args[:3] == (plan, "site", response)
-        assert events == ["observe", "shadow"]
+        assert explore.call_args.args[:2] == (plan, response)
+        assert events == ["observe", "explore", "shadow"]
 
 
 class TestStreamingWrapper:

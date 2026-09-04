@@ -9,6 +9,7 @@ Spec exit criteria (bd-0bs):
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import patch
 
 import pytest
 
@@ -35,6 +36,31 @@ async def test_pass_through_runs_original_once():
     )
     assert out == "ok"
     assert calls == {"original": 1, "mutated": 0}
+
+
+@pytest.mark.asyncio
+async def test_failed_reference_closes_counterfactual_lease():
+    async def original() -> str:
+        raise RuntimeError("reference provider failure")
+
+    async def mutated(_c):
+        raise AssertionError("candidate must not run without a reference result")
+
+    plan = Plan(
+        kind="pass_through",
+        exploration_lease_token="opaque-exploration-token",
+        counterfactual=Plan(
+            kind="rewritten",
+            call={"model": "mini", "messages": []},
+        ),
+    )
+    with patch(
+        "agentc._patches._optimizer_glue.cancel_exploration"
+    ) as cancel:
+        with pytest.raises(RuntimeError, match="reference provider failure"):
+            await dispatch(plan, run_original=original, run_mutated=mutated)
+
+    cancel.assert_called_once_with(plan)
 
 
 @pytest.mark.asyncio

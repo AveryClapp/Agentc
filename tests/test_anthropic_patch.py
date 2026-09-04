@@ -235,6 +235,9 @@ class TestSyncCreateWrapper:
             "agentc._patches._anthropic._observe_anthropic_outcome",
             new=observe,
         ), patch(
+            "agentc._patches._optimizer_glue.maybe_explore_record",
+            side_effect=lambda *_: events.append("explore"),
+        ), patch(
             "agentc._patches._optimizer_glue.dispatch_sync", return_value=mock_response
         ), patch(
             "agentc._patches._optimizer_glue.maybe_shadow_record",
@@ -253,7 +256,7 @@ class TestSyncCreateWrapper:
 
         assert result is mock_response
         assert len(shadow_calls) == 1, "maybe_shadow_record must run on the native Anthropic path"
-        assert events == ["observe", "shadow"]
+        assert events == ["observe", "explore", "shadow"]
         assert observe.call_args.kwargs["elapsed_s"] == pytest.approx(0.2)
 
     def test_captures_span(self, initialized: Path) -> None:
@@ -418,6 +421,7 @@ class TestAsyncCreateWrapper:
         events: list[str] = []
         shadow = AsyncMock(side_effect=lambda *_: events.append("shadow"))
         observe = MagicMock(side_effect=lambda **_: events.append("observe"))
+        explore = MagicMock(side_effect=lambda *_: events.append("explore"))
 
         with patch("agentc._patches._anthropic._write_root_span"), patch(
             "agentc._patches._anthropic._plan_anthropic_call",
@@ -428,6 +432,9 @@ class TestAsyncCreateWrapper:
         ), patch(
             "agentc._patches._optimizer_glue.maybe_shadow_record_async",
             new=shadow,
+        ), patch(
+            "agentc._patches._optimizer_glue.maybe_explore_record_async",
+            new=explore,
         ), patch(
             "agentc._patches._anthropic._observe_anthropic_outcome",
             new=observe,
@@ -445,8 +452,10 @@ class TestAsyncCreateWrapper:
 
         assert result is response
         shadow.assert_awaited_once()
+        explore.assert_called_once()
         assert shadow.await_args.args[:3] == (plan, "site", response)
-        assert events == ["observe", "shadow"]
+        assert explore.call_args.args[:2] == (plan, response)
+        assert events == ["observe", "explore", "shadow"]
 
 
 class TestSyncStreamWrapper:

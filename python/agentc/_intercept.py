@@ -98,6 +98,27 @@ async def intercept(
         if site and "call_site_id" not in outcome:
             outcome["call_site_id"] = site
         observe_outcome(plan, outcome)
+        from agentc._patches._optimizer_glue import maybe_explore_record_async
+
+        def _extract_counterfactual_outcome(
+            _candidate_plan: Plan,
+            candidate_result: Any,
+            candidate_elapsed_s: float,
+        ) -> dict[str, Any]:
+            candidate_outcome = extract_outcome(
+                candidate_result,
+                candidate_elapsed_s,
+            )
+            if site and "call_site_id" not in candidate_outcome:
+                candidate_outcome["call_site_id"] = site
+            return candidate_outcome
+
+        maybe_explore_record_async(
+            plan,
+            result,
+            run_mutated,
+            _extract_counterfactual_outcome,
+        )
     except BaseException:
         log.debug("extract_outcome / observe failed; skipping", exc_info=True)
 

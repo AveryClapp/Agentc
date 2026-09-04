@@ -23,14 +23,18 @@ use agentc_optimizer::{
     config::OptimizerConfig,
     cost_model::CostModel,
     ffi::{
+        complete_profiled_exploration as rust_complete_exploration,
+        fail_embedded_exploration as rust_fail_embedded_exploration,
+        fail_profiled_exploration as rust_fail_exploration,
         optimize_observe as rust_observe, optimize_profiled_plan as rust_profiled_plan,
-        record_observation_divergence, PASS_THROUGH_JSON,
+        record_observation_divergence, reserve_profiled_exploration as rust_reserve_exploration,
+        DivergenceAttribution, PASS_THROUGH_JSON,
     },
     model_catalog::{default_model_catalog, ModelCatalog},
     plan_guard::{PlanGuard, PlanGuardOutcome},
     plan_profile::PlanProfiles,
     planner::{Optimizer, Plan},
-    Budget, SampleOutcome, Wired,
+    Budget, ExplorationController, SampleOutcome, Wired,
 };
 
 /// Package version, exposed as `agentc._native.__version__`.
@@ -694,6 +698,8 @@ struct OptimizerState {
     plan_profiles: Arc<PlanProfiles>,
     plan_guard: Arc<PlanGuard>,
     model_catalog: Option<Arc<ModelCatalog>>,
+    exploration_controller: ExplorationController,
+    exploration_enabled: bool,
     #[allow(dead_code)]
     budget: Arc<Budget>,
     audit: Option<Mutex<Connection>>,
@@ -716,6 +722,16 @@ fn resolve_storage_dir() -> std::path::PathBuf {
 
 fn optimizer_slot() -> &'static RwLock<Option<Arc<OptimizerState>>> {
     OPTIMIZER.get_or_init(|| RwLock::new(None))
+}
+
+fn exploration_enabled_from_env() -> bool {
+    match std::env::var("AGENTC_OPTIMIZE_EXPLORATION") {
+        Ok(value) => !matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "no" | "off"
+        ),
+        Err(_) => true,
+    }
 }
 
 fn build_optimizer_state(
@@ -743,6 +759,8 @@ fn build_optimizer_state(
                 plan_profiles,
                 plan_guard,
                 model_catalog: Some(model_catalog),
+                exploration_controller: ExplorationController::new(),
+                exploration_enabled: exploration_enabled_from_env(),
                 budget,
                 audit: Some(Mutex::new(audit_conn)),
                 cost_db,
@@ -763,6 +781,8 @@ fn build_optimizer_state(
                 plan_profiles,
                 plan_guard,
                 model_catalog: default_model_catalog().ok().map(Arc::new),
+                exploration_controller: ExplorationController::new(),
+                exploration_enabled: exploration_enabled_from_env(),
                 budget,
                 audit: None,
                 cost_db: None,
@@ -886,7 +906,12 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
     py.allow_threads(|| {
         let state = optimizer_state();
         let t0 = std::time::Instant::now();
-        let plan_json = guard_plan_fail_safe(|| {
+        let max_overhead_us = if state.optimizer.config().max_overhead_ms.is_finite() {
+            (state.optimizer.config().max_overhead_ms.max(0.0) * 1_000.0) as u128
+        } else {
+            0
+        };
+        let primary_plan_json = guard_plan_fail_safe(|| {
             rust_profiled_plan(
                 &state.optimizer,
                 state.model_catalog.as_deref(),
@@ -896,6 +921,53 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
                 now_us_i64(),
             )
         });
+        let plan_json = if state.exploration_enabled
+            && t0.elapsed().as_micros() <= max_overhead_us
+        {
+            state
+                .cost_db
+                .as_ref()
+                // Exploration is optional calibration work. Never make a user
+                // call wait behind a background completion holding the DB.
+                .and_then(|mutex| mutex.try_lock().ok())
+                .map(|mut connection| {
+                    if t0.elapsed().as_micros() > max_overhead_us {
+                        return primary_plan_json.clone();
+                    }
+                    guard_plan_fail_safe(|| {
+                        let explored = rust_reserve_exploration(
+                            &state.optimizer,
+                            state.model_catalog.as_deref(),
+                            &state.plan_profiles,
+                            &state.plan_guard,
+                            &state.exploration_controller,
+                            &mut connection,
+                            call_json,
+                            &primary_plan_json,
+                            now_us_i64(),
+                        );
+                        if explored != primary_plan_json
+                            && t0.elapsed().as_micros() > max_overhead_us
+                        {
+                            // Reservation is already durable. Close it before
+                            // stripping the envelope so no untracked active
+                            // lease blocks future calibration.
+                            let _ = rust_fail_embedded_exploration(
+                                &state.exploration_controller,
+                                &mut connection,
+                                &explored,
+                                now_us_i64(),
+                            );
+                            primary_plan_json.clone()
+                        } else {
+                            explored
+                        }
+                    })
+                })
+                .unwrap_or_else(|| primary_plan_json.clone())
+        } else {
+            primary_plan_json
+        };
         let overhead_us = t0.elapsed().as_micros() as i64;
 
         // Best-effort audit. The plan is always returned regardless of
@@ -1087,13 +1159,121 @@ fn unit_fraction_f64(value: f64) -> Option<f32> {
     (value.is_finite() && (0.0..=1.0).contains(&value)).then_some(value as f32)
 }
 
+type LegacyDisable = (String, i64, i64);
+
+fn apply_divergence_guards(
+    state: &OptimizerState,
+    attribution: &DivergenceAttribution,
+    divergence: f64,
+    now: i64,
+) -> Option<LegacyDisable> {
+    let legacy_divergence = unit_fraction_f64(divergence)?;
+    let plan_guard_outcome = if attribution.newly_recorded && attribution.guard_eligible {
+        attribution
+            .plan_observation
+            .as_ref()
+            .zip(attribution.divergence_threshold)
+            .and_then(|(observation, plan_threshold)| {
+                match state.plan_guard.record_sample(
+                    observation,
+                    divergence,
+                    plan_threshold,
+                    Some(now),
+                ) {
+                    Ok(outcome) => Some(outcome),
+                    Err(error) => {
+                        eprintln!("[agentc-profiler] plan guard update failed: {error}");
+                        None
+                    }
+                }
+            })
+    } else {
+        None
+    };
+    if let Some(PlanGuardOutcome::Disabled(disabled)) = plan_guard_outcome {
+        eprintln!(
+            "[agentc] shadow guard auto-disabled complete plan \
+             (exposure={:.3} >= budget={:.3}, cooldown_until={})",
+            disabled.exposure,
+            state.plan_guard.exposure_budget(),
+            disabled.reenable_at_us,
+        );
+    }
+
+    if !attribution.newly_recorded {
+        return None;
+    }
+    let rule = attribution.solo_rule.as_deref()?;
+    let threshold = std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
+        .ok()
+        .and_then(|value| value.trim().parse::<f64>().ok())
+        .and_then(unit_fraction_f64)
+        .or_else(|| {
+            state
+                .optimizer
+                .accuracy_budget_for(rule)
+                .and_then(unit_fraction_f32)
+        })
+        .unwrap_or(0.05);
+    let outcome = state.budget.record_sample(
+        &attribution.call_site_id,
+        rule,
+        legacy_divergence,
+        threshold,
+        now,
+    );
+    match outcome {
+        SampleOutcome::Disable {
+            disabled_at_us,
+            reenable_at_us,
+        } => {
+            eprintln!(
+                "[agentc] shadow guard auto-disabled rule={rule} site={} \
+                 (divergence={legacy_divergence:.3} > budget={threshold:.3})",
+                attribution.call_site_id,
+            );
+            Some((rule.to_string(), disabled_at_us, reenable_at_us))
+        }
+        _ => None,
+    }
+}
+
+fn persist_divergence_state(
+    state: &OptimizerState,
+    connection: &mut Connection,
+    attribution: &DivergenceAttribution,
+    disable: Option<LegacyDisable>,
+) {
+    if let Some((rule, disabled_at_us, reenable_at_us)) = disable {
+        if let Err(error) = state.budget.persist_disable(
+            connection,
+            &attribution.call_site_id,
+            &rule,
+            "shadow_divergence",
+            disabled_at_us,
+            reenable_at_us,
+        ) {
+            eprintln!("[agentc-profiler] disable persistence failed: {error}");
+        }
+    }
+    if let Err(error) = state.budget.flush_divergence(connection) {
+        eprintln!("[agentc-profiler] divergence flush failed: {error}");
+    }
+    if let Err(error) = state.plan_guard.flush_dirty(connection) {
+        eprintln!("[agentc-profiler] plan_guard flush failed: {error}");
+    }
+    if let Err(error) = state.plan_profiles.flush_dirty(connection) {
+        eprintln!("[agentc-profiler] plan_profiles flush failed: {error}");
+    }
+}
+
 #[pyfunction]
 fn optimize_record_divergence(py: Python<'_>, observation_token: &str, divergence: f64) {
     py.allow_threads(|| {
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            let Some(legacy_divergence) = unit_fraction_f64(divergence) else {
+            if unit_fraction_f64(divergence).is_none() {
                 return;
-            };
+            }
             let state = optimizer_state();
             let Ok(attribution) =
                 record_observation_divergence(&state.plan_profiles, observation_token, divergence)
@@ -1101,101 +1281,95 @@ fn optimize_record_divergence(py: Python<'_>, observation_token: &str, divergenc
                 return;
             };
             let now = now_us_i64();
-            let plan_guard_outcome = if attribution.newly_recorded && attribution.guard_eligible {
-                attribution
-                    .plan_observation
-                    .as_ref()
-                    .zip(attribution.divergence_threshold)
-                    .and_then(|(observation, plan_threshold)| {
-                        match state.plan_guard.record_sample(
-                            observation,
-                            divergence,
-                            plan_threshold,
-                            Some(now),
-                        ) {
-                            Ok(outcome) => Some(outcome),
-                            Err(error) => {
-                                eprintln!("[agentc-profiler] plan guard update failed: {error}");
-                                None
-                            }
-                        }
-                    })
-            } else {
-                None
-            };
-            if let Some(PlanGuardOutcome::Disabled(disabled)) = plan_guard_outcome {
-                eprintln!(
-                    "[agentc] shadow guard auto-disabled complete plan \
-                     (exposure={:.3} >= budget={:.3}, cooldown_until={})",
-                    disabled.exposure,
-                    state.plan_guard.exposure_budget(),
-                    disabled.reenable_at_us,
-                );
-            }
-            let mut disable = None;
-            if attribution.newly_recorded {
-                if let Some(rule) = attribution.solo_rule.as_deref() {
-                    let threshold = std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
-                        .ok()
-                        .and_then(|v| v.trim().parse::<f64>().ok())
-                        .and_then(unit_fraction_f64)
-                        .or_else(|| {
-                            state
-                                .optimizer
-                                .accuracy_budget_for(rule)
-                                .and_then(unit_fraction_f32)
-                        })
-                        .unwrap_or(0.05);
-                    let outcome = state.budget.record_sample(
-                        &attribution.call_site_id,
-                        rule,
-                        legacy_divergence,
-                        threshold,
-                        now,
-                    );
-                    disable = match outcome {
-                        SampleOutcome::Disable {
-                            disabled_at_us,
-                            reenable_at_us,
-                        } => Some((rule, threshold, disabled_at_us, reenable_at_us)),
-                        _ => None,
-                    };
-                    if disable.is_some() {
-                        eprintln!(
-                            "[agentc] shadow guard auto-disabled rule={rule} site={} \
-                             (divergence={legacy_divergence:.3} > budget={threshold:.3})",
-                            attribution.call_site_id,
-                        );
-                    }
-                }
-            }
+            let disable = apply_divergence_guards(&state, &attribution, divergence, now);
             if let Some(mu) = state.cost_db.as_ref() {
                 if let Ok(mut conn) = mu.lock() {
-                    if let Some((rule, _, disabled_at_us, reenable_at_us)) = disable {
-                        if let Err(e) = state.budget.persist_disable(
-                            &conn,
-                            &attribution.call_site_id,
-                            rule,
-                            "shadow_divergence",
-                            disabled_at_us,
-                            reenable_at_us,
-                        ) {
-                            eprintln!("[agentc-profiler] disable persistence failed: {e}");
-                        }
-                    }
-                    if let Err(e) = state.budget.flush_divergence(&mut conn) {
-                        eprintln!("[agentc-profiler] divergence flush failed: {e}");
-                    }
-                    if let Err(e) = state.plan_guard.flush_dirty(&mut conn) {
-                        eprintln!("[agentc-profiler] plan_guard flush failed: {e}");
-                    }
-                    if let Err(e) = state.plan_profiles.flush_dirty(&mut conn) {
-                        eprintln!("[agentc-profiler] plan_profiles flush failed: {e}");
-                    }
+                    persist_divergence_state(&state, &mut conn, &attribution, disable);
                 }
             }
         }));
     });
+}
+
+/// Commit one reference-visible exploration result. The opaque token binds
+/// the outcome to the durable lease and exact plan profile. Returns false on
+/// any malformed input or persistence failure; never raises into Python.
+#[pyfunction]
+fn optimize_complete_exploration(
+    py: Python<'_>,
+    lease_token: &str,
+    outcome_json: &str,
+    divergence: f64,
+) -> bool {
+    py.allow_threads(|| {
+        std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let state = optimizer_state();
+            let Some(mutex) = state.cost_db.as_ref() else {
+                return false;
+            };
+            let Ok(mut connection) = mutex.lock() else {
+                return false;
+            };
+            let now = now_us_i64();
+            match rust_complete_exploration(
+                &state.plan_profiles,
+                &state.exploration_controller,
+                &mut connection,
+                lease_token,
+                outcome_json,
+                divergence,
+                now,
+            ) {
+                Ok(Some(attribution)) => {
+                    let disable =
+                        apply_divergence_guards(&state, &attribution, divergence, now);
+                    persist_divergence_state(
+                        &state,
+                        &mut connection,
+                        &attribution,
+                        disable,
+                    );
+                    true
+                }
+                Ok(None) => true,
+                Err(error) => {
+                    eprintln!("[agentc-profiler] exploration completion failed: {error}");
+                    false
+                }
+            }
+        }))
+        .unwrap_or(false)
+    })
+}
+
+/// Release a failed exploration lease while retaining its spend attempt in
+/// the rolling cap. Returns false on invalid/replayed input and never raises.
+#[pyfunction]
+fn optimize_fail_exploration(py: Python<'_>, lease_token: &str) -> bool {
+    py.allow_threads(|| {
+        std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let state = optimizer_state();
+            let Some(mutex) = state.cost_db.as_ref() else {
+                return false;
+            };
+            let Ok(mut connection) = mutex.lock() else {
+                return false;
+            };
+            match rust_fail_exploration(
+                &state.exploration_controller,
+                &mut connection,
+                lease_token,
+                now_us_i64(),
+            ) {
+                Ok(_) => true,
+                Err(error) => {
+                    eprintln!("[agentc-profiler] exploration failure update failed: {error}");
+                    false
+                }
+            }
+        }))
+        .unwrap_or(false)
+    })
 }
 
 /// Force-flush cost profiles, plan profiles, and guard divergence to
@@ -1234,6 +1408,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(optimize_model_catalog, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_observe, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_record_divergence, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_complete_exploration, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_fail_exploration, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_flush, m)?)?;
     Ok(())
 }

@@ -208,12 +208,23 @@ def shutdown(timeout_ms: int = 5000) -> None:
     if _shutdown_in_progress.is_set():
         return
     _shutdown_in_progress.set()
+    configured_storage = _config.storage_path if _config is not None else None
 
     logger.info("agentc shutdown started (timeout_ms=%d)", timeout_ms)
 
     try:
         # Drain the span queue (writer logs its own counters on stop).
         _flush_queue(timeout_ms)
+        # Let off-path calibration calls commit their exact evidence before
+        # native optimizer state is flushed and reset. Timed-out work has its
+        # durable lease failed; daemon provider threads are never allowed to
+        # keep process shutdown alive indefinitely.
+        try:
+            from agentc._patches._optimizer_glue import drain_exploration
+
+            drain_exploration(timeout_ms)
+        except BaseException:
+            logger.debug("exploration drain failed (suppressed)", exc_info=True)
         # Force-flush cost profiles and guard divergence so final partial
         # state lands in cost_model.db before the process exits.
         try:
@@ -225,7 +236,8 @@ def shutdown(timeout_ms: int = 5000) -> None:
         try:
             from agentc._optimization_scope import _write_optimization_scope_report
 
-            _write_optimization_scope_report(_config.storage_path)
+            if configured_storage is not None:
+                _write_optimization_scope_report(configured_storage)
         except BaseException:
             logger.debug(
                 "optimization-scope report write failed (suppressed)",

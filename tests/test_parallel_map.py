@@ -174,7 +174,14 @@ finally:
 """
     proc = subprocess.run(
         [sys.executable, "-c", script],
-        env={**os.environ, "AGENTC_STORAGE_PATH": storage},
+        env={
+            **os.environ,
+            "AGENTC_STORAGE_PATH": storage,
+            # This is a direct ParallelBranch execution regression. The joint
+            # selector currently excludes multi-call plans until it has a
+            # compatible paired comparator and admission path.
+            "AGENTC_COMPOSE": "0",
+        },
         capture_output=True,
         text=True,
         check=False,

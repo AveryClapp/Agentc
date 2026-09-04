@@ -55,7 +55,15 @@ async def dispatch(
     decode = decode_cached or (lambda v: v)
 
     if plan.kind == "pass_through":
-        return await run_original()
+        try:
+            return await run_original()
+        except BaseException:
+            # A reserved candidate cannot run without a reference response.
+            # Close its lease before preserving the provider exception.
+            from agentc._patches._optimizer_glue import cancel_exploration
+
+            cancel_exploration(plan)
+            raise
 
     if plan.kind == "cached":
         try:

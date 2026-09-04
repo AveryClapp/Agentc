@@ -138,6 +138,10 @@ def test_rewrite_changes_only_optimizer_supported_fields() -> None:
         ),
         patch("agentc._patches._litellm._observe", new=observe),
         patch(
+            "agentc._patches._optimizer_glue.maybe_explore_record",
+            side_effect=lambda *_: events.append("explore"),
+        ),
+        patch(
             "agentc._patches._optimizer_glue.maybe_shadow_record",
             side_effect=lambda *_: events.append("shadow"),
         ),
@@ -152,7 +156,7 @@ def test_rewrite_changes_only_optimizer_supported_fields() -> None:
     assert sent["tools"] is tools
     assert sent["api_key"] is secret
     observe.assert_called_once()
-    assert events == ["observe", "shadow"]
+    assert events == ["observe", "explore", "shadow"]
     attrs = json.loads(spans[0]["attributes"])
     assert attrs["gen_ai.provider.name"] == "litellm"
     assert attrs["gen_ai.usage.input_tokens"] == 20
@@ -250,11 +254,16 @@ async def test_async_catalog_route_preserves_native_request_shape() -> None:
     events: list[str] = []
     shadow = AsyncMock(side_effect=lambda *_: events.append("shadow"))
     observe = MagicMock(side_effect=lambda *_: events.append("observe"))
+    explore = MagicMock(side_effect=lambda *_: events.append("explore"))
 
     with (
         patch("agentc._patches._litellm._write_root_span"),
         patch("agentc._patches._litellm._plan_call", return_value=(plan, "site")),
         patch("agentc._patches._litellm._observe", new=observe),
+        patch(
+            "agentc._patches._optimizer_glue.maybe_explore_record_async",
+            new=explore,
+        ),
         patch(
             "agentc._patches._optimizer_glue.maybe_shadow_record_async",
             new=shadow,
@@ -272,8 +281,10 @@ async def test_async_catalog_route_preserves_native_request_shape() -> None:
     assert plan.dispatch_fallback is False
     assert plan.executed_model_id == target
     shadow.assert_awaited_once()
+    explore.assert_called_once()
     assert shadow.await_args.args[:3] == (plan, "site", response)
-    assert events == ["observe", "shadow"]
+    assert explore.call_args.args[:2] == (plan, response)
+    assert events == ["observe", "explore", "shadow"]
 
 
 @pytest.mark.asyncio

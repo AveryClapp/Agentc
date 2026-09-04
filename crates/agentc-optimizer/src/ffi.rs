@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use agentc_core::storage::{canonical_json, content_hash};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use crate::cost_model::{CostModel, CostModelUpdate};
@@ -26,6 +27,10 @@ use crate::execution_plan::{
     select_candidate, CachePolicy, CandidatePlan, ExecutionPlanSpec, PlanAdmission, PlanEstimate,
     RewriteApplication, RewriteOrdering, SelectionPolicy, ValidationPolicy,
     EXECUTION_PLAN_SCHEMA_VERSION,
+};
+use crate::exploration::{
+    CounterfactualFeedback, CounterfactualLabel, ExplorationCandidate, ExplorationCompletion,
+    ExplorationController, ExplorationLease,
 };
 use crate::model_catalog::{ModelCatalog, RequestRequirements, ROUTE_CONTEXT_KEY};
 use crate::plan_guard::PlanGuard;
@@ -39,7 +44,9 @@ use crate::planner::{Optimizer, Plan};
 pub const PASS_THROUGH_JSON: &str = "{\"kind\":\"pass_through\"}";
 
 const OBSERVATION_CONTEXT_KEY: &str = "agentc_observation_context";
+const EXPLORATION_CONTEXT_KEY: &str = "agentc_exploration_context";
 const OBSERVATION_TOKEN_SCHEMA_VERSION: u16 = 2;
+const EXPLORATION_TOKEN_SCHEMA_VERSION: u16 = 1;
 const PROMPT_SHAPE_SCHEMA_VERSION: u16 = 1;
 const PLAN_IMPLEMENTATION_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -58,6 +65,27 @@ struct EmbeddedObservationContext {
 struct ResolvedPlanDescriptor {
     context: EmbeddedObservationContext,
     spec: ExecutionPlanSpec,
+}
+
+/// Python-visible instructions for one reference-visible counterfactual.
+/// The lease token is opaque and content-free; the candidate plan remains a
+/// regular executable Plan so the existing provider adapter is the only
+/// component that translates it back to provider-native arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct EmbeddedExplorationContext {
+    schema_version: u16,
+    lease_token: String,
+    candidate_plan: serde_json::Value,
+}
+
+/// Rust-issued binding between a durable lease and the exact candidate
+/// profile it is allowed to update. It deliberately carries no prompt text.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct OpaqueExplorationToken {
+    schema_version: u16,
+    lease: ExplorationLease,
+    context: EmbeddedObservationContext,
+    rules: Vec<String>,
 }
 
 /// Opaque handle returned by ``optimize_observe`` and consumed by
@@ -272,6 +300,288 @@ pub fn optimize_profiled_plan(
         encode_observation_context(plan_json, &selected_context)
     }))
     .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
+}
+
+/// Attach at most one durably reserved cold-plan counterfactual to a
+/// user-visible reference plan.
+///
+/// The returned top-level Plan remains `pass_through`. Python sees the
+/// candidate only through `agentc_exploration_context`, executes it through
+/// the same provider adapter after the reference response has been observed,
+/// and reports completion with the opaque token. Tool-bearing and streaming
+/// requests abstain until their divergence comparators can validate more than
+/// assistant text. Every error returns `primary_plan_json` unchanged.
+#[allow(clippy::too_many_arguments)]
+pub fn reserve_profiled_exploration(
+    opt: &Optimizer,
+    catalog: Option<&ModelCatalog>,
+    plan_profiles: &PlanProfiles,
+    plan_guard: &PlanGuard,
+    controller: &ExplorationController,
+    conn: &mut Connection,
+    call_json: &str,
+    primary_plan_json: &str,
+    now_us: i64,
+) -> String {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let Ok(primary_plan) = serde_json::from_str::<Plan>(primary_plan_json) else {
+            return primary_plan_json.to_string();
+        };
+        if !matches!(primary_plan, Plan::PassThrough) || !opt.config().compose {
+            return primary_plan_json.to_string();
+        }
+        let Some(catalog) = catalog else {
+            return primary_plan_json.to_string();
+        };
+        let Ok(call) = serde_json::from_str::<Call>(call_json) else {
+            return primary_plan_json.to_string();
+        };
+        let Some(requirements) = RequestRequirements::from_call(&call) else {
+            return primary_plan_json.to_string();
+        };
+        // Text-only completion comparison is the only production comparator
+        // currently implemented. Discarded tool calls cannot be scored by it.
+        if requirements.streaming || requirements.tool_calling || !call.tools.is_empty() {
+            return primary_plan_json.to_string();
+        }
+        let Ok(Some(reference_context)) = embedded_observation_context(primary_plan_json) else {
+            return primary_plan_json.to_string();
+        };
+
+        let mut controller_candidates = Vec::new();
+        let mut executable = Vec::new();
+        let mut seen = HashSet::new();
+        for plan in opt.candidate_plans(&call, catalog) {
+            if matches!(plan, Plan::PassThrough | Plan::Cached { .. } | Plan::Parallel { .. }) {
+                continue;
+            }
+            let threshold = opt.divergence_threshold_for_plan(&plan);
+            let Some(descriptor) = describe_plan(catalog, &call, &plan, threshold) else {
+                continue;
+            };
+            if !seen.insert(descriptor.context.key.execution_plan_id.clone()) {
+                continue;
+            }
+            let Ok(admission) = plan_guard.admission(
+                &descriptor.context.key,
+                true,
+                threshold,
+                now_us,
+            ) else {
+                continue;
+            };
+            let paired_observations = plan_profiles
+                .get(&descriptor.context.key, &descriptor.context.runtime_version)
+                .map(|profile| profile.paired_observations)
+                .unwrap_or(0);
+            controller_candidates.push(ExplorationCandidate {
+                key: descriptor.context.key.clone(),
+                paired_observations,
+                request_compatible: admission.request_compatible,
+                forbidden: false,
+                disabled: admission.disabled,
+                divergence_threshold: admission.divergence_threshold,
+                divergence_exposure: admission.divergence_exposure,
+            });
+            executable.push((descriptor.context.key.clone(), plan, descriptor.context));
+        }
+
+        let decision = controller.decide_and_reserve(
+            conn,
+            &reference_context.key.call_site_version,
+            &reference_context.key.execution_plan_id,
+            &controller_candidates,
+            now_us,
+        );
+        let Some(lease) = decision.counterfactual else {
+            return primary_plan_json.to_string();
+        };
+        let Some((_key, candidate_plan, candidate_context)) = executable
+            .into_iter()
+            .find(|(key, _, _)| *key == lease.key)
+        else {
+            let _ = controller.fail(conn, &lease, now_us);
+            return primary_plan_json.to_string();
+        };
+
+        let candidate_plan_json = serde_json::to_string(&candidate_plan)
+            .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string());
+        let candidate_plan_json = encode_observation_context(
+            candidate_plan_json,
+            &candidate_context,
+        );
+        let Ok(candidate_plan_value) = serde_json::from_str(&candidate_plan_json) else {
+            let _ = controller.fail(conn, &lease, now_us);
+            return primary_plan_json.to_string();
+        };
+        let token = OpaqueExplorationToken {
+            schema_version: EXPLORATION_TOKEN_SCHEMA_VERSION,
+            lease: lease.clone(),
+            context: candidate_context,
+            rules: plan_rules(&candidate_plan),
+        };
+        let Ok(lease_token) = serde_json::to_string(&token) else {
+            let _ = controller.fail(conn, &lease, now_us);
+            return primary_plan_json.to_string();
+        };
+        let context = EmbeddedExplorationContext {
+            schema_version: EXPLORATION_TOKEN_SCHEMA_VERSION,
+            lease_token,
+            candidate_plan: candidate_plan_value,
+        };
+        encode_exploration_context(primary_plan_json, &context).unwrap_or_else(|| {
+            let _ = controller.fail(conn, &lease, now_us);
+            primary_plan_json.to_string()
+        })
+    }))
+    .unwrap_or_else(|_| primary_plan_json.to_string())
+}
+
+/// Record one leased candidate outcome and its reference divergence.
+///
+/// The durable controller transition happens first. A crash can therefore
+/// lose evidence but cannot erase or replay billed exploration spend. An
+/// idempotent completion replay returns `Ok(None)` and never duplicates a
+/// profile observation.
+pub fn complete_profiled_exploration(
+    plan_profiles: &PlanProfiles,
+    controller: &ExplorationController,
+    conn: &mut Connection,
+    lease_token: &str,
+    outcome_json: &str,
+    divergence: f64,
+    completed_at_us: i64,
+) -> Result<Option<DivergenceAttribution>, String> {
+    let token = decode_exploration_token(lease_token)?;
+    let outcome: Outcome = serde_json::from_str(outcome_json).map_err(|error| error.to_string())?;
+    if outcome.dispatch_fallback {
+        return Err("counterfactual outcome cannot contain a reference fallback".to_string());
+    }
+    if outcome
+        .call_site_id
+        .as_deref()
+        .is_some_and(|site| site != token.context.call_site_id)
+    {
+        return Err("counterfactual outcome is bound to a different call site".to_string());
+    }
+    if token.context.key != token.lease.key {
+        return Err("exploration token plan binding does not match its lease".to_string());
+    }
+    let completion = controller
+        .complete(
+            conn,
+            &token.lease,
+            &CounterfactualFeedback {
+                divergence,
+                cost_usd: outcome.cost_usd,
+                latency_ms: outcome.latency_ms,
+                label: CounterfactualLabel::ObservationOnly,
+            },
+            completed_at_us,
+        )
+        .map_err(|error| error.to_string())?;
+    if completion == ExplorationCompletion::AlreadyRecorded {
+        return Ok(None);
+    }
+
+    let runtime_version = observed_runtime_version(&token.context.runtime_version, &outcome);
+    let observation = plan_profiles
+        .observe(PlanProfileUpdate {
+            key: token.context.key,
+            runtime_version,
+            input_tokens: outcome.input_tokens,
+            output_tokens: outcome.output_tokens,
+            latency_ms: outcome.latency_ms,
+            cost_usd: outcome.cost_usd,
+            output_is_structured: outcome.output_is_structured,
+            output_is_short: outcome.output_is_short,
+            divergence: Some(divergence),
+            dispatch_fallback: false,
+            observed_at_us: Some(completed_at_us),
+        })
+        .map_err(|error| error.to_string())?;
+    let solo_rule = match token.rules.as_slice() {
+        [rule] => Some(rule.clone()),
+        _ => None,
+    };
+    Ok(Some(DivergenceAttribution {
+        call_site_id: token.context.call_site_id,
+        solo_rule,
+        rules: token.rules,
+        plan_observation: Some(observation),
+        guard_eligible: true,
+        divergence_threshold: Some(token.context.divergence_threshold),
+        newly_recorded: true,
+    }))
+}
+
+/// Mark a reserved counterfactual failed. The attempt remains in the rolling
+/// cap because provider work may have begun before the adapter observed the
+/// failure.
+pub fn fail_profiled_exploration(
+    controller: &ExplorationController,
+    conn: &mut Connection,
+    lease_token: &str,
+    completed_at_us: i64,
+) -> Result<ExplorationCompletion, String> {
+    let token = decode_exploration_token(lease_token)?;
+    if token.context.key != token.lease.key {
+        return Err("exploration token plan binding does not match its lease".to_string());
+    }
+    controller
+        .fail(conn, &token.lease, completed_at_us)
+        .map_err(|error| error.to_string())
+}
+
+/// Fail the lease embedded in a planned exploration envelope.
+///
+/// This is used when the outer runtime discovers that total planning work
+/// crossed its critical-path budget after reservation. The candidate is
+/// stripped by the caller, while the durable failed attempt conservatively
+/// remains charged to the rolling exploration cap.
+pub fn fail_embedded_exploration(
+    controller: &ExplorationController,
+    conn: &mut Connection,
+    explored_plan_json: &str,
+    completed_at_us: i64,
+) -> Result<ExplorationCompletion, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(explored_plan_json).map_err(|error| error.to_string())?;
+    let context: EmbeddedExplorationContext = serde_json::from_value(
+        value
+            .get(EXPLORATION_CONTEXT_KEY)
+            .cloned()
+            .ok_or_else(|| "plan has no exploration context".to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    fail_profiled_exploration(
+        controller,
+        conn,
+        &context.lease_token,
+        completed_at_us,
+    )
+}
+
+fn decode_exploration_token(value: &str) -> Result<OpaqueExplorationToken, String> {
+    let token: OpaqueExplorationToken =
+        serde_json::from_str(value).map_err(|error| error.to_string())?;
+    if token.schema_version != EXPLORATION_TOKEN_SCHEMA_VERSION {
+        return Err("unsupported exploration token schema version".to_string());
+    }
+    Ok(token)
+}
+
+fn encode_exploration_context(
+    primary_plan_json: &str,
+    context: &EmbeddedExplorationContext,
+) -> Option<String> {
+    let mut value = serde_json::from_str::<serde_json::Value>(primary_plan_json).ok()?;
+    let object = value.as_object_mut()?;
+    object.insert(
+        EXPLORATION_CONTEXT_KEY.to_string(),
+        serde_json::to_value(context).ok()?,
+    );
+    serde_json::to_string(&value).ok()
 }
 
 fn estimate_plan(
@@ -919,6 +1229,290 @@ mod tests {
         fn preserves_native_messages(&self) -> bool {
             true
         }
+    }
+
+    fn output_optimizer(site: &str) -> (Arc<ModelCatalog>, Optimizer) {
+        let catalog = Arc::new(default_model_catalog().unwrap());
+        let cost_model = Arc::new(CostModel::new());
+        for observed_at_us in 1..=3 {
+            cost_model.observe(CostModelUpdate {
+                call_site_id: site.to_string(),
+                input_tokens: 100,
+                output_tokens: 50,
+                latency_ms: 100.0,
+                cost_usd: 0.01,
+                output_is_structured: false,
+                output_is_short: true,
+                now_us: Some(observed_at_us),
+            });
+        }
+        let optimizer = Optimizer::new(
+            cost_model,
+            vec![Box::new(AlwaysCapsOutput)],
+            OptimizerConfig {
+                shadow_rate: 0.0,
+                ..OptimizerConfig::default()
+            },
+        );
+        (catalog, optimizer)
+    }
+
+    #[test]
+    fn cold_candidate_is_leased_without_replacing_the_reference_plan() {
+        let site = "exploration-live-site";
+        let (catalog, optimizer) = output_optimizer(site);
+        let call = observable_call(site, "private reference prompt");
+        let call_json = serde_json::to_string(&call).unwrap();
+        let profiles = PlanProfiles::new();
+        let guard = PlanGuard::new();
+        let controller = ExplorationController::new();
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        let now_us = 2_000_000;
+        let primary = optimize_profiled_plan(
+            &optimizer,
+            Some(&catalog),
+            &profiles,
+            &guard,
+            &call_json,
+            now_us,
+        );
+
+        let planned = reserve_profiled_exploration(
+            &optimizer,
+            Some(&catalog),
+            &profiles,
+            &guard,
+            &controller,
+            &mut connection,
+            &call_json,
+            &primary,
+            now_us,
+        );
+
+        assert!(matches!(
+            serde_json::from_str::<Plan>(&planned).unwrap(),
+            Plan::PassThrough
+        ));
+        let value: serde_json::Value = serde_json::from_str(&planned).unwrap();
+        let exploration: EmbeddedExplorationContext = serde_json::from_value(
+            value.get(EXPLORATION_CONTEXT_KEY).unwrap().clone(),
+        )
+        .unwrap();
+        assert_eq!(exploration.schema_version, EXPLORATION_TOKEN_SCHEMA_VERSION);
+        assert!(matches!(
+            serde_json::from_value::<Plan>(exploration.candidate_plan.clone()).unwrap(),
+            Plan::Rewritten { .. }
+        ));
+        assert!(!exploration.lease_token.contains("private reference prompt"));
+
+        let token = decode_exploration_token(&exploration.lease_token).unwrap();
+        let snapshot = controller
+            .snapshot(
+                &connection,
+                &token.lease.key.call_site_version,
+                now_us,
+            )
+            .unwrap();
+        assert_eq!(snapshot.calls_in_window, 1);
+        assert_eq!(snapshot.active_leases, 1);
+    }
+
+    #[test]
+    fn over_budget_envelope_can_be_failed_before_candidate_dispatch() {
+        let site = "exploration-overhead-site";
+        let (catalog, optimizer) = output_optimizer(site);
+        let call = observable_call(site, "private reference prompt");
+        let call_json = serde_json::to_string(&call).unwrap();
+        let profiles = PlanProfiles::new();
+        let guard = PlanGuard::new();
+        let controller = ExplorationController::new();
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        let now_us = 2_000_000;
+        let primary = optimize_profiled_plan(
+            &optimizer,
+            Some(&catalog),
+            &profiles,
+            &guard,
+            &call_json,
+            now_us,
+        );
+        let planned = reserve_profiled_exploration(
+            &optimizer,
+            Some(&catalog),
+            &profiles,
+            &guard,
+            &controller,
+            &mut connection,
+            &call_json,
+            &primary,
+            now_us,
+        );
+        let value: serde_json::Value = serde_json::from_str(&planned).unwrap();
+        let exploration: EmbeddedExplorationContext = serde_json::from_value(
+            value.get(EXPLORATION_CONTEXT_KEY).unwrap().clone(),
+        )
+        .unwrap();
+        let token = decode_exploration_token(&exploration.lease_token).unwrap();
+
+        assert_eq!(
+            fail_embedded_exploration(
+                &controller,
+                &mut connection,
+                &planned,
+                now_us + 1,
+            )
+            .unwrap(),
+            ExplorationCompletion::Recorded,
+        );
+        let snapshot = controller
+            .snapshot(
+                &connection,
+                &token.lease.key.call_site_version,
+                now_us + 1,
+            )
+            .unwrap();
+        assert_eq!(snapshot.active_leases, 0);
+        assert_eq!(snapshot.failed_calls, 1);
+        assert_eq!(snapshot.calls_in_window, 1);
+    }
+
+    #[test]
+    fn completed_counterfactual_updates_only_its_exact_paired_profile_once() {
+        let site = "exploration-feedback-site";
+        let (catalog, optimizer) = output_optimizer(site);
+        let call = observable_call(site, "private reference prompt");
+        let call_json = serde_json::to_string(&call).unwrap();
+        let profiles = PlanProfiles::new();
+        let guard = PlanGuard::new();
+        let controller = ExplorationController::new();
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        let now_us = 2_000_000;
+        let primary = optimize_profiled_plan(
+            &optimizer,
+            Some(&catalog),
+            &profiles,
+            &guard,
+            &call_json,
+            now_us,
+        );
+        let planned = reserve_profiled_exploration(
+            &optimizer,
+            Some(&catalog),
+            &profiles,
+            &guard,
+            &controller,
+            &mut connection,
+            &call_json,
+            &primary,
+            now_us,
+        );
+        let value: serde_json::Value = serde_json::from_str(&planned).unwrap();
+        let exploration: EmbeddedExplorationContext = serde_json::from_value(
+            value.get(EXPLORATION_CONTEXT_KEY).unwrap().clone(),
+        )
+        .unwrap();
+        let token = decode_exploration_token(&exploration.lease_token).unwrap();
+        let mut candidate_outcome = outcome(site);
+        candidate_outcome.cost_usd = 0.0002;
+        candidate_outcome.latency_ms = 25.0;
+        let outcome_json = serde_json::to_string(&candidate_outcome).unwrap();
+
+        let attribution = complete_profiled_exploration(
+            &profiles,
+            &controller,
+            &mut connection,
+            &exploration.lease_token,
+            &outcome_json,
+            0.01,
+            now_us + 10,
+        )
+        .unwrap()
+        .expect("first completion records evidence");
+        assert_eq!(attribution.plan_observation.as_ref().unwrap().key(), &token.lease.key);
+        let profile = profiles
+            .get_for_reporting(&token.lease.key)
+            .expect("candidate profile");
+        assert_eq!(profile.window_observations, 1);
+        assert_eq!(profile.paired_observations, 1);
+        assert_eq!(profile.cost_usd.mean, 0.0002);
+
+        let replay = complete_profiled_exploration(
+            &profiles,
+            &controller,
+            &mut connection,
+            &exploration.lease_token,
+            &outcome_json,
+            0.01,
+            now_us + 10,
+        )
+        .unwrap();
+        assert!(replay.is_none());
+        assert_eq!(
+            profiles
+                .get_for_reporting(&token.lease.key)
+                .unwrap()
+                .window_observations,
+            1
+        );
+        let snapshot = controller
+            .snapshot(
+                &connection,
+                &token.lease.key.call_site_version,
+                now_us + 10,
+            )
+            .unwrap();
+        assert_eq!(snapshot.active_leases, 0);
+        assert_eq!(snapshot.completed_calls, 1);
+        assert_eq!(snapshot.counterfactual_cost_usd, 0.0002);
+    }
+
+    #[test]
+    fn tool_bearing_request_never_receives_a_text_only_counterfactual() {
+        let site = "exploration-tool-site";
+        let (catalog, optimizer) = output_optimizer(site);
+        let mut call = observable_call(site, "use the tool");
+        call.tools.push(crate::dag::Tool {
+            name: "mutate_state".to_string(),
+            schema: serde_json::json!({"type": "object"}),
+        });
+        call.parameters.extra[ROUTE_CONTEXT_KEY]["tool_calling"] =
+            serde_json::Value::Bool(true);
+        let call_json = serde_json::to_string(&call).unwrap();
+        let profiles = PlanProfiles::new();
+        let guard = PlanGuard::new();
+        let controller = ExplorationController::new();
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        let primary = optimize_profiled_plan(
+            &optimizer,
+            Some(&catalog),
+            &profiles,
+            &guard,
+            &call_json,
+            2_000_000,
+        );
+
+        let planned = reserve_profiled_exploration(
+            &optimizer,
+            Some(&catalog),
+            &profiles,
+            &guard,
+            &controller,
+            &mut connection,
+            &call_json,
+            &primary,
+            2_000_000,
+        );
+
+        let value: serde_json::Value = serde_json::from_str(&planned).unwrap();
+        assert!(value.get(EXPLORATION_CONTEXT_KEY).is_none());
+        let count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM execution_plan_exploration", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]

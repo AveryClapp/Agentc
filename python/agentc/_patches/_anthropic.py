@@ -281,8 +281,11 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
         if plan is not None:
             from agentc._patches._optimizer_glue import (
                 apply_call_mutations_anthropic,
+                build_outcome_anthropic,
                 dispatch_sync,
+                maybe_explore_record,
                 maybe_shadow_record,
+                resolve_executed_model_id,
             )
 
             def _run_original() -> Any:
@@ -301,6 +304,30 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
                     call_site_id=call_site_id,
                     kwargs=kwargs,
                     elapsed_s=primary_elapsed_s,
+                )
+                def _extract_counterfactual_outcome(
+                    candidate_plan: Any,
+                    candidate_response: Any,
+                    elapsed_s: float,
+                ) -> dict[str, Any]:
+                    model = resolve_executed_model_id(
+                        candidate_plan,
+                        candidate_response,
+                        kwargs.get("model"),
+                    )
+                    return build_outcome_anthropic(
+                        candidate_response,
+                        elapsed_s=elapsed_s,
+                        model=model,
+                        call_site_id=call_site_id,
+                        plan=candidate_plan,
+                    )
+
+                maybe_explore_record(
+                    plan,
+                    response,
+                    _run_mutated,
+                    _extract_counterfactual_outcome,
                 )
             # Shadow-mode accuracy sampling: without this the guard never runs
             # on the native Anthropic path (bd-1cb) — only the OpenAI patch
@@ -519,7 +546,10 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
             from agentc._executor import dispatch
             from agentc._patches._optimizer_glue import (
                 apply_call_mutations_anthropic,
+                build_outcome_anthropic,
+                maybe_explore_record_async,
                 maybe_shadow_record_async,
+                resolve_executed_model_id,
             )
 
             async def _run_original() -> Any:
@@ -538,6 +568,30 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
                     call_site_id=call_site_id,
                     kwargs=kwargs,
                     elapsed_s=(primary_end_time - start_time) / 1_000_000.0,
+                )
+                def _extract_counterfactual_outcome(
+                    candidate_plan: Any,
+                    candidate_response: Any,
+                    elapsed_s: float,
+                ) -> dict[str, Any]:
+                    model = resolve_executed_model_id(
+                        candidate_plan,
+                        candidate_response,
+                        kwargs.get("model"),
+                    )
+                    return build_outcome_anthropic(
+                        candidate_response,
+                        elapsed_s=elapsed_s,
+                        model=model,
+                        call_site_id=call_site_id,
+                        plan=candidate_plan,
+                    )
+
+                maybe_explore_record_async(
+                    plan,
+                    response,
+                    _run_mutated,
+                    _extract_counterfactual_outcome,
                 )
             await maybe_shadow_record_async(
                 plan,

@@ -26,6 +26,7 @@ the historical guard results described below.
 | `../guard_overhead_bench.py` | fresh complete-plan feedback overhead | `python -m bench.guard_overhead_bench`; structured Stage E0 output, CPU/SQLite only, no API |
 | `../../crates/agentc-optimizer/examples/exploration_preflight.rs` | bounded exploration persistence and accounting | `cargo run -p agentc-optimizer --example exploration_preflight --quiet`; structured Stage E0 output, SQLite only, no API |
 | `../../crates/agentc-optimizer/examples/joint_planner_preflight.rs` | live exact-profile joint selection and planning overhead | `cargo run --release -p agentc-optimizer --example joint_planner_preflight --quiet`; structured Stage E0 output, no API |
+| `../live_exploration_preflight.py` | production-adapter reference-visible exploration and restart admission | `python bench/live_exploration_preflight.py --output /tmp/live-exploration.json`; deterministic fake provider, no network |
 | `../paper_figures/fig9_metric_tradeoff.py` | renders `fig:metric-tradeoff` | reads the `gsweep_tradeoff_*` CSVs |
 
 ## Reproducing `tab:guard` + `fig:metric-tradeoff`
@@ -229,3 +230,27 @@ enumeration, model cross-product, canonical identity hashing, exact-profile and
 guard lookup, and constrained selection. It excludes providers, task quality,
 counterfactual calls, and concurrent SQLite writes. Accordingly it is Stage E0
 mechanism evidence, not support for savings, quality, or main-track efficacy.
+
+### Live reference-visible exploration preflight
+
+The deterministic Python preflight exercises the real OpenAI adapter, native
+joint planner, background counterfactual worker, durable lease controller, and
+restart warmup without contacting a provider:
+
+```bash
+python bench/live_exploration_preflight.py \
+  --output /tmp/live-exploration-preflight.json
+```
+
+It performs three reference warmups followed by 20 reference-visible
+calibration calls. Each calibration call returns the original 1,024-token-cap
+request response and runs one 121-token-cap candidate off-path. After shutdown
+and restart, the 20 exact paired observations admit that candidate on the next
+user-visible call. The committed
+[output](live-exploration-preflight-2026-09-04.json) records 23 reference calls,
+20 background candidates, one post-restart admitted candidate, and 44 total
+fake-provider invocations.
+
+This is Stage E0 mechanism evidence with `network_calls=0` and
+`paper_evidence=false`. Its sub-millisecond local timings are not provider
+latency results and must not appear as efficacy evidence.

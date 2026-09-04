@@ -12,6 +12,8 @@ from unittest.mock import patch
 from agentc._optimizer import (
     PASS_THROUGH,
     Plan,
+    complete_exploration,
+    fail_exploration,
     model_catalog,
     observe_outcome,
     plan_call,
@@ -28,6 +30,36 @@ def test_plan_call_decodes_pass_through():
     with patch("agentc._optimizer._native.optimize_plan", return_value='{"kind":"pass_through"}'):
         p = plan_call({"call_site_id": "x", "model": "m"})
     assert p.kind == "pass_through"
+
+
+def test_plan_call_decodes_reference_visible_counterfactual():
+    payload = json.dumps(
+        {
+            "kind": "pass_through",
+            "agentc_exploration_context": {
+                "schema_version": 1,
+                "lease_token": "opaque-exploration-token",
+                "candidate_plan": {
+                    "kind": "rewritten",
+                    "rule": "OutputBudget",
+                    "call": {
+                        "model": "gpt-4o-mini",
+                        "messages": [],
+                        "parameters": {},
+                    },
+                },
+            },
+        }
+    )
+    with patch("agentc._optimizer._native.optimize_plan", return_value=payload):
+        plan = plan_call({"call_site_id": "x", "model": "gpt-4o"})
+
+    assert plan.kind == "pass_through"
+    assert plan.exploration_lease_token == "opaque-exploration-token"
+    assert plan.counterfactual is not None
+    assert plan.counterfactual.kind == "rewritten"
+    assert plan.counterfactual.call is not None
+    assert plan.counterfactual.call["model"] == "gpt-4o-mini"
 
 
 def test_plan_call_decodes_cached():
@@ -184,3 +216,43 @@ def test_record_divergence_forwards_only_opaque_token_and_value():
         record_divergence("opaque-observation-token", 0.25)
 
     native.assert_called_once_with("opaque-observation-token", 0.25)
+
+
+def test_complete_exploration_forwards_opaque_lease_and_clears_it():
+    plan = Plan(
+        kind="pass_through",
+        exploration_lease_token="opaque-exploration-token",
+    )
+    with patch(
+        "agentc._optimizer._native.optimize_complete_exploration",
+        return_value=True,
+        create=True,
+    ) as native:
+        recorded = complete_exploration(
+            plan,
+            {"input_tokens": 5, "output_tokens": 3},
+            0.125,
+        )
+
+    assert recorded is True
+    assert plan.exploration_lease_token is None
+    native.assert_called_once()
+    assert native.call_args.args[0] == "opaque-exploration-token"
+    assert json.loads(native.call_args.args[1])["input_tokens"] == 5
+    assert native.call_args.args[2] == 0.125
+
+
+def test_fail_exploration_is_fail_open_and_idempotent_at_python_boundary():
+    plan = Plan(
+        kind="pass_through",
+        exploration_lease_token="opaque-exploration-token",
+    )
+    with patch(
+        "agentc._optimizer._native.optimize_fail_exploration",
+        return_value=True,
+        create=True,
+    ) as native:
+        assert fail_exploration(plan) is True
+        assert fail_exploration(plan) is False
+
+    native.assert_called_once_with("opaque-exploration-token")

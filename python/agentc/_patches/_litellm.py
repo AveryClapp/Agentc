@@ -356,8 +356,11 @@ def _wrap_completion(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any
             response = run_original()
         else:
             from agentc._patches._optimizer_glue import (
+                build_outcome_openai,
                 dispatch_sync,
+                maybe_explore_record,
                 maybe_shadow_record,
+                resolve_executed_model_id,
             )
 
             response = dispatch_sync(
@@ -368,6 +371,30 @@ def _wrap_completion(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any
             primary_elapsed_s = time.perf_counter() - started
             if call_site_id is not None:
                 _observe(plan, response, call_site_id, request, primary_elapsed_s)
+                def extract_counterfactual_outcome(
+                    candidate_plan: Any,
+                    candidate_response: Any,
+                    elapsed_s: float,
+                ) -> dict[str, Any]:
+                    model = resolve_executed_model_id(
+                        candidate_plan,
+                        candidate_response,
+                        request.get("model"),
+                    )
+                    return build_outcome_openai(
+                        candidate_response,
+                        elapsed_s=elapsed_s,
+                        model=model,
+                        call_site_id=call_site_id,
+                        plan=candidate_plan,
+                    )
+
+                maybe_explore_record(
+                    plan,
+                    response,
+                    run_mutated,
+                    extract_counterfactual_outcome,
+                )
             maybe_shadow_record(plan, call_site_id, response, run_original)
     except BaseException as exc:
         attrs["error.type"] = type(exc).__name__
@@ -454,7 +481,12 @@ async def _wrap_acompletion(
             response = await run_original()
         else:
             from agentc._executor import dispatch
-            from agentc._patches._optimizer_glue import maybe_shadow_record_async
+            from agentc._patches._optimizer_glue import (
+                build_outcome_openai,
+                maybe_explore_record_async,
+                maybe_shadow_record_async,
+                resolve_executed_model_id,
+            )
 
             response = await dispatch(
                 plan,
@@ -464,6 +496,30 @@ async def _wrap_acompletion(
             primary_elapsed_s = time.perf_counter() - started
             if call_site_id is not None:
                 _observe(plan, response, call_site_id, request, primary_elapsed_s)
+                def extract_counterfactual_outcome(
+                    candidate_plan: Any,
+                    candidate_response: Any,
+                    elapsed_s: float,
+                ) -> dict[str, Any]:
+                    model = resolve_executed_model_id(
+                        candidate_plan,
+                        candidate_response,
+                        request.get("model"),
+                    )
+                    return build_outcome_openai(
+                        candidate_response,
+                        elapsed_s=elapsed_s,
+                        model=model,
+                        call_site_id=call_site_id,
+                        plan=candidate_plan,
+                    )
+
+                maybe_explore_record_async(
+                    plan,
+                    response,
+                    run_mutated,
+                    extract_counterfactual_outcome,
+                )
             await maybe_shadow_record_async(
                 plan,
                 call_site_id,

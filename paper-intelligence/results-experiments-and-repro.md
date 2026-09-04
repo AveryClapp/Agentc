@@ -1,7 +1,7 @@
 ---
 title: Results, Experiments, and Repro
 status: active
-last-updated: 2026-05-11
+last-updated: 2026-09-04
 owner: paper-intelligence
 ---
 
@@ -35,6 +35,26 @@ The evidence base is substantially stronger after the V2 experimental campaign (
 `RES-004` (StateDrop n=50) has **contaminated cost columns** — use only the per-task accuracy data from that run; headline StateDrop savings come from `RES-003`. `RES-006` remains a diagnostic only.
 
 Do not present `CacheHit` or `ParallelBranch` as empirically validated paper contributions until new `RES` entries exist.
+
+### Joint-planner engineering checkpoint (not paper evidence)
+
+As of 2026-09-04, the runtime path required by the narrowed literature thesis
+exists end to end: supported provider adapters return the immutable reference,
+run one durably leased model-and-rewrite candidate off-path, persist its exact
+paired cost/latency/divergence profile, reload that evidence after restart, and
+admit the plan only after the 20-pair floor. The deterministic
+`bench/live_exploration_preflight.py` run records 23 reference-visible
+calibration calls, 20 background candidates, and one post-restart admitted
+candidate over 44 fake-provider calls. The artifact is
+`bench/repro/live-exploration-preflight-2026-09-04.json` and is explicitly
+`paper_evidence=false`.
+
+This closes a mechanism gap, not the contribution-strength gap. The next
+evidence step is the frozen joint-planning baseline/ablation campaign: held-out
+natural workloads, route-only and rewrite-only controls, both sequential
+orders, best static joint, current greedy, and AgentOpt/other feasible
+baselines, with exploration and shadow cost charged. Until that result exists,
+the MLSys main-track assessment remains conditional.
 
 ## Current Results
 

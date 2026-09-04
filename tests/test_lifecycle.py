@@ -213,6 +213,10 @@ class TestInit:
         }
         controls = {
             "AGENTC_ENABLED_RULES": "OutputBudget",
+            # This regression tests process-global storage isolation using the
+            # legacy cost-profile activation path. Joint planning intentionally
+            # requires exact paired plan evidence instead.
+            "AGENTC_COMPOSE": "0",
             "AGENTC_OPTIMIZE_HOT_THRESHOLD": "3",
             "AGENTC_OPTIMIZE_MAX_OVERHEAD_MS": "1000",
             "AGENTC_OPTIMIZE_SHADOW": "0",
@@ -348,6 +352,10 @@ class TestInit:
         }
         controls = {
             "AGENTC_ENABLED_RULES": "OutputBudget",
+            # This test isolates exact-plan guard persistence. Its three-call
+            # setup intentionally uses the legacy projected-savings selector;
+            # joint admission requires a separate 20-pair calibration phase.
+            "AGENTC_COMPOSE": "0",
             "AGENTC_OPTIMIZE_HOT_THRESHOLD": "3",
             "AGENTC_OPTIMIZE_MAX_OVERHEAD_MS": "1000",
             "AGENTC_OPTIMIZE_SHADOW": "0.02",

@@ -7,6 +7,8 @@ Covers:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 
 from agentc._patches._optimizer_glue import (
@@ -14,13 +16,17 @@ from agentc._patches._optimizer_glue import (
     LITELLM_COMPLETION_PROTOCOL,
     OPENAI_CHAT_COMPLETIONS_PROTOCOL,
     UnsafeModelRouteError,
+    _cancel_async_exploration_task,
     _structured_output_schema_version,
     _text_divergence,
     apply_call_mutations_anthropic,
     apply_call_mutations_openai,
     build_call_dict_anthropic,
     build_call_dict_openai,
+    cancel_exploration,
     dispatch_sync,
+    maybe_explore_record,
+    maybe_explore_record_async,
     maybe_shadow_record,
     maybe_shadow_record_async,
     resolve_executed_model_id,
@@ -775,6 +781,337 @@ class TestDispatchSyncCachedFallback:
             decode_cached=lambda v: 0,
         )
         assert out == 0
+
+
+def test_sync_reference_failure_closes_counterfactual_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import agentc._optimizer
+    from agentc._optimizer import Plan
+
+    failed: list[Plan] = []
+    monkeypatch.setattr(
+        agentc._optimizer,
+        "fail_exploration",
+        lambda plan: failed.append(plan) or True,
+    )
+    plan = Plan(
+        kind="pass_through",
+        exploration_lease_token="opaque-exploration-token",
+        counterfactual=Plan(
+            kind="rewritten",
+            call={"model": "mini", "messages": []},
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="reference provider failure"):
+        dispatch_sync(
+            plan,
+            run_original=lambda: (_ for _ in ()).throw(
+                RuntimeError("reference provider failure")
+            ),
+            run_mutated=lambda _call: pytest.fail("candidate must not run"),
+        )
+
+    assert failed == [plan]
+
+
+class TestBoundedExplorationPythonEntry:
+    @staticmethod
+    def _resp(text: str):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=text))]
+        )
+
+    @staticmethod
+    def _plan():
+        from agentc._optimizer import Plan
+
+        return Plan(
+            kind="pass_through",
+            exploration_lease_token="opaque-exploration-token",
+            counterfactual=Plan(
+                kind="rewritten",
+                rule="OutputBudget",
+                call={"model": "gpt-4o-mini", "messages": []},
+            ),
+        )
+
+    def test_sync_counterfactual_is_background_and_records_candidate_only(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import threading
+        import agentc._optimizer
+
+        entered = threading.Event()
+        release = threading.Event()
+        completed: list[tuple[object, dict, float]] = []
+        failed: list[object] = []
+        monkeypatch.setattr(
+            agentc._optimizer,
+            "complete_exploration",
+            lambda plan, outcome, divergence: (
+                completed.append((plan, outcome, divergence)) or True
+            ),
+        )
+        monkeypatch.setattr(
+            agentc._optimizer,
+            "fail_exploration",
+            lambda plan: failed.append(plan) or True,
+        )
+        plan = self._plan()
+
+        def run_mutated(call: dict) -> object:
+            assert call["model"] == "gpt-4o-mini"
+            entered.set()
+            assert release.wait(timeout=2)
+            return self._resp("candidate answer")
+
+        thread = maybe_explore_record(
+            plan,
+            self._resp("reference answer"),
+            run_mutated,
+            lambda candidate, _response, elapsed: {
+                "input_tokens": 2,
+                "output_tokens": 1,
+                "latency_ms": elapsed * 1000,
+                "cost_usd": 0.0001,
+                "executed_model_id": candidate.call["model"],
+            },
+        )
+
+        assert thread is not None
+        assert entered.wait(timeout=2)
+        assert thread.is_alive(), "the caller is not joined to provider work"
+        release.set()
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+        assert len(completed) == 1
+        assert completed[0][0] is plan
+        assert completed[0][1]["executed_model_id"] == "gpt-4o-mini"
+        assert completed[0][2] > 0.0
+        assert failed == []
+
+    def test_failed_candidate_closes_lease_without_reference_retry(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import agentc._optimizer
+
+        failed: list[object] = []
+        monkeypatch.setattr(
+            agentc._optimizer,
+            "complete_exploration",
+            lambda *_args: pytest.fail("failed candidate must not complete"),
+        )
+        monkeypatch.setattr(
+            agentc._optimizer,
+            "fail_exploration",
+            lambda plan: failed.append(plan) or True,
+        )
+        plan = self._plan()
+
+        def fail_candidate(_call: dict) -> object:
+            raise RuntimeError("provider rejected candidate")
+
+        thread = maybe_explore_record(
+            plan,
+            self._resp("reference"),
+            fail_candidate,
+            lambda *_args: {},
+        )
+        assert thread is not None
+        thread.join(timeout=2)
+        assert failed == [plan]
+
+    def test_sync_worker_setup_failure_is_fail_open_and_releases_slot(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import agentc._optimizer
+        import agentc._patches._optimizer_glue as glue
+
+        class Slots:
+            acquired = 0
+            released = 0
+
+            def acquire(self, *, blocking: bool) -> bool:
+                assert blocking is False
+                self.acquired += 1
+                return True
+
+            def release(self) -> None:
+                self.released += 1
+
+        slots = Slots()
+        failed: list[object] = []
+
+        def reject_thread(*_args: object, **_kwargs: object) -> None:
+            raise OSError("thread construction unavailable")
+
+        monkeypatch.setattr(glue, "_exploration_worker_slots", slots)
+        monkeypatch.setattr(glue.threading, "Thread", reject_thread)
+        monkeypatch.setattr(
+            agentc._optimizer,
+            "fail_exploration",
+            lambda plan: failed.append(plan) or True,
+        )
+        plan = self._plan()
+
+        worker = maybe_explore_record(
+            plan,
+            self._resp("reference"),
+            lambda _call: pytest.fail("candidate must not run"),
+            lambda *_args: {},
+        )
+
+        assert worker is None
+        assert failed == [plan]
+        assert slots.acquired == 1
+        assert slots.released == 1
+
+    def test_async_task_setup_failure_is_fail_open_and_releases_slot(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import asyncio
+        import agentc._optimizer
+        import agentc._patches._optimizer_glue as glue
+
+        class Slots:
+            acquired = 0
+            released = 0
+
+            def acquire(self, *, blocking: bool) -> bool:
+                assert blocking is False
+                self.acquired += 1
+                return True
+
+            def release(self) -> None:
+                self.released += 1
+
+        slots = Slots()
+        failed: list[object] = []
+
+        def reject_task(*_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("no running event loop")
+
+        async def run_mutated(_call: dict) -> object:
+            pytest.fail("candidate must not run")
+
+        monkeypatch.setattr(glue, "_exploration_worker_slots", slots)
+        monkeypatch.setattr(asyncio, "create_task", reject_task)
+        monkeypatch.setattr(
+            agentc._optimizer,
+            "fail_exploration",
+            lambda plan: failed.append(plan) or True,
+        )
+        plan = self._plan()
+
+        task = maybe_explore_record_async(
+            plan,
+            self._resp("reference"),
+            run_mutated,
+            lambda *_args: {},
+        )
+
+        assert task is None
+        assert failed == [plan]
+        assert slots.acquired == 1
+        assert slots.released == 1
+
+    @pytest.mark.asyncio
+    async def test_async_counterfactual_is_scheduled_not_awaited(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import asyncio
+        import agentc._optimizer
+
+        release = asyncio.Event()
+        completed: list[float] = []
+        monkeypatch.setattr(
+            agentc._optimizer,
+            "complete_exploration",
+            lambda _plan, _outcome, divergence: completed.append(divergence) or True,
+        )
+        monkeypatch.setattr(agentc._optimizer, "fail_exploration", lambda _plan: True)
+        plan = self._plan()
+
+        async def run_mutated(_call: dict) -> object:
+            await release.wait()
+            return self._resp("candidate")
+
+        task = maybe_explore_record_async(
+            plan,
+            self._resp("reference"),
+            run_mutated,
+            lambda _candidate, _response, elapsed: {
+                "input_tokens": 1,
+                "output_tokens": 1,
+                "latency_ms": elapsed * 1000,
+                "cost_usd": 0.0,
+            },
+        )
+        assert task is not None
+        await asyncio.sleep(0)
+        assert not task.done()
+        release.set()
+        await task
+        assert completed and completed[0] > 0.0
+
+    def test_explicit_cancel_closes_reserved_lease(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import agentc._optimizer
+
+        failed: list[object] = []
+        monkeypatch.setattr(
+            agentc._optimizer,
+            "fail_exploration",
+            lambda plan: failed.append(plan) or True,
+        )
+        plan = self._plan()
+        cancel_exploration(plan)
+        assert failed == [plan]
+
+    def test_cross_thread_async_cancel_is_scheduled_on_owning_loop(self) -> None:
+        callbacks: list[Callable[[], None]] = []
+
+        class Loop:
+            @staticmethod
+            def is_closed() -> bool:
+                return False
+
+            @staticmethod
+            def is_running() -> bool:
+                return True
+
+            @staticmethod
+            def call_soon_threadsafe(callback: Callable[[], None]) -> None:
+                callbacks.append(callback)
+
+        class Task:
+            cancelled = False
+
+            @staticmethod
+            def get_loop() -> Loop:
+                return Loop()
+
+            def cancel(self) -> None:
+                self.cancelled = True
+
+        task = Task()
+        _cancel_async_exploration_task(task)
+
+        assert task.cancelled is False
+        assert callbacks == [task.cancel]
+        callbacks[0]()
+        assert task.cancelled is True
 
 
 class TestShadowGuardPythonEntry:

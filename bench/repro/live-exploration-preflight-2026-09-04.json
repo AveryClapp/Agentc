@@ -1,0 +1,45 @@
+{
+  "artifact_schema_version": 1,
+  "claims": [
+    "Every calibration response came from the immutable reference request.",
+    "Exactly twenty leased candidates completed through the production adapter.",
+    "Candidate cost, latency, and paired divergence survived native restart.",
+    "The next call admitted the exact candidate from persisted evidence.",
+    "This synthetic preflight validates mechanics and is not paper evidence."
+  ],
+  "enabled_rules": [
+    "OutputBudget"
+  ],
+  "exploration_policy": {
+    "calls_per_site_24h": 20,
+    "max_concurrent_per_site": 1,
+    "paired_evidence_target": 20,
+    "shadow_rate": 0.0
+  },
+  "network_calls": 0,
+  "paper_evidence": false,
+  "provider": "deterministic_fake_openai_adapter",
+  "requested_model": "gpt-4o-2024-11-20",
+  "results": {
+    "admitted_call_latency_ms": 0.6334581412374973,
+    "background_candidate_calls": 20,
+    "calibration_critical_path_p50_ms": 0.5571250803768635,
+    "calibration_critical_path_p99_ms": 3.995416220277548,
+    "calibration_user_calls": 23,
+    "candidate_cost_usd_mean": 0.00065,
+    "candidate_divergence_upper_p95": 0.0,
+    "candidate_latency_ms_mean": 0.03206538421341351,
+    "candidate_paired_observations": 20,
+    "candidate_window_observations": 21,
+    "persisted_completed_attempts": 20,
+    "persisted_counterfactual_cost_usd": 0.013,
+    "persisted_counterfactual_latency_ms": 0.13237306848168373,
+    "post_restart_candidate_admitted": true,
+    "post_restart_candidate_max_tokens": 121,
+    "provider_calls_total": 44,
+    "provider_candidate_calls": 21,
+    "provider_reference_calls": 23,
+    "reference_visible_calibration_calls": 23
+  },
+  "stage": "E0"
+}

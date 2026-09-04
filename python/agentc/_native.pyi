@@ -197,6 +197,23 @@ def optimize_record_divergence(observation_token: str, divergence: float) -> Non
     """
     ...
 
+def optimize_complete_exploration(
+    lease_token: str,
+    outcome_json: str,
+    divergence: float,
+) -> bool:
+    """Commit a leased candidate outcome and paired divergence.
+
+    The token is opaque and binds the outcome to one durable exploration
+    attempt and exact execution-plan profile. Returns False on invalid input
+    or persistence failure and never raises internally.
+    """
+    ...
+
+def optimize_fail_exploration(lease_token: str) -> bool:
+    """Mark a leased counterfactual failed while retaining its spend attempt."""
+    ...
+
 def optimize_flush() -> None:
     """Flush buffered cost-model and guard-divergence writes to disk.
 

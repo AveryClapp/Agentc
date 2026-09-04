@@ -23,7 +23,13 @@ Think of it like a compiler for agent workloads. Frameworks describe *what* to d
 
 The runtime, profiler, semantic memoization layer, and JIT optimizer are all implemented and pass their test suites. The `agentc` CLI ships with `record`, `traces`, `analyze`, `report`, `cache`, and `optimize` subcommands.
 
-**V2** extends the per-call optimizer with a `CompositionPlanner` that classifies rules by cost driver (InputTokens / OutputTokens / ModelPrice / CallElimination / Structural), applies orthogonal rules in dependency order, and produces `Plan::Composed` audit rows. Four new rules ship in V2: `PromptDedup`, `OutputBudget`, `StructuredTruncation`, and `DeadOutputTruncation` (the last three not yet independently benchmarked). Toggle with `AGENTC_COMPOSE=1` (default on).
+The current joint planner crosses compatible semantic rewrite plans with
+versioned model targets, admits only complete plans with their own empirical
+evidence, and falls back to the immutable request when evidence or risk bounds
+fail. Initial evidence comes from bounded, reference-visible counterfactuals:
+the caller receives the original response while a durably leased candidate
+runs off-path. This mechanism is implemented and preflighted, but it is not yet
+an MLSys efficacy result; the held-out baseline/ablation campaign remains.
 
 **Per-rule savings (purpose-built isolation workloads; warmup-corrected, rule-only configs):**
 
@@ -123,7 +129,17 @@ JIT runtime that intercepts LLM calls on hot call sites and applies cost-ranked 
 
 **V2 CompositionPlanner:** classifies rules by `CostDriver`, allows orthogonal rules (different drivers = non-overlapping `Call` fields) to apply in a single pass as `Plan::Composed`. Same-driver rules are gated unless explicitly allowlisted (e.g., `StateDrop → ContextCompress`). Controlled by `AGENTC_COMPOSE=1` (default). V1 first-match behavior available via `AGENTC_COMPOSE=0`.
 
-Cold calls pass through; optimization engages after `hot_threshold` observations (default 3), when the empirical cost model has real per-call-site data. On ~2% of rewritten calls (`AGENTC_OPTIMIZE_SHADOW`, default 0.02) shadow-mode sampling runs the *unrewritten* call to measure output divergence for the accuracy budget — note this is a second, **real and billed** LLM call issued synchronously inline, so it adds that call's latency and cost to the sampled request, not a free sample. The 2% value is a deployment default, not an empirically validated damage bound; the historical guard experiments used full shadow sampling. Spec: [specs/optimizer.md](specs/optimizer.md).
+Cold calls pass through; after `hot_threshold` observations (default 3), the
+joint planner enumerates compatible model-and-rewrite candidates. An
+under-observed candidate may run in the background while the original response
+remains user-visible (`AGENTC_OPTIMIZE_EXPLORATION`, default on; 20 real and
+potentially billed attempts per call-site version per 24h). Once a plan has 20
+paired observations and satisfies the guard, it can become user-visible. On
+~2% of those optimized calls (`AGENTC_OPTIMIZE_SHADOW`, default 0.02), the
+unrewritten call runs synchronously to detect drift. Both paths can incur real
+provider cost; set `AGENTC_OPTIMIZE_EXPLORATION=0` and
+`AGENTC_OPTIMIZE_SHADOW=0` when no additional calls are acceptable. Spec:
+[specs/optimizer.md](specs/optimizer.md).
 
 ---
 

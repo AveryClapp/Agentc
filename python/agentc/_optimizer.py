@@ -62,6 +62,11 @@ class Plan:
     # plan profile, runtime version, and sequence. Provider adapters must not
     # inspect or reconstruct it.
     observation_token: Optional[str] = None
+    # Initial calibration never exposes an unadmitted candidate. Rust may
+    # attach one durably leased candidate to a pass-through Plan; adapters run
+    # it off-path and return the reference response unchanged.
+    exploration_lease_token: Optional[str] = None
+    counterfactual: Optional["Plan"] = None
 
     @property
     def is_pass_through(self) -> bool:
@@ -96,6 +101,8 @@ def plan_call(call: dict[str, Any]) -> Plan:
     plan.messages = list(call.get("messages") or [])
     plan.parameters = dict(call.get("parameters") or {})
     _hydrate_dispatch_metadata(plan, call)
+    if plan.counterfactual is not None:
+        _hydrate_dispatch_metadata(plan.counterfactual, call)
     return plan
 
 
@@ -151,10 +158,58 @@ def record_divergence(observation_token: str, divergence: float) -> None:
         log.debug("record_divergence: native call raised; dropping", exc_info=True)
 
 
+def complete_exploration(
+    plan: Plan,
+    outcome: dict[str, Any],
+    divergence: float,
+) -> bool:
+    """Commit one leased counterfactual outcome to its exact plan profile."""
+    token = plan.exploration_lease_token
+    if not token:
+        return False
+    try:
+        outcome_json = json.dumps(outcome)
+    except (TypeError, ValueError):
+        log.debug("complete_exploration: outcome not serializable; failing lease")
+        fail_exploration(plan)
+        return False
+    try:
+        recorded = bool(
+            _native.optimize_complete_exploration(
+                token,
+                outcome_json,
+                float(divergence),
+            )
+        )
+    except BaseException:
+        log.debug("complete_exploration: native call raised; dropping", exc_info=True)
+        return False
+    if recorded:
+        plan.exploration_lease_token = None
+    return recorded
+
+
+def fail_exploration(plan: Plan) -> bool:
+    """Mark a leased counterfactual failed without surfacing an exception."""
+    token = plan.exploration_lease_token
+    if not token:
+        return False
+    try:
+        recorded = bool(_native.optimize_fail_exploration(token))
+    except BaseException:
+        log.debug("fail_exploration: native call raised; dropping", exc_info=True)
+        return False
+    if recorded:
+        plan.exploration_lease_token = None
+    return recorded
+
+
 def _plan_from_dict(data: dict[str, Any], raw_json: str) -> Plan:
     kind = data.get("kind", "pass_through")
     if kind == "pass_through":
-        return Plan(kind="pass_through", raw_json=raw_json)
+        plan = Plan(kind="pass_through", raw_json=raw_json)
+        _hydrate_exploration(plan, data)
+        return plan
     if kind == "cached":
         return Plan(kind="cached", value=data.get("value"), raw_json=raw_json)
     if kind == "rewritten":
@@ -185,6 +240,27 @@ def _plan_from_dict(data: dict[str, Any], raw_json: str) -> Plan:
         )
     log.debug("plan_call: unknown kind %r from native", kind)
     return PASS_THROUGH
+
+
+def _hydrate_exploration(plan: Plan, data: dict[str, Any]) -> None:
+    context = data.get("agentc_exploration_context")
+    if not isinstance(context, dict) or context.get("schema_version") != 1:
+        return
+    lease_token = context.get("lease_token")
+    candidate_data = context.get("candidate_plan")
+    if not isinstance(lease_token, str) or not lease_token or not isinstance(candidate_data, dict):
+        return
+    try:
+        candidate_json = json.dumps(candidate_data, separators=(",", ":"))
+        candidate = _plan_from_dict(candidate_data, candidate_json)
+    except (TypeError, ValueError, RecursionError):
+        log.debug("plan_call: malformed counterfactual envelope", exc_info=True)
+        return
+    if candidate.kind not in ("rewritten", "composed") or candidate.call is None:
+        log.debug("plan_call: non-executable counterfactual ignored")
+        return
+    plan.exploration_lease_token = lease_token
+    plan.counterfactual = candidate
 
 
 def _hydrate_dispatch_metadata(plan: Plan, original_call: dict[str, Any]) -> None:

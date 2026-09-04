@@ -991,7 +991,12 @@ def run_campaign(
     )
     workload_map = _workload_by_id(spec)
     started = time.monotonic()
-    portable_commands: dict[str, list[str]] = {}
+    portable_commands = {
+        cast(str, workload["workload_id"]): _portable_command(
+            cast(Sequence[str], workload["worker_command"]), repo_root
+        )
+        for workload in cast(Sequence[Mapping[str, Any]], spec["workloads"])
+    }
 
     for run in schedule:
         if run.key in completed:
@@ -1015,9 +1020,6 @@ def run_campaign(
             configured_command, repo_root=repo_root, spec_dir=spec_path.parent
         )
         command.extend(["--request", str(request_path), "--output", str(result_path)])
-        portable_commands[run.workload_id] = _portable_command(
-            cast(Sequence[str], workload["worker_command"]), repo_root
-        )
         cwd = _safe_working_directory(
             workload, repo_root=repo_root, spec_dir=spec_path.parent
         )

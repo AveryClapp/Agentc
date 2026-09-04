@@ -569,6 +569,43 @@ impl ExplorationController {
         Ok(ExplorationCompletion::Recorded)
     }
 
+    /// Cancel a lease that is known not to have crossed the provider-dispatch
+    /// boundary. The reservation is removed rather than charged to the rolling
+    /// call cap; its separately allocated sequence number is never reused.
+    pub fn cancel_unstarted(
+        &self,
+        conn: &mut Connection,
+        lease: &ExplorationLease,
+    ) -> Result<(), ExplorationError> {
+        let transaction = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(persistence)?;
+        let Some(row) = load_attempt(&transaction, lease)? else {
+            return Err(ExplorationError::LeaseNotFound);
+        };
+        if !row.matches_lease(lease) {
+            return Err(ExplorationError::LeaseMismatch);
+        }
+        if row.status != "reserved" {
+            return Err(ExplorationError::LeaseNotActive);
+        }
+        let deleted = transaction
+            .execute(
+                "DELETE FROM execution_plan_exploration \
+                 WHERE call_site_version = ?1 AND exploration_sequence = ?2 \
+                       AND status = 'reserved'",
+                params![
+                    lease.key.call_site_version.as_str(),
+                    to_sqlite_u64(lease.sequence)?,
+                ],
+            )
+            .map_err(persistence)?;
+        if deleted != 1 {
+            return Err(persistence("unstarted exploration lease was not cancelled"));
+        }
+        transaction.commit().map_err(persistence)
+    }
+
     pub fn snapshot(
         &self,
         conn: &Connection,
@@ -1148,6 +1185,62 @@ mod tests {
             NOW_US + 3,
         );
         assert_eq!(next.reason, ExplorationReason::CandidateReserved);
+    }
+
+    #[test]
+    fn cancelling_unstarted_lease_releases_call_and_concurrency_caps() {
+        let call_site = site(14);
+        let candidates = vec![candidate(&call_site, 1)];
+        let mut strict_policy = policy();
+        strict_policy.max_calls_per_site = 1;
+        let controller = ExplorationController::with_policy(strict_policy).unwrap();
+        let mut conn = connection();
+
+        let first = controller
+            .decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id(),
+                &candidates,
+                NOW_US,
+            )
+            .counterfactual
+            .unwrap();
+        controller.cancel_unstarted(&mut conn, &first).unwrap();
+
+        let cancelled = controller.snapshot(&conn, &call_site, NOW_US + 1).unwrap();
+        assert_eq!(cancelled.calls_in_window, 0);
+        assert_eq!(cancelled.active_leases, 0);
+        assert_eq!(cancelled.completed_calls, 0);
+        assert_eq!(cancelled.failed_calls, 0);
+        assert_eq!(cancelled.abandoned_calls, 0);
+
+        let second = controller
+            .decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id(),
+                &candidates,
+                NOW_US + 2,
+            )
+            .counterfactual
+            .unwrap();
+        assert!(second.sequence > first.sequence);
+        controller
+            .complete(
+                &mut conn,
+                &second,
+                &observation_feedback(0.0),
+                NOW_US + 3,
+            )
+            .unwrap();
+        assert_eq!(
+            controller.cancel_unstarted(&mut conn, &second).unwrap_err(),
+            ExplorationError::LeaseNotActive
+        );
+        let completed = controller.snapshot(&conn, &call_site, NOW_US + 4).unwrap();
+        assert_eq!(completed.calls_in_window, 1);
+        assert_eq!(completed.completed_calls, 1);
     }
 
     #[test]

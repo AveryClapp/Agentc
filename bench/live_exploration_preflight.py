@@ -189,6 +189,10 @@ def run(storage: Path) -> dict[str, Any]:
         ).fetchone()
         if profile is None:
             raise RuntimeError("leased candidate has no exact persisted plan profile")
+        charged_incomplete_attempts = connection.execute(
+            "SELECT COUNT(*) FROM execution_plan_exploration "
+            "WHERE status IN ('failed', 'abandoned', 'reserved')"
+        ).fetchone()[0]
 
     with provider._lock:
         calls = list(provider.calls)
@@ -227,6 +231,7 @@ def run(storage: Path) -> dict[str, Any]:
             "provider_reference_calls": len(reference_calls),
             "provider_candidate_calls": len(candidate_calls),
             "persisted_completed_attempts": int(attempt[1]),
+            "persisted_incomplete_attempts": int(charged_incomplete_attempts),
             "persisted_counterfactual_cost_usd": float(attempt[2]),
             "persisted_counterfactual_latency_ms": float(attempt[3]),
             "candidate_paired_observations": int(profile[0]),
@@ -241,6 +246,7 @@ def run(storage: Path) -> dict[str, Any]:
         "claims": [
             "Every calibration response came from the immutable reference request.",
             "Exactly twenty leased candidates completed through the production adapter.",
+            "Planning-only aborts did not consume the provider-call exploration budget.",
             "Candidate cost, latency, and paired divergence survived native restart.",
             "The next call admitted the exact candidate from persisted evidence.",
             "This synthetic preflight validates mechanics and is not paper evidence.",

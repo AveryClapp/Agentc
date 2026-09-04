@@ -25,7 +25,7 @@ use agentc_optimizer::{
     diagnostics::extract_planner_diagnostics_json,
     ffi::{
         complete_profiled_exploration as rust_complete_exploration,
-        fail_embedded_exploration as rust_fail_embedded_exploration,
+        cancel_embedded_exploration as rust_cancel_embedded_exploration,
         fail_profiled_exploration as rust_fail_exploration,
         guard_and_attach_observation_context, optimize_observe as rust_observe,
         optimize_plan as rust_projected_plan, optimize_profiled_plan as rust_profiled_plan,
@@ -995,14 +995,13 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
                         if explored != primary_plan_json
                             && t0.elapsed().as_micros() > max_overhead_us
                         {
-                            // Reservation is already durable. Close it before
-                            // stripping the envelope so no untracked active
-                            // lease blocks future calibration.
-                            let _ = rust_fail_embedded_exploration(
+                            // Reservation is already durable, but the envelope
+                            // has not crossed into Python/provider dispatch.
+                            // Cancel it before stripping the candidate.
+                            let _ = rust_cancel_embedded_exploration(
                                 &state.exploration_controller,
                                 &mut connection,
                                 &explored,
-                                now_us_i64(),
                             );
                             primary_plan_json.clone()
                         } else {

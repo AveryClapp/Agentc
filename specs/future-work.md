@@ -1,7 +1,7 @@
 ---
 title: Future Work
 status: active
-last-updated: 2026-04-16
+last-updated: 2026-09-04
 ---
 
 # Future Work
@@ -38,7 +38,7 @@ Items explicitly out of scope for current specs. Each section corresponds to a c
 
 - **Streaming LLM responses**: Cache replay, parallel fan-out, and model downgrade all need special handling for streaming. Current implementation disables the optimizer when `stream=True`.
 - **Vendor-side prompt cache interaction**: `ContextCompress` is conservatively disabled when `cache_control` markers are present; a proper cost model for cached-prefix length gained/lost would recover the savings.
-- **Rule composition**: First-match-wins is the initial contract. A disciplined composition scheme with cumulative accuracy budget and per-rule divergence attribution could stack ContextCompress + ModelDowngrade on the right call sites.
+- **Typed rule configuration**: Add validated `[optimizer.rules]` and `[optimizer.accuracy_budget]` tables whose settings participate in execution-plan identity. The current TOML loader rejects these tables; `AGENTC_ENABLED_RULES` remains an ablation-only whitelist.
 - **Learned cost predictor**: Replace the per-call-site empirical model with a small learned predictor (e.g., gradient-boosted trees) that generalizes across call sites. Buys accuracy on rare call sites at the cost of training infrastructure.
 - **Speculative pre-execution**: When the DAG context makes the next call's inputs predictable, fire it speculatively. Orthogonal to `ParallelBranch`, which only parallelizes already-issued calls.
 - **Additional rewrite rules**: `PromptTemplateRewrite` (replace a high-cost template with a distilled alternative), `ToolCallElision` (skip tools whose outputs the LLM ignores), `BatchAcrossCalls` (combine small sibling calls into one).

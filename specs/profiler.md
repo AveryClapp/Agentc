@@ -1,7 +1,7 @@
 ---
 title: Profiler
 status: active
-last-updated: 2026-07-15
+last-updated: 2026-09-04
 ---
 
 # Profiler
@@ -415,7 +415,15 @@ agentc migrate                           # apply schema migrations to traces.db
 
 ### 7. Configuration
 
-**Precedence order:** `agentc.init()` kwargs > environment variables > `~/.agentc/config.toml` > defaults.
+Agentc uses one shared bootstrap file. `agentc.init(storage_path=...)` wins over
+`AGENTC_STORAGE_PATH` when selecting `<storage>/config.toml`; otherwise the
+environment path wins over `~/.agentc`. A root `storage_path` inside the file
+may relocate the databases, but does not recursively relocate the file itself.
+The exact bootstrap path is passed to the native optimizer.
+
+**Field precedence:** `agentc.init()` kwargs > environment variables >
+`config.toml` > defaults. Optimizer fields have no Python kwargs, so their
+precedence is environment > TOML > defaults.
 
 | Option | `init()` kwarg | Environment variable | Default |
 |---|---|---|---|
@@ -426,7 +434,7 @@ agentc migrate                           # apply schema migrations to traces.db
 
 `storage_path` uses `pathlib.Path.home()` with a fallback to a temp directory if `HOME` is not set (containers, CI).
 
-**`config.toml` schema:**
+**Profiler-owned `config.toml` keys:**
 
 ```toml
 capture_content = true
@@ -435,7 +443,12 @@ fail_open = true
 storage_path = "~/.agentc"
 ```
 
-All keys are optional. Missing keys use the defaults above. Unknown keys are ignored with a warning log.
+All keys are optional. Missing keys use the defaults above. The shared file may
+also contain the strict `[optimizer]` subtree documented in
+[optimizer.md](optimizer.md#configuration). Python recognizes that table but
+does not interpret it. Unknown root keys are ignored with a warning; malformed
+or unknown optimizer fields disable optimization and exploration while leaving
+profiling and the original provider call active.
 
 ### 8. Storage Format
 

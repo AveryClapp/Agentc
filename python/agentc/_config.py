@@ -13,7 +13,8 @@ from typing import Any
 
 logger = logging.getLogger("agentc")
 
-_KNOWN_TOML_KEYS = {"capture_content", "capture_embeddings", "fail_open", "storage_path"}
+_PROFILER_TOML_KEYS = {"capture_content", "capture_embeddings", "fail_open", "storage_path"}
+_KNOWN_TOML_ROOT_KEYS = _PROFILER_TOML_KEYS | {"optimizer"}
 
 _ENV_MAP = {
     "AGENTC_CAPTURE_CONTENT": "capture_content",
@@ -31,6 +32,8 @@ class Config:
     capture_embeddings: bool
     fail_open: bool
     storage_path: Path
+    # Exact bootstrap file consulted before a TOML storage_path relocation.
+    config_path: Path
 
 
 def _parse_bool(value: str) -> bool:
@@ -51,9 +54,8 @@ def _resolve_storage_path(raw: str) -> Path:
     return Path(raw)
 
 
-def _read_config_toml(storage_path: Path) -> dict[str, Any]:
+def _read_config_toml(config_path: Path) -> dict[str, Any]:
     """Read config.toml if it exists. Returns empty dict on missing/error."""
-    config_path = storage_path / "config.toml"
     if not config_path.exists():
         return {}
     try:
@@ -62,10 +64,12 @@ def _read_config_toml(storage_path: Path) -> dict[str, Any]:
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
         # Warn on unknown keys
-        unknown = set(data.keys()) - _KNOWN_TOML_KEYS
+        unknown = set(data.keys()) - _KNOWN_TOML_ROOT_KEYS
         if unknown:
             logger.warning("Unknown keys in config.toml: %s. Ignoring.", ", ".join(sorted(unknown)))
-        return {k: v for k, v in data.items() if k in _KNOWN_TOML_KEYS}
+        # Rust owns the optimizer subtree. Python only resolves profiler keys,
+        # but recognizes the shared root so a valid optimizer table never warns.
+        return {k: v for k, v in data.items() if k in _PROFILER_TOML_KEYS}
     except Exception:
         logger.debug("Failed to read config.toml", exc_info=True)
         return {}
@@ -113,12 +117,14 @@ def resolve_config(
     if storage_path is not None:
         kwargs["storage_path"] = storage_path
 
-    # Read toml (needs resolved storage path to find config.toml)
-    resolved_path = _resolve_storage_path(kwargs.get("storage_path", defaults["storage_path"]))
-    toml_config = _read_config_toml(resolved_path)
-
-    # Read env
+    # The bootstrap path is selected before reading TOML. A TOML storage_path
+    # may relocate runtime data, but cannot recursively relocate its own source.
     env_config = _read_env_vars()
+    bootstrap_storage = kwargs.get(
+        "storage_path", env_config.get("storage_path", defaults["storage_path"])
+    )
+    config_path = _resolve_storage_path(str(bootstrap_storage)) / "config.toml"
+    toml_config = _read_config_toml(config_path)
 
     # Merge: kwargs > env > toml > defaults
     merged: dict[str, Any] = {}
@@ -138,7 +144,7 @@ def resolve_config(
 
     n_kwargs = len(kwargs)
     n_env = len(env_config)
-    found_toml = bool(toml_config)
+    found_toml = config_path.is_file()
     logger.debug("Config loaded: kwargs=%d, env=%d, config.toml=%s", n_kwargs, n_env, found_toml)
 
     return Config(
@@ -146,4 +152,5 @@ def resolve_config(
         capture_embeddings=bool(merged["capture_embeddings"]),
         fail_open=bool(merged["fail_open"]),
         storage_path=_resolve_storage_path(str(merged["storage_path"])),
+        config_path=config_path,
     )

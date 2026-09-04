@@ -135,3 +135,113 @@ def test_invalid_global_divergence_override_fails_safe(
     assert diagnostics["fallback_reason"] == "invalid_configuration"
     assert "global_divergence_threshold" in diagnostics["risk"]["configuration_error"]
     assert diagnostics["risk"]["exploration_enabled"] is False
+
+
+def test_native_optimizer_loads_shared_toml_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "AGENTC_CONFIG_PATH",
+        "AGENTC_OPTIMIZE_OBJECTIVE",
+        "AGENTC_OPTIMIZE_EXPLORATION",
+        "AGENTC_OPTIMIZE_MIN_PLAN_EVIDENCE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    storage = tmp_path / "agentc"
+    storage.mkdir()
+    (storage / "config.toml").write_text(
+        """
+[optimizer]
+max_overhead_ms = 1000
+shadow_rate = 0.0
+
+[optimizer.selection]
+objective = "latency"
+min_plan_evidence = 7
+plan_profile_freshness_hours = 8.0
+max_rewrite_depth = 2
+divergence_exposure_budget = 0.5
+global_divergence_threshold = 0.1
+
+[optimizer.exploration]
+enabled = false
+calls_per_site_24h = 9
+max_concurrent_counterfactuals = 2
+
+[optimizer.evaluation]
+task_damage_budget = 3.0
+non_inferiority_margin = -0.02
+""",
+        encoding="utf-8",
+    )
+    _native.optimize_configure(str(storage))
+
+    plan = json.loads(_native.optimize_plan(json.dumps(_call("tests.planner:toml"))))
+    risk = plan["agentc_planner_diagnostics"]["risk"]
+    assert risk == {
+        "objective": "latency",
+        "min_paired_observations": 7,
+        "profile_freshness_hours": 8.0,
+        "max_rewrite_depth": 2,
+        "shadow_rate": 0.0,
+        "exploration_enabled": False,
+        "exploration_calls_per_site_24h": 9,
+        "max_concurrent_counterfactuals": 2,
+        "divergence_exposure_budget": 0.5,
+        "global_divergence_threshold": 0.1,
+        "evaluation_task_damage_budget": 3.0,
+        "evaluation_non_inferiority_margin": -0.02,
+        "task_quality_scope": "evaluation_only",
+    }
+    assert "agentc_exploration_context" not in plan
+
+
+def test_environment_overrides_shared_toml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    storage = tmp_path / "agentc"
+    storage.mkdir()
+    config_path = storage / "config.toml"
+    config_path.write_text(
+        """
+[optimizer.selection]
+objective = "latency"
+
+[optimizer.exploration]
+enabled = false
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENTC_OPTIMIZE_OBJECTIVE", "cost")
+    _native.optimize_configure(str(storage), str(config_path))
+
+    plan = json.loads(_native.optimize_plan(json.dumps(_call("tests.planner:precedence"))))
+    risk = plan["agentc_planner_diagnostics"]["risk"]
+    assert risk["objective"] == "cost"
+    assert risk["exploration_enabled"] is False
+
+
+def test_unknown_optimizer_toml_key_disables_all_optimizer_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AGENTC_OPTIMIZE_EXPLORATION", "1")
+    storage = tmp_path / "agentc"
+    storage.mkdir()
+    config_path = storage / "config.toml"
+    config_path.write_text(
+        """
+[optimizer.selection]
+objectiv = "latency"
+""",
+        encoding="utf-8",
+    )
+    _native.optimize_configure(str(storage), str(config_path))
+
+    plan = json.loads(_native.optimize_plan(json.dumps(_call("tests.planner:bad-toml"))))
+    diagnostics = plan["agentc_planner_diagnostics"]
+    assert plan["kind"] == "pass_through"
+    assert "agentc_exploration_context" not in plan
+    assert diagnostics["fallback_reason"] == "invalid_configuration"
+    assert diagnostics["risk"]["configuration_error"] == (
+        "optimizer configuration file is invalid"
+    )

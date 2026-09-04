@@ -1,18 +1,21 @@
 //! Vendor-free FFI surface.
 //!
-//! Pure-Rust `optimize_plan`/`optimize_observe` adapters that the PyO3
+//! Pure-Rust planning/observation adapters that the PyO3
 //! binding in `agentc-profiler::_native` re-exports. The adapters accept
 //! JSON strings and — crucially — never panic on malformed input or
 //! internal errors: every failure falls through to `{"kind":"pass_through"}`
 //! so the caller always receives a valid [`crate::Plan`].
 //!
-//! Panic trapping lives HERE, inside [`optimize_plan`]'s own
-//! `std::panic::catch_unwind`, so the fail-open guarantee (a panicking rule
-//! becomes `PassThrough`, never an exception) is testable under `cargo test`
-//! rather than only through the Python interpreter. The PyO3 binding keeps
-//! its own outer `catch_unwind` as defence in depth at the actual boundary.
+//! Panic trapping lives HERE, inside [`optimize_plan`] and
+//! [`optimize_profiled_plan`], so a planning failure is testable under
+//! `cargo test` rather than only through the Python interpreter. The legacy
+//! projected-savings baselines remain in [`optimize_plan`]; production joint
+//! selection enters through [`optimize_profiled_plan`]. The PyO3 binding keeps
+//! an outer `catch_unwind` as defence in depth at the actual boundary.
 
+use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Instant;
 
 use agentc_core::storage::{canonical_json, content_hash};
 use serde::{Deserialize, Serialize};
@@ -20,14 +23,15 @@ use serde::{Deserialize, Serialize};
 use crate::cost_model::{CostModel, CostModelUpdate};
 use crate::dag::{Call, DepSource, Outcome};
 use crate::execution_plan::{
-    CachePolicy, ExecutionPlanSpec, RewriteApplication, RewriteOrdering, ValidationPolicy,
+    select_candidate, CachePolicy, CandidatePlan, ExecutionPlanSpec, PlanAdmission, PlanEstimate,
+    RewriteApplication, RewriteOrdering, SelectionPolicy, ValidationPolicy,
     EXECUTION_PLAN_SCHEMA_VERSION,
 };
 use crate::model_catalog::{ModelCatalog, RequestRequirements, ROUTE_CONTEXT_KEY};
 use crate::plan_guard::PlanGuard;
 use crate::plan_profile::{
-    CallSiteVersion, CallSiteVersionSpec, PlanObservationToken, PlanProfileKey, PlanProfileUpdate,
-    PlanProfiles, PlanRuntimeVersion,
+    CallSiteVersion, CallSiteVersionSpec, PlanObservationToken, PlanProfile, PlanProfileKey,
+    PlanProfileUpdate, PlanProfiles, PlanRuntimeVersion,
 };
 use crate::planner::{Optimizer, Plan};
 
@@ -48,6 +52,12 @@ struct EmbeddedObservationContext {
     key: PlanProfileKey,
     runtime_version: PlanRuntimeVersion,
     divergence_threshold: f64,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedPlanDescriptor {
+    context: EmbeddedObservationContext,
+    spec: ExecutionPlanSpec,
 }
 
 /// Opaque handle returned by ``optimize_observe`` and consumed by
@@ -98,6 +108,201 @@ pub fn optimize_plan(opt: &Optimizer, call_json: &str) -> String {
     .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
 }
 
+/// Enumerate and select complete model-plus-rewrite plans from exact empirical
+/// profiles. This is the production joint-planning seam; [`optimize_plan`]
+/// remains available to the evaluation harness for projected-savings baselines.
+///
+/// Every error, invalid policy, missing reference profile, or elapsed overhead
+/// budget returns the immutable request with its own observation context.
+#[allow(clippy::too_many_arguments)]
+pub fn optimize_profiled_plan(
+    opt: &Optimizer,
+    catalog: Option<&ModelCatalog>,
+    plan_profiles: &PlanProfiles,
+    plan_guard: &PlanGuard,
+    call_json: &str,
+    now_us: i64,
+) -> String {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let Some(catalog) = catalog else {
+            return PASS_THROUGH_JSON.to_string();
+        };
+        if !opt.config().compose {
+            let plan_json = optimize_plan(opt, call_json);
+            let threshold = serde_json::from_str::<Plan>(&plan_json)
+                .ok()
+                .map(|plan| opt.divergence_threshold_for_plan(&plan))
+                .unwrap_or(0.05);
+            return guard_and_attach_observation_context(
+                Some(catalog),
+                plan_guard,
+                call_json,
+                &plan_json,
+                threshold,
+                now_us,
+            );
+        }
+
+        let started = Instant::now();
+        let max_overhead_us = (opt.config().max_overhead_ms * 1000.0) as u128;
+        let Ok(call) = serde_json::from_str::<Call>(call_json) else {
+            return PASS_THROUGH_JSON.to_string();
+        };
+        let reference_plan = Plan::PassThrough;
+        let reference_threshold = opt.divergence_threshold_for_plan(&reference_plan);
+        let Some(reference_descriptor) =
+            describe_plan(catalog, &call, &reference_plan, reference_threshold)
+        else {
+            return PASS_THROUGH_JSON.to_string();
+        };
+        let reference = match CandidatePlan::new(
+            reference_descriptor.spec.clone(),
+            None,
+            PlanAdmission {
+                request_compatible: true,
+                disabled: false,
+                divergence_threshold: reference_threshold,
+                divergence_exposure: 0.0,
+            },
+        ) {
+            Ok(reference) => reference,
+            Err(_) => return PASS_THROUGH_JSON.to_string(),
+        };
+        let fallback = || {
+            encode_observation_context(
+                serde_json::to_string(&reference_plan)
+                    .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string()),
+                &reference_descriptor.context,
+            )
+        };
+        if started.elapsed().as_micros() > max_overhead_us {
+            return fallback();
+        }
+
+        let reference_profile = plan_profiles.get(
+            &reference_descriptor.context.key,
+            &reference_descriptor.context.runtime_version,
+        );
+        let shadow_rate = if opt.config().shadow_rate.is_finite() {
+            f64::from(opt.config().shadow_rate.clamp(0.0, 1.0))
+        } else {
+            0.02
+        };
+        let mut candidates = Vec::new();
+        let mut executable = Vec::new();
+        let mut seen = HashSet::new();
+        seen.insert(reference.id.clone());
+
+        for plan in opt.candidate_plans(&call, catalog) {
+            if matches!(plan, Plan::PassThrough | Plan::Parallel { .. }) {
+                continue;
+            }
+            let threshold = opt.divergence_threshold_for_plan(&plan);
+            let Some(descriptor) = describe_plan(catalog, &call, &plan, threshold) else {
+                continue;
+            };
+            if !seen.insert(descriptor.context.key.execution_plan_id.clone()) {
+                continue;
+            }
+            let admission = match plan_guard.admission(
+                &descriptor.context.key,
+                true,
+                threshold,
+                now_us,
+            ) {
+                Ok(admission) => admission,
+                Err(_) => continue,
+            };
+            let estimate = plan_profiles
+                .get(&descriptor.context.key, &descriptor.context.runtime_version)
+                .and_then(|profile| {
+                    reference_profile.as_ref().and_then(|reference_profile| {
+                        estimate_plan(
+                            &profile,
+                            reference_profile,
+                            shadow_rate,
+                            f64::from(opt.config().max_overhead_ms.max(0.0)),
+                        )
+                    })
+                });
+            let candidate = match CandidatePlan::new(descriptor.spec, estimate, admission) {
+                Ok(candidate) => candidate,
+                Err(_) => continue,
+            };
+            executable.push((
+                candidate.id.clone(),
+                plan,
+                descriptor.context,
+            ));
+            candidates.push(candidate);
+            if started.elapsed().as_micros() > max_overhead_us {
+                return fallback();
+            }
+        }
+
+        let selection = select_candidate(
+            &reference,
+            &candidates,
+            &SelectionPolicy {
+                now_us,
+                divergence_exposure_budget: plan_guard.exposure_budget(),
+                ..SelectionPolicy::default()
+            },
+        );
+        if selection.selected_reference || started.elapsed().as_micros() > max_overhead_us {
+            return fallback();
+        }
+        let selected_id = selection.selected.id.clone();
+        let Some((_id, selected_plan, selected_context)) = executable
+            .into_iter()
+            .find(|(id, _, _)| *id == selected_id)
+        else {
+            return fallback();
+        };
+        // Re-check immediately before exposure. A concurrent shadow result may
+        // have disabled the plan after its admission snapshot was built.
+        if plan_guard
+            .decision(&selected_context.key, now_us)
+            .blocks_user_visible()
+        {
+            return fallback();
+        }
+        let plan_json =
+            serde_json::to_string(&selected_plan).unwrap_or_else(|_| PASS_THROUGH_JSON.to_string());
+        encode_observation_context(plan_json, &selected_context)
+    }))
+    .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
+}
+
+fn estimate_plan(
+    profile: &PlanProfile,
+    reference: &PlanProfile,
+    shadow_rate: f64,
+    planner_overhead_ms: f64,
+) -> Option<PlanEstimate> {
+    if profile.window_observations == 0 || reference.window_observations == 0 {
+        return None;
+    }
+    let divergence_upper_p95 = profile.divergence_upper_p95?;
+    let last_observed_at_us = profile.last_paired_at_us?;
+    let fallback_rate = profile.dispatch_fallback_rate;
+    let extra_reference_rate = shadow_rate + fallback_rate;
+    Some(PlanEstimate {
+        paired_observations: profile.paired_observations,
+        expected_cost_usd: profile.cost_usd.mean,
+        expected_latency_ms: profile.latency_ms.mean,
+        divergence_upper_p95,
+        expected_net_cost_savings_usd: reference.cost_usd.mean
+            - profile.cost_usd.mean
+            - extra_reference_rate * reference.cost_usd.mean,
+        expected_net_latency_savings_ms: reference.latency_ms.mean
+            - profile.latency_ms.mean
+            - extra_reference_rate * reference.latency_ms.mean
+            - planner_overhead_ms,
+        last_observed_at_us,
+    })
+}
+
 /// Attach a self-contained, content-free profile identity to a planned call.
 ///
 /// The field is deliberately embedded in the JSON returned to Python instead
@@ -131,17 +336,24 @@ pub fn attach_observation_context(
     ) else {
         return plan_json.to_string();
     };
-    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(plan_json) else {
-        return plan_json.to_string();
+    encode_observation_context(plan_json.to_string(), &context)
+}
+
+fn encode_observation_context(
+    plan_json: String,
+    context: &EmbeddedObservationContext,
+) -> String {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&plan_json) else {
+        return plan_json;
     };
     let Some(object) = value.as_object_mut() else {
-        return plan_json.to_string();
+        return plan_json;
     };
     let Ok(encoded) = serde_json::to_value(context) else {
-        return plan_json.to_string();
+        return plan_json;
     };
     object.insert(OBSERVATION_CONTEXT_KEY.to_string(), encoded);
-    serde_json::to_string(&value).unwrap_or_else(|_| plan_json.to_string())
+    serde_json::to_string(&value).unwrap_or(plan_json)
 }
 
 /// Apply the persisted complete-plan guard and attach observation context to
@@ -203,6 +415,16 @@ fn build_observation_context(
     plan: &Plan,
     divergence_threshold: f64,
 ) -> Option<EmbeddedObservationContext> {
+    describe_plan(catalog, original_call, plan, divergence_threshold)
+        .map(|descriptor| descriptor.context)
+}
+
+fn describe_plan(
+    catalog: &ModelCatalog,
+    original_call: &Call,
+    plan: &Plan,
+    divergence_threshold: f64,
+) -> Option<ResolvedPlanDescriptor> {
     let requirements = RequestRequirements::from_call(original_call)?;
     let selected_call = selected_call(original_call, plan)?;
     let target = catalog.resolve(
@@ -283,19 +505,22 @@ fn build_observation_context(
         },
     };
     let execution_plan_id = spec.execution_plan_id().ok()?;
-    Some(EmbeddedObservationContext {
-        call_site_id: original_call.call_site_id.clone(),
-        key: PlanProfileKey {
-            call_site_version,
-            execution_plan_id,
+    Some(ResolvedPlanDescriptor {
+        context: EmbeddedObservationContext {
+            call_site_id: original_call.call_site_id.clone(),
+            key: PlanProfileKey {
+                call_site_version,
+                execution_plan_id,
+            },
+            runtime_version: PlanRuntimeVersion {
+                provider_protocol: requirements.provider_protocol,
+                target_model_id,
+                target_model_version,
+                price_table_version: catalog.price_table_version.clone(),
+            },
+            divergence_threshold,
         },
-        runtime_version: PlanRuntimeVersion {
-            provider_protocol: requirements.provider_protocol,
-            target_model_id,
-            target_model_version,
-            price_table_version: catalog.price_table_version.clone(),
-        },
-        divergence_threshold,
+        spec,
     })
 }
 
@@ -311,12 +536,7 @@ fn selected_call<'a>(original_call: &'a Call, plan: &'a Plan) -> Option<&'a Call
 }
 
 pub fn plan_rules(plan: &Plan) -> Vec<String> {
-    match plan {
-        Plan::Rewritten { rule, .. } | Plan::Parallel { rule, .. } => vec![rule.clone()],
-        Plan::Composed { rules, .. } => rules.iter().map(|rule| rule.rule.clone()).collect(),
-        Plan::Cached { .. } => vec!["CacheHit".to_string()],
-        Plan::PassThrough => Vec::new(),
-    }
+    plan.rule_names()
 }
 
 fn prompt_shape_version(call: &Call, requirements: &RequestRequirements) -> String {
@@ -604,10 +824,15 @@ pub fn record_observation_divergence(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::budget::Budget;
     use crate::config::OptimizerConfig;
+    use crate::cost_model::CostModelUpdate;
     use crate::dag::{Message, Parameters};
     use crate::model_catalog::{default_model_catalog, OPENAI_CHAT_COMPLETIONS_PROTOCOL};
-    use crate::planner::CostDriver;
+    use crate::planner::{CostDriver, Proposal, RewriteRule};
+    use crate::rules::ModelDowngradeRule;
+    use crate::schema::ensure_cost_model_schema;
+    use rusqlite::Connection;
 
     fn empty_optimizer() -> Optimizer {
         Optimizer::empty(Arc::new(CostModel::new()), OptimizerConfig::default())
@@ -655,6 +880,182 @@ mod tests {
             call_site_id: Some(site.to_string()),
             ..Outcome::default()
         }
+    }
+
+    struct AlwaysCapsOutput;
+
+    impl RewriteRule for AlwaysCapsOutput {
+        fn name(&self) -> &'static str {
+            "OutputBudget"
+        }
+
+        fn applies(&self, _: &Call, _: &crate::cost_model::CallSiteProfile) -> bool {
+            true
+        }
+
+        fn propose(
+            &self,
+            call: &Call,
+            _: &crate::cost_model::CallSiteProfile,
+        ) -> Option<Proposal> {
+            let mut rewritten = call.clone();
+            rewritten.parameters.max_output_tokens = Some(64);
+            Some(Proposal {
+                rewritten: Plan::Rewritten {
+                    rule: self.name().to_string(),
+                    call: rewritten,
+                    projected_savings_usd: 0.002,
+                },
+                projected_savings_usd: 0.002,
+                cost_driver: CostDriver::OutputTokens,
+                safety_check: Box::new(|_| true),
+            })
+        }
+
+        fn accuracy_budget(&self) -> f32 {
+            0.05
+        }
+
+        fn preserves_native_messages(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn live_profiled_path_selects_only_the_exact_evidenced_joint_plan() {
+        let catalog = Arc::new(default_model_catalog().unwrap());
+        let cost_model = Arc::new(CostModel::new());
+        for observed_at_us in 1..=3 {
+            cost_model.observe(CostModelUpdate {
+                call_site_id: "joint-live-site".to_string(),
+                input_tokens: 100,
+                output_tokens: 50,
+                latency_ms: 100.0,
+                cost_usd: 0.01,
+                output_is_structured: false,
+                output_is_short: true,
+                now_us: Some(observed_at_us),
+            });
+        }
+        let budget = Arc::new(Budget::new());
+        let optimizer = Optimizer::with_budget(
+            cost_model,
+            vec![
+                Box::new(AlwaysCapsOutput),
+                Box::new(ModelDowngradeRule::from_catalog(
+                    catalog.clone(),
+                    budget.clone(),
+                )),
+            ],
+            OptimizerConfig {
+                shadow_rate: 0.0,
+                ..OptimizerConfig::default()
+            },
+            budget,
+        );
+        let call = observable_call("joint-live-site", "private value");
+        let call_json = serde_json::to_string(&call).unwrap();
+        let profiles = PlanProfiles::new();
+        let guard = PlanGuard::new();
+        let now_us = 2_000_000;
+
+        let cold = optimize_profiled_plan(
+            &optimizer,
+            Some(&catalog),
+            &profiles,
+            &guard,
+            &call_json,
+            now_us,
+        );
+        assert!(matches!(
+            serde_json::from_str::<Plan>(&cold).unwrap(),
+            Plan::PassThrough
+        ));
+
+        let plans = optimizer.candidate_plans(&call, &catalog);
+        let joint_plan = plans
+            .into_iter()
+            .find(|plan| {
+                matches!(
+                    plan,
+                    Plan::Composed { rules, call, .. }
+                        if rules.iter().any(|rule| rule.rule == "OutputBudget")
+                            && rules.iter().any(|rule| rule.rule == "ModelDowngrade")
+                            && call.model == "gpt-4o-mini-2024-07-18"
+                )
+            })
+            .expect("joint model-plus-rewrite candidate");
+        let reference_descriptor = describe_plan(
+            &catalog,
+            &call,
+            &Plan::PassThrough,
+            optimizer.divergence_threshold_for_plan(&Plan::PassThrough),
+        )
+        .unwrap();
+        let joint_threshold = optimizer.divergence_threshold_for_plan(&joint_plan);
+        let joint_descriptor =
+            describe_plan(&catalog, &call, &joint_plan, joint_threshold).unwrap();
+
+        for sequence in 0..20 {
+            let observed_at_us = now_us - 20 + sequence;
+            profiles
+                .observe(PlanProfileUpdate {
+                    key: reference_descriptor.context.key.clone(),
+                    runtime_version: reference_descriptor.context.runtime_version.clone(),
+                    input_tokens: 100,
+                    output_tokens: 50,
+                    latency_ms: 100.0,
+                    cost_usd: 0.01,
+                    output_is_structured: false,
+                    output_is_short: true,
+                    divergence: None,
+                    dispatch_fallback: false,
+                    observed_at_us: Some(observed_at_us),
+                })
+                .unwrap();
+            profiles
+                .observe(PlanProfileUpdate {
+                    key: joint_descriptor.context.key.clone(),
+                    runtime_version: joint_descriptor.context.runtime_version.clone(),
+                    input_tokens: 60,
+                    output_tokens: 40,
+                    latency_ms: 40.0,
+                    cost_usd: 0.001,
+                    output_is_structured: false,
+                    output_is_short: true,
+                    divergence: Some(0.0),
+                    dispatch_fallback: false,
+                    observed_at_us: Some(observed_at_us),
+                })
+                .unwrap();
+        }
+
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        profiles.flush_dirty(&mut connection).unwrap();
+        let restarted_profiles = PlanProfiles::new();
+        restarted_profiles.warm_from_db(&connection).unwrap();
+
+        let selected = optimize_profiled_plan(
+            &optimizer,
+            Some(&catalog),
+            &restarted_profiles,
+            &guard,
+            &call_json,
+            now_us,
+        );
+        let selected_plan: Plan = serde_json::from_str(&selected).unwrap();
+        match selected_plan {
+            Plan::Composed { rules, call, .. } => {
+                assert!(rules.iter().any(|rule| rule.rule == "OutputBudget"));
+                assert!(rules.iter().any(|rule| rule.rule == "ModelDowngrade"));
+                assert_eq!(call.model, "gpt-4o-mini-2024-07-18");
+                assert_eq!(call.parameters.max_output_tokens, Some(64));
+            }
+            other => panic!("expected exact evidenced joint plan, got {other:?}"),
+        }
+        let selected_context = embedded_observation_context(&selected).unwrap().unwrap();
+        assert_eq!(selected_context.key, joint_descriptor.context.key);
     }
 
     #[test]

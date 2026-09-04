@@ -23,8 +23,8 @@ use agentc_optimizer::{
     config::OptimizerConfig,
     cost_model::CostModel,
     ffi::{
-        guard_and_attach_observation_context, optimize_observe as rust_observe,
-        optimize_plan as rust_plan, plan_rules, record_observation_divergence, PASS_THROUGH_JSON,
+        optimize_observe as rust_observe, optimize_profiled_plan as rust_profiled_plan,
+        record_observation_divergence, PASS_THROUGH_JSON,
     },
     model_catalog::{default_model_catalog, ModelCatalog},
     plan_guard::{PlanGuard, PlanGuardOutcome},
@@ -886,20 +886,13 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
     py.allow_threads(|| {
         let state = optimizer_state();
         let t0 = std::time::Instant::now();
-        let base_plan_json =
-            std::panic::catch_unwind(AssertUnwindSafe(|| rust_plan(&state.optimizer, call_json)))
-                .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string());
         let plan_json = guard_plan_fail_safe(|| {
-            let divergence_threshold = serde_json::from_str::<Plan>(&base_plan_json)
-                .ok()
-                .map(|plan| divergence_threshold_for_plan(&state, &plan_rules(&plan)))
-                .unwrap_or(0.05);
-            guard_and_attach_observation_context(
+            rust_profiled_plan(
+                &state.optimizer,
                 state.model_catalog.as_deref(),
+                &state.plan_profiles,
                 &state.plan_guard,
                 call_json,
-                &base_plan_json,
-                divergence_threshold,
                 now_us_i64(),
             )
         });
@@ -1203,22 +1196,6 @@ fn optimize_record_divergence(py: Python<'_>, observation_token: &str, divergenc
             }
         }));
     });
-}
-
-fn divergence_threshold_for_plan(state: &OptimizerState, rules: &[String]) -> f64 {
-    std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
-        .ok()
-        .and_then(|value| value.trim().parse::<f64>().ok())
-        .filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
-        .or_else(|| {
-            rules
-                .iter()
-                .filter_map(|rule| state.optimizer.accuracy_budget_for(rule))
-                .filter_map(unit_fraction_f32)
-                .map(f64::from)
-                .min_by(f64::total_cmp)
-        })
-        .unwrap_or(0.05)
 }
 
 /// Force-flush cost profiles, plan profiles, and guard divergence to

@@ -7,8 +7,8 @@
 //! - O3–O5 — the nine rewrite rules (`rules`), shadow-mode sampling
 //!   (`shadow`), the accuracy-budget machine (`budget`), and default-on
 //!   multi-rule composition (`composition`).
-//! - Joint-planning foundation — canonical execution plans and bounded,
-//!   versioned complete-plan profiles.
+//! - Joint planning — bounded complete-plan enumeration, canonical identities,
+//!   exact versioned profiles, constrained selection, and persistent guards.
 
 pub mod audit;
 pub mod budget;
@@ -32,7 +32,7 @@ pub mod wiring;
 
 pub use audit::{PlanAudit, PlanKind, RING_BUFFER_CAP};
 pub use budget::{Budget, BudgetEntry, DisabledEntry, SampleOutcome, BREACH_STREAK, COOLDOWN_US};
-pub use composition::{compose_proposals, CompositionResult};
+pub use composition::{compose_proposals, enumerate_compatible_plans, CompositionResult};
 pub use config::OptimizerConfig;
 pub use cost_model::{CallSiteProfile, CostModel, CostModelUpdate, WelfordStats};
 pub use dag::{Call, DepSource, Message, Outcome, Parameters, Tool};
@@ -70,7 +70,10 @@ pub use plan_profile::{
     PlanProfileUpdate, PlanProfileUpdateError, PlanProfiles, PlanRuntimeVersion,
     CALL_SITE_VERSION_SCHEMA_VERSION, DEFAULT_PLAN_PROFILE_WINDOW,
 };
-pub use planner::{CostDriver, Optimizer, Plan, Proposal, RewriteRule, RuleApplication};
+pub use planner::{
+    CostDriver, Optimizer, Plan, Proposal, RewriteRule, RuleApplication,
+    MAX_JOINT_REWRITE_DEPTH,
+};
 pub use reporting::{
     build_inspect, build_report, disable_rule, glob_to_sql_like, render_disable_summary,
     render_inspect, render_report, AccuracyStatus, CallSiteInspect, DisableSummary,

@@ -75,6 +75,178 @@ pub struct CompositionResult {
     pub net_savings_usd: f32,
 }
 
+/// Enumerate every structurally compatible rewrite sequence up to `max_depth`.
+///
+/// Unlike [`compose_proposals`], this function does not rank alternatives by
+/// rule-local projected savings. It materializes the bounded search space for
+/// the complete-plan selector, which later ranks plans from exact empirical
+/// profiles. Call-elimination and structural proposals remain solo because
+/// their execution contracts cannot be merged into one provider call.
+pub fn enumerate_compatible_plans(
+    mut proposals: Vec<(String, Proposal)>,
+    call: &Call,
+    max_depth: usize,
+) -> Vec<Plan> {
+    if proposals.is_empty() || max_depth == 0 {
+        return Vec::new();
+    }
+
+    // Candidate identity keeps rewrite order significant. Use one stable
+    // dependency order regardless of rule registration or projected savings.
+    proposals.sort_by(|(left, _), (right, _)| {
+        sort_key(left)
+            .cmp(&sort_key(right))
+            .then_with(|| left.cmp(right))
+    });
+
+    let mut plans = Vec::new();
+    let mut composable = Vec::new();
+    for (index, (_name, proposal)) in proposals.iter().enumerate() {
+        if !(proposal.safety_check)(call) {
+            continue;
+        }
+        plans.push(proposal.rewritten.clone());
+        if proposal.cost_driver != CostDriver::CallElimination
+            && proposal.cost_driver != CostDriver::Structural
+            && matches!(proposal.rewritten, Plan::Rewritten { .. })
+        {
+            composable.push(index);
+        }
+    }
+
+    let max_depth = max_depth.min(composable.len());
+    for depth in 2..=max_depth {
+        let mut selected = Vec::with_capacity(depth);
+        enumerate_combinations(
+            &proposals,
+            &composable,
+            call,
+            depth,
+            0,
+            &mut selected,
+            &mut plans,
+        );
+    }
+    plans
+}
+
+#[allow(clippy::too_many_arguments)]
+fn enumerate_combinations(
+    proposals: &[(String, Proposal)],
+    composable: &[usize],
+    original: &Call,
+    target_depth: usize,
+    start: usize,
+    selected: &mut Vec<usize>,
+    plans: &mut Vec<Plan>,
+) {
+    if selected.len() == target_depth {
+        if let Some(plan) = materialize_combination(proposals, selected, original) {
+            plans.push(plan);
+        }
+        return;
+    }
+
+    let remaining = target_depth - selected.len();
+    if composable.len().saturating_sub(start) < remaining {
+        return;
+    }
+    for position in start..=composable.len() - remaining {
+        let proposal_index = composable[position];
+        if selected.iter().all(|selected_index| {
+            proposals_compatible(
+                &proposals[*selected_index].0,
+                &proposals[*selected_index].1,
+                &proposals[proposal_index].0,
+                &proposals[proposal_index].1,
+            )
+        }) {
+            selected.push(proposal_index);
+            enumerate_combinations(
+                proposals,
+                composable,
+                original,
+                target_depth,
+                position + 1,
+                selected,
+                plans,
+            );
+            selected.pop();
+        }
+    }
+}
+
+fn proposals_compatible(
+    left_name: &str,
+    left: &Proposal,
+    right_name: &str,
+    right: &Proposal,
+) -> bool {
+    if matches!(
+        left.cost_driver,
+        CostDriver::CallElimination | CostDriver::Structural
+    ) || matches!(
+        right.cost_driver,
+        CostDriver::CallElimination | CostDriver::Structural
+    ) {
+        return false;
+    }
+    if is_explicit_unsafe(left_name, right_name) {
+        return false;
+    }
+    left.cost_driver != right.cost_driver || is_explicit_safe(left_name, right_name)
+}
+
+fn materialize_combination(
+    proposals: &[(String, Proposal)],
+    selected: &[usize],
+    original: &Call,
+) -> Option<Plan> {
+    let mut current = original.clone();
+    let mut rules = Vec::with_capacity(selected.len());
+    let mut net_savings = 0.0_f32;
+
+    for index in selected {
+        let (name, proposal) = &proposals[*index];
+        if !(proposal.safety_check)(&current) {
+            return None;
+        }
+        let Plan::Rewritten {
+            call: rewritten,
+            projected_savings_usd,
+            ..
+        } = &proposal.rewritten
+        else {
+            return None;
+        };
+        let next = apply_rewrite(&current, rewritten);
+        if !rewrite_changed_call(&current, &next) {
+            // Do not give a complete plan an identity that claims a rewrite
+            // which was discarded by field-level composition.
+            return None;
+        }
+        current = next;
+        net_savings += projected_savings_usd;
+        rules.push(RuleApplication {
+            rule: name.clone(),
+            projected_savings_usd: *projected_savings_usd,
+            cost_driver: proposal.cost_driver,
+        });
+    }
+
+    Some(Plan::Composed {
+        rules,
+        call: current,
+        net_savings_usd: net_savings,
+    })
+}
+
+fn rewrite_changed_call(previous: &Call, next: &Call) -> bool {
+    previous.model != next.model
+        || previous.parameters.max_output_tokens != next.parameters.max_output_tokens
+        || serde_json::to_vec(&previous.messages).ok() != serde_json::to_vec(&next.messages).ok()
+}
+
 /// Select and apply a compatible subset of proposals.
 ///
 /// Expects proposals sorted by `projected_savings_usd` descending (highest
@@ -283,6 +455,88 @@ mod tests {
                 safety_check: Box::new(|_| true),
             },
         )
+    }
+
+    fn rewritten_prop(
+        name: &str,
+        driver: CostDriver,
+        savings: f32,
+        rewritten: Call,
+    ) -> (String, Proposal) {
+        (
+            name.to_string(),
+            Proposal {
+                rewritten: Plan::Rewritten {
+                    rule: name.to_string(),
+                    call: rewritten,
+                    projected_savings_usd: savings,
+                },
+                projected_savings_usd: savings,
+                cost_driver: driver,
+                safety_check: Box::new(|_| true),
+            },
+        )
+    }
+
+    #[test]
+    fn joint_enumerator_materializes_solo_and_compatible_composed_plans() {
+        let original = make_call();
+        let mut compressed = original.clone();
+        compressed.messages.truncate(1);
+        let mut capped = original.clone();
+        capped.parameters.max_output_tokens = Some(64);
+
+        let plans = enumerate_compatible_plans(
+            vec![
+                rewritten_prop("OutputBudget", CostDriver::OutputTokens, 0.3, capped),
+                rewritten_prop("ContextCompress", CostDriver::InputTokens, 0.5, compressed),
+            ],
+            &original,
+            3,
+        );
+
+        assert_eq!(plans.len(), 3);
+        let composed = plans
+            .iter()
+            .find_map(|plan| match plan {
+                Plan::Composed { rules, call, .. } => Some((rules, call)),
+                _ => None,
+            })
+            .expect("compatible pair must be materialized");
+        assert_eq!(composed.0[0].rule, "ContextCompress");
+        assert_eq!(composed.0[1].rule, "OutputBudget");
+        assert_eq!(composed.1.messages.len(), 1);
+        assert_eq!(composed.1.parameters.max_output_tokens, Some(64));
+    }
+
+    #[test]
+    fn joint_enumerator_omits_combinations_that_credit_a_discarded_mutation() {
+        let original = make_call();
+        let mut deduplicated = original.clone();
+        deduplicated.messages.truncate(1);
+        let compressed_to_same_shape = deduplicated.clone();
+
+        let plans = enumerate_compatible_plans(
+            vec![
+                rewritten_prop(
+                    "ContextCompress",
+                    CostDriver::InputTokens,
+                    0.5,
+                    compressed_to_same_shape,
+                ),
+                rewritten_prop(
+                    "PromptDedup",
+                    CostDriver::InputTokens,
+                    0.3,
+                    deduplicated,
+                ),
+            ],
+            &original,
+            3,
+        );
+
+        assert_eq!(plans.len(), 2, "both solo plans remain available");
+        assert!(plans.iter().all(|plan| !matches!(plan, Plan::Composed { .. })));
     }
 
     #[test]

@@ -1,7 +1,12 @@
-//! `Optimizer::plan` — the entry point called by the Python interceptor on
-//! every LLM call.
+//! Rule proposal and bounded candidate generation for intercepted LLM calls.
 //!
-//! Contract (from `specs/optimizer.md` § Architecture > Layered flow):
+//! [`Optimizer::candidate_plans`] is the production joint-planning front end:
+//! it materializes compatible semantic rewrite sets, crosses them with the
+//! versioned model catalog, and always returns the immutable reference first.
+//! Exact profile lookup and constrained selection live at the vendor-free FFI
+//! boundary, where observation identities are also constructed.
+//!
+//! [`Optimizer::plan`] retains the projected-savings baseline contract:
 //! 1. If the optimizer is disabled, return [`Plan::PassThrough`].
 //! 2. Look up the `CallSiteProfile`. If the retained window has fewer than
 //!    `hot_threshold` observations,
@@ -12,9 +17,9 @@
 //! 6. If plan evaluation's wall clock exceeds `max_overhead_ms`, the
 //!    overhead kill switch returns [`Plan::PassThrough`].
 //!
-//! With `AGENTC_COMPOSE=1` (default), the V2 `CompositionPlanner` (see
-//! `composition.rs`) may combine orthogonal rules into a single
-//! [`Plan::Composed`]; with `AGENTC_COMPOSE=0`, V1 first-match-wins applies.
+//! The default live path calls [`Optimizer::candidate_plans`] and selects from
+//! exact complete-plan evidence. [`Optimizer::plan`] remains directly callable
+//! by evaluation code for the historical composition and first-match baselines.
 
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -25,6 +30,11 @@ use crate::budget::Budget;
 use crate::config::OptimizerConfig;
 use crate::cost_model::{CallSiteProfile, CostModel};
 use crate::dag::Call;
+use crate::model_catalog::{ModelCatalog, ModelTarget, RequestRequirements};
+
+/// Frozen bound from the joint execution-planning contract. Model routing is
+/// an additional target choice and does not consume semantic rewrite depth.
+pub const MAX_JOINT_REWRITE_DEPTH: usize = 3;
 
 /// Per-rule attribution inside a `Plan::Composed`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +93,18 @@ impl Plan {
             Plan::PassThrough | Plan::Cached { .. } => None,
             Plan::Rewritten { rule, .. } | Plan::Parallel { rule, .. } => Some(rule.as_str()),
             Plan::Composed { rules, .. } => rules.first().map(|r| r.rule.as_str()),
+        }
+    }
+
+    /// Stable rule names represented by this executable plan.
+    pub fn rule_names(&self) -> Vec<String> {
+        match self {
+            Plan::Rewritten { rule, .. } | Plan::Parallel { rule, .. } => vec![rule.clone()],
+            Plan::Composed { rules, .. } => {
+                rules.iter().map(|application| application.rule.clone()).collect()
+            }
+            Plan::Cached { .. } => vec!["CacheHit".to_string()],
+            Plan::PassThrough => Vec::new(),
         }
     }
 }
@@ -206,10 +228,129 @@ impl Optimizer {
             .map(|r| r.accuracy_budget())
     }
 
+    /// Resolve the complete plan's divergence threshold once, before its
+    /// identity and profile key are constructed. An explicit calibrated
+    /// environment value wins; otherwise the strictest constituent rule
+    /// budget applies to this complete plan only.
+    pub fn divergence_threshold_for_plan(&self, plan: &Plan) -> f64 {
+        std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
+            .ok()
+            .and_then(|value| value.trim().parse::<f64>().ok())
+            .filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
+            .or_else(|| {
+                plan.rule_names()
+                    .iter()
+                    .filter_map(|rule| self.accuracy_budget_for(rule))
+                    .filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
+                    .map(f64::from)
+                    .min_by(f64::total_cmp)
+            })
+            .unwrap_or(0.05)
+    }
+
     /// Add a rule post-construction (primarily for tests that want to
     /// inject a mock rule into an otherwise stock optimizer).
     pub fn push_rule(&mut self, rule: Box<dyn RewriteRule>) {
         self.rules.push(rule);
+    }
+
+    /// Enumerate the bounded complete-plan search space used by the empirical
+    /// selector. The immutable reference is always element zero. Rule-local
+    /// projections only produce concrete mutations; they never rank the
+    /// returned plans.
+    pub fn candidate_plans(&self, call: &Call, catalog: &ModelCatalog) -> Vec<Plan> {
+        let reference = || vec![Plan::PassThrough];
+        if !self.config.enabled {
+            return reference();
+        }
+
+        let deadline = Instant::now();
+        let max_overhead_us = (self.config.max_overhead_ms * 1000.0) as u128;
+        let profile = self
+            .cost_model
+            .get(&call.call_site_id)
+            .unwrap_or_else(|| CallSiteProfile::new(call.call_site_id.clone()));
+        if profile.window_observations < self.config.hot_threshold {
+            return reference();
+        }
+
+        let now_us = now_us();
+        let routing_enabled = self
+            .rules
+            .iter()
+            .any(|rule| rule.name() == "ModelDowngrade");
+        let mut proposals = Vec::with_capacity(self.rules.len());
+        for rule in &self.rules {
+            // The joint path obtains model choices directly from the catalog.
+            // ModelDowngrade remains registered for the current-greedy baseline.
+            if rule.name() == "ModelDowngrade" {
+                continue;
+            }
+            if self.budget.is_disabled(&call.call_site_id, rule.name(), now_us) {
+                continue;
+            }
+            if call.has_opaque_native_messages() && !rule.preserves_native_messages() {
+                continue;
+            }
+            if rule.applies(call, &profile) {
+                if let Some(proposal) = rule.propose(call, &profile) {
+                    if proposal.projected_savings_usd >= 0.0 {
+                        proposals.push((rule.name().to_string(), proposal));
+                    }
+                }
+            }
+            if deadline.elapsed().as_micros() > max_overhead_us {
+                return reference();
+            }
+        }
+
+        let mut semantic_plans = vec![Plan::PassThrough];
+        semantic_plans.extend(crate::composition::enumerate_compatible_plans(
+            proposals,
+            call,
+            MAX_JOINT_REWRITE_DEPTH,
+        ));
+
+        let requirements = RequestRequirements::from_call(call);
+        let source = requirements.as_ref().and_then(|requirements| {
+            catalog.resolve(
+                &requirements.provider_protocol,
+                &requirements.provider_namespace,
+                &call.model,
+            )
+        });
+        let mut plans = Vec::new();
+        for semantic_plan in semantic_plans {
+            plans.push(semantic_plan.clone());
+            if !routing_enabled {
+                continue;
+            }
+            let (Some(source), Some(candidate_call)) =
+                (source, single_call(call, &semantic_plan))
+            else {
+                continue;
+            };
+            for target in catalog.compatible_targets(candidate_call) {
+                if target.model_id == source.model_id {
+                    continue;
+                }
+                let projected_savings = projected_routing_savings(&profile, source, target);
+                if let Some(routed) =
+                    route_semantic_plan(&semantic_plan, candidate_call, target, catalog, projected_savings)
+                {
+                    plans.push(routed);
+                }
+                if deadline.elapsed().as_micros() > max_overhead_us {
+                    return reference();
+                }
+            }
+        }
+
+        if deadline.elapsed().as_micros() > max_overhead_us {
+            reference()
+        } else {
+            plans
+        }
     }
 
     /// Entry point. Never panics (rule panics and any downstream panic is
@@ -300,6 +441,97 @@ impl Optimizer {
                 })
                 .unwrap_or(Plan::PassThrough)
         }
+    }
+}
+
+fn single_call<'a>(original: &'a Call, plan: &'a Plan) -> Option<&'a Call> {
+    match plan {
+        Plan::PassThrough => Some(original),
+        Plan::Rewritten { call, .. } | Plan::Composed { call, .. } => Some(call),
+        Plan::Cached { .. } | Plan::Parallel { .. } => None,
+    }
+}
+
+fn projected_routing_savings(
+    profile: &CallSiteProfile,
+    source: &ModelTarget,
+    target: &ModelTarget,
+) -> f32 {
+    let source_price = profile.input_tokens.mean
+        * source.price.input_per_million_tokens_usd
+        + profile.output_tokens.mean * source.price.output_per_million_tokens_usd;
+    let target_price = profile.input_tokens.mean
+        * target.price.input_per_million_tokens_usd
+        + profile.output_tokens.mean * target.price.output_per_million_tokens_usd;
+    if source_price <= 0.0 || !source_price.is_finite() || !target_price.is_finite() {
+        return 0.0;
+    }
+    (profile.cost_usd.mean * (1.0 - target_price / source_price)) as f32
+}
+
+fn route_semantic_plan(
+    semantic_plan: &Plan,
+    candidate_call: &Call,
+    target: &ModelTarget,
+    catalog: &ModelCatalog,
+    projected_savings_usd: f32,
+) -> Option<Plan> {
+    let metadata = catalog.routed_target(candidate_call, target).ok()?;
+    let mut routed_call = candidate_call.clone();
+    routed_call.model = target.model_id.clone();
+    metadata.annotate_call(&mut routed_call).ok()?;
+    let routing_application = RuleApplication {
+        rule: "ModelDowngrade".to_string(),
+        projected_savings_usd,
+        cost_driver: CostDriver::ModelPrice,
+    };
+
+    match semantic_plan {
+        Plan::PassThrough => Some(Plan::Rewritten {
+            rule: routing_application.rule,
+            call: routed_call,
+            projected_savings_usd,
+        }),
+        Plan::Rewritten {
+            rule,
+            projected_savings_usd: rewrite_savings,
+            ..
+        } => Some(Plan::Composed {
+            rules: vec![
+                RuleApplication {
+                    rule: rule.clone(),
+                    projected_savings_usd: *rewrite_savings,
+                    cost_driver: cost_driver_for_rule(rule),
+                },
+                routing_application,
+            ],
+            call: routed_call,
+            net_savings_usd: *rewrite_savings + projected_savings_usd,
+        }),
+        Plan::Composed {
+            rules,
+            net_savings_usd,
+            ..
+        } => {
+            let mut routed_rules = rules.clone();
+            routed_rules.push(routing_application);
+            Some(Plan::Composed {
+                rules: routed_rules,
+                call: routed_call,
+                net_savings_usd: *net_savings_usd + projected_savings_usd,
+            })
+        }
+        Plan::Cached { .. } | Plan::Parallel { .. } => None,
+    }
+}
+
+fn cost_driver_for_rule(rule: &str) -> CostDriver {
+    match rule {
+        "OutputBudget" | "DeadOutputTruncation" => CostDriver::OutputTokens,
+        "ModelDowngrade" => CostDriver::ModelPrice,
+        "CacheHit" => CostDriver::CallElimination,
+        "ParallelBranch" => CostDriver::Structural,
+        _ => CostDriver::InputTokens,
     }
 }
 

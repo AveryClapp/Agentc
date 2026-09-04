@@ -1,0 +1,615 @@
+{
+  "agentc_git_commit": "d47f58d0f00e7b8afb84d8d4a24a99d1049c5ab7",
+  "agentc_git_dirty": false,
+  "aggregate_measurements_us": {
+    "joint_admitted_rewrite": {
+      "boundary_state_audit_residual": {
+        "max_us": 22148.667,
+        "mean_us": 82.7660939,
+        "p50_us": 42.75,
+        "p95_us": 65.542,
+        "p99_us": 126.084
+      },
+      "e2e": {
+        "max_us": 22218.667,
+        "mean_us": 157.32359390000002,
+        "p50_us": 115.0,
+        "p95_us": 142.875,
+        "p99_us": 307.209
+      },
+      "internal_pre_audit": {
+        "max_us": 2784.0,
+        "mean_us": 74.5575,
+        "p50_us": 71.0,
+        "p95_us": 78.0,
+        "p99_us": 149.0
+      },
+      "mean_e2e_to_internal_ratio": 2.1100974938805623,
+      "mean_residual_share_pct": 52.60882481022447,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 116.625,
+        "ci95_low": 112.2004,
+        "estimate": 114.5168
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 410.909,
+        "ci95_low": 188.3086,
+        "estimate": 287.7088
+      },
+      "sample_count": 10000
+    },
+    "joint_reference": {
+      "boundary_state_audit_residual": {
+        "max_us": 73504.791,
+        "mean_us": 90.0169758,
+        "p50_us": 37.625,
+        "p95_us": 57.042,
+        "p99_us": 87.5
+      },
+      "e2e": {
+        "max_us": 73569.791,
+        "mean_us": 153.4157758,
+        "p50_us": 99.958,
+        "p95_us": 122.75,
+        "p99_us": 164.75
+      },
+      "internal_pre_audit": {
+        "max_us": 279.0,
+        "mean_us": 63.3988,
+        "p50_us": 62.0,
+        "p95_us": 69.0,
+        "p99_us": 80.0
+      },
+      "mean_e2e_to_internal_ratio": 2.4198529909083453,
+      "mean_residual_share_pct": 58.6751755682221,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 102.75,
+        "ci95_low": 98.8496,
+        "estimate": 100.3498
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 310.5752,
+        "ci95_low": 149.1998,
+        "estimate": 205.4082
+      },
+      "sample_count": 10000
+    },
+    "legacy_greedy_rewrite": {
+      "boundary_state_audit_residual": {
+        "max_us": 6651.375,
+        "mean_us": 59.0167799,
+        "p50_us": 30.75,
+        "p95_us": 51.666,
+        "p99_us": 146.875
+      },
+      "e2e": {
+        "max_us": 6695.375,
+        "mean_us": 102.6543799,
+        "p50_us": 74.959,
+        "p95_us": 96.667,
+        "p99_us": 219.75
+      },
+      "internal_pre_audit": {
+        "max_us": 345.0,
+        "mean_us": 43.6376,
+        "p50_us": 42.0,
+        "p95_us": 47.0,
+        "p99_us": 59.0
+      },
+      "mean_e2e_to_internal_ratio": 2.3524295538709734,
+      "mean_residual_share_pct": 57.490756806958224,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 75.25,
+        "ci95_low": 70.8004,
+        "estimate": 73.0002
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 290.3664,
+        "ci95_low": 185.9002,
+        "estimate": 240.04160000000002
+      },
+      "sample_count": 10000
+    }
+  },
+  "created_at_utc": "2026-09-04T10:03:58.259343+00:00",
+  "experiment_kind": "optimizer_end_to_end_overhead_preflight",
+  "interpretation_limits": [
+    "This is a repeated single-machine Stage E0 systems microbenchmark, not task-quality or savings evidence.",
+    "Inputs and outcomes are deterministic synthetic records; no provider or network is invoked.",
+    "The residual is paired subtraction, but it combines boundary, state lookup, audit serialization/commit, clock quantization, and return conversion; it is not an audit-only timer.",
+    "The build profile is operator-attested; the native extension hash pins the measured binary.",
+    "WAL checkpoint tails and normal host scheduling remain part of the production-path measurement."
+  ],
+  "network_calls": 0,
+  "paired_internal_clock_scope": [
+    "native planning after optimizer-state lookup",
+    "optional exploration reservation (disabled in this experiment)",
+    "excludes write_plan_audit and the outer FFI boundary"
+  ],
+  "paper_evidence": false,
+  "raw_samples": {
+    "path": "optimizer-e2e-overhead-2026-09-04.csv",
+    "rows": 30000,
+    "sha256": "99cce87a01137bb8a9e64087c00789f4eace185414aee5f62204369c6c78931f"
+  },
+  "replications": [
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 73504.791,
+        "mean_us": 118.2413725,
+        "p50_us": 40.209,
+        "p95_us": 63.167,
+        "p99_us": 175.042
+      },
+      "configure_us": 70002.917,
+      "e2e": {
+        "max_us": 73569.791,
+        "mean_us": 184.4208725,
+        "p50_us": 105.042,
+        "p95_us": 133.209,
+        "p99_us": 415.042
+      },
+      "first_cold_call_us": 13419.25,
+      "internal_pre_audit": {
+        "max_us": 279.0,
+        "mean_us": 66.1795,
+        "p50_us": 65.0,
+        "p95_us": 73.0,
+        "p99_us": 90.0
+      },
+      "plan_kind": "pass_through",
+      "replication": 1,
+      "scenario": "joint_reference"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 9580.542,
+        "mean_us": 90.2331815,
+        "p50_us": 44.0,
+        "p95_us": 84.291,
+        "p99_us": 143.541
+      },
+      "configure_us": 5775.0,
+      "e2e": {
+        "max_us": 9656.542,
+        "mean_us": 168.5736815,
+        "p50_us": 117.667,
+        "p95_us": 178.209,
+        "p99_us": 325.084
+      },
+      "first_cold_call_us": 161.916,
+      "internal_pre_audit": {
+        "max_us": 445.0,
+        "mean_us": 78.3405,
+        "p50_us": 74.0,
+        "p95_us": 99.0,
+        "p99_us": 175.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 1,
+      "scenario": "joint_admitted_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 4639.292,
+        "mean_us": 60.6802295,
+        "p50_us": 31.625,
+        "p95_us": 57.875,
+        "p99_us": 106.958
+      },
+      "configure_us": 9357.167,
+      "e2e": {
+        "max_us": 4739.25,
+        "mean_us": 106.7262295,
+        "p50_us": 76.458,
+        "p95_us": 107.375,
+        "p99_us": 220.583
+      },
+      "first_cold_call_us": 611.958,
+      "internal_pre_audit": {
+        "max_us": 180.0,
+        "mean_us": 46.046,
+        "p50_us": 44.0,
+        "p95_us": 50.0,
+        "p99_us": 97.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 1,
+      "scenario": "legacy_greedy_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 10101.084,
+        "mean_us": 88.93182850000001,
+        "p50_us": 43.666,
+        "p95_us": 69.875,
+        "p99_us": 213.166
+      },
+      "configure_us": 10118.292,
+      "e2e": {
+        "max_us": 10174.084,
+        "mean_us": 167.6503285,
+        "p50_us": 115.541,
+        "p95_us": 154.5,
+        "p99_us": 516.209
+      },
+      "first_cold_call_us": 332.208,
+      "internal_pre_audit": {
+        "max_us": 2784.0,
+        "mean_us": 78.7185,
+        "p50_us": 71.0,
+        "p95_us": 81.0,
+        "p99_us": 182.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 2,
+      "scenario": "joint_admitted_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 6226.083,
+        "mean_us": 64.2255725,
+        "p50_us": 29.458,
+        "p95_us": 49.542,
+        "p99_us": 207.875
+      },
+      "configure_us": 10904.875,
+      "e2e": {
+        "max_us": 6269.083,
+        "mean_us": 106.7250725,
+        "p50_us": 71.75,
+        "p95_us": 91.875,
+        "p99_us": 251.875
+      },
+      "first_cold_call_us": 515.416,
+      "internal_pre_audit": {
+        "max_us": 68.0,
+        "mean_us": 42.4995,
+        "p50_us": 42.0,
+        "p95_us": 44.0,
+        "p99_us": 49.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 2,
+      "scenario": "legacy_greedy_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 10224.541,
+        "mean_us": 87.6091435,
+        "p50_us": 37.667,
+        "p95_us": 55.792,
+        "p99_us": 77.416
+      },
+      "configure_us": 8513.458,
+      "e2e": {
+        "max_us": 10288.541,
+        "mean_us": 150.1936435,
+        "p50_us": 99.5,
+        "p95_us": 120.292,
+        "p99_us": 151.416
+      },
+      "first_cold_call_us": 181.667,
+      "internal_pre_audit": {
+        "max_us": 96.0,
+        "mean_us": 62.5845,
+        "p50_us": 62.0,
+        "p95_us": 66.0,
+        "p99_us": 80.0
+      },
+      "plan_kind": "pass_through",
+      "replication": 2,
+      "scenario": "joint_reference"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 5778.25,
+        "mean_us": 62.4922355,
+        "p50_us": 29.0,
+        "p95_us": 48.292,
+        "p99_us": 270.25
+      },
+      "configure_us": 8221.166,
+      "e2e": {
+        "max_us": 5821.25,
+        "mean_us": 104.9542355,
+        "p50_us": 71.209,
+        "p95_us": 90.583,
+        "p99_us": 318.958
+      },
+      "first_cold_call_us": 285.958,
+      "internal_pre_audit": {
+        "max_us": 71.0,
+        "mean_us": 42.462,
+        "p50_us": 42.0,
+        "p95_us": 44.0,
+        "p99_us": 49.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 3,
+      "scenario": "legacy_greedy_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 12552.459,
+        "mean_us": 78.29505400000001,
+        "p50_us": 37.458,
+        "p95_us": 54.75,
+        "p99_us": 75.875
+      },
+      "configure_us": 12828.708,
+      "e2e": {
+        "max_us": 12618.459,
+        "mean_us": 141.63305400000002,
+        "p50_us": 99.833,
+        "p95_us": 119.75,
+        "p99_us": 145.167
+      },
+      "first_cold_call_us": 210.0,
+      "internal_pre_audit": {
+        "max_us": 90.0,
+        "mean_us": 63.338,
+        "p50_us": 62.0,
+        "p95_us": 69.0,
+        "p99_us": 74.0
+      },
+      "plan_kind": "pass_through",
+      "replication": 3,
+      "scenario": "joint_reference"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 22148.667,
+        "mean_us": 92.18001,
+        "p50_us": 42.333,
+        "p95_us": 67.333,
+        "p99_us": 116.416
+      },
+      "configure_us": 5611.291,
+      "e2e": {
+        "max_us": 22218.667,
+        "mean_us": 163.41001,
+        "p50_us": 113.209,
+        "p95_us": 142.0,
+        "p99_us": 190.792
+      },
+      "first_cold_call_us": 181.542,
+      "internal_pre_audit": {
+        "max_us": 119.0,
+        "mean_us": 71.23,
+        "p50_us": 70.0,
+        "p95_us": 77.0,
+        "p99_us": 83.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 3,
+      "scenario": "joint_admitted_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 5044.25,
+        "mean_us": 63.9277485,
+        "p50_us": 37.209,
+        "p95_us": 57.709,
+        "p99_us": 85.042
+      },
+      "configure_us": 9570.5,
+      "e2e": {
+        "max_us": 5105.25,
+        "mean_us": 126.0102485,
+        "p50_us": 98.791,
+        "p95_us": 121.334,
+        "p99_us": 152.833
+      },
+      "first_cold_call_us": 410.833,
+      "internal_pre_audit": {
+        "max_us": 93.0,
+        "mean_us": 62.0825,
+        "p50_us": 61.0,
+        "p95_us": 65.0,
+        "p99_us": 73.0
+      },
+      "plan_kind": "pass_through",
+      "replication": 4,
+      "scenario": "joint_reference"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 10414.834,
+        "mean_us": 86.17627250000001,
+        "p50_us": 43.167,
+        "p95_us": 60.125,
+        "p99_us": 97.291
+      },
+      "configure_us": 11078.208,
+      "e2e": {
+        "max_us": 10487.834,
+        "mean_us": 159.9942725,
+        "p50_us": 116.125,
+        "p95_us": 134.25,
+        "p99_us": 252.959
+      },
+      "first_cold_call_us": 204.333,
+      "internal_pre_audit": {
+        "max_us": 402.0,
+        "mean_us": 73.818,
+        "p50_us": 73.0,
+        "p95_us": 77.0,
+        "p99_us": 106.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 4,
+      "scenario": "joint_admitted_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 6651.375,
+        "mean_us": 65.59288049999999,
+        "p50_us": 31.125,
+        "p95_us": 53.541,
+        "p99_us": 180.958
+      },
+      "configure_us": 12314.833,
+      "e2e": {
+        "max_us": 6695.375,
+        "mean_us": 110.28038049999999,
+        "p50_us": 75.667,
+        "p95_us": 100.166,
+        "p99_us": 274.375
+      },
+      "first_cold_call_us": 395.209,
+      "internal_pre_audit": {
+        "max_us": 345.0,
+        "mean_us": 44.6875,
+        "p50_us": 44.0,
+        "p95_us": 49.0,
+        "p99_us": 67.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 4,
+      "scenario": "legacy_greedy_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 4216.5,
+        "mean_us": 56.309177000000005,
+        "p50_us": 39.75,
+        "p95_us": 55.833,
+        "p99_us": 74.041
+      },
+      "configure_us": 7552.209,
+      "e2e": {
+        "max_us": 4286.5,
+        "mean_us": 126.989677,
+        "p50_us": 110.042,
+        "p95_us": 127.292,
+        "p99_us": 153.5
+      },
+      "first_cold_call_us": 178.833,
+      "internal_pre_audit": {
+        "max_us": 91.0,
+        "mean_us": 70.6805,
+        "p50_us": 70.0,
+        "p95_us": 74.0,
+        "p99_us": 78.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 5,
+      "scenario": "joint_admitted_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 3497.083,
+        "mean_us": 42.0929815,
+        "p50_us": 27.75,
+        "p95_us": 45.667,
+        "p99_us": 83.667
+      },
+      "configure_us": 5651.041,
+      "e2e": {
+        "max_us": 3539.083,
+        "mean_us": 84.58598149999999,
+        "p50_us": 69.917,
+        "p95_us": 88.333,
+        "p99_us": 134.417
+      },
+      "first_cold_call_us": 131.75,
+      "internal_pre_audit": {
+        "max_us": 69.0,
+        "mean_us": 42.493,
+        "p50_us": 42.0,
+        "p95_us": 44.0,
+        "p99_us": 49.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 5,
+      "scenario": "legacy_greedy_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "boundary_state_audit_residual": {
+        "max_us": 54093.958,
+        "mean_us": 102.0115605,
+        "p50_us": 37.0,
+        "p95_us": 53.25,
+        "p99_us": 73.75
+      },
+      "configure_us": 8343.666,
+      "e2e": {
+        "max_us": 54162.958,
+        "mean_us": 164.8210605,
+        "p50_us": 98.583,
+        "p95_us": 117.334,
+        "p99_us": 162.583
+      },
+      "first_cold_call_us": 194.292,
+      "internal_pre_audit": {
+        "max_us": 122.0,
+        "mean_us": 62.8095,
+        "p50_us": 62.0,
+        "p95_us": 65.0,
+        "p99_us": 74.0
+      },
+      "plan_kind": "pass_through",
+      "replication": 5,
+      "scenario": "joint_reference"
+    }
+  ],
+  "runtime": {
+    "machine": "arm64",
+    "native_extension": "_native.cpython-313-darwin.so",
+    "native_extension_sha256": "abf98d32b553f4550fd1859de730b51a969cb554b6acdfdca48422b354d7909c",
+    "operator_attested_build_profile": "release",
+    "perf_counter": {
+      "adjustable": false,
+      "implementation": "mach_absolute_time()",
+      "monotonic": true,
+      "resolution_seconds": 4.166666666666666e-08
+    },
+    "platform": "macOS-26.5-arm64-arm-64bit-Mach-O",
+    "python": "3.13.1",
+    "sqlite": "3.51.2"
+  },
+  "schema_version": 1,
+  "settings": {
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 20260904,
+    "enabled_rules": [
+      "OutputBudget"
+    ],
+    "exploration_enabled": false,
+    "iterations_per_replication": 2000,
+    "max_overhead_ms": 5.0,
+    "objective": "cost",
+    "paired_evidence_for_admitted_scenario": 20,
+    "replications": 5,
+    "scenario_order": "three-way rotation by replication",
+    "shadow_rate": 0.0,
+    "warmup_calls_per_replication": 200
+  },
+  "timed_scope": [
+    "Python call into _native.optimize_plan",
+    "native optimizer-state lookup",
+    "JSON decode and encode",
+    "complete-plan enumeration, guard lookup, and selection",
+    "synchronous plan_audit serialization and SQLite commit",
+    "conversion and return of the Python plan string"
+  ]
+}

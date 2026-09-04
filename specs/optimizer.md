@@ -1399,8 +1399,8 @@ Stage E0 engineering evidence rather than a paper benchmark. The release-mode
 live joint-planner diagnostic above also remains Stage E0; its three recorded
 20,000-call replications had a 127.25 us median p50 and 303.833 us maximum p99
 for a four-candidate search on the recorded arm64 development machine. The
-complete-call diagnostic had pooled p50/p99 of 104.208/350.833 us for guarded
-reference selection and 118.125/384.708 us for an admitted joint rewrite on the
+complete-call diagnostic had pooled p50/p99 of 99.958/164.750 us for guarded
+reference selection and 115.000/307.209 us for an admitted joint rewrite on the
 same class of host. These values include the WAL-backed audit write but do not
 replace the frozen campaign's end-to-end latency measurements.
 

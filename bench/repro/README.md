@@ -274,9 +274,9 @@ python -m bench.optimizer_e2e_overhead \
 The committed [summary](optimizer-e2e-overhead-2026-09-04.json) and
 [30,000 paired samples](optimizer-e2e-overhead-2026-09-04.csv) contain five
 2,000-call replications of three steady-state paths. Complete-call p50/p99 was
-104.208/350.833 us for guarded reference selection, 118.125/384.708 us for an
-admitted joint rewrite, and 75.667/286.583 us for the legacy greedy rewrite.
-The corresponding internal pre-audit medians were 65, 73, and 44 us. The paired
+99.958/164.750 us for guarded reference selection, 115.000/307.209 us for an
+admitted joint rewrite, and 74.959/219.750 us for the legacy greedy rewrite.
+The corresponding internal pre-audit medians were 62, 71, and 42 us. The paired
 residual includes the Python/Rust boundary, native-state lookup, audit
 serialization and commit, clock quantization, and return conversion; it must
 not be interpreted as an audit-only timer.

@@ -834,10 +834,10 @@ Python--Rust return. Its 76\,\textmu s pass-through and 120\,\textmu s rewrite
 medians are therefore internal diagnostics, not complete interception overhead.
 We added a paired release-mode Stage~E0 microbenchmark that wraps the full native
 call and aligns every sample with its exact audit row. Across five 2{,}000-call
-replications per path, full-call p50/p99 was 0.104/0.351\,ms for guarded reference
-selection, 0.118/0.385\,ms for an admitted joint rewrite, and 0.076/0.287\,ms for
-the legacy greedy rewrite. The paired internal medians were 0.065, 0.073, and
-0.044\,ms, respectively. Their difference combines the FFI boundary, native-state
+replications per path, full-call p50/p99 was 0.100/0.165\,ms for guarded reference
+selection, 0.115/0.307\,ms for an admitted joint rewrite, and 0.075/0.220\,ms for
+the legacy greedy rewrite. The paired internal medians were 0.062, 0.071, and
+0.042\,ms, respectively. Their difference combines the FFI boundary, native-state
 lookup, audit serialization and commit, clock quantization, and return conversion;
 it is not an audit-only timer. These E0 measurements keep p99 below 1\,ms on the
 recorded host, but the frozen protocol excludes them from confirmatory latency

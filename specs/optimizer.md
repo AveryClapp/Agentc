@@ -719,11 +719,14 @@ owning event loop.
 
 The exploration controller persists a lease before the candidate call starts.
 A failed, expired, or abandoned lease still consumes one call from the rolling
-site cap because provider work may already have started. Lease expiry releases
-only the concurrency slot. Candidate allocation prefers the smallest exact-plan
-paired-evidence count, then the fewest attempts in the active window, then a
-seeded stable hash. Reordering the candidate list therefore does not change a
-seeded run. SQLite transaction serialization enforces the concurrency cap across
+site cap because provider work may already have started. When the runtime proves
+that an envelope never crossed the provider-dispatch boundary, it transactionally
+deletes the unstarted reservation instead. The per-site sequence allocator stays
+monotonic and never reuses that lease number. Lease expiry releases only the
+concurrency slot. Candidate allocation prefers the smallest exact-plan paired-
+evidence count, then the fewest attempts in the active window, then a seeded
+stable hash. Reordering the candidate list therefore does not change a seeded
+run. SQLite transaction serialization enforces the concurrency cap across
 controller instances and process restart; a storage failure returns only the
 reference and creates no lease. The controller receives the immutable reference
 plan ID separately and excludes it even if candidate generation returns it by
@@ -781,9 +784,11 @@ The optimizer targets < 1 ms p99 per intercepted call. The `plan` path's work:
 `max_overhead_ms` (default 5 ms) is the kill switch over joint selection plus
 exploration reservation. Exploration uses a non-blocking cost-DB lock, so a
 background completion never stalls the user path. If total planning work
-crosses the budget after a lease was persisted, the runtime marks that lease
-failed, strips the candidate envelope, and returns `Plan::PassThrough`. The
-failed attempt remains charged to the rolling cap. This protects against
+crosses the budget after a lease was persisted, the runtime transactionally
+cancels the still-unstarted lease, strips the candidate envelope, and returns
+`Plan::PassThrough`. The call remains reference-only and does not consume the
+provider-call exploration cap. A crash before cancellation remains conservative:
+the lease eventually becomes abandoned and charged. This protects against
 pathological cases while keeping provider dispatch outside an over-budget
 decision.
 
@@ -1068,9 +1073,11 @@ alone never restores full-rate use.
 
 `execution_plan_exploration_site` keeps a monotonic lease sequence even after
 the rolling event window is pruned. `execution_plan_exploration` commits a
-reservation before dispatch, counts every attempted call, and keeps divergence
-exposure separate from optional labeled task damage. Expired reservations become
-`abandoned` and release concurrency without refunding spend.
+reservation before dispatch, counts every dispatched or possibly dispatched
+call, and keeps divergence exposure separate from optional labeled task damage.
+A reservation proven not to have crossed dispatch is deleted without rewinding
+the site sequence. Expired reservations become `abandoned` and release
+concurrency without refunding spend.
 
 `planner_diagnostics_json` stores only content-free decision metadata: the
 resolved risk contract, reference and selected plan IDs, model/rewrite names,
@@ -1307,10 +1314,11 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Forbidden, incompatible, disabled, and sufficiently observed plans are never leased | `exploration::tests::forbidden_incompatible_disabled_and_warm_candidates_never_run` |
 | The immutable reference plan is never leased as its own counterfactual | `exploration::tests::reference_plan_is_never_leased_as_its_own_counterfactual` |
 | Divergence observations remain distinct from evaluation-only task-quality labels | `exploration::tests::observation_and_task_quality_feedback_remain_distinct` |
+| Canceling a provably unstarted lease releases call and concurrency capacity without reusing its sequence | `exploration::tests::cancelling_unstarted_lease_releases_call_and_concurrency_caps` |
 | A cold live candidate is durably leased without replacing the reference response | `ffi::tests::cold_candidate_is_leased_without_replacing_the_reference_plan` |
 | A completed lease updates its exact paired plan profile once across replay | `ffi::tests::completed_counterfactual_updates_only_its_exact_paired_profile_once` |
 | Tool-bearing requests never receive the text-only exploration comparator | `ffi::tests::tool_bearing_request_never_receives_a_text_only_counterfactual` |
-| An over-budget envelope is failed before candidate dispatch | `ffi::tests::over_budget_envelope_can_be_failed_before_candidate_dispatch`, `tests/test_live_exploration_preflight.py::test_zero_total_overhead_budget_never_dispatches_counterfactual` |
+| An over-budget envelope is canceled before candidate dispatch without spending call capacity | `ffi::tests::over_budget_envelope_can_be_cancelled_before_candidate_dispatch`, `tests/test_live_exploration_preflight.py::test_zero_total_overhead_budget_never_dispatches_counterfactual` |
 | OpenAI, Anthropic, and LiteLLM adapters return the reference before scheduling the candidate | `tests/test_openai_patch.py`, `tests/test_anthropic_patch.py`, `tests/test_litellm_patch.py` |
 | Sync and async candidate failure closes the lease without retrying the reference | `tests/test_optimizer_glue.py::TestBoundedExplorationPythonEntry` |
 | Async shutdown routes cancellation through the task's owning event loop | `tests/test_optimizer_glue.py::TestBoundedExplorationPythonEntry::test_cross_thread_async_cancel_is_scheduled_on_owning_loop` |
@@ -1352,9 +1360,11 @@ permanently labeled `paper_evidence=false`.
 `bench/live_exploration_preflight.py` is the no-network production-adapter
 counterpart. A deterministic fake OpenAI provider drives the real Python patch
 and native optimizer through three warmups and 20 off-path `OutputBudget`
-comparisons. All 23 calibration responses remain the immutable reference; the
-20 exact paired observations persist across a full native reset; and the next
-call admits the evidenced candidate. The committed development artifact is
+comparisons. Every calibration response remains the immutable reference, and
+safe planning-only aborts may add bounded reference-only retries without
+spending the 20-call provider budget. The 20 exact paired observations persist
+with no charged incomplete attempts across a full native reset; the next call
+admits the evidenced candidate. The committed development artifact is
 `bench/repro/live-exploration-preflight-2026-09-04.json`. It validates wiring,
 accounting, and restart semantics only and is permanently labeled
 `paper_evidence=false`.

@@ -430,7 +430,7 @@ pub fn reserve_profiled_exploration(
             .into_iter()
             .find(|(key, _, _)| *key == lease.key)
         else {
-            let _ = controller.fail(conn, &lease, now_us);
+            let _ = controller.cancel_unstarted(conn, &lease);
             return primary_plan_json.to_string();
         };
 
@@ -441,7 +441,7 @@ pub fn reserve_profiled_exploration(
             &candidate_context,
         );
         let Ok(candidate_plan_value) = serde_json::from_str(&candidate_plan_json) else {
-            let _ = controller.fail(conn, &lease, now_us);
+            let _ = controller.cancel_unstarted(conn, &lease);
             return primary_plan_json.to_string();
         };
         let token = OpaqueExplorationToken {
@@ -451,7 +451,7 @@ pub fn reserve_profiled_exploration(
             rules: plan_rules(&candidate_plan),
         };
         let Ok(lease_token) = serde_json::to_string(&token) else {
-            let _ = controller.fail(conn, &lease, now_us);
+            let _ = controller.cancel_unstarted(conn, &lease);
             return primary_plan_json.to_string();
         };
         let context = EmbeddedExplorationContext {
@@ -460,7 +460,7 @@ pub fn reserve_profiled_exploration(
             candidate_plan: candidate_plan_value,
         };
         encode_exploration_context(primary_plan_json, &context).unwrap_or_else(|| {
-            let _ = controller.fail(conn, &lease, now_us);
+            let _ = controller.cancel_unstarted(conn, &lease);
             primary_plan_json.to_string()
         })
     }))
@@ -563,18 +563,14 @@ pub fn fail_profiled_exploration(
         .map_err(|error| error.to_string())
 }
 
-/// Fail the lease embedded in a planned exploration envelope.
-///
-/// This is used when the outer runtime discovers that total planning work
-/// crossed its critical-path budget after reservation. The candidate is
-/// stripped by the caller, while the durable failed attempt conservatively
-/// remains charged to the rolling exploration cap.
-pub fn fail_embedded_exploration(
+/// Cancel the lease embedded in an envelope that never crossed the provider
+/// dispatch boundary. The caller strips the candidate, so this reservation
+/// must not consume the rolling exploration call cap.
+pub fn cancel_embedded_exploration(
     controller: &ExplorationController,
     conn: &mut Connection,
     explored_plan_json: &str,
-    completed_at_us: i64,
-) -> Result<ExplorationCompletion, String> {
+) -> Result<(), String> {
     let value: serde_json::Value =
         serde_json::from_str(explored_plan_json).map_err(|error| error.to_string())?;
     let context: EmbeddedExplorationContext = serde_json::from_value(
@@ -584,12 +580,13 @@ pub fn fail_embedded_exploration(
             .ok_or_else(|| "plan has no exploration context".to_string())?,
     )
     .map_err(|error| error.to_string())?;
-    fail_profiled_exploration(
-        controller,
-        conn,
-        &context.lease_token,
-        completed_at_us,
-    )
+    let token = decode_exploration_token(&context.lease_token)?;
+    if token.context.key != token.lease.key {
+        return Err("exploration token plan binding does not match its lease".to_string());
+    }
+    controller
+        .cancel_unstarted(conn, &token.lease)
+        .map_err(|error| error.to_string())
 }
 
 fn decode_exploration_token(value: &str) -> Result<OpaqueExplorationToken, String> {
@@ -1168,6 +1165,7 @@ mod tests {
     use crate::config::OptimizerConfig;
     use crate::cost_model::CostModelUpdate;
     use crate::dag::{Message, Parameters};
+    use crate::exploration::ExplorationPolicy;
     use crate::model_catalog::{default_model_catalog, OPENAI_CHAT_COMPLETIONS_PROTOCOL};
     use crate::planner::{CostDriver, Proposal, RewriteRule};
     use crate::rules::ModelDowngradeRule;
@@ -1349,14 +1347,18 @@ mod tests {
     }
 
     #[test]
-    fn over_budget_envelope_can_be_failed_before_candidate_dispatch() {
+    fn over_budget_envelope_can_be_cancelled_before_candidate_dispatch() {
         let site = "exploration-overhead-site";
         let (catalog, optimizer) = output_optimizer(site);
         let call = observable_call(site, "private reference prompt");
         let call_json = serde_json::to_string(&call).unwrap();
         let profiles = PlanProfiles::new();
         let guard = PlanGuard::new();
-        let controller = ExplorationController::new();
+        let controller = ExplorationController::with_policy(ExplorationPolicy {
+            max_calls_per_site: 1,
+            ..ExplorationPolicy::default()
+        })
+        .unwrap();
         let mut connection = Connection::open_in_memory().unwrap();
         ensure_cost_model_schema(&connection).unwrap();
         let now_us = 2_000_000;
@@ -1386,16 +1388,7 @@ mod tests {
         .unwrap();
         let token = decode_exploration_token(&exploration.lease_token).unwrap();
 
-        assert_eq!(
-            fail_embedded_exploration(
-                &controller,
-                &mut connection,
-                &planned,
-                now_us + 1,
-            )
-            .unwrap(),
-            ExplorationCompletion::Recorded,
-        );
+        cancel_embedded_exploration(&controller, &mut connection, &planned).unwrap();
         let snapshot = controller
             .snapshot(
                 &connection,
@@ -1404,8 +1397,21 @@ mod tests {
             )
             .unwrap();
         assert_eq!(snapshot.active_leases, 0);
-        assert_eq!(snapshot.failed_calls, 1);
-        assert_eq!(snapshot.calls_in_window, 1);
+        assert_eq!(snapshot.failed_calls, 0);
+        assert_eq!(snapshot.calls_in_window, 0);
+
+        let retry = reserve_profiled_exploration(
+            &optimizer,
+            Some(&catalog),
+            &profiles,
+            &guard,
+            &controller,
+            &mut connection,
+            &call_json,
+            &primary,
+            now_us + 2,
+        );
+        assert_ne!(retry, primary);
     }
 
     #[test]

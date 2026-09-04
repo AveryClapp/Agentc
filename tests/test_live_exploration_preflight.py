@@ -9,6 +9,7 @@ import agentc
 
 from bench.live_exploration_preflight import (
     CALIBRATION_PAIRS,
+    MAX_CALIBRATION_USER_CALLS,
     MODEL,
     REFERENCE_CAP,
     FakeProvider,
@@ -25,13 +26,22 @@ def test_reference_visible_calibration_survives_restart_and_admits_candidate(
 
     assert artifact["paper_evidence"] is False
     assert artifact["network_calls"] == 0
-    assert results["reference_visible_calibration_calls"] == 3 + CALIBRATION_PAIRS
+    assert 3 + CALIBRATION_PAIRS <= results["calibration_user_calls"]
+    assert results["calibration_user_calls"] <= MAX_CALIBRATION_USER_CALLS
+    assert (
+        results["reference_visible_calibration_calls"]
+        == results["calibration_user_calls"]
+    )
     assert results["background_candidate_calls"] == CALIBRATION_PAIRS
     assert results["persisted_completed_attempts"] == CALIBRATION_PAIRS
+    assert results["persisted_incomplete_attempts"] == 0
     assert results["candidate_paired_observations"] == CALIBRATION_PAIRS
     assert results["candidate_divergence_upper_p95"] == 0.0
     assert results["post_restart_candidate_admitted"] is True
-    assert results["provider_calls_total"] == 3 + 2 * CALIBRATION_PAIRS + 1
+    assert (
+        results["provider_calls_total"]
+        == results["calibration_user_calls"] + CALIBRATION_PAIRS + 1
+    )
 
 
 def test_zero_total_overhead_budget_never_dispatches_counterfactual(tmp_path) -> None:

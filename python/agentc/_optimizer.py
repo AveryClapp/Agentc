@@ -58,6 +58,10 @@ class Plan:
     executed_model_id: Optional[str] = None
     dispatch_fallback: bool = False
     dispatch_fallback_reason: Optional[str] = None
+    # Opaque Rust-issued handle binding a measured execution to its exact
+    # plan profile, runtime version, and sequence. Provider adapters must not
+    # inspect or reconstruct it.
+    observation_token: Optional[str] = None
 
     @property
     def is_pass_through(self) -> bool:
@@ -105,35 +109,44 @@ def model_catalog() -> dict[str, Any]:
         return {"targets": []}
 
 
-def observe_outcome(plan: Plan, outcome: dict[str, Any]) -> None:
+def observe_outcome(plan: Plan, outcome: dict[str, Any]) -> Optional[str]:
     """Feed an outcome back into the cost model.
 
     ``plan`` is the object returned by :func:`plan_call`; we thread the
     exact ``raw_json`` back to the FFI so the Rust side can correlate
     with its audit ring buffer.
     """
+    # A Plan is normally single-use, but clearing first makes reuse fail safe:
+    # no later shadow comparison can inherit a prior execution's token.
+    plan.observation_token = None
     try:
         outcome_json = json.dumps(outcome)
     except (TypeError, ValueError):
         log.debug("observe_outcome: outcome not serializable; dropping")
-        return
+        return None
     try:
-        _native.optimize_observe(plan.raw_json, outcome_json)
+        token = _native.optimize_observe(plan.raw_json, outcome_json)
     except BaseException:
         log.debug("observe_outcome: native call raised; dropping", exc_info=True)
+        return None
+    if isinstance(token, str) and token:
+        plan.observation_token = token
+        return token
+    return None
 
 
-def record_divergence(call_site_id: str, rule: str, divergence: float) -> None:
-    """Fold one shadow-mode divergence sample into the Rust accuracy budget.
+def record_divergence(observation_token: str, divergence: float) -> None:
+    """Attach one shadow comparison to its exact Rust-issued observation.
 
-    Called from the dispatch layer on sampled rewritten calls. Non-finite or
-    out-of-range values are discarded without mutating guard state. Fail-open:
-    a native hiccup must never surface to the user, whose call already returned.
+    The token is opaque and binds the plan profile, runtime version, and
+    execution sequence. Non-finite or out-of-range values are discarded by
+    Rust without mutating guard state. Fail-open: a native hiccup must never
+    surface to the user, whose primary call already returned.
     """
-    if not call_site_id or not rule:
+    if not observation_token:
         return
     try:
-        _native.optimize_record_divergence(call_site_id, rule, float(divergence))
+        _native.optimize_record_divergence(observation_token, float(divergence))
     except BaseException:
         log.debug("record_divergence: native call raised; dropping", exc_info=True)
 

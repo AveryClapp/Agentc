@@ -124,6 +124,8 @@ def test_rewrite_changes_only_optimizer_supported_fields() -> None:
     }
     plan = Plan(kind="rewritten", rule="ModelDowngrade", call=mutated_call)
     wrapped = MagicMock(return_value=response)
+    events: list[str] = []
+    observe = MagicMock(side_effect=lambda *_: events.append("observe"))
 
     with (
         patch(
@@ -134,8 +136,11 @@ def test_rewrite_changes_only_optimizer_supported_fields() -> None:
             "agentc._patches._litellm._plan_call",
             return_value=(plan, "site"),
         ),
-        patch("agentc._patches._litellm._observe") as observe,
-        patch("agentc._patches._optimizer_glue.maybe_shadow_record"),
+        patch("agentc._patches._litellm._observe", new=observe),
+        patch(
+            "agentc._patches._optimizer_glue.maybe_shadow_record",
+            side_effect=lambda *_: events.append("shadow"),
+        ),
     ):
         result = _wrap_completion(wrapped, None, (), request)
 
@@ -147,6 +152,7 @@ def test_rewrite_changes_only_optimizer_supported_fields() -> None:
     assert sent["tools"] is tools
     assert sent["api_key"] is secret
     observe.assert_called_once()
+    assert events == ["observe", "shadow"]
     attrs = json.loads(spans[0]["attributes"])
     assert attrs["gen_ai.provider.name"] == "litellm"
     assert attrs["gen_ai.usage.input_tokens"] == 20
@@ -241,12 +247,14 @@ async def test_async_catalog_route_preserves_native_request_shape() -> None:
     plan = Plan(kind="rewritten", rule="ModelDowngrade", call=call)
     response = _response(target)
     wrapped = AsyncMock(return_value=response)
-    shadow = AsyncMock()
+    events: list[str] = []
+    shadow = AsyncMock(side_effect=lambda *_: events.append("shadow"))
+    observe = MagicMock(side_effect=lambda *_: events.append("observe"))
 
     with (
         patch("agentc._patches._litellm._write_root_span"),
         patch("agentc._patches._litellm._plan_call", return_value=(plan, "site")),
-        patch("agentc._patches._litellm._observe"),
+        patch("agentc._patches._litellm._observe", new=observe),
         patch(
             "agentc._patches._optimizer_glue.maybe_shadow_record_async",
             new=shadow,
@@ -265,6 +273,7 @@ async def test_async_catalog_route_preserves_native_request_shape() -> None:
     assert plan.executed_model_id == target
     shadow.assert_awaited_once()
     assert shadow.await_args.args[:3] == (plan, "site", response)
+    assert events == ["observe", "shadow"]
 
 
 @pytest.mark.asyncio

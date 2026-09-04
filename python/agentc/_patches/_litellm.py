@@ -365,6 +365,9 @@ def _wrap_completion(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any
                 run_original=run_original,
                 run_mutated=run_mutated,
             )
+            primary_elapsed_s = time.perf_counter() - started
+            if call_site_id is not None:
+                _observe(plan, response, call_site_id, request, primary_elapsed_s)
             maybe_shadow_record(plan, call_site_id, response, run_original)
     except BaseException as exc:
         attrs["error.type"] = type(exc).__name__
@@ -392,8 +395,6 @@ def _wrap_completion(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any
 
         executed_model = resolve_executed_model_id(plan, response, request.get("model"))
         attrs.update(dispatch_span_attributes(plan, executed_model))
-    if plan is not None and call_site_id is not None:
-        _observe(plan, response, call_site_id, request, time.perf_counter() - started)
     attrs.update(_extract_response_attrs(response))
     try:
         _emit_span(
@@ -460,6 +461,9 @@ async def _wrap_acompletion(
                 run_original=run_original,
                 run_mutated=run_mutated,
             )
+            primary_elapsed_s = time.perf_counter() - started
+            if call_site_id is not None:
+                _observe(plan, response, call_site_id, request, primary_elapsed_s)
             await maybe_shadow_record_async(
                 plan,
                 call_site_id,
@@ -492,8 +496,6 @@ async def _wrap_acompletion(
 
         executed_model = resolve_executed_model_id(plan, response, request.get("model"))
         attrs.update(dispatch_span_attributes(plan, executed_model))
-    if plan is not None and call_site_id is not None:
-        _observe(plan, response, call_site_id, request, time.perf_counter() - started)
     attrs.update(_extract_response_attrs(response))
     try:
         _emit_span(

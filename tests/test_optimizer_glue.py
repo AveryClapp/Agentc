@@ -14,6 +14,7 @@ from agentc._patches._optimizer_glue import (
     LITELLM_COMPLETION_PROTOCOL,
     OPENAI_CHAT_COMPLETIONS_PROTOCOL,
     UnsafeModelRouteError,
+    _structured_output_schema_version,
     _text_divergence,
     apply_call_mutations_anthropic,
     apply_call_mutations_openai,
@@ -481,6 +482,37 @@ def test_route_context_detects_typed_output_config() -> None:
     assert context["structured_outputs"] is True
 
 
+def test_structured_output_schema_version_changes_with_contract_not_key_order() -> None:
+    first = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "answer",
+            "schema": {"type": "object", "properties": {"value": {"type": "string"}}},
+        },
+    }
+    reordered = {
+        "json_schema": {
+            "schema": {"properties": {"value": {"type": "string"}}, "type": "object"},
+            "name": "answer",
+        },
+        "type": "json_schema",
+    }
+    changed = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "answer",
+            "schema": {"type": "object", "properties": {"value": {"type": "integer"}}},
+        },
+    }
+
+    first_version = _structured_output_schema_version({"response_format": first})
+    reordered_version = _structured_output_schema_version({"response_format": reordered})
+    changed_version = _structured_output_schema_version({"response_format": changed})
+
+    assert first_version == reordered_version
+    assert first_version != changed_version
+
+
 def test_unencodable_route_input_forces_catalog_abstention_bound() -> None:
     class Unencodable:
         def __str__(self) -> str:
@@ -764,16 +796,21 @@ class TestShadowGuardPythonEntry:
     def _plan():
         from types import SimpleNamespace
 
-        return SimpleNamespace(kind="rewritten", rule="ContextCompress", call={})
+        return SimpleNamespace(
+            kind="rewritten",
+            rule="ContextCompress",
+            call={},
+            observation_token="opaque-observation-token",
+        )
 
     def test_divergent_shadow_forwards_positive_divergence(self, monkeypatch):
         import agentc._optimizer
 
-        recorded: list = []
+        recorded: list[tuple[str, float]] = []
         monkeypatch.setattr(
             agentc._optimizer,
             "record_divergence",
-            lambda site, rule, div: recorded.append((site, rule, div)),
+            lambda token, div: recorded.append((token, div)),
         )
         monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "1.0")  # always sample
 
@@ -784,24 +821,24 @@ class TestShadowGuardPythonEntry:
         )
 
         assert len(recorded) == 1
-        site, rule, div = recorded[0]
-        assert (site, rule) == ("site", "ContextCompress")
+        token, div = recorded[0]
+        assert token == "opaque-observation-token"
         assert div > 0.0, "divergent shadow outputs must forward a positive divergence"
 
     def test_identical_shadow_forwards_zero_divergence(self, monkeypatch):
         import agentc._optimizer
 
-        recorded: list = []
+        recorded: list[tuple[str, float]] = []
         monkeypatch.setattr(
             agentc._optimizer,
             "record_divergence",
-            lambda site, rule, div: recorded.append((site, rule, div)),
+            lambda token, div: recorded.append((token, div)),
         )
         monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "1.0")
 
         resp = self._resp("identical output text")
         maybe_shadow_record(self._plan(), "site", resp, run_original=lambda: resp)
-        assert recorded == [("site", "ContextCompress", 0.0)]
+        assert recorded == [("opaque-observation-token", 0.0)]
 
     @pytest.mark.asyncio
     async def test_async_divergent_shadow_forwards_positive_divergence(
@@ -809,11 +846,11 @@ class TestShadowGuardPythonEntry:
     ) -> None:
         import agentc._optimizer
 
-        recorded: list[tuple[str, str, float]] = []
+        recorded: list[tuple[str, float]] = []
         monkeypatch.setattr(
             agentc._optimizer,
             "record_divergence",
-            lambda site, rule, div: recorded.append((site, rule, div)),
+            lambda token, div: recorded.append((token, div)),
         )
         monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "1.0")
 
@@ -828,8 +865,8 @@ class TestShadowGuardPythonEntry:
         )
 
         assert len(recorded) == 1
-        site, rule, divergence = recorded[0]
-        assert (site, rule) == ("site", "ContextCompress")
+        token, divergence = recorded[0]
+        assert token == "opaque-observation-token"
         assert divergence > 0.0
 
     @pytest.mark.asyncio
@@ -852,6 +889,23 @@ class TestShadowGuardPythonEntry:
             self._resp("reference"),
             run_original,
         )
+
+        assert original_calls == 0
+
+    def test_missing_observation_token_never_spends_a_reference_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        plan = self._plan()
+        plan.observation_token = None
+        monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "1.0")
+        original_calls = 0
+
+        def run_original():
+            nonlocal original_calls
+            original_calls += 1
+            return self._resp("reference")
+
+        maybe_shadow_record(plan, "site", self._resp("optimized"), run_original)
 
         assert original_calls == 0
 

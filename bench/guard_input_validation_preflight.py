@@ -87,6 +87,32 @@ def _configure(threshold: str) -> None:
     )
 
 
+def _observation_token(agentc: Any, call_site_id: str) -> str:
+    """Create the public opaque token required by the divergence FFI."""
+    plan = {
+        "kind": "rewritten",
+        "rule": _RULE,
+        "call": {
+            "call_site_id": call_site_id,
+            "trace_id": "0" * 32,
+            "span_id": "0" * 16,
+            "model": "synthetic-model",
+            "messages": [],
+        },
+        "projected_savings_usd": 0.01,
+    }
+    outcome = {
+        "input_tokens": 1,
+        "output_tokens": 1,
+        "latency_ms": 1.0,
+        "cost_usd": 0.001,
+        "call_site_id": call_site_id,
+    }
+    token = agentc._native.optimize_observe(json.dumps(plan), json.dumps(outcome))
+    assert token
+    return str(token)
+
+
 def run() -> dict[str, Any]:
     """Execute invalid-divergence and invalid-threshold checks."""
     with tempfile.TemporaryDirectory(prefix="agentc-guard-inputs-") as temp:
@@ -98,9 +124,8 @@ def run() -> dict[str, Any]:
         _configure("0.1")
         agentc.init(storage_path=str(invalid_storage))
         for _, divergence in _INVALID_DIVERGENCES:
-            agentc._native.optimize_record_divergence(
-                "invalid-divergence-site", _RULE, divergence
-            )
+            token = _observation_token(agentc, "invalid-divergence-site")
+            agentc._native.optimize_record_divergence(token, divergence)
         agentc.shutdown()
         invalid_divergence_state = _guard_state(
             invalid_storage, "invalid-divergence-site"
@@ -113,7 +138,8 @@ def run() -> dict[str, Any]:
             _configure(threshold)
             agentc.init(storage_path=str(storage))
             for _ in range(5):
-                agentc._native.optimize_record_divergence(site, _RULE, 0.5)
+                token = _observation_token(agentc, site)
+                agentc._native.optimize_record_divergence(token, 0.5)
             agentc.shutdown()
             threshold_fallbacks[threshold] = _guard_state(storage, site)
 

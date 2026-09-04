@@ -8,19 +8,22 @@ The guard's steady-state cost has two parts:
 
 This benchmark measures (2): the wall-clock CPU cost of the bookkeeping path
   _text_divergence(a, b)        (Python: normalized containment metric)
-  record_divergence(site, rule, d)  (PyO3 -> Rust budget fold)
+  record_divergence(token, d)   (opaque-token validation + Rust budget fold)
 on representative agent outputs, to show it is negligible against an LLM call
 (O(microseconds) vs O(seconds)). Run: python -m bench.guard_overhead_bench
 """
 
+import json
 import os
 import statistics
 import time
+from collections.abc import Callable
 
 os.environ.setdefault("AGENTC_SHADOW_DIVERGENCE_MODE", "normalized")
 
-from agentc._patches._optimizer_glue import _text_divergence
+from agentc import _native
 from agentc._optimizer import record_divergence
+from agentc._patches._optimizer_glue import _text_divergence
 
 # Representative outputs: a ~60-token answer and a benign elaboration of it
 # (the agreement case the normalized metric is built for).
@@ -32,11 +35,38 @@ BASE = (
 ELAB = BASE + " The melody is widely recognized throughout the midwestern United States."
 
 
-def _bench(fn, iters: int) -> dict:
+def _observation_token() -> str:
+    """Issue a compatibility token through the same public FFI as adapters."""
+    plan = {
+        "kind": "rewritten",
+        "rule": "ContextCompress",
+        "call": {
+            "call_site_id": "bench_site",
+            "trace_id": "0" * 32,
+            "span_id": "0" * 16,
+            "model": "synthetic-model",
+            "messages": [],
+        },
+        "projected_savings_usd": 0.01,
+    }
+    outcome = {
+        "input_tokens": 1,
+        "output_tokens": 1,
+        "latency_ms": 1.0,
+        "cost_usd": 0.001,
+        "call_site_id": "bench_site",
+    }
+    token = _native.optimize_observe(json.dumps(plan), json.dumps(outcome))
+    if not token:
+        raise RuntimeError("failed to issue optimizer observation token")
+    return str(token)
+
+
+def _bench(fn: Callable[[], object], iters: int) -> dict[str, float]:
     # warm up
     for _ in range(2000):
         fn()
-    samples = []
+    samples: list[int] = []
     for _ in range(iters):
         t0 = time.perf_counter_ns()
         fn()
@@ -52,8 +82,10 @@ def _bench(fn, iters: int) -> dict:
 def main() -> None:
     iters = 50_000
     div = _bench(lambda: _text_divergence(BASE, ELAB), iters)
-    # fold a precomputed divergence into the budget (same key each time)
-    fold = _bench(lambda: record_divergence("bench_site", "ContextCompress", 0.0), iters)
+    token = _observation_token()
+    # Fold a precomputed divergence through opaque-token parsing and the solo
+    # compatibility guard. Token issuance is intentionally outside this timer.
+    fold = _bench(lambda: record_divergence(token, 0.0), iters)
     total_mean = div["mean_us"] + fold["mean_us"]
 
     print(f"divergence metric (_text_divergence, normalized): "

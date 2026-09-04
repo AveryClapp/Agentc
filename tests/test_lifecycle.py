@@ -45,6 +45,32 @@ def tmp_storage(tmp_path: Path) -> Path:
     return tmp_path / "agentc"
 
 
+def _record_guard_divergence(call_site_id: str, rule: str, divergence: float) -> None:
+    """Exercise the public opaque-token FFI while testing the solo-rule guard."""
+    plan = {
+        "kind": "rewritten",
+        "rule": rule,
+        "call": {
+            "call_site_id": call_site_id,
+            "trace_id": "00" * 16,
+            "span_id": "00" * 8,
+            "model": "test-model",
+            "messages": [],
+        },
+        "projected_savings_usd": 0.01,
+    }
+    outcome = {
+        "input_tokens": 1,
+        "output_tokens": 1,
+        "latency_ms": 1.0,
+        "cost_usd": 0.001,
+        "call_site_id": call_site_id,
+    }
+    token = agentc._native.optimize_observe(json.dumps(plan), json.dumps(outcome))
+    assert token
+    agentc._native.optimize_record_divergence(token, divergence)
+
+
 class TestConfig:
     def test_defaults(self) -> None:
         config = resolve_config()
@@ -202,9 +228,7 @@ class TestInit:
         with patch.dict(os.environ, controls):
             agentc.init(storage_path=str(tmp_storage))
             for _ in range(4):
-                agentc._native.optimize_record_divergence(
-                    "restart-guard-site", "OutputBudget", 0.5
-                )
+                _record_guard_divergence("restart-guard-site", "OutputBudget", 0.5)
             agentc.shutdown()
 
             with sqlite3.connect(tmp_storage / "cost_model.db") as connection:
@@ -217,9 +241,7 @@ class TestInit:
             assert first == pytest.approx((4, 0.5, 4))
 
             agentc.init(storage_path=str(tmp_storage))
-            agentc._native.optimize_record_divergence(
-                "restart-guard-site", "OutputBudget", 0.5
-            )
+            _record_guard_divergence("restart-guard-site", "OutputBudget", 0.5)
             agentc.shutdown()
 
         with sqlite3.connect(tmp_storage / "cost_model.db") as connection:
@@ -247,15 +269,13 @@ class TestInit:
         with patch.dict(os.environ, controls):
             agentc.init(storage_path=str(tmp_storage))
             for divergence in [0.9, 0.9, 0.9, 0.1, 0.1, 0.1]:
-                agentc._native.optimize_record_divergence(
+                _record_guard_divergence(
                     "windowed-guard-site", "OutputBudget", divergence
                 )
             agentc.shutdown()
 
             agentc.init(storage_path=str(tmp_storage))
-            agentc._native.optimize_record_divergence(
-                "windowed-guard-site", "OutputBudget", 0.1
-            )
+            _record_guard_divergence("windowed-guard-site", "OutputBudget", 0.1)
             agentc.shutdown()
 
         with sqlite3.connect(tmp_storage / "cost_model.db") as connection:
@@ -285,7 +305,7 @@ class TestInit:
         with patch.dict(os.environ, controls):
             agentc.init(storage_path=str(tmp_storage))
             for divergence in [float("nan"), float("inf"), float("-inf"), -0.1, 1.1]:
-                agentc._native.optimize_record_divergence(
+                _record_guard_divergence(
                     "invalid-guard-site", "OutputBudget", divergence
                 )
             agentc.shutdown()
@@ -312,9 +332,7 @@ class TestInit:
         with patch.dict(os.environ, controls):
             agentc.init(storage_path=str(tmp_storage))
             for _ in range(5):
-                agentc._native.optimize_record_divergence(
-                    "fallback-guard-site", "OutputBudget", 0.5
-                )
+                _record_guard_divergence("fallback-guard-site", "OutputBudget", 0.5)
             agentc.shutdown()
 
         with sqlite3.connect(tmp_storage / "cost_model.db") as connection:

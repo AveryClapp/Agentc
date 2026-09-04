@@ -502,6 +502,21 @@ impl PlanProfiles {
         divergence: f64,
         observed_at_us: Option<i64>,
     ) -> Result<(), PlanProfileUpdateError> {
+        self.record_divergence_once(observation, divergence, observed_at_us)
+            .map(|_| ())
+    }
+
+    /// Attach a paired divergence and report whether this call inserted it.
+    ///
+    /// Replaying the same token/value pair is idempotent. FFI adapters use the
+    /// boolean to avoid double-charging any compatibility guard layered on top
+    /// of the canonical complete-plan profile.
+    pub fn record_divergence_once(
+        &self,
+        observation: &PlanObservationToken,
+        divergence: f64,
+        observed_at_us: Option<i64>,
+    ) -> Result<bool, PlanProfileUpdateError> {
         if !divergence.is_finite() || !(0.0..=1.0).contains(&divergence) {
             return Err(PlanProfileUpdateError::InvalidDivergence);
         }
@@ -527,7 +542,7 @@ impl PlanProfiles {
                 .find(|sample| sample.plan_observation_sequence == observation.sequence)
             {
                 if existing.divergence == divergence {
-                    return Ok(());
+                    return Ok(false);
                 }
                 return Err(PlanProfileUpdateError::ConflictingDivergence);
             }
@@ -544,7 +559,7 @@ impl PlanProfiles {
         self.dirty
             .write()
             .insert(observation.key.clone(), generation);
-        Ok(())
+        Ok(true)
     }
 
     /// Hydrate all plan profiles from their exact retained observations.

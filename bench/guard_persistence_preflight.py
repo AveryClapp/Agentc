@@ -82,7 +82,12 @@ def _query_row(db_path: Path, query: str) -> list[Any] | None:
         capture_output=True,
         text=True,
     )
-    return json.loads(completed.stdout)
+    decoded: object = json.loads(completed.stdout)
+    if decoded is None:
+        return None
+    if not isinstance(decoded, list):
+        raise TypeError("SQLite probe returned a non-row JSON value")
+    return decoded
 
 
 def _divergence_row(db_path: Path) -> dict[str, int | float] | None:
@@ -145,8 +150,12 @@ def run() -> dict[str, Any]:
             warmup_plans.append(plan.kind)
             observe_outcome(plan, _outcome())
         hot_plan_before_guard = plan_call(_call())
-        for _ in range(4):
-            record_divergence(_CALL_SITE, _RULE, _DIVERGENCE)
+        sampled_plans = [hot_plan_before_guard]
+        sampled_plans.extend(plan_call(_call()) for _ in range(3))
+        for sampled_plan in sampled_plans:
+            token = observe_outcome(sampled_plan, _outcome())
+            assert token is not None
+            record_divergence(token, _DIVERGENCE)
         divergence_before_restart = _divergence_row(db_path)
         disabled_before_restart = _disabled_row(db_path)
         agentc.shutdown()
@@ -154,7 +163,9 @@ def run() -> dict[str, Any]:
         agentc.init(storage_path=str(storage))
         second_native_storage = agentc._native.optimize_storage_path()
         plan_before_fifth_breach = plan_call(_call())
-        record_divergence(_CALL_SITE, _RULE, _DIVERGENCE)
+        fifth_token = observe_outcome(plan_before_fifth_breach, _outcome())
+        assert fifth_token is not None
+        record_divergence(fifth_token, _DIVERGENCE)
         plan_after_fifth_breach = plan_call(_call())
         divergence_after_disable = _divergence_row(db_path)
         disabled_after_disable = _disabled_row(db_path)
@@ -165,7 +176,7 @@ def run() -> dict[str, Any]:
         plan_after_second_restart = plan_call(_call())
         agentc.shutdown()
 
-        result = {
+        result: dict[str, Any] = {
             "native_storage_match": all(
                 path == str(storage)
                 for path in (

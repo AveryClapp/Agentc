@@ -220,20 +220,28 @@ class TestSyncCreateWrapper:
         from agentc._optimizer import Plan
 
         shadow_calls: list[Any] = []
+        events: list[str] = []
         plan = Plan(
             kind="rewritten",
             rule="ModelDowngrade",
             call={"model": "claude-x", "messages": []},
         )
         mock_response = MockMessage()
+        observe = MagicMock(side_effect=lambda **_: events.append("observe"))
 
         with patch("agentc._patches._anthropic._write_root_span"), patch(
             "agentc._patches._anthropic._plan_anthropic_call", return_value=(plan, "site")
-        ), patch("agentc._patches._anthropic._observe_anthropic_outcome"), patch(
+        ), patch(
+            "agentc._patches._anthropic._observe_anthropic_outcome",
+            new=observe,
+        ), patch(
             "agentc._patches._optimizer_glue.dispatch_sync", return_value=mock_response
         ), patch(
             "agentc._patches._optimizer_glue.maybe_shadow_record",
-            side_effect=lambda *a, **k: shadow_calls.append(a),
+            side_effect=lambda *a, **k: (shadow_calls.append(a), events.append("shadow")),
+        ), patch(
+            "agentc._patches._anthropic._time.perf_counter",
+            side_effect=[10.0, 10.2],
         ):
             wrapped = MagicMock(return_value=mock_response)
             result = _wrap_create(
@@ -245,6 +253,8 @@ class TestSyncCreateWrapper:
 
         assert result is mock_response
         assert len(shadow_calls) == 1, "maybe_shadow_record must run on the native Anthropic path"
+        assert events == ["observe", "shadow"]
+        assert observe.call_args.kwargs["elapsed_s"] == pytest.approx(0.2)
 
     def test_captures_span(self, initialized: Path) -> None:
         written: list[dict[str, Any]] = []
@@ -405,7 +415,9 @@ class TestAsyncCreateWrapper:
             call={"model": "claude-sonnet-4-20250514", "messages": []},
         )
         response = MockMessage()
-        shadow = AsyncMock()
+        events: list[str] = []
+        shadow = AsyncMock(side_effect=lambda *_: events.append("shadow"))
+        observe = MagicMock(side_effect=lambda **_: events.append("observe"))
 
         with patch("agentc._patches._anthropic._write_root_span"), patch(
             "agentc._patches._anthropic._plan_anthropic_call",
@@ -416,7 +428,10 @@ class TestAsyncCreateWrapper:
         ), patch(
             "agentc._patches._optimizer_glue.maybe_shadow_record_async",
             new=shadow,
-        ), patch("agentc._patches._anthropic._observe_anthropic_outcome"):
+        ), patch(
+            "agentc._patches._anthropic._observe_anthropic_outcome",
+            new=observe,
+        ):
             result = await _wrap_create_async(
                 AsyncMock(return_value=response),
                 None,
@@ -431,6 +446,7 @@ class TestAsyncCreateWrapper:
         assert result is response
         shadow.assert_awaited_once()
         assert shadow.await_args.args[:3] == (plan, "site", response)
+        assert events == ["observe", "shadow"]
 
 
 class TestSyncStreamWrapper:

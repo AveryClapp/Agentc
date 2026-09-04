@@ -293,6 +293,15 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
                 return wrapped(*args, **new_kwargs)
 
             response = dispatch_sync(plan, run_original=_run_original, run_mutated=_run_mutated)
+            primary_elapsed_s = _time.perf_counter() - t0
+            if call_site_id is not None:
+                _observe_anthropic_outcome(
+                    plan=plan,
+                    response=response,
+                    call_site_id=call_site_id,
+                    kwargs=kwargs,
+                    elapsed_s=primary_elapsed_s,
+                )
             # Shadow-mode accuracy sampling: without this the guard never runs
             # on the native Anthropic path (bd-1cb) — only the OpenAI patch
             # called it — so Anthropic users got no auto-disable protection.
@@ -319,7 +328,6 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
         raise
 
     end_time = _now_us()
-    elapsed_s = _time.perf_counter() - t0
 
     if plan is not None:
         from agentc._patches._optimizer_glue import (
@@ -329,15 +337,6 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
 
         executed_model = resolve_executed_model_id(plan, response, kwargs.get("model"))
         req_attrs.update(dispatch_span_attributes(plan, executed_model))
-
-    if plan is not None and call_site_id is not None:
-        _observe_anthropic_outcome(
-            plan=plan,
-            response=response,
-            call_site_id=call_site_id,
-            kwargs=kwargs,
-            elapsed_s=elapsed_s,
-        )
 
     resp_attrs = _extract_response_attrs(response)
     req_attrs.update(resp_attrs)
@@ -531,6 +530,15 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
                 return await wrapped(*args, **new_kwargs)
 
             response = await dispatch(plan, run_original=_run_original, run_mutated=_run_mutated)
+            primary_end_time = _now_us()
+            if call_site_id is not None:
+                _observe_anthropic_outcome(
+                    plan=plan,
+                    response=response,
+                    call_site_id=call_site_id,
+                    kwargs=kwargs,
+                    elapsed_s=(primary_end_time - start_time) / 1_000_000.0,
+                )
             await maybe_shadow_record_async(
                 plan,
                 call_site_id,
@@ -568,15 +576,6 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
 
         executed_model = resolve_executed_model_id(plan, response, kwargs.get("model"))
         req_attrs.update(dispatch_span_attributes(plan, executed_model))
-
-    if plan is not None and call_site_id is not None:
-        _observe_anthropic_outcome(
-            plan=plan,
-            response=response,
-            call_site_id=call_site_id,
-            kwargs=kwargs,
-            elapsed_s=(end_time - start_time) / 1_000_000.0,
-        )
 
     resp_attrs = _extract_response_attrs(response)
     req_attrs.update(resp_attrs)

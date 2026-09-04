@@ -22,7 +22,10 @@ use agentc_optimizer::{
     build_optimizer,
     config::OptimizerConfig,
     cost_model::CostModel,
-    ffi::{optimize_observe as rust_observe, optimize_plan as rust_plan, PASS_THROUGH_JSON},
+    ffi::{
+        attach_observation_context, optimize_observe as rust_observe, optimize_plan as rust_plan,
+        record_observation_divergence, PASS_THROUGH_JSON,
+    },
     model_catalog::{default_model_catalog, ModelCatalog},
     plan_profile::PlanProfiles,
     planner::{Optimizer, Plan},
@@ -866,10 +869,13 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
     py.allow_threads(|| {
         let state = optimizer_state();
         let t0 = std::time::Instant::now();
+        let base_plan_json =
+            std::panic::catch_unwind(AssertUnwindSafe(|| rust_plan(&state.optimizer, call_json)))
+                .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string());
         let plan_json = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            rust_plan(&state.optimizer, call_json)
+            attach_observation_context(state.model_catalog.as_deref(), call_json, &base_plan_json)
         }))
-        .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string());
+        .unwrap_or(base_plan_json);
         let overhead_us = t0.elapsed().as_micros() as i64;
 
         // Best-effort audit. The plan is always returned regardless of
@@ -995,12 +1001,24 @@ fn hex_nib(c: u8) -> Option<u8> {
 /// Periodically flushes the cost-model `dirty` set to `cost_model.db` so
 /// the next process can warm up without re-observing every hot site.
 #[pyfunction]
-fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) {
+fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) -> String {
     py.allow_threads(|| {
         let state = optimizer_state();
-        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            let _ = rust_observe(&state.cost_model, plan_json, outcome_json);
-        }));
+        let observation_token = match std::panic::catch_unwind(AssertUnwindSafe(|| {
+            rust_observe(
+                &state.cost_model,
+                &state.plan_profiles,
+                plan_json,
+                outcome_json,
+            )
+        })) {
+            Ok(Ok(token)) => token,
+            Ok(Err(error)) => {
+                eprintln!("[agentc-profiler] optimizer observation failed: {error}");
+                String::new()
+            }
+            Err(_) => String::new(),
+        };
 
         let n = state
             .observe_counter
@@ -1020,15 +1038,15 @@ fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) {
                 }));
             }
         }
-    });
+        observation_token
+    })
 }
 
-/// Fold one shadow-mode divergence sample for `(call_site_id, rule)` into
-/// the accuracy budget. The Python dispatch layer computes divergence
-/// between the optimized and unrewritten outputs on sampled calls and
-/// calls this; when a rule breaches its budget for `BREACH_STREAK`
-/// consecutive samples the budget auto-disables it (the planner's
-/// `is_disabled` gate then skips the rule on subsequent calls).
+/// Attach one shadow-mode divergence sample to its exact observed execution.
+/// The Python layer treats ``observation_token`` as opaque. Rust validates its
+/// complete-plan key, runtime version, and sequence before mutating the plan
+/// profile. Solo plans also feed the compatibility rule budget; composed plans
+/// deliberately do not fabricate identical causal evidence for every rule.
 ///
 /// Threshold precedence: `AGENTC_SHADOW_DIVERGENCE_BUDGET` env override,
 /// else the firing rule's own `accuracy_budget()`, else a conservative
@@ -1044,48 +1062,62 @@ fn unit_fraction_f64(value: f64) -> Option<f32> {
 }
 
 #[pyfunction]
-fn optimize_record_divergence(py: Python<'_>, call_site_id: &str, rule: &str, divergence: f64) {
+fn optimize_record_divergence(py: Python<'_>, observation_token: &str, divergence: f64) {
     py.allow_threads(|| {
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            let Some(divergence) = unit_fraction_f64(divergence) else {
+            let Some(legacy_divergence) = unit_fraction_f64(divergence) else {
                 return;
             };
             let state = optimizer_state();
-            let threshold = std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
-                .ok()
-                .and_then(|v| v.trim().parse::<f64>().ok())
-                .and_then(unit_fraction_f64)
-                .or_else(|| {
-                    state
-                        .optimizer
-                        .accuracy_budget_for(rule)
-                        .and_then(unit_fraction_f32)
-                })
-                .unwrap_or(0.05);
-            let now = now_us_i64();
-            let outcome =
-                state
-                    .budget
-                    .record_sample(call_site_id, rule, divergence, threshold, now);
-            let disable = match outcome {
-                SampleOutcome::Disable {
-                    disabled_at_us,
-                    reenable_at_us,
-                } => Some((disabled_at_us, reenable_at_us)),
-                _ => None,
+            let Ok(attribution) =
+                record_observation_divergence(&state.plan_profiles, observation_token, divergence)
+            else {
+                return;
             };
-            if disable.is_some() {
-                eprintln!(
-                    "[agentc] shadow guard auto-disabled rule={rule} site={call_site_id} \
-                     (divergence={divergence:.3} > budget={threshold:.3})"
-                );
+            let mut disable = None;
+            if attribution.newly_recorded {
+                if let Some(rule) = attribution.solo_rule.as_deref() {
+                    let threshold = std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
+                        .ok()
+                        .and_then(|v| v.trim().parse::<f64>().ok())
+                        .and_then(unit_fraction_f64)
+                        .or_else(|| {
+                            state
+                                .optimizer
+                                .accuracy_budget_for(rule)
+                                .and_then(unit_fraction_f32)
+                        })
+                        .unwrap_or(0.05);
+                    let now = now_us_i64();
+                    let outcome = state.budget.record_sample(
+                        &attribution.call_site_id,
+                        rule,
+                        legacy_divergence,
+                        threshold,
+                        now,
+                    );
+                    disable = match outcome {
+                        SampleOutcome::Disable {
+                            disabled_at_us,
+                            reenable_at_us,
+                        } => Some((rule, threshold, disabled_at_us, reenable_at_us)),
+                        _ => None,
+                    };
+                    if disable.is_some() {
+                        eprintln!(
+                            "[agentc] shadow guard auto-disabled rule={rule} site={} \
+                             (divergence={legacy_divergence:.3} > budget={threshold:.3})",
+                            attribution.call_site_id,
+                        );
+                    }
+                }
             }
             if let Some(mu) = state.cost_db.as_ref() {
                 if let Ok(mut conn) = mu.lock() {
-                    if let Some((disabled_at_us, reenable_at_us)) = disable {
+                    if let Some((rule, _, disabled_at_us, reenable_at_us)) = disable {
                         if let Err(e) = state.budget.persist_disable(
                             &conn,
-                            call_site_id,
+                            &attribution.call_site_id,
                             rule,
                             "shadow_divergence",
                             disabled_at_us,
@@ -1096,6 +1128,9 @@ fn optimize_record_divergence(py: Python<'_>, call_site_id: &str, rule: &str, di
                     }
                     if let Err(e) = state.budget.flush_divergence(&mut conn) {
                         eprintln!("[agentc-profiler] divergence flush failed: {e}");
+                    }
+                    if let Err(e) = state.plan_profiles.flush_dirty(&mut conn) {
+                        eprintln!("[agentc-profiler] plan_profiles flush failed: {e}");
                     }
                 }
             }

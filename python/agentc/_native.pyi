@@ -176,25 +176,24 @@ def optimize_model_catalog() -> str:
     """Return the active versioned model catalog as JSON."""
     ...
 
-def optimize_observe(plan_json: str, outcome_json: str) -> None:
-    """Feed an Outcome back into the cost model after a Plan dispatch.
+def optimize_observe(plan_json: str, outcome_json: str) -> str:
+    """Feed an Outcome back and return an opaque observation token.
 
     `plan_json` is the JSON that `optimize_plan` returned. `outcome_json`
     carries input_tokens / output_tokens / latency_ms / cost_usd /
-    output_is_structured / output_is_short. Internally fail-open — any
-    error is dropped.
+    output_is_structured / output_is_short. The returned token binds the exact
+    plan profile, runtime version, and execution sequence. An empty string
+    means observation failed open.
     """
     ...
 
-def optimize_record_divergence(call_site_id: str, rule: str, divergence: float) -> None:
-    """Record a shadow-mode divergence sample for a rule at a call site.
+def optimize_record_divergence(observation_token: str, divergence: float) -> None:
+    """Attach a shadow divergence to an exact observed execution.
 
-    Feeds the accuracy budget: five consecutive over-threshold samples for
-    `rule` at `call_site_id` disable the rule there. The divergence estimate
-    uses the configured exact newest-N window; its lifetime count, retained
-    samples, and current breach streak persist across lifecycle restarts.
-    Non-finite or out-of-range divergence is discarded without mutating state.
-    Internally fail-open — any error is dropped.
+    The token is returned by `optimize_observe` and is opaque to Python.
+    Duplicate token/value pairs are idempotent; stale or mismatched bindings
+    and non-finite or out-of-range divergence are discarded. Solo plans also
+    feed the compatibility rule guard. Internally fail-open.
     """
     ...
 

@@ -218,6 +218,45 @@ class TestSyncCreateWrapper:
         assert attrs["agentc.optimization.eligible"] is False
         assert attrs["agentc.optimization.decision_reason"] == "scope_excluded"
 
+    def test_observes_primary_before_shadow_reference(self, initialized: Path) -> None:
+        from agentc._optimizer import Plan
+
+        events: list[str] = []
+        plan = Plan(
+            kind="rewritten",
+            rule="OutputBudget",
+            call={"model": "gpt-4o", "messages": []},
+        )
+        response = MockChatCompletion()
+        observe = MagicMock(side_effect=lambda **_: events.append("observe"))
+
+        with patch("agentc._patches._openai._write_root_span"), patch(
+            "agentc._patches._openai._plan_openai_call",
+            return_value=(plan, "site"),
+        ), patch(
+            "agentc._patches._optimizer_glue.dispatch_sync",
+            return_value=response,
+        ), patch(
+            "agentc._patches._openai._observe_openai_outcome",
+            new=observe,
+        ), patch(
+            "agentc._patches._optimizer_glue.maybe_shadow_record",
+            side_effect=lambda *_: events.append("shadow"),
+        ), patch(
+            "agentc._patches._openai._now_us",
+            side_effect=[1_000_000, 1_100_000, 2_100_000],
+        ):
+            result = _wrap_create(
+                MagicMock(return_value=response),
+                None,
+                (),
+                {"model": "gpt-4o", "messages": []},
+            )
+
+        assert result is response
+        assert events == ["observe", "shadow"]
+        assert observe.call_args.kwargs["elapsed_s"] == pytest.approx(0.1)
+
     def test_captures_span(self, initialized: Path) -> None:
         written: list[dict[str, Any]] = []
         mock_response = MockChatCompletion()
@@ -329,7 +368,9 @@ class TestAsyncCreateWrapper:
             call={"model": "gpt-4o", "messages": []},
         )
         response = MockChatCompletion()
-        shadow = AsyncMock()
+        events: list[str] = []
+        shadow = AsyncMock(side_effect=lambda *_: events.append("shadow"))
+        observe = MagicMock(side_effect=lambda **_: events.append("observe"))
 
         with patch("agentc._patches._openai._write_root_span"), patch(
             "agentc._patches._openai._plan_openai_call",
@@ -340,7 +381,10 @@ class TestAsyncCreateWrapper:
         ), patch(
             "agentc._patches._optimizer_glue.maybe_shadow_record_async",
             new=shadow,
-        ), patch("agentc._patches._openai._observe_openai_outcome"):
+        ), patch(
+            "agentc._patches._openai._observe_openai_outcome",
+            new=observe,
+        ):
             result = await _wrap_create_async(
                 AsyncMock(return_value=response),
                 None,
@@ -351,6 +395,7 @@ class TestAsyncCreateWrapper:
         assert result is response
         shadow.assert_awaited_once()
         assert shadow.await_args.args[:3] == (plan, "site", response)
+        assert events == ["observe", "shadow"]
 
 
 class TestStreamingWrapper:

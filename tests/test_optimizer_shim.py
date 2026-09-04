@@ -9,7 +9,14 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from agentc._optimizer import PASS_THROUGH, Plan, model_catalog, observe_outcome, plan_call
+from agentc._optimizer import (
+    PASS_THROUGH,
+    Plan,
+    model_catalog,
+    observe_outcome,
+    plan_call,
+    record_divergence,
+)
 
 
 def test_pass_through_shape():
@@ -137,22 +144,27 @@ def test_observe_outcome_forwards_raw_json():
 
     def _observe(plan_json, outcome_json):
         captured.append((plan_json, outcome_json))
+        return "opaque-observation-token"
 
     with patch("agentc._optimizer._native.optimize_observe", side_effect=_observe):
         plan = Plan(kind="pass_through", raw_json='{"kind":"pass_through"}')
-        observe_outcome(plan, {"input_tokens": 5, "output_tokens": 3})
+        token = observe_outcome(plan, {"input_tokens": 5, "output_tokens": 3})
     assert len(captured) == 1
     assert captured[0][0] == '{"kind":"pass_through"}'
     assert '"input_tokens": 5' in captured[0][1]
+    assert token == "opaque-observation-token"
+    assert plan.observation_token == "opaque-observation-token"
 
 
 def test_observe_outcome_suppresses_native_failure():
     def boom(_a, _b):
         raise RuntimeError("native fail")
 
+    plan = Plan(kind="pass_through", observation_token="stale-token")
     with patch("agentc._optimizer._native.optimize_observe", side_effect=boom):
         # Must not raise.
-        observe_outcome(Plan(kind="pass_through"), {"input_tokens": 1, "output_tokens": 1})
+        observe_outcome(plan, {"input_tokens": 1, "output_tokens": 1})
+    assert plan.observation_token is None
 
 
 def test_observe_outcome_suppresses_unserializable_outcome():
@@ -165,3 +177,10 @@ def test_observe_outcome_suppresses_unserializable_outcome():
     with patch("agentc._optimizer._native.optimize_observe", side_effect=_observe):
         observe_outcome(Plan(kind="pass_through"), {"weird": object()})
     assert call_count["n"] == 0
+
+
+def test_record_divergence_forwards_only_opaque_token_and_value():
+    with patch("agentc._optimizer._native.optimize_record_divergence") as native:
+        record_divergence("opaque-observation-token", 0.25)
+
+    native.assert_called_once_with("opaque-observation-token", 0.25)

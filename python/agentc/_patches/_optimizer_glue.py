@@ -290,6 +290,36 @@ def _structured_output_requested(kwargs: dict[str, Any]) -> bool:
     return bool(isinstance(output_config, dict) and output_config.get("format"))
 
 
+def _structured_output_schema_version(kwargs: dict[str, Any]) -> str | None:
+    """Return a stable digest of the declared output contract, never its text."""
+    import hashlib
+
+    value = kwargs.get("response_format") or kwargs.get("output_format")
+    if value is None:
+        output_config = kwargs.get("output_config")
+        model_dump = getattr(output_config, "model_dump", None)
+        if callable(model_dump):
+            output_config = model_dump()
+        if isinstance(output_config, dict):
+            value = output_config.get("format")
+    if value is None:
+        return None
+
+    model_json_schema = getattr(value, "model_json_schema", None)
+    if callable(model_json_schema):
+        value = model_json_schema()
+    else:
+        model_dump = getattr(value, "model_dump", None)
+        if callable(model_dump):
+            value = model_dump()
+    try:
+        canonical = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    except (TypeError, ValueError):
+        value_type = value if isinstance(value, type) else type(value)
+        canonical = f"{value_type.__module__}.{value_type.__qualname__}"
+    return "structured-output-v1:" + hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def _route_context(
     kwargs: dict[str, Any],
     *,
@@ -302,7 +332,7 @@ def _route_context(
         kwargs.get("tools"),
     )
     image_input = _contains_image_input(native_values)
-    return {
+    context = {
         "provider_protocol": provider_protocol,
         "provider_namespace": provider_namespace,
         # Provider image accounting cannot be bounded from a URL alone. Force
@@ -315,6 +345,10 @@ def _route_context(
         "structured_outputs": _structured_output_requested(kwargs),
         "streaming": bool(kwargs.get("stream")),
     }
+    structured_output_schema_version = _structured_output_schema_version(kwargs)
+    if structured_output_schema_version is not None:
+        context["structured_output_schema_version"] = structured_output_schema_version
+    return context
 
 
 def _routed_target_metadata(mutated_call: dict[str, Any]) -> dict[str, Any] | None:
@@ -1045,7 +1079,11 @@ def _shadow_sample_rules(plan: Any, call_site_id: Optional[str]) -> list[str]:
         return []
 
     rules = _applied_rules(plan)
-    if not rules or not call_site_id:
+    if (
+        not rules
+        or not call_site_id
+        or not getattr(plan, "observation_token", None)
+    ):
         return []
     try:
         rate = float(os.environ.get("AGENTC_OPTIMIZE_SHADOW", "0.02"))
@@ -1060,7 +1098,7 @@ def _shadow_sample_rules(plan: Any, call_site_id: Optional[str]) -> list[str]:
 
 
 def _record_shadow_comparison(
-    rules: list[str],
+    plan: Any,
     call_site_id: str,
     optimized_response: Any,
     original_response: Any,
@@ -1080,8 +1118,9 @@ def _record_shadow_comparison(
     divergence = _text_divergence(opt_text, orig_text)
     from agentc._optimizer import record_divergence
 
-    for rule in rules:
-        record_divergence(call_site_id, rule, divergence)
+    observation_token = getattr(plan, "observation_token", None)
+    if observation_token:
+        record_divergence(observation_token, divergence)
 
 
 def maybe_shadow_record(
@@ -1111,7 +1150,7 @@ def maybe_shadow_record(
     try:
         original = run_original()
         _record_shadow_comparison(
-            rules,
+            plan,
             call_site_id,
             optimized_response,
             original,
@@ -1135,7 +1174,7 @@ async def maybe_shadow_record_async(
     try:
         original = await run_original()
         _record_shadow_comparison(
-            rules,
+            plan,
             call_site_id,
             optimized_response,
             original,

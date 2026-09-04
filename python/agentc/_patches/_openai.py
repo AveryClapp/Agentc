@@ -429,6 +429,15 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
                 run_mutated=_run_mutated,
                 decode_cached=_decode_cached_openai,
             )
+            primary_end_time = _now_us()
+            if call_site_id is not None:
+                _observe_openai_outcome(
+                    plan=plan,
+                    response=response,
+                    call_site_id=call_site_id,
+                    kwargs=kwargs,
+                    elapsed_s=(primary_end_time - start_time) / 1_000_000.0,
+                )
             # Shadow-mode accuracy sampling: on a fraction of rewritten
             # calls, run the unrewritten call and feed output divergence
             # to the accuracy budget so drifting rules auto-disable.
@@ -464,15 +473,6 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
 
         executed_model = resolve_executed_model_id(plan, response, kwargs.get("model"))
         req_attrs.update(dispatch_span_attributes(plan, executed_model))
-
-    if plan is not None and call_site_id is not None:
-        _observe_openai_outcome(
-            plan=plan,
-            response=response,
-            call_site_id=call_site_id,
-            kwargs=kwargs,
-            elapsed_s=(end_time - start_time) / 1_000_000.0,
-        )
 
     resp_attrs = _extract_response_attrs(response)
     req_attrs.update(resp_attrs)
@@ -676,6 +676,15 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
                 return await wrapped(*args, **new_kwargs)
 
             response = await dispatch(plan, run_original=_run_original, run_mutated=_run_mutated)
+            primary_end_time = _now_us()
+            if call_site_id is not None:
+                _observe_openai_outcome(
+                    plan=plan,
+                    response=response,
+                    call_site_id=call_site_id,
+                    kwargs=kwargs,
+                    elapsed_s=(primary_end_time - start_time) / 1_000_000.0,
+                )
             await maybe_shadow_record_async(
                 plan,
                 call_site_id,
@@ -713,15 +722,6 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
 
         executed_model = resolve_executed_model_id(plan, response, kwargs.get("model"))
         req_attrs.update(dispatch_span_attributes(plan, executed_model))
-
-    if plan is not None and call_site_id is not None:
-        _observe_openai_outcome(
-            plan=plan,
-            response=response,
-            call_site_id=call_site_id,
-            kwargs=kwargs,
-            elapsed_s=(end_time - start_time) / 1_000_000.0,
-        )
 
     resp_attrs = _extract_response_attrs(response)
     req_attrs.update(resp_attrs)

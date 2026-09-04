@@ -24,6 +24,7 @@ the historical guard results described below.
 | `guard_frontier.sh` | `tab:guard`, `fig:metric-tradeoff` | gpt-4o-mini, n=200, budget frontier tau in {0.10,0.20,0.30,0.50} |
 | `crossmodel_selectivity.sh` | `tab:xmodel` (one row) | n=100; run once per model family (below) |
 | `../guard_overhead_bench.py` | fresh complete-plan feedback overhead | `python -m bench.guard_overhead_bench`; structured Stage E0 output, CPU/SQLite only, no API |
+| `../optimizer_e2e_overhead.py` | complete native planning-call overhead, paired with the internal pre-audit clock | `python -m bench.optimizer_e2e_overhead`; release extension, SQLite only, no API |
 | `../../crates/agentc-optimizer/examples/exploration_preflight.rs` | bounded exploration persistence and accounting | `cargo run -p agentc-optimizer --example exploration_preflight --quiet`; structured Stage E0 output, SQLite only, no API |
 | `../../crates/agentc-optimizer/examples/joint_planner_preflight.rs` | live exact-profile joint selection and planning overhead | `cargo run --release -p agentc-optimizer --example joint_planner_preflight --quiet`; structured Stage E0 output, no API |
 | `../live_exploration_preflight.py` | production-adapter reference-visible exploration and restart admission | `python bench/live_exploration_preflight.py --output /tmp/live-exploration.json`; deterministic fake provider, no network |
@@ -254,6 +255,35 @@ fake-provider invocations.
 This is Stage E0 mechanism evidence with `network_calls=0` and
 `paper_evidence=false`. Its sub-millisecond local timings are not provider
 latency results and must not appear as efficacy evidence.
+
+### Complete optimizer-call overhead preflight
+
+The historical `plan_audit.overhead_us` clock ends before the synchronous audit
+write and before the native call returns to Python. The paired benchmark wraps
+the complete `_native.optimize_plan` call and then aligns each sample with its
+exact audit row:
+
+```bash
+maturin develop --release --manifest-path crates/agentc-profiler/Cargo.toml
+python -m bench.optimizer_e2e_overhead \
+  --build-profile release \
+  --output /tmp/optimizer-e2e-overhead.json \
+  --raw-output /tmp/optimizer-e2e-overhead.csv
+```
+
+The committed [summary](optimizer-e2e-overhead-2026-09-04.json) and
+[30,000 paired samples](optimizer-e2e-overhead-2026-09-04.csv) contain five
+2,000-call replications of three steady-state paths. Complete-call p50/p99 was
+104.208/350.833 us for guarded reference selection, 118.125/384.708 us for an
+admitted joint rewrite, and 75.667/286.583 us for the legacy greedy rewrite.
+The corresponding internal pre-audit medians were 65, 73, and 44 us. The paired
+residual includes the Python/Rust boundary, native-state lookup, audit
+serialization and commit, clock quantization, and return conversion; it must
+not be interpreted as an audit-only timer.
+
+This is a release-mode, zero-network, single-machine Stage E0 diagnostic. It
+validates full-call timing mechanics and shows sub-millisecond p99 on the
+recorded host, but remains `paper_evidence=false` under the frozen protocol.
 
 ### Joint policy campaign harness
 

@@ -6,14 +6,14 @@ buckets: 4KB, 8KB, 16KB, 32KB, 64KB.
 Data from bench/paper_results/overhead_scaling.csv:
   size_label,bytes,n_messages,mean_ms,p50_ms,p95_ms,p99_ms
   4KB,4096,4,0.384,0.333,0.619,0.721
-  8KB,8192,8,0.560,0.368,0.704,5.273  ← cold-start SQLite load visible in p99
+  8KB,8192,8,0.560,0.368,0.704,5.273  <- isolated p99 tail
   16KB,16384,12,0.460,0.457,0.590,0.597
   32KB,32768,16,0.595,0.526,0.870,1.685
   64KB,65536,24,0.769,0.710,1.105,1.263
 
-Key message: overhead is flat/sub-linear; stays well below 2 ms even at
-64 KB. The 8 KB p99 spike reflects cold-start SQLite cost-model loading
-(not prompt-size-dependent).
+This historical data uses the internal pre-audit planner clock. It does not
+include the outer FFI boundary or audit persistence, so the source of the 8 KB
+p99 tail cannot be inferred from this dataset alone.
 """
 
 from pathlib import Path
@@ -75,10 +75,10 @@ def main() -> None:
     ax.plot(x, p99, "^:",  color=LIGHT, lw=1.2, ms=4, label="p99",  zorder=3,
             markeredgecolor=EDGE, markeredgewidth=0.5)
 
-    # Annotate the 8KB p99 cold-start spike.
+    # Annotate the isolated 8KB p99 tail without asserting an unmeasured cause.
     spike_idx = 1  # 8KB
     ax.annotate(
-        "cold-start\nSQLite load",
+        "isolated\np99 tail",
         xy=(x[spike_idx], p99[spike_idx]),
         xytext=(x[spike_idx] + 0.5, p99[spike_idx] - 0.6),
         ha="left", va="top",
@@ -89,7 +89,7 @@ def main() -> None:
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
     ax.set_xlabel("Prompt size")
-    ax.set_ylabel("Planner overhead (ms)")
+    ax.set_ylabel("Internal planner time (ms)")
     ax.set_ylim(0, 6.2)
     ax.set_yticks([0, 1, 2, 3, 4, 5, 6])
     ax.spines["top"].set_visible(False)

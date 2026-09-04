@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 from bench.optimizer_e2e_overhead import (
     _bootstrap_mean_ci,
     _reset_native_optimizer,
     _summarize_ns,
+    _write_raw,
     run,
 )
 
@@ -28,6 +30,15 @@ def test_native_optimizer_is_reset_after_benchmark_failure() -> None:
     assert caught is not None
     assert str(caught) == "forced failure"
     assert resets == [None, None]
+
+
+def test_raw_csv_uses_repository_native_lf_endings(tmp_path: Path) -> None:
+    path = tmp_path / "raw.csv"
+    _write_raw(path, [])
+
+    payload = path.read_bytes()
+    assert payload.endswith(b"\n")
+    assert b"\r" not in payload
 
 
 def test_summarize_ns_reports_expected_order_statistics() -> None:

@@ -569,6 +569,7 @@ def _write_raw(path: Path, rows: Sequence[dict[str, Any]]) -> None:
                 "internal_pre_audit_ns",
                 "boundary_state_audit_residual_ns",
             ),
+            lineterminator="\n",
         )
         writer.writeheader()
         writer.writerows(rows)

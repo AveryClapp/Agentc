@@ -1319,6 +1319,7 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | A completed lease updates its exact paired plan profile once across replay | `ffi::tests::completed_counterfactual_updates_only_its_exact_paired_profile_once` |
 | Tool-bearing requests never receive the text-only exploration comparator | `ffi::tests::tool_bearing_request_never_receives_a_text_only_counterfactual` |
 | An over-budget envelope is canceled before candidate dispatch without spending call capacity | `ffi::tests::over_budget_envelope_can_be_cancelled_before_candidate_dispatch`, `tests/test_live_exploration_preflight.py::test_zero_total_overhead_budget_never_dispatches_counterfactual` |
+| Every timed complete optimizer call pairs with exactly one WAL-backed audit row and native state resets on benchmark failure | `tests/test_optimizer_e2e_overhead.py` |
 | OpenAI, Anthropic, and LiteLLM adapters return the reference before scheduling the candidate | `tests/test_openai_patch.py`, `tests/test_anthropic_patch.py`, `tests/test_litellm_patch.py` |
 | Sync and async candidate failure closes the lease without retrying the reference | `tests/test_optimizer_glue.py::TestBoundedExplorationPythonEntry` |
 | Async shutdown routes cancellation through the task's owning event loop | `tests/test_optimizer_glue.py::TestBoundedExplorationPythonEntry::test_cross_thread_async_cancel_is_scheduled_on_owning_loop` |
@@ -1377,6 +1378,18 @@ selection, and response encoding. It performs no provider calls and is
 permanently labeled `paper_evidence=false`; the committed development-machine
 record is `bench/repro/joint-planner-preflight-2026-09-04.json`.
 
+`bench/optimizer_e2e_overhead.py` wraps the complete Python-to-native
+`optimize_plan` call and pairs every wall-clock sample with the exact
+`plan_audit.overhead_us` row written by that call. Unlike the audit field, the
+outer clock includes optimizer-state lookup, the FFI boundary, synchronous
+audit serialization and commit, and return conversion. The paired residual is
+therefore deliberately labeled as a combined boundary/state/audit residual,
+not audit-write latency. The committed release-mode record contains five
+2,000-call replications per path and is
+`bench/repro/optimizer-e2e-overhead-2026-09-04.json`, with checksummed raw
+samples beside it. It is a single-machine Stage E0 diagnostic and is permanently
+labeled `paper_evidence=false`.
+
 ### Performance targets
 
 Plan benchmarks live in `bench/optimizer_bench.py`. The release-mode bounded
@@ -1385,7 +1398,11 @@ window diagnostic lives in
 Stage E0 engineering evidence rather than a paper benchmark. The release-mode
 live joint-planner diagnostic above also remains Stage E0; its three recorded
 20,000-call replications had a 127.25 us median p50 and 303.833 us maximum p99
-for a four-candidate search on the recorded arm64 development machine.
+for a four-candidate search on the recorded arm64 development machine. The
+complete-call diagnostic had pooled p50/p99 of 104.208/350.833 us for guarded
+reference selection and 118.125/384.708 us for an admitted joint rewrite on the
+same class of host. These values include the WAL-backed audit write but do not
+replace the frozen campaign's end-to-end latency measurements.
 
 | Metric | Target | Measurement |
 |---|---|---|

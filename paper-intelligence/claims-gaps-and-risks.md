@@ -1,7 +1,7 @@
 ---
 title: Claims, Gaps, and Risks
 status: active
-last-updated: 2026-05-11
+last-updated: 2026-09-04
 owner: paper-intelligence
 ---
 
@@ -26,7 +26,7 @@ Supersedes:
 
 AgentC has a solid workshop/short-paper shape and is approaching plausibility for a systems venue short paper. The claim is now sharper: **a runtime control plane for framework-emitted, multi-step LLM agent traces that applies several rewrite classes compositionally under one policy, with a cost-driver orthogonality framework that avoids the composition errors a greedy planner makes.**
 
-The current evidence supports: targeted savings for `ContextCompress` (34.8% tokens, RES-001) and `ModelDowngrade` (35.3% cost, RES-002); a direct LLMLingua-2 comparison with exact paired statistics showing favorable-fixture improvement (68%→100%, p=4.7×10⁻¹⁰) and natural-prose abstention (94.9%→94.9%, p=1.0); a planner ablation showing V2 avoids a concrete V1 greedy error (RES-010); sub-1ms optimizer overhead (RES-013). It does not yet support a broad claim that all eight rules are validated, that behavior is preserved in a semantics-level sense, or that AgentC is the first optimizer for LLM agents.
+The current evidence supports: targeted savings for `ContextCompress` (34.8% tokens, RES-001) and `ModelDowngrade` (35.3% cost, RES-002); a direct LLMLingua-2 comparison with exact paired statistics showing favorable-fixture improvement (68%→100%, p=4.7×10⁻¹⁰) and natural-prose abstention (94.9%→94.9%, p=1.0); and a planner ablation showing V2 avoids a concrete V1 greedy error (RES-010). A paired Stage E0 diagnostic measures the complete optimizer call below 0.4ms at p99 on one host (RES-013), but it is not confirmatory paper evidence. The evidence does not yet support a broad claim that all eight rules are validated, that behavior is preserved in a semantics-level sense, that complete-call overhead remains sub-millisecond across context sizes and concurrency, or that AgentC is the first optimizer for LLM agents.
 
 ## Safe Claims
 
@@ -42,7 +42,7 @@ The current evidence supports: targeted savings for `ContextCompress` (34.8% tok
 | `CLM-008` | supported | McNemar exact tests and 95% bootstrap CIs are computed for all headline accuracy claims. No test rejects accuracy degradation at α=0.05 for StateDrop, CC on natural prose, or CC+SD composition. | `RES-007`, `RES-008`, `RES-009`, `RES-010`, `RES-012` | Strong wording should say "does not significantly degrade" not "preserves." |
 | `CLM-009` | supported | ContextCompress operates at message granularity and correctly abstains when the structural precondition (identifiable low-attention messages) is absent. LLMLingua-2 compresses indiscriminately at token granularity regardless of fixture structure. | `RES-007`, `RES-008` | Dual-regime result; cite both fixtures together. |
 | `CLM-010` | supported | The V2 CompositionPlanner's cost-driver orthogonality gate avoids a concrete greedy composition error (V1-CC+OB −2pp; V2-CC+OB +0pp) on a controlled workload. | `RES-010` | n=50, p=0.0412 borderline; V2-CC+PD not testable due to model drift. |
-| `CLM-011` | supported | Optimizer overhead is sub-millisecond in steady state (pass-through p50=76µs, rewrite p50=120µs), three orders of magnitude below LLM round-trip latency. | `RES-013` | Tail (p99=21ms) from first-call SQLite load; steady-state is the claim. |
+| `CLM-011` | diagnostic | In a release-mode Stage E0 diagnostic on one arm64 host, complete-call p50/p99 is 104/351µs for guarded reference selection and 118/385µs for an admitted joint rewrite. | `RES-013` | No provider, concurrency, or context-size matrix; `paper_evidence=false`. Historical 76/120µs values use a pre-audit clock. |
 
 ## Unsafe Claims
 
@@ -74,7 +74,7 @@ The current evidence supports: targeted savings for `ContextCompress` (34.8% tok
 | `GAP-012` | medium (compression closed, routing/caching open) | Direct baseline missing for routing (RouteLLM/FrugalGPT) and caching (vCache). LLMLingua-2 compression baseline done (RES-007/RES-008). | EXP-008 | Routing and caching baselines remain cite-only for now. |
 | `GAP-013` | medium | `StateDrop` needs a concrete dependency/read-window model. | `CLM-004` | Dependency model paragraph drafted in `draft-paper-edits.md §3`; needs to be inserted into §4 of the .tex. |
 | `GAP-014` | ~~high~~ **closed** | ~~Stochastic evaluation needs repeated-run or paired uncertainty treatment.~~ | EXP-006/RES-007/RES-008/RES-009/RES-010/RES-012 | McNemar exact tests (statsmodels) and bootstrap CIs computed for all headline accuracy claims. Methodology paragraph drafted in `draft-paper-edits.md §6`. |
-| `GAP-015` | ~~high~~ **closed** | ~~Runtime overhead, fallback behavior, and operational failure modes are not summarized.~~ | EXP-007/RES-013 | 1,818 plan decisions measured; paper-ready paragraph in `bench/paper_results/optimizer_overhead.txt`. |
+| `GAP-015` | high, partially measured | Complete-call steady-state overhead is measured, but context-size scaling, concurrency, cold start, and confirmatory end-to-end latency remain open. | `CLM-011` | Use the paired Stage E0 harness as a base; run `bd-tp3f` and the frozen Stage C/P/T campaign before promotion. |
 | `GAP-016` | medium | Serving-system orthogonality needs crisp explanation. | Systems framing | Use serving sources to separate application-level rewrites from serving internals. |
 
 ## Reviewer Risk Register
@@ -124,7 +124,7 @@ The current evidence supports: targeted savings for `ContextCompress` (34.8% tok
 | `QST-004` | positioning | How narrow should novelty be against close systems? | Very narrow: framework-call interception plus multi-rule trace rewriting. |
 | `QST-005` | method | What does behavior-preserving mean? | Use metric/tolerance-bounded wording, not semantic equivalence. |
 | `QST-006` | experiment | Can we produce one workload where multiple rewrite rules fire together? | Highest-value next experiment for MLSys/ATC. |
-| `QST-007` | systems | What are interception overhead and latency-tail effects? | Required for systems venues. |
+| `QST-007` | systems | What are interception overhead and latency-tail effects? | Fixed-shape steady state is measured at Stage E0; context-size, concurrency, cold-start, and campaign-level effects remain required. |
 
 ## Ordered Weak-Point Plan
 

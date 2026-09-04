@@ -828,16 +828,25 @@ support\_qa         & unseen cold agent     & correct abstain      & $\sim$0\% &
 \footnotesize{$\S$Together AI cost model not in Agentc pricing table; input-token savings shown in Tok column.}
 \end{table*}
 
-Optimizer overhead, measured across 1{,}818 plan decisions captured in the
-\texttt{plan\_audit} table, has median 76\,\textmu s on the pass-through path (the
-common case when no rule fires) and median 120\,\textmu s on the rewrite path. The
-pass-through distribution is bimodal: cold-start cost-model loads on first call-site
-invocation account for the p99 = 21\,ms tail, while warm-state pass-through stays
-below 100\,\textmu s. The rewrite path is tighter (p95 = 0.35\,ms, p99 = 1.2\,ms).
-Overhead scales sub-linearly with context length: p50 grows from 0.33\,ms to
-0.71\,ms over a 16$\times$ size range (4\,KB to 64\,KB). All overhead is at least
-three orders of magnitude below typical LLM round-trip latency. The flat overhead
-profile under concurrency is attributable to the execution-optimizer decoupling
+The \texttt{plan\_audit.overhead\_us} clock used for the historical
+1{,}818-decision result stops before the synchronous audit write and the outer
+Python--Rust return. Its 76\,\textmu s pass-through and 120\,\textmu s rewrite
+medians are therefore internal diagnostics, not complete interception overhead.
+We added a paired release-mode Stage~E0 microbenchmark that wraps the full native
+call and aligns every sample with its exact audit row. Across five 2{,}000-call
+replications per path, full-call p50/p99 was 0.104/0.351\,ms for guarded reference
+selection, 0.118/0.385\,ms for an admitted joint rewrite, and 0.076/0.287\,ms for
+the legacy greedy rewrite. The paired internal medians were 0.065, 0.073, and
+0.044\,ms, respectively. Their difference combines the FFI boundary, native-state
+lookup, audit serialization and commit, clock quantization, and return conversion;
+it is not an audit-only timer. These E0 measurements keep p99 below 1\,ms on the
+recorded host, but the frozen protocol excludes them from confirmatory latency
+claims.
+
+Separately, the historical internal-clock context-size sweep grows from
+0.33\,ms to 0.71\,ms at p50 over a 16$\times$ size range (4\,KB to 64\,KB); it
+does not measure the full FFI path. The flat overhead profile under concurrency
+is attributable to the execution-optimizer decoupling
 described in Section~\ref{sec:decoupling}: because the optimizer holds no shared
 mutable state across concurrent calls and never manages threads, it does not become
 a serialization point under parallel workloads. Figure~\ref{fig:throughput} confirms
@@ -847,12 +856,11 @@ baseline and optimized p50 latency stays at or below baseline.
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig7_overhead_scaling.pdf}
-\caption{Planner overhead scales sub-linearly with context length.
+\caption{Historical internal planner-clock diagnostic versus context length.
 p50 grows from 0.33\,ms to 0.71\,ms over a 16$\times$ size range
-(4\,KB to 64\,KB); p95 stays under 1.5\,ms throughout. The p99
-spike at 8\,KB is a SQLite audit write, not IDF computation. All
-overhead remains three orders of magnitude below typical LLM
-round-trip latency.}
+(4\,KB to 64\,KB); p95 stays under 1.5\,ms throughout. This legacy
+clock excludes the outer FFI boundary and audit persistence. Its isolated
+8\,KB p99 tail therefore cannot be attributed to the audit write.}
 \label{fig:overhead}
 \end{figure}
 
@@ -1949,8 +1957,10 @@ accuracy guard (Section~\ref{sec:eval-guard}). Input-token savings are within 1\
 three model providers (OpenAI, Anthropic, open-source Llama-3.3-70B) when structural
 preconditions are met. A CompositionPlanner grounded in cost-driver orthogonality
 combines compatible rules to near-additive savings (95.2\% of ideal for orthogonal
-pairs). Planner overhead is sub-millisecond and flat across a 16$\times$ context
-range. The methodology introduced here, comprising shared-baseline ablation,
+pairs). A paired complete-call Stage~E0 diagnostic stays below 0.4\,ms at p99 on
+the recorded host; confirmatory context-size and concurrency measurements remain
+part of the frozen evaluation campaign. The methodology introduced here, comprising
+shared-baseline ablation,
 input-token attribution as a deterministic signal, and McNemar exact testing on
 per-task pass/fail vectors, addresses a general measurement problem for
 optimizer-style runtimes against stochastic LLM outputs and is applicable beyond the
@@ -2053,6 +2063,11 @@ in-script \texttt{agentc.shutdown()} seeds the cache between runs \\
 \S\ref{sec:eval-guard} (guard overhead) &
 Stage~E0 local diagnostic (no API; not paper evidence) &
 \texttt{python -m bench.guard\_\allowbreak overhead\_\allowbreak bench} \\
+
+\addlinespace
+Optimizer complete-call overhead &
+\texttt{optimizer-e2e-overhead-2026-09-04.\{json,csv\}} (Stage~E0) &
+\texttt{python -m bench.optimizer\_\allowbreak e2e\_\allowbreak overhead} \\
 
 \addlinespace
 \ref{fig:throughput} &

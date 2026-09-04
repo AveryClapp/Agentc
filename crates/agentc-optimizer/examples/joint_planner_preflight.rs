@@ -6,11 +6,12 @@ use std::time::Instant;
 
 use agentc_optimizer::ffi::{attach_observation_context, optimize_profiled_plan};
 use agentc_optimizer::{
-    default_model_catalog, Budget, Call, CostModel, CostModelUpdate, DepSource,
-    ModelDowngradeRule, Optimizer, OptimizerConfig, OutputBudgetRule, Parameters, Plan,
-    PlanGuard, PlanProfileKey, PlanProfileUpdate, PlanProfiles, PlanRuntimeVersion, RewriteRule,
-    OPENAI_CHAT_COMPLETIONS_PROTOCOL,
+    default_model_catalog, schema::ensure_cost_model_schema, Budget, Call, CostModel,
+    CostModelUpdate, DepSource, ModelDowngradeRule, Optimizer, OptimizerConfig,
+    OutputBudgetRule, Parameters, Plan, PlanGuard, PlanProfileKey, PlanProfileUpdate,
+    PlanProfiles, PlanRuntimeVersion, RewriteRule, OPENAI_CHAT_COMPLETIONS_PROTOCOL,
 };
+use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -104,13 +105,19 @@ fn main() -> Result<(), Box<dyn Error>> {
             observed_at_us: Some(observed_at_us),
         })?;
     }
+    let directory = tempfile::tempdir()?;
+    let mut connection = Connection::open(directory.path().join("cost_model.db"))?;
+    ensure_cost_model_schema(&connection)?;
+    profiles.flush_dirty(&mut connection)?;
+    let restarted_profiles = PlanProfiles::new();
+    restarted_profiles.warm_from_db(&connection)?;
     let guard = PlanGuard::new();
 
     for _ in 0..WARMUP_CALLS {
         let _ = optimize_profiled_plan(
             &optimizer,
             Some(&catalog),
-            &profiles,
+            &restarted_profiles,
             &guard,
             &call_json,
             NOW_US,
@@ -126,7 +133,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let selected = optimize_profiled_plan(
             &optimizer,
             Some(&catalog),
-            &profiles,
+            &restarted_profiles,
             &guard,
             &call_json,
             NOW_US,

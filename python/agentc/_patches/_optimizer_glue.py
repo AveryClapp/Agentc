@@ -58,6 +58,10 @@ _exploration_tasks: dict[Any, Any] = {}
 class UnsafeModelRouteError(ValueError):
     """A plan attempted a model change outside its declared dispatch contract."""
 
+
+class UnsafeCallMutationError(ValueError):
+    """A plan attempted a request mutation outside the adapter's safe contract."""
+
 # Sticky ignored modules — frames inside these are infrastructure, not the
 # call site we want to attribute optimization decisions to. The wrapper
 # `bench.agents._runtime.call_llm` is *not* skipped: if a user routes all
@@ -854,16 +858,25 @@ def apply_call_mutations_anthropic(
     msgs = mutated_call.get("messages")
     if msgs is not None and not _call_has_opaque_native_messages(mutated_call):
         anthro_msgs = []
-        system_text = None
+        system_texts = []
         for m in msgs:
             role = m.get("role", "user")
             content = m.get("content", "")
             if role == "system":
-                system_text = content
+                system_texts.append(content)
             else:
                 anthro_msgs.append({"role": role, "content": content})
-        if system_text is not None:
-            new_kwargs["system"] = system_text
+
+        original_system = kwargs.get("system")
+        expected_systems = [original_system] if original_system else []
+        if system_texts != expected_systems:
+            raise UnsafeCallMutationError(
+                "Anthropic text rewrites must preserve the exact system prompt"
+            )
+        if system_texts:
+            new_kwargs["system"] = system_texts[0]
+        else:
+            new_kwargs.pop("system", None)
         new_kwargs["messages"] = anthro_msgs
 
     params = mutated_call.get("parameters") or {}

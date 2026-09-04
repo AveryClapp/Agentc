@@ -15,6 +15,7 @@ from agentc._patches._optimizer_glue import (
     ANTHROPIC_MESSAGES_PROTOCOL,
     LITELLM_COMPLETION_PROTOCOL,
     OPENAI_CHAT_COMPLETIONS_PROTOCOL,
+    UnsafeCallMutationError,
     UnsafeModelRouteError,
     _cancel_async_exploration_task,
     _structured_output_schema_version,
@@ -383,6 +384,94 @@ def test_anthropic_osworld_shape_survives_parameter_and_model_rewrite() -> None:
     assert new_kwargs["messages"] == kwargs["messages"]
     assert new_kwargs["model"] == "claude-haiku-4-5-20251001"
     assert new_kwargs["max_tokens"] == 128
+
+
+def test_anthropic_system_removal_fails_closed_to_exact_original() -> None:
+    from agentc._optimizer import Plan
+
+    original_messages = [{"role": "user", "content": "keep me"}]
+    kwargs = {
+        "model": "claude-sonnet-4-5-20250929",
+        "system": "Keep this safety policy.",
+        "messages": original_messages,
+        "max_tokens": 256,
+    }
+    mutated = _build_anthropic(kwargs)
+    assert "agentc_native_messages_opaque" not in mutated["parameters"]["extra"]
+    mutated["messages"] = [
+        message for message in mutated["messages"] if message["role"] != "system"
+    ]
+    plan = Plan(kind="rewritten", rule="PromptDedup", call=mutated)
+    original_calls = 0
+    mutated_attempts = 0
+
+    def run_original() -> str:
+        nonlocal original_calls
+        original_calls += 1
+        assert kwargs["system"] == "Keep this safety policy."
+        assert kwargs["messages"] is original_messages
+        return "reference"
+
+    def run_mutated(mutated_call: dict) -> str:
+        nonlocal mutated_attempts
+        mutated_attempts += 1
+        apply_call_mutations_anthropic(kwargs, mutated_call)
+        return "unreachable"
+
+    response = dispatch_sync(
+        plan,
+        run_original=run_original,
+        run_mutated=run_mutated,
+    )
+
+    assert response == "reference"
+    assert original_calls == 1
+    assert mutated_attempts == 1
+    assert plan.dispatch_fallback is True
+    assert plan.dispatch_fallback_reason == "mutated_dispatch_failed"
+
+
+@pytest.mark.parametrize(
+    "mutated_systems",
+    [
+        ["Changed safety policy."],
+        ["Keep this safety policy.", "Second system prompt."],
+    ],
+)
+def test_anthropic_system_replacement_or_duplication_is_rejected(
+    mutated_systems: list[str],
+) -> None:
+    kwargs = {
+        "model": "claude-sonnet-4-5-20250929",
+        "system": "Keep this safety policy.",
+        "messages": [{"role": "user", "content": "hello"}],
+    }
+    mutated = _build_anthropic(kwargs)
+    mutated["messages"] = [
+        *({"role": "system", "content": content} for content in mutated_systems),
+        {"role": "user", "content": "hello"},
+    ]
+
+    with pytest.raises(UnsafeCallMutationError, match="system prompt"):
+        apply_call_mutations_anthropic(kwargs, mutated)
+
+
+def test_anthropic_text_rewrite_preserves_system_and_deletes_user_message() -> None:
+    kwargs = {
+        "model": "claude-sonnet-4-5-20250929",
+        "system": "Keep this safety policy.",
+        "messages": [
+            {"role": "user", "content": "drop me"},
+            {"role": "user", "content": "keep me"},
+        ],
+    }
+    mutated = _build_anthropic(kwargs)
+    mutated["messages"] = [mutated["messages"][0], mutated["messages"][2]]
+
+    new_kwargs = apply_call_mutations_anthropic(kwargs, mutated)
+
+    assert new_kwargs["system"] == "Keep this safety policy."
+    assert new_kwargs["messages"] == [{"role": "user", "content": "keep me"}]
 
 
 def test_plain_text_messages_remain_structurally_rewritable() -> None:

@@ -89,3 +89,10 @@ def test_small_run_pairs_every_ffi_call_with_one_wal_audit_row() -> None:
         replication["audit_journal_mode"] == "wal"
         for replication in result["replications"]
     )
+    assert all(
+        replication["audit_writer"]["pending_rows"] == 0
+        and replication["audit_writer"]["dropped_full_rows"] == 0
+        and replication["audit_writer"]["dropped_disconnected_rows"] == 0
+        and replication["audit_writer"]["write_failed_rows"] == 0
+        for replication in result["replications"]
+    )

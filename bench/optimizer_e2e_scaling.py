@@ -3,9 +3,10 @@
 This is the scaling companion to :mod:`bench.optimizer_e2e_overhead`. It times
 the complete ``_native.optimize_plan`` FFI call while varying the exact
 serialized call size and the number of Python threads issuing calls against one
-hot call site. Every timed call carries a replication-unique span ID, which pairs its outer
-wall-clock duration with the exact ``plan_audit.overhead_us`` row written by
-that call even when completion order differs from audit order.
+hot call site. Every timed call carries a replication-unique span ID, which
+pairs its outer wall-clock duration with the exact
+``plan_audit.overhead_us`` row written by that call even when completion order
+differs from audit order.
 
 No provider is called. Build the extension in release mode before producing a
 committed Stage E0 artifact::
@@ -265,6 +266,7 @@ def _measure_replication(
                 raise RuntimeError(f"{scenario} changed plan kind during warmup")
 
         audit_path = storage / "optimizer_audit.db"
+        _native.optimize_flush()
         first_measured_audit_id = e2e._max_audit_id(audit_path)
         call_jsons = [
             (
@@ -276,6 +278,17 @@ def _measure_replication(
         group_elapsed_ns, measured = _measure_concurrent_calls(
             call_jsons, concurrency=concurrency
         )
+
+        _native.optimize_flush()
+        audit_writer = json.loads(_native.optimize_audit_stats())
+        if (
+            not audit_writer.get("available")
+            or audit_writer.get("pending_rows") != 0
+            or audit_writer.get("dropped_full_rows") != 0
+            or audit_writer.get("dropped_disconnected_rows") != 0
+            or audit_writer.get("write_failed_rows") != 0
+        ):
+            raise RuntimeError(f"audit writer did not drain cleanly: {audit_writer}")
 
         # Close the native writer before reading its WAL through Python's
         # separately linked SQLite driver. Under high thread counts that reader
@@ -379,6 +392,7 @@ def _measure_replication(
             "configure_us": configure_ns / 1_000.0,
             "first_cold_call_us": first_call_ns / 1_000.0,
             "audit_journal_mode": journal_mode,
+            "audit_writer": audit_writer,
             "group_elapsed_ms": group_elapsed_ns / 1_000_000.0,
             "throughput_calls_per_second": (
                 calls_per_cell * 1_000_000_000.0 / group_elapsed_ns
@@ -642,7 +656,7 @@ def run(
             "native optimizer-state lookup",
             "JSON decode and encode",
             "complete-plan enumeration, guard lookup, and selection",
-            "synchronous plan_audit serialization and SQLite commit",
+            "plan_audit row construction and bounded non-blocking enqueue",
             "conversion and return of the Python plan string",
         ],
         "throughput_scope": [
@@ -653,16 +667,16 @@ def run(
         "paired_internal_clock_scope": [
             "native planning after optimizer-state lookup",
             "optional exploration reservation (disabled in this experiment)",
-            "excludes write_plan_audit and the outer FFI boundary",
+            "excludes enqueue_plan_audit and the outer FFI boundary",
         ],
         "interpretation_limits": [
             "This is a repeated single-machine Stage E0 systems microbenchmark, not task-quality or savings evidence.",
             "Inputs are fixed-structure synthetic ASCII JSON records sized by serialized UTF-8 bytes; this isolates request-byte scaling, not tokenizer or semantic complexity.",
-            "Threads share one hot call site and one optimizer audit connection per cell; this intentionally exposes production-path lock contention.",
+            "Threads share one hot call site and one bounded optimizer audit queue per cell; this exposes request-path contention without placing the ordered SQLite flush inside the clock.",
             "Inputs and outcomes are deterministic synthetic records; no provider or network is invoked.",
-            "The paired residual combines boundary, state lookup, audit serialization/commit, clock quantization, and return conversion; it is not an audit-only timer.",
+            "The paired residual combines boundary, state lookup, audit-row construction/enqueue, clock quantization, and return conversion; it is not an audit-only timer.",
             "The build profile is operator-attested; the native extension hash pins the measured binary.",
-            "WAL checkpoint tails and normal host scheduling remain part of the production-path measurement.",
+            "The ordered audit flush and SQLite commit are outside the request-path clock; normal host scheduling remains inside it.",
         ],
     }
     return result, raw

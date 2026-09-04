@@ -92,6 +92,17 @@ def test_native_audit_persists_candidate_rejections(
     )
     assert "diagnostic input" not in json.dumps(diagnostics)
 
+    _native.optimize_flush()
+    audit_stats = json.loads(_native.optimize_audit_stats())
+    assert audit_stats["available"] is True
+    assert audit_stats["attempted_rows"] == 4
+    assert audit_stats["accepted_rows"] == 4
+    assert audit_stats["written_rows"] == 4
+    assert audit_stats["pending_rows"] == 0
+    assert audit_stats["dropped_full_rows"] == 0
+    assert audit_stats["dropped_disconnected_rows"] == 0
+    assert audit_stats["write_failed_rows"] == 0
+
     with sqlite3.connect(storage / "optimizer_audit.db") as connection:
         persisted = connection.execute(
             "SELECT planner_diagnostics_json FROM plan_audit "
@@ -100,6 +111,30 @@ def test_native_audit_persists_candidate_rejections(
         ).fetchone()
     assert persisted is not None
     assert json.loads(persisted[0]) == diagnostics
+
+
+def test_reconfigure_and_reset_drain_the_previous_audit_writer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AGENTC_OPTIMIZE_EXPLORATION", "0")
+    first_storage = tmp_path / "first"
+    second_storage = tmp_path / "second"
+
+    _native.optimize_configure(str(first_storage))
+    _native.optimize_plan(json.dumps(_call("tests.planner:first-store")))
+
+    # Reconfiguration must establish a barrier for the old store before it
+    # installs the new writer.
+    _native.optimize_configure(str(second_storage))
+    with sqlite3.connect(first_storage / "optimizer_audit.db") as connection:
+        first_count = connection.execute("SELECT COUNT(*) FROM plan_audit").fetchone()
+    assert first_count == (1,)
+
+    _native.optimize_plan(json.dumps(_call("tests.planner:second-store")))
+    _native.optimize_reset()
+    with sqlite3.connect(second_storage / "optimizer_audit.db") as connection:
+        second_count = connection.execute("SELECT COUNT(*) FROM plan_audit").fetchone()
+    assert second_count == (1,)
 
 
 def test_malformed_objective_disables_optimization_and_exploration(
@@ -128,7 +163,9 @@ def test_invalid_global_divergence_override_fails_safe(
     storage = tmp_path / "agentc"
     _native.optimize_configure(str(storage))
 
-    plan = json.loads(_native.optimize_plan(json.dumps(_call("tests.planner:threshold"))))
+    plan = json.loads(
+        _native.optimize_plan(json.dumps(_call("tests.planner:threshold")))
+    )
     diagnostics = plan["agentc_planner_diagnostics"]
     assert plan["kind"] == "pass_through"
     assert "agentc_exploration_context" not in plan
@@ -215,7 +252,9 @@ enabled = false
     monkeypatch.setenv("AGENTC_OPTIMIZE_OBJECTIVE", "cost")
     _native.optimize_configure(str(storage), str(config_path))
 
-    plan = json.loads(_native.optimize_plan(json.dumps(_call("tests.planner:precedence"))))
+    plan = json.loads(
+        _native.optimize_plan(json.dumps(_call("tests.planner:precedence")))
+    )
     risk = plan["agentc_planner_diagnostics"]["risk"]
     assert risk["objective"] == "cost"
     assert risk["exploration_enabled"] is False
@@ -237,7 +276,9 @@ objectiv = "latency"
     )
     _native.optimize_configure(str(storage), str(config_path))
 
-    plan = json.loads(_native.optimize_plan(json.dumps(_call("tests.planner:bad-toml"))))
+    plan = json.loads(
+        _native.optimize_plan(json.dumps(_call("tests.planner:bad-toml")))
+    )
     diagnostics = plan["agentc_planner_diagnostics"]
     assert plan["kind"] == "pass_through"
     assert "agentc_exploration_context" not in plan

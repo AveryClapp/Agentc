@@ -234,8 +234,8 @@ def shutdown(timeout_ms: int = 5000) -> None:
             drain_exploration(timeout_ms)
         except BaseException:
             logger.debug("exploration drain failed (suppressed)", exc_info=True)
-        # Force-flush cost profiles and guard divergence so final partial
-        # state lands in cost_model.db before the process exits.
+        # Drain accepted plan audits, then force-flush cost profiles and guard
+        # divergence so final partial state lands before the process exits.
         try:
             from agentc import _native
 

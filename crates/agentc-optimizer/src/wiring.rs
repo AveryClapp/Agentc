@@ -78,9 +78,8 @@ fn provider_hint() -> String {
         .to_lowercase()
 }
 
-/// Bundle returned from [`build_optimizer`]. Caller (the FFI layer) holds
-/// the audit connection separately so it can write `plan_audit` rows
-/// without re-opening the DB on every call.
+/// Bundle returned from [`build_optimizer`]. The FFI layer transfers the audit
+/// connection to its persistence worker so no call re-opens the database.
 pub struct Wired {
     pub optimizer: Arc<Optimizer>,
     pub cost_model: Arc<CostModel>,
@@ -89,8 +88,8 @@ pub struct Wired {
     pub exploration_controller: ExplorationController,
     pub model_catalog: Arc<ModelCatalog>,
     pub budget: Arc<Budget>,
-    /// Connection to `optimizer_audit.db`. The FFI layer wraps it in a
-    /// `Mutex` and uses it for synchronous `plan_audit` inserts.
+    /// Connection to `optimizer_audit.db`. The FFI layer moves it to the sole
+    /// background writer.
     pub audit_conn: Connection,
 }
 
@@ -172,10 +171,10 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
     let audit_path = storage_dir.join("optimizer_audit.db");
     let audit_conn =
         Connection::open(&audit_path).with_context(|| format!("open {:?}", audit_path))?;
-    // The audit DB is written once per plan call. Without WAL, SQLite runs
+    // The audit DB receives one row per accepted plan audit. Without WAL, SQLite runs
     // journal_mode=DELETE + synchronous=FULL and fsyncs a rollback journal on
-    // EVERY write — on the user's LLM-call path (bd-gzm). WAL + NORMAL removes
-    // the per-call fsync while keeping crash-safety.
+    // EVERY transaction. WAL + NORMAL keeps background batches cheap while
+    // retaining SQLite's process-crash guarantees for committed transactions.
     set_write_pragmas(&audit_conn).context("set audit pragmas")?;
     ensure_audit_schema(&audit_conn).context("ensure audit schema")?;
 

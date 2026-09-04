@@ -1,11 +1,12 @@
-"""Measure the complete native optimizer call, including its audit write.
+"""Measure the complete native optimizer call, including audit enqueue.
 
 The historical optimizer-overhead result comes from ``plan_audit.overhead_us``.
 That clock stops immediately before ``write_plan_audit``. This benchmark pairs
 that internal value with wall-clock timing around the complete
 ``_native.optimize_plan`` call, so the residual includes native state lookup,
-the Python/Rust boundary, synchronous audit serialization and SQLite commit,
-and conversion of the returned Python string.
+the Python/Rust boundary, audit-row construction and bounded non-blocking
+enqueue, and conversion of the returned Python string. The ordered persistence
+flush is deliberately outside the timed request path.
 
 No provider is called. Run a release-built extension for the committed Stage E0
 artifact:
@@ -98,7 +99,9 @@ def _outcome(site: str, *, candidate: bool) -> dict[str, Any]:
 
 @contextmanager
 def _isolated_agentc_environment(settings: dict[str, str]) -> Iterator[None]:
-    saved = {key: value for key, value in os.environ.items() if key.startswith("AGENTC_")}
+    saved = {
+        key: value for key, value in os.environ.items() if key.startswith("AGENTC_")
+    }
     for key in list(os.environ):
         if key.startswith("AGENTC_"):
             os.environ.pop(key, None)
@@ -137,12 +140,17 @@ def _admit_joint_rewrite(call_json: str, candidate_outcome_json: str) -> None:
             raise RuntimeError("greedy calibration did not produce OutputBudget")
         token = str(_native.optimize_observe(plan_json, candidate_outcome_json))
         if not token:
-            raise RuntimeError("candidate calibration did not produce an observation token")
+            raise RuntimeError(
+                "candidate calibration did not produce an observation token"
+            )
         _native.optimize_record_divergence(token, 0.0)
     os.environ["AGENTC_EVAL_PLANNER_MODE"] = "joint_guarded"
     admitted = json.loads(_native.optimize_plan(call_json))
     diagnostics = admitted.get("agentc_planner_diagnostics", {})
-    if admitted.get("kind") != "rewritten" or diagnostics.get("selected_reference") is not False:
+    if (
+        admitted.get("kind") != "rewritten"
+        or diagnostics.get("selected_reference") is not False
+    ):
         raise RuntimeError("exact paired evidence did not admit the joint candidate")
 
 
@@ -255,12 +263,16 @@ def _measure_replication(
             raise RuntimeError("the first cold call was not pass-through")
         first_token = str(_native.optimize_observe(first_plan, reference_outcome_json))
         if not first_token:
-            raise RuntimeError("the first cold call did not produce an observation token")
+            raise RuntimeError(
+                "the first cold call did not produce an observation token"
+            )
         for _ in range(2):
             plan_json = _native.optimize_plan(call_json)
             token = str(_native.optimize_observe(plan_json, reference_outcome_json))
             if not token:
-                raise RuntimeError("reference warmup did not produce an observation token")
+                raise RuntimeError(
+                    "reference warmup did not produce an observation token"
+                )
 
         if scenario == "joint_admitted_rewrite":
             _admit_joint_rewrite(call_json, candidate_outcome_json)
@@ -268,7 +280,9 @@ def _measure_replication(
             if _plan_kind(_native.optimize_plan(call_json)) != "rewritten":
                 raise RuntimeError("greedy scenario did not activate OutputBudget")
         elif _plan_kind(_native.optimize_plan(call_json)) != "pass_through":
-            raise RuntimeError("joint reference scenario unexpectedly admitted a candidate")
+            raise RuntimeError(
+                "joint reference scenario unexpectedly admitted a candidate"
+            )
 
         expected_kind = "pass_through" if scenario == "joint_reference" else "rewritten"
         for _ in range(warmup):
@@ -276,6 +290,7 @@ def _measure_replication(
                 raise RuntimeError(f"{scenario} changed plan kind during warmup")
 
         audit_path = storage / "optimizer_audit.db"
+        _native.optimize_flush()
         first_measured_audit_id = _max_audit_id(audit_path)
         e2e_ns: list[int] = []
         returned_kinds: list[str] = []
@@ -285,13 +300,26 @@ def _measure_replication(
             e2e_ns.append(time.perf_counter_ns() - started_at)
             returned_kinds.append(_plan_kind(plan_json))
 
+        _native.optimize_flush()
+        audit_writer = json.loads(_native.optimize_audit_stats())
+        if (
+            not audit_writer.get("available")
+            or audit_writer.get("pending_rows") != 0
+            or audit_writer.get("dropped_full_rows") != 0
+            or audit_writer.get("dropped_disconnected_rows") != 0
+            or audit_writer.get("write_failed_rows") != 0
+        ):
+            raise RuntimeError(f"audit writer did not drain cleanly: {audit_writer}")
+        _native.optimize_reset()
         audit_rows = _read_audit_rows(audit_path, first_measured_audit_id)
         if len(audit_rows) != iterations:
             raise RuntimeError(
                 f"audit lost measured calls: expected {iterations}, found {len(audit_rows)}"
             )
         audit_kinds = [kind for _, kind in audit_rows]
-        if set(returned_kinds) != {expected_kind} or set(audit_kinds) != {expected_kind}:
+        if set(returned_kinds) != {expected_kind} or set(audit_kinds) != {
+            expected_kind
+        }:
             raise RuntimeError(
                 f"{scenario} plan kind drifted: returned={set(returned_kinds)}, "
                 f"audit={set(audit_kinds)}"
@@ -325,6 +353,7 @@ def _measure_replication(
             "configure_us": configure_ns / 1_000.0,
             "first_cold_call_us": first_call_ns / 1_000.0,
             "audit_journal_mode": journal_mode,
+            "audit_writer": audit_writer,
             "e2e": _summarize_ns(e2e_ns),
             "internal_pre_audit": _summarize_ns(internal_ns),
             "boundary_state_audit_residual": _summarize_ns(residual_ns),
@@ -422,7 +451,9 @@ def run(
     build_profile: str,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if min(iterations, warmup, replications, bootstrap_resamples) <= 0:
-        raise ValueError("iteration, warmup, replication, and bootstrap counts must be positive")
+        raise ValueError(
+            "iteration, warmup, replication, and bootstrap counts must be positive"
+        )
     if not math.isfinite(max_overhead_ms) or max_overhead_ms <= 0:
         raise ValueError("max_overhead_ms must be finite and positive")
 
@@ -501,20 +532,20 @@ def run(
             "native optimizer-state lookup",
             "JSON decode and encode",
             "complete-plan enumeration, guard lookup, and selection",
-            "synchronous plan_audit serialization and SQLite commit",
+            "plan_audit row construction and bounded non-blocking enqueue",
             "conversion and return of the Python plan string",
         ],
         "paired_internal_clock_scope": [
             "native planning after optimizer-state lookup",
             "optional exploration reservation (disabled in this experiment)",
-            "excludes write_plan_audit and the outer FFI boundary",
+            "excludes enqueue_plan_audit and the outer FFI boundary",
         ],
         "interpretation_limits": [
             "This is a repeated single-machine Stage E0 systems microbenchmark, not task-quality or savings evidence.",
             "Inputs and outcomes are deterministic synthetic records; no provider or network is invoked.",
-            "The residual is paired subtraction, but it combines boundary, state lookup, audit serialization/commit, clock quantization, and return conversion; it is not an audit-only timer.",
+            "The residual is paired subtraction, but it combines boundary, state lookup, audit-row construction/enqueue, clock quantization, and return conversion; it is not an audit-only timer.",
             "The build profile is operator-attested; the native extension hash pins the measured binary.",
-            "WAL checkpoint tails and normal host scheduling remain part of the production-path measurement.",
+            "The ordered audit flush and SQLite commit are outside the request-path clock; normal host scheduling remains inside it.",
         ],
     }
     return result, raw
@@ -538,15 +569,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--iterations", type=_positive_int, default=_DEFAULT_ITERATIONS)
     parser.add_argument("--warmup", type=_positive_int, default=_DEFAULT_WARMUP)
-    parser.add_argument("--replications", type=_positive_int, default=_DEFAULT_REPLICATIONS)
+    parser.add_argument(
+        "--replications", type=_positive_int, default=_DEFAULT_REPLICATIONS
+    )
     parser.add_argument(
         "--bootstrap-resamples",
         type=_positive_int,
         default=_DEFAULT_BOOTSTRAP_RESAMPLES,
     )
-    parser.add_argument(
-        "--max-overhead-ms", type=_positive_float, default=5.0
-    )
+    parser.add_argument("--max-overhead-ms", type=_positive_float, default=5.0)
     parser.add_argument(
         "--build-profile", choices=("debug", "release", "unknown"), default="unknown"
     )

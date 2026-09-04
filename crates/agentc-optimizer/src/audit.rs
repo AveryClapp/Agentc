@@ -1,15 +1,15 @@
 //! `plan_audit` maintenance primitives.
 //!
-//! `plan_audit` is an append-only log: one row per plan dispatch. In production
-//! those rows are written by the profiler crate's own INSERT; this module
-//! provides the primitives ([`insert`], [`insert_batch`], [`prune`]) a caller
-//! uses to bulk-load or bound the table.
+//! `plan_audit` is an append-only log: one row per accepted plan dispatch. This
+//! module provides storage primitives ([`insert`], [`insert_batch`], [`prune`]);
+//! the profiler crate owns the bounded queue and sole background writer that
+//! calls [`insert_batch`].
 //!
-//! There is **no** background writer thread, and nothing invokes [`prune`]
-//! automatically, so in production the table grows unbounded. In the benchmark
-//! harness this is benign — the audit DBs are ephemeral (gitignored, reset
-//! between runs). A deployment that wants a bounded table must call [`prune`]
-//! itself from a maintenance job, passing [`RING_BUFFER_CAP`] as the ceiling.
+//! Nothing invokes [`prune`] automatically, so in production the table grows
+//! unbounded. In the benchmark harness this is benign — the audit DBs are
+//! ephemeral (gitignored, reset between runs). A deployment that wants a
+//! bounded table must call [`prune`] itself from a serialized maintenance job,
+//! passing [`RING_BUFFER_CAP`] as the ceiling.
 //! AUTOINCREMENT guarantees pruned IDs are never reused, so
 //! `agentc optimize inspect <audit_id>` stays unambiguous for the DB's lifetime.
 //!

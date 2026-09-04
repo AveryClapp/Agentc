@@ -769,10 +769,12 @@ is visible rather than folded into main-path savings.
 
 ### Overhead budget
 
-The optimizer targets < 1.2 ms p99 for the complete `optimize_plan` call,
-including audit persistence, at every frozen 4--64 KiB and 1/8/32-caller
-matrix cell. The internal planner retains a < 1 ms p99 sub-budget. The complete
-call's target allocation is:
+The optimizer targets < 1.2 ms p99 for the complete request-path
+`optimize_plan` call at every frozen 4--64 KiB and 1/8/32-caller matrix cell.
+The clock includes audit-row construction and bounded non-blocking enqueue;
+SQLite persistence and an ordered lifecycle flush are measured separately.
+The internal planner retains a < 1 ms p99 sub-budget. The complete call's
+target allocation is:
 
 | Step | Target | Notes |
 |---|---|---|
@@ -782,7 +784,7 @@ call's target allocation is:
 | Rule applies + propose | 200 μs | 5 rules × 40 μs |
 | Ranking + safety checks | 100 μs | |
 | Plan encoding + FFI return | 100 μs | |
-| Audit serialization + durability | 350 μs | Must not queue all callers behind one global writer. |
+| Audit row + bounded enqueue | 350 μs | Never waits for SQLite; drops newest if the queue is full. |
 | **complete-call p99 total** | **≤ 1.2 ms** | Every frozen size/concurrency cell. |
 
 `max_overhead_ms` (default 5 ms) is the kill switch over joint selection plus
@@ -796,21 +798,34 @@ the lease eventually becomes abandoned and charged. This protects against
 pathological cases while keeping provider dispatch outside an over-budget
 decision.
 
-The 2026-09-04 release-mode Stage E0 matrix does not meet this target under
+The original 2026-09-04 release-mode Stage E0 matrix did not meet this target under
 contention. Sequential p50 is 0.108--0.253 ms, but 32-caller p50/p99 reaches
 1.74--2.85 ms/14.6--46.1 ms and throughput improves only 1.35--1.98× on an
 eight-core Apple M2. The internal pre-audit p99 remains at or below 0.721 ms;
 the combined boundary/state/audit residual accounts for 94--97% of mean time.
-The known global operation in that residual is the synchronous audit-DB mutex.
-The overhead acceptance gate therefore remains open until persistence no longer
-serializes callers and the frozen matrix is rerun.
+The known global operation in that residual was the synchronous audit-DB mutex.
+The production path now uses the bounded writer contract below; the overhead
+acceptance gate remains open until the frozen matrix is rerun from the clean
+implementation commit.
 
 ### Persistent storage
 
 Two new DBs alongside `traces.db`:
 
 - **`cost_model.db`** — per-call-site rolling stats. Schema below.
-- **`optimizer_audit.db`** — an append-only plan log for `agentc optimize inspect`; an explicit maintenance call can prune it to 10,000 rows. Schema below.
+- **`optimizer_audit.db`** — an append-only plan log for `agentc optimize inspect`; an explicit maintenance call can prune it to 10,000 rows. One background worker owns its SQLite connection. The request path constructs a content-free `PlanAudit` and performs one `try_send` into a 4,096-row queue. The worker opportunistically commits batches of at most 128 rows. Schema below.
+
+Audit admission is deliberately fail-open and drop-newest: a full or
+disconnected queue never delays or fails the provider request. Process-local
+telemetry returned by `optimize_audit_stats()` distinguishes attempted,
+accepted, written, pending, queue-full, disconnected, and write-failed rows.
+`optimize_flush()` is a five-second ordered barrier: on success, every row
+accepted before the barrier is either committed or counted as a write failure.
+Reconfiguration, reset, and normal Python shutdown invoke that barrier; dropping
+the last optimizer state drains the worker. A process crash can lose the current
+128-row batch plus the 4,096 queued rows (at most 4,224 accepted rows). SQLite
+WAL with `synchronous=NORMAL` keeps committed data consistent after process
+failure, but a host power failure may lose recently committed transactions.
 
 ```sql
 -- cost_model.db
@@ -1336,8 +1351,10 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | A completed lease updates its exact paired plan profile once across replay | `ffi::tests::completed_counterfactual_updates_only_its_exact_paired_profile_once` |
 | Tool-bearing requests never receive the text-only exploration comparator | `ffi::tests::tool_bearing_request_never_receives_a_text_only_counterfactual` |
 | An over-budget envelope is canceled before candidate dispatch without spending call capacity | `ffi::tests::over_budget_envelope_can_be_cancelled_before_candidate_dispatch`, `tests/test_live_exploration_preflight.py::test_zero_total_overhead_budget_never_dispatches_counterfactual` |
-| Every timed complete optimizer call pairs with exactly one WAL-backed audit row and native state resets on benchmark failure | `tests/test_optimizer_e2e_overhead.py` |
-| Concurrent complete-call samples pair to exact audit rows by span ID, preserve deadline fallbacks, and close the native writer before cross-driver WAL inspection | `tests/test_optimizer_e2e_scaling.py` |
+| Every timed complete optimizer call pairs with exactly one WAL-backed audit row after an ordered flush, with zero reported queue/write loss and native state reset on benchmark failure | `tests/test_optimizer_e2e_overhead.py` |
+| Concurrent complete-call samples pair to exact audit rows by span ID, preserve deadline fallbacks, expose queue loss, and close the native writer before cross-driver WAL inspection | `tests/test_optimizer_e2e_scaling.py` |
+| Audit enqueue is non-blocking when full, flush makes accepted rows queryable, write failures are counted, and drop drains accepted work | `audit_writer::tests` |
+| Reconfigure and reset establish a durability barrier for the previous store | `tests/test_planner_diagnostics.py::test_reconfigure_and_reset_drain_the_previous_audit_writer` |
 | OpenAI, Anthropic, and LiteLLM adapters return the reference before scheduling the candidate | `tests/test_openai_patch.py`, `tests/test_anthropic_patch.py`, `tests/test_litellm_patch.py` |
 | Sync and async candidate failure closes the lease without retrying the reference | `tests/test_optimizer_glue.py::TestBoundedExplorationPythonEntry` |
 | Async shutdown routes cancellation through the task's owning event loop | `tests/test_optimizer_glue.py::TestBoundedExplorationPythonEntry::test_cross_thread_async_cancel_is_scheduled_on_owning_loop` |
@@ -1398,11 +1415,13 @@ record is `bench/repro/joint-planner-preflight-2026-09-04.json`.
 
 `bench/optimizer_e2e_overhead.py` wraps the complete Python-to-native
 `optimize_plan` call and pairs every wall-clock sample with the exact
-`plan_audit.overhead_us` row written by that call. Unlike the audit field, the
-outer clock includes optimizer-state lookup, the FFI boundary, synchronous
-audit serialization and commit, and return conversion. The paired residual is
-therefore deliberately labeled as a combined boundary/state/audit residual,
-not audit-write latency. The committed release-mode record contains five
+`plan_audit.overhead_us` row accepted for that call. Unlike the audit field, the
+outer clock includes optimizer-state lookup, the FFI boundary, audit-row
+construction and bounded enqueue, and return conversion. An ordered flush runs
+after the timed group and the harness rejects pending, dropped, or failed rows
+before pairing. The paired residual is therefore deliberately labeled as a
+combined boundary/state/audit residual, not audit-enqueue latency. The committed
+release-mode record contains five
 2,000-call replications per path and is
 `bench/repro/optimizer-e2e-overhead-2026-09-04.json`, with checksummed raw
 samples beside it. It is a single-machine Stage E0 diagnostic and is permanently
@@ -1431,18 +1450,20 @@ live joint-planner diagnostic above also remains Stage E0; its three recorded
 for a four-candidate search on the recorded arm64 development machine. The
 complete-call diagnostic had pooled p50/p99 of 99.958/164.750 us for guarded
 reference selection and 115.000/307.209 us for an admitted joint rewrite on the
-same class of host. The size/concurrency companion then shows 32-caller p99 of
+same class of host. The original size/concurrency companion shows 32-caller p99 of
 14.620--46.122 ms and only 1.35--1.98× throughput scaling. These diagnostics
-include the WAL-backed audit write but do not replace the frozen campaign's
-end-to-end latency measurements; the concurrency result currently fails the
-ship target.
+measure the production request path but do not replace the frozen campaign's
+end-to-end latency measurements. The original result includes the synchronous
+WAL-backed audit write; the off-path-writer rerun is a before/after systems
+diagnostic rather than a retroactive replacement.
 
 | Metric | Target | Measurement |
 |---|---|---|
-| p50 complete-plan overhead (hot call) | < 0.5 ms | C=1, exact 4--64 KiB calls, audit included |
-| p99 complete-plan overhead (hot call) | < 1.2 ms | Every C=1/8/32 × 4--64 KiB cell, audit included |
-| p50 complete-plan overhead (cold call) | < 100 μs | C=1 profile lookup + early return, audit included |
+| p50 complete-plan overhead (hot call) | < 0.5 ms | C=1, exact 4--64 KiB calls, audit construction/enqueue included |
+| p99 complete-plan overhead (hot call) | < 1.2 ms | Every C=1/8/32 × 4--64 KiB cell, audit construction/enqueue included |
+| p50 complete-plan overhead (cold call) | < 100 μs | C=1 profile lookup + early return, audit construction/enqueue included |
 | p99 complete-plan overhead (cold call) | < 300 μs | Same |
+| Audit loss after ordered flush | 0 rows | Every benchmark replication; pending, dropped, and failed counters exposed |
 | Shadow-mode sample rate | 2% ± 0.3% | Bernoulli(0.02) over 10k calls |
 | Cost model write throughput | > 1000 observations/s | In-memory update; persistence measured separately |
 
@@ -1490,8 +1511,10 @@ The optimizer crate reaches `status: active` when:
   workload/model cells without crossing the predeclared quality margin.
 - Joint planning beats independently routed-then-rewritten execution on at
   least one primary efficiency outcome in those cells.
-- Complete-call p99, including audit persistence, is within 1.2 ms in every
+- Complete request-path p99, including audit construction and enqueue, is within 1.2 ms in every
   frozen 4--64 KiB × C=1/8/32 cell on the reference hardware.
+- Every frozen replication completes its ordered audit flush with zero pending,
+  dropped, disconnected, or write-failed rows.
 - The plan-level guard meets the frozen 2% damage and false-disable gate.
 - Fail-open paths are exercised by fault-injection tests (`tests/fail_open.rs`).
 

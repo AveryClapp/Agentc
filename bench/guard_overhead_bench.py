@@ -175,7 +175,9 @@ def _summarize(samples: list[int]) -> dict[str, float]:
     }
 
 
-def _verify_complete_plan_guard(storage: Path) -> dict[str, int | float]:
+def _verify_complete_plan_guard(
+    storage: Path, *, expected_paired_observations: int
+) -> dict[str, int | float]:
     _native.optimize_flush()
     with sqlite3.connect(storage / "cost_model.db") as connection:
         guard = connection.execute(
@@ -187,7 +189,14 @@ def _verify_complete_plan_guard(storage: Path) -> dict[str, int | float]:
             "SELECT COUNT(*) FROM rule_divergence WHERE call_site_id = ?",
             (_CALL_SITE,),
         ).fetchone()
-    if guard is None or legacy_rows is None:
+        paired = connection.execute(
+            "SELECT profile.n_paired_observations, profile.paired_observations "
+            "FROM execution_plan_profile AS profile "
+            "JOIN execution_plan_guard AS guard "
+            "ON guard.call_site_version = profile.call_site_version "
+            "AND guard.execution_plan_id = profile.execution_plan_id"
+        ).fetchone()
+    if guard is None or legacy_rows is None or paired is None:
         raise RuntimeError("guard verification query returned no row")
     result = {
         "plan_guard_rows": int(guard[0]),
@@ -195,6 +204,8 @@ def _verify_complete_plan_guard(storage: Path) -> dict[str, int | float]:
         "divergence_exposure": float(guard[2]),
         "positive_exposure_events": int(guard[3]),
         "legacy_rule_rows": int(legacy_rows[0]),
+        "lifetime_paired_observations": int(paired[0]),
+        "retained_paired_observations": int(paired[1]),
     }
     if result != {
         "plan_guard_rows": 1,
@@ -202,6 +213,8 @@ def _verify_complete_plan_guard(storage: Path) -> dict[str, int | float]:
         "divergence_exposure": 0.0,
         "positive_exposure_events": 0,
         "legacy_rule_rows": 0,
+        "lifetime_paired_observations": expected_paired_observations,
+        "retained_paired_observations": min(expected_paired_observations, 50),
     }:
         raise RuntimeError(f"benchmark did not isolate the complete-plan guard: {result}")
     return result
@@ -216,6 +229,7 @@ def run(*, fresh_tokens: int, metric_iters: int, warmup_tokens: int) -> dict[str
         "AGENTC_OPTIMIZE": "1",
         "AGENTC_OPTIMIZE_HOT_THRESHOLD": "3",
         "AGENTC_OPTIMIZE_MAX_OVERHEAD_MS": "1000",
+        "AGENTC_OPTIMIZE_PLAN_PROFILE_WINDOW": "50",
         "AGENTC_OPTIMIZE_SHADOW": "0.02",
         "AGENTC_SHADOW_DIVERGENCE_BUDGET": str(_THRESHOLD),
         "AGENTC_SHADOW_DIVERGENCE_MODE": "normalized",
@@ -231,7 +245,10 @@ def run(*, fresh_tokens: int, metric_iters: int, warmup_tokens: int) -> dict[str
                 for token in _fresh_tokens(plan_json, warmup_tokens):
                     record_divergence(token, _DIVERGENCE)
                 feedback = _bench_fresh_tokens(_fresh_tokens(plan_json, fresh_tokens))
-                guard_state = _verify_complete_plan_guard(storage)
+                guard_state = _verify_complete_plan_guard(
+                    storage,
+                    expected_paired_observations=warmup_tokens + fresh_tokens,
+                )
             finally:
                 agentc.shutdown()
 

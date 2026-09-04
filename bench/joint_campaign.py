@@ -79,6 +79,7 @@ SECRET_NAMES = frozenset(
 )
 _HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 _ENV_TOKEN = re.compile(r"\{env:([A-Z][A-Z0-9_]*)\}")
+_PORTABLE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 JsonObject = dict[str, Any]
@@ -292,6 +293,10 @@ def load_campaign(path: Path) -> JsonObject:
         workload_id = _require_string(
             workload.get("workload_id"), f"workloads[{index}].workload_id"
         )
+        if not _PORTABLE_ID.fullmatch(workload_id):
+            raise CampaignError(
+                f"workloads[{index}].workload_id must be a portable identifier"
+            )
         family = _require_string(
             workload.get("family"), f"workloads[{index}].family"
         )

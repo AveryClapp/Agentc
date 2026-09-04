@@ -110,6 +110,18 @@ def test_artifact_stem_does_not_trust_task_id(tmp_path: Path) -> None:
     assert ".." not in stem
 
 
+@pytest.mark.parametrize("workload_id", ["../../escape", "/tmp/escape", "bad\\path"])
+def test_workload_id_cannot_escape_state_directory(
+    tmp_path: Path, workload_id: str
+) -> None:
+    campaign = _write_campaign(tmp_path)
+    raw = json.loads(campaign.read_text())
+    raw["workloads"][0]["workload_id"] = workload_id
+    campaign.write_text(json.dumps(raw))
+    with pytest.raises(CampaignError, match="portable identifier"):
+        load_campaign(campaign)
+
+
 def test_protocol_and_task_digests_are_enforced(tmp_path: Path) -> None:
     campaign = _write_campaign(tmp_path)
     raw = json.loads(campaign.read_text())

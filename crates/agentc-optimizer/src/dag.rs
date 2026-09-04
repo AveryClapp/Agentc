@@ -110,6 +110,28 @@ impl Call {
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
     }
+
+    /// Whether this call's messages are an ordered, byte-identical subset of
+    /// `reference`. Message-drop passes use this to prove that composition did
+    /// not reintroduce or replace content removed by an earlier pass.
+    pub(crate) fn messages_are_ordered_subsequence_of(&self, reference: &Self) -> bool {
+        if self.messages.len() > reference.messages.len() {
+            return false;
+        }
+        let mut next_reference = 0;
+        for retained in &self.messages {
+            let Some(relative_index) = reference.messages[next_reference..]
+                .iter()
+                .position(|original| {
+                    original.role == retained.role && original.content == retained.content
+                })
+            else {
+                return false;
+            };
+            next_reference += relative_index + 1;
+        }
+        true
+    }
 }
 
 /// Measured result of executing a [`Plan`]. Fed into

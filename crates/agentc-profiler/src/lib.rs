@@ -23,6 +23,7 @@ use agentc_optimizer::{
     config::OptimizerConfig,
     cost_model::CostModel,
     ffi::{optimize_observe as rust_observe, optimize_plan as rust_plan, PASS_THROUGH_JSON},
+    model_catalog::{default_model_catalog, ModelCatalog},
     plan_profile::PlanProfiles,
     planner::{Optimizer, Plan},
     Budget, SampleOutcome, Wired,
@@ -687,6 +688,7 @@ struct OptimizerState {
     optimizer: Arc<Optimizer>,
     cost_model: Arc<CostModel>,
     plan_profiles: Arc<PlanProfiles>,
+    model_catalog: Option<Arc<ModelCatalog>>,
     #[allow(dead_code)]
     budget: Arc<Budget>,
     audit: Option<Mutex<Connection>>,
@@ -720,6 +722,7 @@ fn build_optimizer_state(
             optimizer,
             cost_model,
             plan_profiles,
+            model_catalog,
             budget,
             audit_conn,
         }) => {
@@ -732,6 +735,7 @@ fn build_optimizer_state(
                 optimizer,
                 cost_model,
                 plan_profiles,
+                model_catalog: Some(model_catalog),
                 budget,
                 audit: Some(Mutex::new(audit_conn)),
                 cost_db,
@@ -749,6 +753,7 @@ fn build_optimizer_state(
                 optimizer,
                 cost_model,
                 plan_profiles,
+                model_catalog: default_model_catalog().ok().map(Arc::new),
                 budget,
                 audit: None,
                 cost_db: None,
@@ -874,6 +879,23 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
         }));
 
         plan_json
+    })
+}
+
+/// Return the exact versioned target catalog owned by the active optimizer.
+/// This is an introspection surface only; Rust remains the source of routing
+/// candidates and Python must still verify each routed dispatch contract.
+#[pyfunction]
+fn optimize_model_catalog(py: Python<'_>) -> String {
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        state
+            .model_catalog
+            .as_ref()
+            .and_then(|catalog| serde_json::to_string(catalog.as_ref()).ok())
+            .unwrap_or_else(|| {
+                "{\"catalog_version\":\"unavailable\",\"price_table_version\":\"unavailable\",\"observed_at_utc\":\"unavailable\",\"targets\":[]}".to_string()
+            })
     })
 }
 
@@ -1114,6 +1136,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(optimize_storage_path, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_reset, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_plan, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_model_catalog, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_observe, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_record_divergence, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_flush, m)?)?;

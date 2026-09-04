@@ -105,9 +105,16 @@ def _mutated_dispatch_args(
     mutated_call: dict[str, Any],
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
     """Apply supported Call mutations without disturbing unrelated arguments."""
-    from agentc._patches._optimizer_glue import apply_call_mutations_openai
+    from agentc._patches._optimizer_glue import (
+        LITELLM_COMPLETION_PROTOCOL,
+        apply_call_mutations_openai,
+    )
 
-    mutated_request = apply_call_mutations_openai(request, mutated_call)
+    mutated_request = apply_call_mutations_openai(
+        request,
+        mutated_call,
+        provider_protocol=LITELLM_COMPLETION_PROTOCOL,
+    )
     new_args = list(args)
     new_kwargs = dict(kwargs)
     for field in _MUTABLE_FIELDS:
@@ -255,6 +262,7 @@ def _plan_call(
     try:
         from agentc._optimizer import plan_call
         from agentc._patches._optimizer_glue import (
+            LITELLM_COMPLETION_PROTOCOL,
             build_call_dict_openai,
             derive_call_site_id,
         )
@@ -267,6 +275,7 @@ def _plan_call(
             if parent is not None
             else _generate_trace_id(),
             span_id_hex=_generate_span_id(),
+            provider_protocol=LITELLM_COMPLETION_PROTOCOL,
         )
         return plan_call(call), call_site_id
     except BaseException:
@@ -375,6 +384,14 @@ def _wrap_completion(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any
         raise
 
     end_time = _now_us()
+    if plan is not None:
+        from agentc._patches._optimizer_glue import (
+            dispatch_span_attributes,
+            resolve_executed_model_id,
+        )
+
+        executed_model = resolve_executed_model_id(plan, response, request.get("model"))
+        attrs.update(dispatch_span_attributes(plan, executed_model))
     if plan is not None and call_site_id is not None:
         _observe(plan, response, call_site_id, request, time.perf_counter() - started)
     attrs.update(_extract_response_attrs(response))
@@ -460,6 +477,14 @@ async def _wrap_acompletion(
         raise
 
     end_time = _now_us()
+    if plan is not None:
+        from agentc._patches._optimizer_glue import (
+            dispatch_span_attributes,
+            resolve_executed_model_id,
+        )
+
+        executed_model = resolve_executed_model_id(plan, response, request.get("model"))
+        attrs.update(dispatch_span_attributes(plan, executed_model))
     if plan is not None and call_site_id is not None:
         _observe(plan, response, call_site_id, request, time.perf_counter() - started)
     attrs.update(_extract_response_attrs(response))

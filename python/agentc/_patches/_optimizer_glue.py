@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from types import FrameType
 from typing import Any, Callable, Optional
 
 from agentc._degradation import log_degraded
@@ -28,6 +29,20 @@ log = logging.getLogger(__name__)
 # must remain on the Python side and may only flow through shape-preserving
 # rules.
 _NATIVE_MESSAGES_OPAQUE_KEY = "agentc_native_messages_opaque"
+
+# Provider-safe routing contract mirrored by
+# ``agentc_optimizer::model_catalog``. Rust chooses targets; Python verifies
+# that the selected target belongs to the adapter and credential namespace
+# that owns the intercepted call before changing ``model``.
+OPENAI_CHAT_COMPLETIONS_PROTOCOL = "openai.chat.completions.v1"
+ANTHROPIC_MESSAGES_PROTOCOL = "anthropic.messages.v1"
+LITELLM_COMPLETION_PROTOCOL = "litellm.completion.v1"
+_ROUTE_CONTEXT_KEY = "agentc_route_context"
+_ROUTED_TARGET_KEY = "agentc_routed_target"
+
+
+class UnsafeModelRouteError(ValueError):
+    """A plan attempted a model change outside its declared dispatch contract."""
 
 # Sticky ignored modules — frames inside these are infrastructure, not the
 # call site we want to attribute optimization decisions to. The wrapper
@@ -55,7 +70,7 @@ def derive_call_site_id() -> str:
     Format: ``module:function:line``. Falls through to a sentinel if no
     user frame is found (shouldn't happen in practice).
     """
-    frame = sys._getframe(1)
+    frame: FrameType | None = sys._getframe(1)
     while frame is not None:
         modname = frame.f_globals.get("__name__", "")
         if not modname.startswith(_SKIP_MODULE_PREFIXES):
@@ -69,7 +84,11 @@ def derive_call_site_id() -> str:
 # bench agents touch. Unknown models fall back to (0, 0) — the optimizer
 # can still rank rules but won't see meaningful baseline cost.
 _MODEL_PRICES: dict[str, tuple[float, float]] = {
-    # OpenAI — pricing as of 2026-05-11
+    # OpenAI — official model pages observed 2026-09-03
+    "gpt-5.4": (2.50, 15.00),
+    "gpt-5.4-2026-03-05": (2.50, 15.00),
+    "gpt-5.4-mini": (0.75, 4.50),
+    "gpt-5.4-mini-2026-03-17": (0.75, 4.50),
     "gpt-4o": (2.50, 10.00),
     "gpt-4o-2024-08-06": (2.50, 10.00),
     "gpt-4o-2024-05-13": (5.00, 15.00),
@@ -85,9 +104,10 @@ _MODEL_PRICES: dict[str, tuple[float, float]] = {
     "claude-3-5-haiku-20241022": (1.00, 5.00),
     "claude-3-opus-20240229": (15.00, 75.00),
     "claude-3-haiku-20240307": (0.25, 1.25),
-    # claude-4.x series — pricing estimated from Anthropic pricing page
-    "claude-haiku-4-5-20251001": (0.80, 4.00),
-    "claude-haiku-4-5": (0.80, 4.00),
+    # claude-4.x series — official Anthropic pricing observed 2026-09-03
+    "claude-haiku-4-5-20251001": (1.00, 5.00),
+    "claude-haiku-4-5": (1.00, 5.00),
+    "claude-sonnet-4-5-20250929": (3.00, 15.00),
     "claude-sonnet-4-5": (3.00, 15.00),
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-opus-4-7": (15.00, 75.00),
@@ -109,6 +129,12 @@ _MODEL_PRICES: dict[str, tuple[float, float]] = {
     "meta-llama/Llama-3.3-70B-Instruct-Turbo": (0.88, 0.88),
     "meta-llama/Llama-3.1-70B-Instruct-Turbo": (0.88, 0.88),
     "meta-llama/Llama-3.1-8B-Instruct-Turbo": (0.18, 0.18),
+    # Together serverless catalog observed 2026-09-03. LiteLLM preserves the
+    # provider prefix on dispatch; provider responses may echo either form.
+    "zai-org/GLM-5.3": (1.40, 4.40),
+    "zai-org/GLM-5.3-Flash": (0.15, 0.50),
+    "together_ai/zai-org/GLM-5.3": (1.40, 4.40),
+    "together_ai/zai-org/GLM-5.3-Flash": (0.15, 0.50),
 }
 
 
@@ -117,7 +143,8 @@ def estimate_cost_usd(model: str, input_tokens: int, output_tokens: int) -> floa
     prices = _MODEL_PRICES.get(model)
     if prices is None:
         # Try matching by prefix — handle dated suffix variants.
-        for known, p in _MODEL_PRICES.items():
+        for known in sorted(_MODEL_PRICES, key=len, reverse=True):
+            p = _MODEL_PRICES[known]
             if model.startswith(known):
                 prices = p
                 break
@@ -213,8 +240,158 @@ def _call_has_opaque_native_messages(call: dict[str, Any]) -> bool:
     )
 
 
-def _openai_output_cap_field(kwargs: dict[str, Any], model: str) -> str:
+def _provider_namespace(provider_protocol: str, model: str) -> str:
+    if provider_protocol == OPENAI_CHAT_COMPLETIONS_PROTOCOL:
+        return "openai"
+    if provider_protocol == ANTHROPIC_MESSAGES_PROTOCOL:
+        return "anthropic"
+    if provider_protocol == LITELLM_COMPLETION_PROTOCOL and "/" in model:
+        return model.split("/", 1)[0]
+    return "unresolved"
+
+
+def _contains_image_input(value: Any) -> bool:
+    """Conservatively detect provider-native image blocks without decoding them."""
+    if hasattr(value, "model_dump"):
+        value = value.model_dump()
+    if isinstance(value, dict):
+        block_type = str(value.get("type") or "").lower()
+        if block_type in {"image", "image_url", "input_image"}:
+            return True
+        if "image_url" in value:
+            return True
+        return any(_contains_image_input(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_contains_image_input(item) for item in value)
+    return False
+
+
+def _input_tokens_upper_bound(*values: Any) -> int:
+    """Return a safe byte-count upper bound for JSON-shaped request tokens."""
+    try:
+        encoded = json.dumps(values, default=str, ensure_ascii=False).encode("utf-8")
+    except BaseException:
+        # Unknown size is not zero size. Force catalog abstention when a
+        # provider-native object cannot be projected safely.
+        return 2**32 - 1
+    # A text tokenizer cannot emit more tokens than source bytes. This is
+    # deliberately conservative for base64 image blocks.
+    return min(len(encoded), 2**32 - 1)
+
+
+def _structured_output_requested(kwargs: dict[str, Any]) -> bool:
+    if kwargs.get("response_format") or kwargs.get("output_format"):
+        return True
+    output_config = kwargs.get("output_config")
+    model_dump = getattr(output_config, "model_dump", None)
+    if callable(model_dump):
+        output_config = model_dump()
+    return bool(isinstance(output_config, dict) and output_config.get("format"))
+
+
+def _route_context(
+    kwargs: dict[str, Any],
+    *,
+    provider_protocol: str,
+    provider_namespace: str,
+) -> dict[str, Any]:
+    native_values = (
+        kwargs.get("system"),
+        kwargs.get("messages"),
+        kwargs.get("tools"),
+    )
+    image_input = _contains_image_input(native_values)
+    return {
+        "provider_protocol": provider_protocol,
+        "provider_namespace": provider_namespace,
+        # Provider image accounting cannot be bounded from a URL alone. Force
+        # catalog abstention until the adapter has a provider-reported count.
+        "input_tokens_upper_bound": (
+            2**32 - 1 if image_input else _input_tokens_upper_bound(*native_values)
+        ),
+        "image_input": image_input,
+        "tool_calling": bool(kwargs.get("tools")),
+        "structured_outputs": _structured_output_requested(kwargs),
+        "streaming": bool(kwargs.get("stream")),
+    }
+
+
+def _routed_target_metadata(mutated_call: dict[str, Any]) -> dict[str, Any] | None:
+    parameters = mutated_call.get("parameters")
+    if not isinstance(parameters, dict):
+        return None
+    extra = parameters.get("extra")
+    if not isinstance(extra, dict):
+        return None
+    metadata = extra.get(_ROUTED_TARGET_KEY)
+    return metadata if isinstance(metadata, dict) else None
+
+
+def _validate_model_route(
+    kwargs: dict[str, Any],
+    mutated_call: dict[str, Any],
+    *,
+    provider_protocol: str,
+) -> dict[str, Any] | None:
+    original_model = str(kwargs.get("model") or "")
+    target_model = str(mutated_call.get("model") or original_model)
+    if target_model == original_model:
+        return None
+
+    metadata = _routed_target_metadata(mutated_call)
+    if metadata is None:
+        raise UnsafeModelRouteError("model change has no catalog dispatch contract")
+
+    required = {
+        "catalog_version",
+        "price_table_version",
+        "provider_protocol",
+        "provider_namespace",
+        "requested_model_id",
+        "resolved_requested_model_id",
+        "target_model_id",
+        "target_model_version",
+        "target_revision_kind",
+        "output_token_parameter",
+    }
+    if any(not str(metadata.get(field) or "").strip() for field in required):
+        raise UnsafeModelRouteError("catalog dispatch contract is incomplete")
+    if metadata["provider_protocol"] != provider_protocol:
+        raise UnsafeModelRouteError("route targets a different provider protocol")
+    if metadata["requested_model_id"] != original_model:
+        raise UnsafeModelRouteError("route is bound to a different requested model")
+    if metadata["target_model_id"] != target_model:
+        raise UnsafeModelRouteError("route metadata and target model disagree")
+
+    expected_namespace = _provider_namespace(provider_protocol, original_model)
+    target_namespace = _provider_namespace(provider_protocol, target_model)
+    if (
+        expected_namespace == "unresolved"
+        or target_namespace != expected_namespace
+        or metadata["provider_namespace"] != expected_namespace
+    ):
+        raise UnsafeModelRouteError("route crosses a provider credential namespace")
+    if metadata["output_token_parameter"] not in {
+        "max_tokens",
+        "max_completion_tokens",
+    }:
+        raise UnsafeModelRouteError("route declares an unknown output-token parameter")
+    if metadata["target_revision_kind"] not in {
+        "immutable_snapshot",
+        "catalog_observation",
+    }:
+        raise UnsafeModelRouteError("route declares an unknown revision kind")
+    return metadata
+
+
+def _openai_output_cap_field(
+    kwargs: dict[str, Any],
+    model: str,
+    routed_metadata: dict[str, Any] | None = None,
+) -> str:
     """Choose the caller-compatible OpenAI output-token parameter name."""
+    if routed_metadata is not None:
+        return str(routed_metadata["output_token_parameter"])
     if "max_completion_tokens" in kwargs:
         return "max_completion_tokens"
     if "max_tokens" in kwargs:
@@ -230,6 +407,8 @@ def build_call_dict_openai(
     call_site_id: str,
     trace_id_hex: str,
     span_id_hex: str,
+    provider_protocol: str = OPENAI_CHAT_COMPLETIONS_PROTOCOL,
+    provider_namespace: str | None = None,
 ) -> dict[str, Any]:
     """Translate OpenAI ``chat.completions.create`` kwargs into a Call dict."""
     from agentc._parallel import get_parallel_peer
@@ -352,6 +531,14 @@ def build_call_dict_openai(
         # actually qualify as drop-eligible.
         extra_obj["dead_attention_epsilon"] = 0.10
 
+    model = str(kwargs.get("model", ""))
+    namespace = provider_namespace or _provider_namespace(provider_protocol, model)
+    extra_obj[_ROUTE_CONTEXT_KEY] = _route_context(
+        kwargs,
+        provider_protocol=provider_protocol,
+        provider_namespace=namespace,
+    )
+
     if extra_obj:
         parameters["extra"] = extra_obj
 
@@ -359,7 +546,7 @@ def build_call_dict_openai(
         "call_site_id": call_site_id,
         "trace_id": trace_id_hex,
         "span_id": span_id_hex,
-        "model": str(kwargs.get("model", "")),
+        "model": model,
         "messages": messages,
         "parameters": parameters,
         "tools": tools,
@@ -371,8 +558,15 @@ def build_call_dict_openai(
 def apply_call_mutations_openai(
     kwargs: dict[str, Any],
     mutated_call: dict[str, Any],
+    *,
+    provider_protocol: str = OPENAI_CHAT_COMPLETIONS_PROTOCOL,
 ) -> dict[str, Any]:
     """Thread a Rewritten plan's mutated Call back into OpenAI kwargs."""
+    routed_metadata = _validate_model_route(
+        kwargs,
+        mutated_call,
+        provider_protocol=provider_protocol,
+    )
     new_kwargs = dict(kwargs)
     if "model" in mutated_call:
         new_kwargs["model"] = mutated_call["model"]
@@ -391,6 +585,7 @@ def apply_call_mutations_openai(
         cap_field = _openai_output_cap_field(
             kwargs,
             str(mutated_call.get("model") or kwargs.get("model") or ""),
+            routed_metadata,
         )
         other_field = (
             "max_tokens"
@@ -408,6 +603,7 @@ def build_outcome_openai(
     elapsed_s: float,
     model: str,
     call_site_id: str,
+    plan: Any | None = None,
 ) -> dict[str, Any]:
     """Build an Outcome dict from a ChatCompletion response."""
     usage = getattr(response, "usage", None)
@@ -437,6 +633,7 @@ def build_outcome_openai(
         "output_is_structured": output_is_structured,
         "output_is_short": output_tokens <= 128,
         "call_site_id": call_site_id,
+        **_outcome_dispatch_fields(plan, model),
     }
 
 
@@ -530,8 +727,26 @@ def build_call_dict_anthropic(
         extra_obj["follow_on_tokens"] = follow_on
         extra_obj["dead_attention_epsilon"] = 0.10
 
+    extra_obj[_ROUTE_CONTEXT_KEY] = _route_context(
+        kwargs,
+        provider_protocol=ANTHROPIC_MESSAGES_PROTOCOL,
+        provider_namespace="anthropic",
+    )
+
     if extra_obj:
         parameters["extra"] = extra_obj
+
+    tools = []
+    for native_tool in kwargs.get("tools", []) or []:
+        if hasattr(native_tool, "model_dump"):
+            native_tool = native_tool.model_dump()
+        if isinstance(native_tool, dict):
+            tools.append(
+                {
+                    "name": str(native_tool.get("name", "tool")),
+                    "schema": native_tool.get("input_schema", {}),
+                }
+            )
 
     return {
         "call_site_id": call_site_id,
@@ -540,7 +755,7 @@ def build_call_dict_anthropic(
         "model": str(kwargs.get("model", "")),
         "messages": messages,
         "parameters": parameters,
-        "tools": [],
+        "tools": tools,
         "input_deps": input_deps,
         "occurrence_ix": 0,
     }
@@ -555,6 +770,18 @@ def apply_call_mutations_anthropic(
     The optimizer's unified message list may include a leading system message.
     We split it back out to Anthropic's ``system`` + ``messages`` shape.
     """
+    routed_metadata = _validate_model_route(
+        kwargs,
+        mutated_call,
+        provider_protocol=ANTHROPIC_MESSAGES_PROTOCOL,
+    )
+    if (
+        routed_metadata is not None
+        and routed_metadata["output_token_parameter"] != "max_tokens"
+    ):
+        raise UnsafeModelRouteError(
+            "Anthropic route must use the max_tokens output convention"
+        )
     new_kwargs = dict(kwargs)
     if "model" in mutated_call:
         new_kwargs["model"] = mutated_call["model"]
@@ -586,6 +813,7 @@ def build_outcome_anthropic(
     elapsed_s: float,
     model: str,
     call_site_id: str,
+    plan: Any | None = None,
 ) -> dict[str, Any]:
     """Build an Outcome dict from an Anthropic Message response."""
     usage = getattr(response, "usage", None)
@@ -618,7 +846,72 @@ def build_outcome_anthropic(
         "output_is_structured": output_is_structured,
         "output_is_short": output_tokens <= 128,
         "call_site_id": call_site_id,
+        **_outcome_dispatch_fields(plan, model),
     }
+
+
+def _outcome_dispatch_fields(plan: Any | None, executed_model: str) -> dict[str, Any]:
+    if plan is None:
+        return {
+            "dispatch_fallback": False,
+            "executed_model_id": executed_model,
+        }
+    return {
+        "dispatch_fallback": bool(getattr(plan, "dispatch_fallback", False)),
+        "dispatch_fallback_reason": getattr(plan, "dispatch_fallback_reason", None),
+        "provider_protocol": getattr(plan, "provider_protocol", None),
+        "provider_namespace": getattr(plan, "provider_namespace", None),
+        "target_model_id": getattr(plan, "target_model_id", None),
+        "target_model_version": getattr(plan, "target_model_version", None),
+        "price_table_version": getattr(plan, "price_table_version", None),
+        "catalog_version": getattr(plan, "catalog_version", None),
+        "executed_model_id": executed_model,
+    }
+
+
+def dispatch_span_attributes(
+    plan: Any | None,
+    executed_model_id: str | None = None,
+) -> dict[str, Any]:
+    """Stable span attributes for routed execution and exact fallback."""
+    if plan is None:
+        return {}
+    if executed_model_id:
+        plan.executed_model_id = executed_model_id
+    attrs: dict[str, Any] = {
+        "agentc.dispatch.fallback": bool(
+            getattr(plan, "dispatch_fallback", False)
+        )
+    }
+    for attribute, field in [
+        ("agentc.dispatch.fallback_reason", "dispatch_fallback_reason"),
+        ("agentc.dispatch.provider_protocol", "provider_protocol"),
+        ("agentc.dispatch.provider_namespace", "provider_namespace"),
+        ("agentc.dispatch.target_model", "target_model_id"),
+        ("agentc.dispatch.target_model_version", "target_model_version"),
+        ("agentc.dispatch.catalog_version", "catalog_version"),
+        ("agentc.dispatch.price_table_version", "price_table_version"),
+        ("agentc.dispatch.executed_model", "executed_model_id"),
+    ]:
+        value = getattr(plan, field, None)
+        if value is not None:
+            attrs[attribute] = value
+    return attrs
+
+
+def resolve_executed_model_id(
+    plan: Any | None,
+    response: Any,
+    requested_model_id: Any,
+) -> str:
+    """Prefer provider evidence, then the dispatcher's selected target."""
+    response_model = getattr(response, "model", None)
+    if response_model:
+        return str(response_model)
+    planned_model = getattr(plan, "executed_model_id", None)
+    if planned_model:
+        return str(planned_model)
+    return str(requested_model_id or "")
 
 
 def _response_output_text(response: Any) -> Optional[str]:
@@ -660,7 +953,7 @@ _ARTICLES = {"a", "an", "the"}
 _PUNCT = str.maketrans({c: " " for c in ",.;:!?\"'`()[]{}<>-_/\\|"})
 
 
-def _normalize_tokens(s: str) -> set:
+def _normalize_tokens(s: str) -> set[str]:
     """Lowercase, strip punctuation, drop articles. Makes the divergence
     signal invariant to formatting/article/case noise so benign rewrites
     (e.g. 'Kansas Song' vs 'Kansas Song (We're From Kansas)') register as
@@ -684,7 +977,7 @@ def _cosine_distance_from_bytes(ba: bytes, bb: bytes) -> float:
     norm_b = sum(x * x for x in vb) ** 0.5
     if norm_a == 0.0 or norm_b == 0.0:
         return 1.0
-    return 1.0 - dot / (norm_a * norm_b)
+    return float(1.0 - dot / (norm_a * norm_b))
 
 
 def _text_divergence(a: str, b: str) -> float:
@@ -763,6 +1056,12 @@ def maybe_shadow_record(
     import os
     import random
 
+    # A failed optimized dispatch already executed the exact reference request
+    # once as its user-visible fallback. Running another shadow reference would
+    # duplicate side effects and violate the exactly-once fallback contract.
+    if bool(getattr(plan, "dispatch_fallback", False)):
+        return
+
     rules = _applied_rules(plan)
     if not rules or not call_site_id:
         return
@@ -795,6 +1094,12 @@ def maybe_shadow_record(
         log.debug("shadow sample failed; dropping", exc_info=True)
 
 
+def _mark_dispatch_fallback(plan: Any, reason: str) -> None:
+    plan.dispatch_fallback = True
+    plan.dispatch_fallback_reason = reason
+    plan.executed_model_id = None
+
+
 def dispatch_sync(
     plan: Any,  # agentc._optimizer.Plan
     *,
@@ -815,6 +1120,7 @@ def dispatch_sync(
         try:
             decoded = decode(plan.value)
         except BaseException:
+            _mark_dispatch_fallback(plan, "cache_decode_failed")
             log_degraded(
                 "cache_decode_failed",
                 "cached plan decode raised; ran the original call",
@@ -826,6 +1132,7 @@ def dispatch_sync(
             # _decode_cached_openai) must NOT be served to the app as a None
             # response. Fall back to the real call so the caller always gets a
             # completion (bd-8ln: over-reporting / None corruption).
+            _mark_dispatch_fallback(plan, "cache_decode_empty")
             log_degraded(
                 "cache_decode_empty",
                 "cached plan decoded to None; ran the original call",
@@ -834,10 +1141,14 @@ def dispatch_sync(
         return decoded
     if plan.kind in ("rewritten", "composed"):
         if plan.call is None:
+            _mark_dispatch_fallback(plan, "missing_mutated_call")
             return run_original()
         try:
-            return run_mutated(plan.call)
+            result = run_mutated(plan.call)
+            plan.executed_model_id = str(plan.call.get("model") or "") or None
+            return result
         except BaseException:
+            _mark_dispatch_fallback(plan, "mutated_dispatch_failed")
             # Degradation: a systematically broken mutation (bad downgrade
             # model, malformed rewritten Call) reverts to the original on
             # EVERY call and reports 0% savings. The async path already warns
@@ -850,5 +1161,7 @@ def dispatch_sync(
             return run_original()
     if plan.kind == "parallel":
         # Sync path can't gather; degrade to original.
+        _mark_dispatch_fallback(plan, "parallel_sync_unsupported")
         return run_original()
+    _mark_dispatch_fallback(plan, "unknown_plan_kind")
     return run_original()

@@ -25,78 +25,15 @@ use crate::budget::Budget;
 use crate::config::OptimizerConfig;
 use crate::cost_model::CostModel;
 use crate::dag::Call;
+use crate::model_catalog::{default_model_catalog, ModelCatalog};
 use crate::plan_profile::PlanProfiles;
 use crate::planner::{Optimizer, RewriteRule};
 use crate::rules::cache_hit::CacheKeyBuilder;
 use crate::rules::{
-    CacheHitRule, ContextCompressRule, DeadOutputTruncationRule, ModelDowngradeRoute,
-    ModelDowngradeRule, OutputBudgetRule, ParallelBranchRule, PromptDedupRule,
-    StateDropRule, StructuredTruncationRule,
+    CacheHitRule, ContextCompressRule, DeadOutputTruncationRule, ModelDowngradeRule,
+    OutputBudgetRule, ParallelBranchRule, PromptDedupRule, StateDropRule, StructuredTruncationRule,
 };
 use crate::schema::{ensure_audit_schema, ensure_cost_model_schema};
-
-/// Default model-downgrade routes. Spec § Rule specifications > ModelDowngrade.
-/// Price ratios and max_output_tokens as of 2026-05-11.
-fn default_routes() -> Vec<ModelDowngradeRoute> {
-    // ``max_output_tokens`` is the destination model's safe output ceiling;
-    // ModelDowngrade refuses to route when ``output_token_p95`` exceeds it.
-    // gpt-4o-mini supports up to 16k output tokens, so 256 was overly
-    // conservative and excluded most real agent outputs (writers, planners,
-    // summarizers routinely emit 200–500 tokens). 512 keeps the rule from
-    // touching long-form generation while admitting normal agent outputs.
-    vec![
-        // OpenAI
-        ModelDowngradeRoute {
-            from: "gpt-4o".to_string(),
-            to: "gpt-4o-mini".to_string(),
-            price_ratio: 0.07,   // 0.15/2.50 input; 0.60/10.00 output ≈ 0.06–0.07
-            max_output_tokens: 512,
-        },
-        ModelDowngradeRoute {
-            from: "gpt-4-turbo".to_string(),
-            to: "gpt-4o-mini".to_string(),
-            price_ratio: 0.05,
-            max_output_tokens: 512,
-        },
-        // Anthropic: sonnet-4-5 ($3/$15) → haiku-4-5 ($0.80/$4)
-        // price_ratio = 0.80/3.00 ≈ 0.27 input; 4.00/15.00 ≈ 0.27 output
-        ModelDowngradeRoute {
-            from: "claude-sonnet-4-5".to_string(),
-            to: "claude-haiku-4-5-20251001".to_string(),
-            price_ratio: 0.27,
-            max_output_tokens: 512,
-        },
-        // Legacy Anthropic routes (EOL models kept for historical runs)
-        ModelDowngradeRoute {
-            from: "claude-3-5-sonnet-20241022".to_string(),
-            to: "claude-3-5-haiku-20241022".to_string(),
-            price_ratio: 0.33,
-            max_output_tokens: 512,
-        },
-        // Open-source (Groq): Llama 70B → 8B
-        // price_ratio = 0.05/0.59 ≈ 0.08 (Groq rates)
-        ModelDowngradeRoute {
-            from: "llama-3.1-70b-versatile".to_string(),
-            to: "llama-3.1-8b-instant".to_string(),
-            price_ratio: 0.08,
-            max_output_tokens: 512,
-        },
-        // HF Inference API: Llama-3.3-70B → Llama-3.1-8B (no "Meta-" prefix)
-        ModelDowngradeRoute {
-            from: "meta-llama/Llama-3.3-70B-Instruct".to_string(),
-            to: "meta-llama/Llama-3.1-8B-Instruct".to_string(),
-            price_ratio: 0.08,
-            max_output_tokens: 512,
-        },
-        // HF fallback: Llama-3.1-70B → 8B
-        ModelDowngradeRoute {
-            from: "meta-llama/Llama-3.1-70B-Instruct".to_string(),
-            to: "meta-llama/Llama-3.1-8B-Instruct".to_string(),
-            price_ratio: 0.08,
-            max_output_tokens: 512,
-        },
-    ]
-}
 
 /// Canonical-bytes-based `CacheKeyBuilder`. Hashes the call's messages and
 /// parameters via the same canonicalizer used by the `@memoize` decorator,
@@ -146,6 +83,7 @@ pub struct Wired {
     pub optimizer: Arc<Optimizer>,
     pub cost_model: Arc<CostModel>,
     pub plan_profiles: Arc<PlanProfiles>,
+    pub model_catalog: Arc<ModelCatalog>,
     pub budget: Arc<Budget>,
     /// Connection to `optimizer_audit.db`. The FFI layer wraps it in a
     /// `Mutex` and uses it for synchronous `plan_audit` inserts.
@@ -207,9 +145,11 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
         .flush_divergence(&mut cost_conn)
         .context("persist resized divergence windows")?;
 
+    let model_catalog = Arc::new(default_model_catalog().context("build model catalog")?);
+
     let audit_path = storage_dir.join("optimizer_audit.db");
-    let audit_conn = Connection::open(&audit_path)
-        .with_context(|| format!("open {:?}", audit_path))?;
+    let audit_conn =
+        Connection::open(&audit_path).with_context(|| format!("open {:?}", audit_path))?;
     // The audit DB is written once per plan call. Without WAL, SQLite runs
     // journal_mode=DELETE + synchronous=FULL and fsyncs a rollback journal on
     // EVERY write — on the user's LLM-call path (bd-gzm). WAL + NORMAL removes
@@ -245,9 +185,8 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
                 .filter(|s| !s.is_empty())
                 .collect()
         });
-    let rule_enabled = |name: &str| -> bool {
-        enabled.as_ref().is_none_or(|set| set.contains(name))
-    };
+    let rule_enabled =
+        |name: &str| -> bool { enabled.as_ref().is_none_or(|set| set.contains(name)) };
 
     let mut rules: Vec<Box<dyn RewriteRule>> = Vec::with_capacity(5);
     if rule_enabled("CacheHit") {
@@ -268,8 +207,8 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
         rules.push(Box::new(ParallelBranchRule::default()));
     }
     if rule_enabled("ModelDowngrade") {
-        rules.push(Box::new(ModelDowngradeRule::new(
-            default_routes(),
+        rules.push(Box::new(ModelDowngradeRule::from_catalog(
+            model_catalog.clone(),
             budget.clone(),
         )));
     }
@@ -297,6 +236,7 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
         optimizer,
         cost_model,
         plan_profiles,
+        model_catalog,
         budget,
         audit_conn,
     })
@@ -325,7 +265,9 @@ mod tests {
 
         for name in ["cost_model.db", "optimizer_audit.db"] {
             let conn = Connection::open(dir.path().join(name)).unwrap();
-            let mode: String = conn.query_row("PRAGMA journal_mode", [], |r| r.get(0)).unwrap();
+            let mode: String = conn
+                .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+                .unwrap();
             assert_eq!(mode.to_lowercase(), "wal", "{name} must be WAL mode");
         }
     }
@@ -389,10 +331,7 @@ mod tests {
             );
         }
         let mut connection = Connection::open(dir.path().join("cost_model.db")).unwrap();
-        initial
-            .budget
-            .flush_divergence(&mut connection)
-            .unwrap();
+        initial.budget.flush_divergence(&mut connection).unwrap();
         drop(initial);
 
         let restarted = build_optimizer(dir.path(), OptimizerConfig::default()).unwrap();

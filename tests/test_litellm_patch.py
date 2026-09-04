@@ -18,6 +18,21 @@ from agentc._patches import _litellm
 from agentc._patches._litellm import _wrap_acompletion, _wrap_completion
 
 
+def _route_contract(requested: str, target: str) -> dict[str, str]:
+    return {
+        "catalog_version": "test-catalog-v1",
+        "price_table_version": "test-prices-v1",
+        "provider_protocol": "litellm.completion.v1",
+        "provider_namespace": "together_ai",
+        "requested_model_id": requested,
+        "resolved_requested_model_id": requested,
+        "target_model_id": target,
+        "target_model_version": f"{target}@test-catalog-v1",
+        "target_revision_kind": "catalog_observation",
+        "output_token_parameter": "max_tokens",
+    }
+
+
 def _response(model: str = "strong-model") -> SimpleNamespace:
     return SimpleNamespace(
         model=model,
@@ -84,12 +99,14 @@ def test_excluded_scope_is_traced_but_never_planned_or_mutated() -> None:
 
 def test_rewrite_changes_only_optimizer_supported_fields() -> None:
     spans: list[dict[str, Any]] = []
-    response = _response("cheap-model")
+    requested = "together_ai/zai-org/GLM-5.3"
+    target = "together_ai/zai-org/GLM-5.3-Flash"
+    response = _response(target)
     messages = [{"role": "user", "content": "hello"}]
     tools = [{"type": "function", "function": {"name": "lookup"}}]
     secret = object()
     request = {
-        "model": "strong-model",
+        "model": requested,
         "messages": messages,
         "tools": tools,
         "temperature": 0,
@@ -97,9 +114,13 @@ def test_rewrite_changes_only_optimizer_supported_fields() -> None:
         "api_key": secret,
     }
     mutated_call = {
-        "model": "cheap-model",
+        "model": target,
         "messages": messages,
-        "parameters": {"temperature": 0, "max_output_tokens": 64},
+        "parameters": {
+            "temperature": 0,
+            "max_output_tokens": 64,
+            "extra": {"agentc_routed_target": _route_contract(requested, target)},
+        },
     }
     plan = Plan(kind="rewritten", rule="ModelDowngrade", call=mutated_call)
     wrapped = MagicMock(return_value=response)
@@ -120,9 +141,9 @@ def test_rewrite_changes_only_optimizer_supported_fields() -> None:
 
     assert result is response
     sent = wrapped.call_args.kwargs
-    assert sent["model"] == "cheap-model"
-    assert sent["max_completion_tokens"] == 64
-    assert "max_tokens" not in sent
+    assert sent["model"] == target
+    assert sent["max_tokens"] == 64
+    assert "max_completion_tokens" not in sent
     assert sent["tools"] is tools
     assert sent["api_key"] is secret
     observe.assert_called_once()
@@ -132,15 +153,20 @@ def test_rewrite_changes_only_optimizer_supported_fields() -> None:
 
 
 def test_positional_model_and_messages_can_be_rewritten() -> None:
-    response = _response("cheap-model")
+    requested = "together_ai/zai-org/GLM-5.3"
+    target = "together_ai/zai-org/GLM-5.3-Flash"
+    response = _response(target)
     messages = [{"role": "user", "content": "hello"}]
     plan = Plan(
         kind="rewritten",
         rule="ModelDowngrade",
         call={
-            "model": "cheap-model",
+            "model": target,
             "messages": messages,
-            "parameters": {"temperature": 0},
+            "parameters": {
+                "temperature": 0,
+                "extra": {"agentc_routed_target": _route_contract(requested, target)},
+            },
         },
     )
     wrapped = MagicMock(return_value=response)
@@ -151,9 +177,9 @@ def test_positional_model_and_messages_can_be_rewritten() -> None:
         patch("agentc._patches._litellm._observe"),
         patch("agentc._patches._optimizer_glue.maybe_shadow_record"),
     ):
-        _wrap_completion(wrapped, None, ("strong-model", messages), {"temperature": 1})
+        _wrap_completion(wrapped, None, (requested, messages), {"temperature": 1})
 
-    assert wrapped.call_args.args == ("cheap-model", messages)
+    assert wrapped.call_args.args == (target, messages)
     assert wrapped.call_args.kwargs["temperature"] == 0
 
 
@@ -183,6 +209,90 @@ async def test_async_completion_uses_one_plan_and_preserves_response() -> None:
     observe.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_async_catalog_route_preserves_native_request_shape() -> None:
+    requested = "together_ai/zai-org/GLM-5.3"
+    target = "together_ai/zai-org/GLM-5.3-Flash"
+    messages = [
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": "use the tool"}],
+        }
+    ]
+    tools = [{"type": "function", "function": {"name": "lookup"}}]
+    secret = object()
+    request = {
+        "model": requested,
+        "messages": messages,
+        "tools": tools,
+        "api_key": secret,
+    }
+    call = {
+        "model": target,
+        "messages": [],
+        "parameters": {
+            "max_output_tokens": 64,
+            "extra": {
+                "agentc_native_messages_opaque": True,
+                "agentc_routed_target": _route_contract(requested, target),
+            },
+        },
+    }
+    plan = Plan(kind="rewritten", rule="ModelDowngrade", call=call)
+    response = _response(target)
+    wrapped = AsyncMock(return_value=response)
+
+    with (
+        patch("agentc._patches._litellm._write_root_span"),
+        patch("agentc._patches._litellm._plan_call", return_value=(plan, "site")),
+        patch("agentc._patches._litellm._observe"),
+    ):
+        result = await _wrap_acompletion(wrapped, None, (), request)
+
+    assert result is response
+    sent = wrapped.await_args.kwargs
+    assert sent["model"] == target
+    assert sent["messages"] is messages
+    assert sent["tools"] is tools
+    assert sent["api_key"] is secret
+    assert sent["max_tokens"] == 64
+    assert plan.dispatch_fallback is False
+    assert plan.executed_model_id == target
+
+
+@pytest.mark.asyncio
+async def test_async_unsafe_route_falls_back_to_exact_original_once() -> None:
+    messages = [{"role": "user", "content": "hello"}]
+    tools = [{"type": "function", "function": {"name": "lookup"}}]
+    request = {
+        "model": "openai/gpt-5.4",
+        "messages": messages,
+        "tools": tools,
+    }
+    plan = Plan(
+        kind="rewritten",
+        rule="ModelDowngrade",
+        call={"model": "anthropic/claude-haiku-4-5", "messages": []},
+    )
+    response = _response("openai/gpt-5.4")
+    wrapped = AsyncMock(return_value=response)
+
+    with (
+        patch("agentc._patches._litellm._write_root_span"),
+        patch("agentc._patches._litellm._plan_call", return_value=(plan, "site")),
+        patch("agentc._patches._litellm._observe"),
+    ):
+        result = await _wrap_acompletion(wrapped, None, (), request)
+
+    assert result is response
+    wrapped.assert_awaited_once_with(**request)
+    assert wrapped.await_args.kwargs["messages"] is messages
+    assert wrapped.await_args.kwargs["tools"] is tools
+    assert plan.dispatch_fallback is True
+    assert plan.dispatch_fallback_reason == "mutated_dispatch_failed"
+    assert plan.executed_model_id == "openai/gpt-5.4"
+
+
 def test_observation_accounts_for_litellm_usage_and_known_model_cost() -> None:
     plan = Plan(kind="rewritten", rule="OutputBudget")
     response = _response("gpt-4o-mini-2024-07-18")
@@ -201,6 +311,8 @@ def test_observation_accounts_for_litellm_usage_and_known_model_cost() -> None:
     assert outcome["output_tokens"] == 5
     assert outcome["latency_ms"] == 250
     assert outcome["cost_usd"] > 0
+    assert outcome["dispatch_fallback"] is False
+    assert outcome["executed_model_id"] == "gpt-4o-mini-2024-07-18"
 
 
 def test_litellm_owns_nested_openai_and_anthropic_sdk_calls() -> None:

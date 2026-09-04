@@ -235,14 +235,18 @@ def _observe_anthropic_outcome(
     """Feed an Anthropic outcome back into the cost model. Best-effort."""
     try:
         from agentc._optimizer import observe_outcome
-        from agentc._patches._optimizer_glue import build_outcome_anthropic
+        from agentc._patches._optimizer_glue import (
+            build_outcome_anthropic,
+            resolve_executed_model_id,
+        )
 
-        model = str(getattr(response, "model", None) or kwargs.get("model", "") or "")
+        model = resolve_executed_model_id(plan, response, kwargs.get("model"))
         outcome = build_outcome_anthropic(
             response,
             elapsed_s=elapsed_s,
             model=model,
             call_site_id=call_site_id,
+            plan=plan,
         )
         observe_outcome(plan, outcome)
     except BaseException:
@@ -316,6 +320,15 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
 
     end_time = _now_us()
     elapsed_s = _time.perf_counter() - t0
+
+    if plan is not None:
+        from agentc._patches._optimizer_glue import (
+            dispatch_span_attributes,
+            resolve_executed_model_id,
+        )
+
+        executed_model = resolve_executed_model_id(plan, response, kwargs.get("model"))
+        req_attrs.update(dispatch_span_attributes(plan, executed_model))
 
     if plan is not None and call_site_id is not None:
         _observe_anthropic_outcome(
@@ -537,6 +550,15 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
         raise
 
     end_time = _now_us()
+
+    if plan is not None:
+        from agentc._patches._optimizer_glue import (
+            dispatch_span_attributes,
+            resolve_executed_model_id,
+        )
+
+        executed_model = resolve_executed_model_id(plan, response, kwargs.get("model"))
+        req_attrs.update(dispatch_span_attributes(plan, executed_model))
 
     if plan is not None and call_site_id is not None:
         _observe_anthropic_outcome(

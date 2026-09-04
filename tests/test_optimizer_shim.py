@@ -6,9 +6,10 @@ dataclass assembly + fail-open wrapping.
 
 from __future__ import annotations
 
+import json
 from unittest.mock import patch
 
-from agentc._optimizer import PASS_THROUGH, Plan, observe_outcome, plan_call
+from agentc._optimizer import PASS_THROUGH, Plan, model_catalog, observe_outcome, plan_call
 
 
 def test_pass_through_shape():
@@ -45,6 +46,56 @@ def test_plan_call_decodes_rewritten():
     assert p.rule == "ModelDowngrade"
     assert p.call is not None and p.call["model"] == "mini"
     assert abs(p.projected_savings_usd - 0.0042) < 1e-6
+
+
+def test_plan_call_hydrates_versioned_dispatch_metadata():
+    metadata = {
+        "catalog_version": "catalog-v1",
+        "price_table_version": "prices-v1",
+        "provider_protocol": "openai.chat.completions.v1",
+        "provider_namespace": "openai",
+        "target_model_id": "gpt-5.4-mini-2026-03-17",
+        "target_model_version": "gpt-5.4-mini-2026-03-17",
+    }
+    payload = json.dumps(
+        {
+            "kind": "rewritten",
+            "rule": "ModelDowngrade",
+            "call": {
+                "model": "gpt-5.4-mini-2026-03-17",
+                "parameters": {"extra": {"agentc_routed_target": metadata}},
+            },
+        }
+    )
+    original = {
+        "call_site_id": "x",
+        "model": "gpt-5.4-2026-03-05",
+        "parameters": {
+            "extra": {
+                "agentc_route_context": {
+                    "provider_protocol": "openai.chat.completions.v1",
+                    "provider_namespace": "openai",
+                }
+            }
+        },
+    }
+    with patch("agentc._optimizer._native.optimize_plan", return_value=payload):
+        plan = plan_call(original)
+
+    assert plan.provider_protocol == "openai.chat.completions.v1"
+    assert plan.provider_namespace == "openai"
+    assert plan.target_model_id == "gpt-5.4-mini-2026-03-17"
+    assert plan.target_model_version == "gpt-5.4-mini-2026-03-17"
+    assert plan.catalog_version == "catalog-v1"
+    assert plan.price_table_version == "prices-v1"
+
+
+def test_model_catalog_decodes_native_snapshot():
+    payload = '{"catalog_version":"v1","targets":[{"model_id":"m"}]}'
+    with patch("agentc._optimizer._native.optimize_model_catalog", return_value=payload):
+        catalog = model_catalog()
+    assert catalog["catalog_version"] == "v1"
+    assert catalog["targets"] == [{"model_id": "m"}]
 
 
 def test_plan_call_decodes_parallel():

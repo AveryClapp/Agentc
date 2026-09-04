@@ -38,9 +38,9 @@ Users annotate high-repetition call sites with `@agentc.memoize(...)`. The profi
 
 > **Status: Active** | Implementation-ready
 
-JIT runtime that intercepts LLM calls on hot call sites and applies cost-ranked rewrite rules subject to a per-rule accuracy budget. Five rules ship in v1: `CacheHit`, `ContextCompress`, `ParallelBranch`, `ModelDowngrade`, `StateDrop`.
+JIT runtime that intercepts LLM calls on hot call sites and selects complete target-model-plus-rewrite plans under compatibility, evidence, divergence, freshness, and exposure constraints. Nine registered rewrites supply candidate transformations, and a versioned model catalog supplies provider-safe routing targets.
 
-Cold calls pass through; optimization engages after `hot_threshold` observations, when the empirical cost model has real data to rank proposals. Shadow-mode sampling at 2% provides ground-truth divergence for the accuracy budget.
+Cold calls pass through. An alternative becomes user-visible only from evidence for that exact call-site version and complete plan; routing-only and rewrite-only histories never fabricate joint evidence. Sampled reference executions measure output divergence for the explicit risk contract, and failed optimized dispatch replays the exact original request once.
 
 ---
 

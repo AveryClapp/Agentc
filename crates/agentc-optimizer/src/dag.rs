@@ -114,7 +114,7 @@ impl Call {
 
 /// Measured result of executing a [`Plan`]. Fed into
 /// `Optimizer::observe` after the user-visible response lands.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Outcome {
     pub input_tokens: u32,
     pub output_tokens: u32,
@@ -133,6 +133,26 @@ pub struct Outcome {
     /// plan keep compiling.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub call_site_id: Option<String>,
+    /// True when the selected plan failed before returning a usable response
+    /// and the adapter replayed the exact reference request once.
+    #[serde(default)]
+    pub dispatch_fallback: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispatch_fallback_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_protocol: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_namespace: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_model_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_model_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price_table_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executed_model_id: Option<String>,
 }
 
 mod serde_hex8 {
@@ -213,8 +233,14 @@ mod tests {
             span_id: [2u8; 8],
             model: "gpt-4o".into(),
             messages: vec![
-                Message { role: "system".into(), content: "You are a planner.".into() },
-                Message { role: "user".into(), content: "Plan lunch.".into() },
+                Message {
+                    role: "system".into(),
+                    content: "You are a planner.".into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "Plan lunch.".into(),
+                },
             ],
             parameters: Parameters {
                 temperature: Some(0.7),
@@ -246,11 +272,16 @@ mod tests {
             output_is_structured: false,
             output_is_short: true,
             call_site_id: None,
+            dispatch_fallback: true,
+            target_model_id: Some("gpt-5.4-mini-2026-03-17".into()),
+            ..Outcome::default()
         };
         let json = serde_json::to_string(&outcome).unwrap();
         let back: Outcome = serde_json::from_str(&json).unwrap();
         assert_eq!(back.input_tokens, outcome.input_tokens);
         assert!(back.output_is_short);
+        assert!(back.dispatch_fallback);
+        assert_eq!(back.target_model_id, outcome.target_model_id);
     }
 
     #[test]
@@ -275,7 +306,9 @@ mod tests {
 
     #[test]
     fn dep_source_state_encodes_as_tagged_object() {
-        let dep = DepSource::State { key: "plan_memory".into() };
+        let dep = DepSource::State {
+            key: "plan_memory".into(),
+        };
         let json = serde_json::to_string(&dep).unwrap();
         assert!(json.contains("\"state\""), "tag missing: {json}");
         assert!(json.contains("plan_memory"));

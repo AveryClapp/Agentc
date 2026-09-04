@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "record_kind": "prospective_protocol_revision",
+  "protocol_id": "agentc-mlsys2027-v1",
+  "split_namespace": "agentc-mlsys2027-v1",
+  "revision": 11,
+  "parent_revision": 10,
+  "created_at_utc": "2026-09-03T23:47:59Z",
+  "effective_before_stage": "E1",
+  "contract_baseline": "b4471c44e34ef5f44cd80694ba602601252fbeed",
+  "protocol_document": {
+    "path": "bench/repro/mlsys-2027-evaluation-protocol.md",
+    "parent_sha256": "5e88cbeeb3a9f6dca6f44117957bb82793ecc2850c37bcabb2c50ebaff7c7649",
+    "revision_11_sha256": "f0aad5cd06f2cb37422d4f1d8375a9d908cf6a656eea636ceecee22dc62c656f"
+  },
+  "thesis_contract": {
+    "path": "specs/working/joint-execution-planning-contract.md",
+    "sha256": "d17ced6f5819e8ba2cca7145b8ca8403b22ad277a8c4fa9194ba3371b014d4b7",
+    "bead": "bd-323l.2"
+  },
+  "information_state": {
+    "stage_e0_executed": true,
+    "stage_e1_executed": false,
+    "stage_c_executed": false,
+    "stage_p_executed": false,
+    "stage_t_executed": false,
+    "pilot_outcomes_inspected": false,
+    "confirmatory_outcomes_inspected": false,
+    "calibration_data_invalidated": false,
+    "reason_calibration_not_invalidated": "No Stage C run existed. Revision 11 is an outcome-blind availability correction discovered while implementing the provider dispatch catalog. The retired endpoints could not have produced task evidence."
+  },
+  "changes": [
+    {
+      "id": "r11-retired-together-model-pair",
+      "category": "model_and_provider_pool",
+      "beads": [
+        "bd-b72e",
+        "bd-323l.6.4"
+      ],
+      "before": "The frozen Together pair named meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo and meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo. Together's deprecation ledger shows those endpoints retired on 2026-02-25 and 2026-03-06, before the initial freeze.",
+      "after": "The Together cell uses provider-native IDs zai-org/GLM-5.3 and zai-org/GLM-5.3-Flash, observed in the official serverless catalog on 2026-09-03. LiteLLM dispatch strings retain the together_ai/ prefix, and every run archives the mutable catalog observation."
+    },
+    {
+      "id": "r11-versioned-provider-dispatch-catalog",
+      "category": "runtime_contract",
+      "beads": [
+        "bd-323l.6.4",
+        "bd-vdj"
+      ],
+      "before": "Production downgrade wiring used hard-coded one-hop strings and ratios without a common provider protocol, credential namespace, capability, output-token convention, or provenance contract.",
+      "after": "One versioned Rust catalog supplies candidate identity, routing group, provider protocol and namespace, capabilities, context/output limits, output-token parameter, price version, observation time, and primary sources. Python adapters reject incomplete or cross-namespace model mutations and record the selected and executed identities."
+    },
+    {
+      "id": "r11-haiku-price-correction",
+      "category": "price_table_correction",
+      "beads": [
+        "bd-54hw",
+        "bd-323l.6.4"
+      ],
+      "before": "The Python routing cost table listed Claude Haiku 4.5 at $0.80/$4.00 per million input/output tokens.",
+      "after": "The versioned catalog and Python observation table use Anthropic's observed official $1.00/$5.00 input/output price and retain its source. No experimental result used the stale price."
+    },
+    {
+      "id": "r11-exact-routed-fallback",
+      "category": "safety_contract",
+      "beads": [
+        "bd-3q8g",
+        "bd-323l.6.4"
+      ],
+      "before": "A failed routed dispatch replayed the original request, after which sync shadow sampling could replay that same original request again.",
+      "after": "Sync and async dispatch mark exact-original fallback explicitly. Shadow sampling skips fallback executions, so a failed routed attempt triggers exactly one original request and records the actual executed model and fallback reason."
+    }
+  ],
+  "changed_frozen_items": [
+    "model_and_provider_pool",
+    "model_catalog_and_price_provenance",
+    "routed_dispatch_and_fallback_contract"
+  ],
+  "unchanged_frozen_items": [
+    "claim_under_test",
+    "primary_and_secondary_arms",
+    "upstream_workload_revisions_and_input_digests",
+    "task_split_namespace_membership_and_counts",
+    "primary_outcomes",
+    "non_inferiority_margins",
+    "minimum_paired_evidence",
+    "plan_profile_window_size",
+    "production_shadow_rate",
+    "statistical_tests_and_multiplicity_control",
+    "guard_rate_grid_and_task_damage_limit",
+    "retry_exclusion_and_stopping_rules",
+    "artifact_contract"
+  ],
+  "split_invariants": {
+    "tau2-banking-knowledge": {
+      "counts_calibration_pilot_confirmatory": [
+        20,
+        20,
+        57
+      ],
+      "ordered_id_digest": "915b4717167618cf6d2da855450fe7cb5143a7c4be710e7baed5d80d898c417b"
+    },
+    "swebench-verified": {
+      "counts_calibration_pilot_confirmatory": [
+        30,
+        30,
+        90
+      ],
+      "not_selected": 350,
+      "ordered_id_digest": "5f649dc4518274c7a605cce1a5dcbf451eb1e14cba30a6dc2a032b84731ca9e4"
+    },
+    "osworld-v2": {
+      "counts_calibration_pilot_confirmatory": [
+        22,
+        22,
+        64
+      ],
+      "ordered_id_digest": "ec2798cd66968cf6735af9e4b5deafca38c006532df96fa0c3d6d9f08c273556"
+    }
+  },
+  "implementation_status": {
+    "paper_evidence": false,
+    "runtime_capability_added": true,
+    "runtime_scope": "canonical execution-plan identity, constrained selection, exact per-plan profiles, and provider-safe versioned model dispatch; exploration, plan-level guard attribution, diagnostics, and end-to-end evaluation remain pending",
+    "parent_feature": "bd-323l.6",
+    "completed_children": [
+      "bd-323l.6.1",
+      "bd-323l.6.2",
+      "bd-323l.6.4"
+    ],
+    "remaining_children": [
+      "bd-323l.6.3",
+      "bd-323l.6.5",
+      "bd-323l.6.6",
+      "bd-323l.6.7"
+    ]
+  },
+  "outcome_blindness_assertion": "Revision 11 was frozen before any admission, calibration, pilot, or confirmatory execution. No task outcome informed the unavailable-model correction or catalog dispatch contract."
+}

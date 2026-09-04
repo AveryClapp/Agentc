@@ -19,6 +19,7 @@ pub mod dag;
 pub mod dag_context;
 pub mod execution_plan;
 pub mod ffi;
+pub mod model_catalog;
 pub mod plan_profile;
 pub mod planner;
 pub mod reporting;
@@ -40,6 +41,13 @@ pub use execution_plan::{
     PlanIdentityError, RewriteApplication, RewriteOrdering, Selection, SelectionObjective,
     SelectionPolicy, SelectionPolicyError, SelectionReason, ValidationPolicy,
     EXECUTION_PLAN_SCHEMA_VERSION,
+};
+pub use model_catalog::{
+    default_model_catalog, CatalogError, ModelCapabilities, ModelCatalog, ModelPrice,
+    ModelProvenance, ModelRevisionKind, ModelTarget, OutputTokenParameter, RequestRequirements,
+    RoutedModelTarget, ANTHROPIC_MESSAGES_PROTOCOL, DEFAULT_MODEL_CATALOG_VERSION,
+    DEFAULT_PRICE_TABLE_VERSION, LITELLM_COMPLETION_PROTOCOL, OPENAI_CHAT_COMPLETIONS_PROTOCOL,
+    ROUTED_TARGET_KEY, ROUTE_CONTEXT_KEY,
 };
 pub use plan_profile::{
     load_plan_profile, CallSiteVersion, CallSiteVersionError, CallSiteVersionSpec,

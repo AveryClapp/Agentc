@@ -104,6 +104,8 @@ async def test_rewritten_falls_back_exactly_once_on_failure():
     # Spec: "Executor retries original call exactly once on
     # downgraded-model failure."
     assert calls == {"original": 1, "mutated": 1}
+    assert plan.dispatch_fallback is True
+    assert plan.dispatch_fallback_reason == "mutated_dispatch_failed"
 
 
 @pytest.mark.asyncio
@@ -153,6 +155,7 @@ async def test_composed_falls_back_exactly_once_on_failure():
     out = await dispatch(plan, run_original=original, run_mutated=mutated)
     assert out == "orig"
     assert calls == {"original": 1, "mutated": 1}
+    assert plan.dispatch_fallback is True
 
 
 @pytest.mark.asyncio

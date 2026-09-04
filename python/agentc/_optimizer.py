@@ -47,6 +47,17 @@ class Plan:
     # Raw parameters dict from the call, used to compute the canonical
     # parameters_hash for cache auto-seeding in _observe_openai_outcome.
     parameters: dict[str, Any] = field(default_factory=dict)
+    # Versioned routed-dispatch metadata. These fields are populated from the
+    # Rust-selected call and become observation/span dimensions after dispatch.
+    provider_protocol: Optional[str] = None
+    provider_namespace: Optional[str] = None
+    target_model_id: Optional[str] = None
+    target_model_version: Optional[str] = None
+    catalog_version: Optional[str] = None
+    price_table_version: Optional[str] = None
+    executed_model_id: Optional[str] = None
+    dispatch_fallback: bool = False
+    dispatch_fallback_reason: Optional[str] = None
 
     @property
     def is_pass_through(self) -> bool:
@@ -80,7 +91,18 @@ def plan_call(call: dict[str, Any]) -> Plan:
     plan.trace_id = call.get("trace_id")
     plan.messages = list(call.get("messages") or [])
     plan.parameters = dict(call.get("parameters") or {})
+    _hydrate_dispatch_metadata(plan, call)
     return plan
+
+
+def model_catalog() -> dict[str, Any]:
+    """Return the exact versioned model catalog owned by the native runtime."""
+    try:
+        value = json.loads(_native.optimize_model_catalog())
+        return value if isinstance(value, dict) else {"targets": []}
+    except BaseException:
+        log.debug("model_catalog: native catalog unavailable", exc_info=True)
+        return {"targets": []}
 
 
 def observe_outcome(plan: Plan, outcome: dict[str, Any]) -> None:
@@ -150,3 +172,37 @@ def _plan_from_dict(data: dict[str, Any], raw_json: str) -> Plan:
         )
     log.debug("plan_call: unknown kind %r from native", kind)
     return PASS_THROUGH
+
+
+def _hydrate_dispatch_metadata(plan: Plan, original_call: dict[str, Any]) -> None:
+    parameters = original_call.get("parameters")
+    extra = parameters.get("extra") if isinstance(parameters, dict) else None
+    route_context = (
+        extra.get("agentc_route_context") if isinstance(extra, dict) else None
+    )
+    if isinstance(route_context, dict):
+        plan.provider_protocol = _optional_string(route_context.get("provider_protocol"))
+        plan.provider_namespace = _optional_string(route_context.get("provider_namespace"))
+
+    routed_call = plan.call if isinstance(plan.call, dict) else None
+    routed_params = routed_call.get("parameters") if routed_call is not None else None
+    routed_extra = (
+        routed_params.get("extra") if isinstance(routed_params, dict) else None
+    )
+    metadata = (
+        routed_extra.get("agentc_routed_target")
+        if isinstance(routed_extra, dict)
+        else None
+    )
+    if not isinstance(metadata, dict):
+        return
+    plan.provider_protocol = _optional_string(metadata.get("provider_protocol"))
+    plan.provider_namespace = _optional_string(metadata.get("provider_namespace"))
+    plan.target_model_id = _optional_string(metadata.get("target_model_id"))
+    plan.target_model_version = _optional_string(metadata.get("target_model_version"))
+    plan.catalog_version = _optional_string(metadata.get("catalog_version"))
+    plan.price_table_version = _optional_string(metadata.get("price_table_version"))
+
+
+def _optional_string(value: Any) -> Optional[str]:
+    return value if isinstance(value, str) and value else None

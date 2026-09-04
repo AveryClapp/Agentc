@@ -10,6 +10,10 @@ from __future__ import annotations
 import pytest
 
 from agentc._patches._optimizer_glue import (
+    ANTHROPIC_MESSAGES_PROTOCOL,
+    LITELLM_COMPLETION_PROTOCOL,
+    OPENAI_CHAT_COMPLETIONS_PROTOCOL,
+    UnsafeModelRouteError,
     _text_divergence,
     apply_call_mutations_anthropic,
     apply_call_mutations_openai,
@@ -17,6 +21,7 @@ from agentc._patches._optimizer_glue import (
     build_call_dict_openai,
     dispatch_sync,
     maybe_shadow_record,
+    resolve_executed_model_id,
 )
 from agentc._provenance import (
     UserInput,
@@ -52,6 +57,28 @@ def _build_anthropic(kwargs: dict) -> dict:
         trace_id_hex="00" * 16,
         span_id_hex="00" * 8,
     )
+
+
+def _route_contract(
+    *,
+    protocol: str,
+    namespace: str,
+    requested: str,
+    target: str,
+    output_parameter: str,
+) -> dict[str, str]:
+    return {
+        "catalog_version": "test-catalog-v1",
+        "price_table_version": "test-prices-v1",
+        "provider_protocol": protocol,
+        "provider_namespace": namespace,
+        "requested_model_id": requested,
+        "resolved_requested_model_id": requested,
+        "target_model_id": target,
+        "target_model_version": target,
+        "target_revision_kind": "immutable_snapshot",
+        "output_token_parameter": output_parameter,
+    }
 
 
 def test_message_deps_mirrors_input_deps_for_untagged():
@@ -312,6 +339,13 @@ def test_anthropic_osworld_shape_survives_parameter_and_model_rewrite() -> None:
     assert mutated["parameters"]["extra"]["agentc_native_messages_opaque"] is True
 
     mutated["model"] = "claude-haiku-4-5-20251001"
+    mutated["parameters"]["extra"]["agentc_routed_target"] = _route_contract(
+        protocol=ANTHROPIC_MESSAGES_PROTOCOL,
+        namespace="anthropic",
+        requested="claude-sonnet-4-5-20250929",
+        target="claude-haiku-4-5-20251001",
+        output_parameter="max_tokens",
+    )
     mutated["messages"] = []
     mutated["parameters"]["max_output_tokens"] = 128
     new_kwargs = apply_call_mutations_anthropic(kwargs, mutated)
@@ -394,6 +428,200 @@ def test_openai_output_budget_uses_one_compatible_cap_field(
     )
     assert new_kwargs[expected_field] == 64
     assert other_field not in new_kwargs
+
+
+def test_adapter_route_context_captures_provider_and_request_requirements() -> None:
+    kwargs = {
+        "model": "gpt-5.4-2026-03-05",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "inspect"},
+                    {"type": "image_url", "image_url": {"url": "data:x"}},
+                ],
+            }
+        ],
+        "tools": [{"type": "function", "function": {"name": "lookup"}}],
+        "response_format": {"type": "json_object"},
+        "max_completion_tokens": 128,
+    }
+    call = build_call_dict_openai(
+        kwargs,
+        call_site_id="site",
+        trace_id_hex="00" * 16,
+        span_id_hex="00" * 8,
+    )
+    context = call["parameters"]["extra"]["agentc_route_context"]
+    assert context["provider_protocol"] == OPENAI_CHAT_COMPLETIONS_PROTOCOL
+    assert context["provider_namespace"] == "openai"
+    assert context["image_input"] is True
+    assert context["tool_calling"] is True
+    assert context["structured_outputs"] is True
+    assert context["input_tokens_upper_bound"] == 2**32 - 1
+
+
+def test_route_context_detects_typed_output_config() -> None:
+    class OutputConfig:
+        def model_dump(self) -> dict:
+            return {"format": {"type": "json_schema"}}
+
+    call = build_call_dict_openai(
+        {
+            "model": "gpt-5.4-2026-03-05",
+            "messages": [{"role": "user", "content": "hello"}],
+            "output_config": OutputConfig(),
+        },
+        call_site_id="site",
+        trace_id_hex="00" * 16,
+        span_id_hex="00" * 8,
+    )
+    context = call["parameters"]["extra"]["agentc_route_context"]
+    assert context["structured_outputs"] is True
+
+
+def test_unencodable_route_input_forces_catalog_abstention_bound() -> None:
+    class Unencodable:
+        def __str__(self) -> str:
+            raise RuntimeError("cannot project")
+
+    call = build_call_dict_openai(
+        {
+            "model": "gpt-5.4-2026-03-05",
+            "messages": [{"role": "user", "content": "hello"}],
+            "tools": [Unencodable()],
+        },
+        call_site_id="site",
+        trace_id_hex="00" * 16,
+        span_id_hex="00" * 8,
+    )
+    context = call["parameters"]["extra"]["agentc_route_context"]
+    assert context["input_tokens_upper_bound"] == 2**32 - 1
+
+
+def test_catalog_route_uses_target_output_token_convention() -> None:
+    requested = "gpt-5.4-2026-03-05"
+    target = "gpt-5.4-mini-2026-03-17"
+    kwargs = {
+        "model": requested,
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_tokens": 200,
+    }
+    mutated = {
+        "model": target,
+        "messages": kwargs["messages"],
+        "parameters": {
+            "max_output_tokens": 64,
+            "extra": {
+                "agentc_routed_target": _route_contract(
+                    protocol=OPENAI_CHAT_COMPLETIONS_PROTOCOL,
+                    namespace="openai",
+                    requested=requested,
+                    target=target,
+                    output_parameter="max_completion_tokens",
+                )
+            },
+        },
+    }
+
+    dispatched = apply_call_mutations_openai(kwargs, mutated)
+
+    assert dispatched["model"] == target
+    assert dispatched["max_completion_tokens"] == 64
+    assert "max_tokens" not in dispatched
+
+
+def test_executed_model_prefers_routed_target_when_response_omits_model() -> None:
+    from types import SimpleNamespace
+
+    from agentc._optimizer import Plan
+
+    plan = Plan(kind="rewritten", executed_model_id="gpt-5.4-mini-2026-03-17")
+    assert (
+        resolve_executed_model_id(plan, SimpleNamespace(), "gpt-5.4-2026-03-05")
+        == "gpt-5.4-mini-2026-03-17"
+    )
+
+
+def test_litellm_cross_provider_route_is_rejected() -> None:
+    requested = "openai/gpt-5.4"
+    target = "anthropic/claude-haiku-4-5-20251001"
+    kwargs = {"model": requested, "messages": []}
+    mutated = {
+        "model": target,
+        "messages": [],
+        "parameters": {
+            "extra": {
+                "agentc_routed_target": _route_contract(
+                    protocol=LITELLM_COMPLETION_PROTOCOL,
+                    namespace="openai",
+                    requested=requested,
+                    target=target,
+                    output_parameter="max_completion_tokens",
+                )
+            }
+        },
+    }
+
+    with pytest.raises(UnsafeModelRouteError, match="credential namespace"):
+        apply_call_mutations_openai(
+            kwargs,
+            mutated,
+            provider_protocol=LITELLM_COMPLETION_PROTOCOL,
+        )
+
+
+def test_routed_failure_replays_exact_original_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agentc._optimizer import Plan
+
+    messages = [{"role": "user", "content": "hello"}]
+    tools = [{"type": "function", "function": {"name": "lookup"}}]
+    original_kwargs = {
+        "model": "openai/gpt-5.4",
+        "messages": messages,
+        "tools": tools,
+    }
+    # Missing route metadata makes the mutation fail before any provider call.
+    plan = Plan(
+        kind="rewritten",
+        rule="ModelDowngrade",
+        call={"model": "anthropic/claude-haiku-4-5", "messages": []},
+    )
+    original_calls = 0
+    mutated_calls = 0
+
+    def run_original() -> str:
+        nonlocal original_calls
+        original_calls += 1
+        assert original_kwargs["messages"] is messages
+        assert original_kwargs["tools"] is tools
+        return "reference"
+
+    def run_mutated(mutated_call: dict) -> str:
+        nonlocal mutated_calls
+        mutated_calls += 1
+        apply_call_mutations_openai(
+            original_kwargs,
+            mutated_call,
+            provider_protocol=LITELLM_COMPLETION_PROTOCOL,
+        )
+        return "unreachable"
+
+    response = dispatch_sync(
+        plan,
+        run_original=run_original,
+        run_mutated=run_mutated,
+    )
+    monkeypatch.setenv("AGENTC_OPTIMIZE_SHADOW", "1.0")
+    maybe_shadow_record(plan, "site", response, run_original)
+
+    assert response == "reference"
+    assert original_calls == 1
+    assert mutated_calls == 1
+    assert plan.dispatch_fallback is True
+    assert plan.dispatch_fallback_reason == "mutated_dispatch_failed"
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ use std::sync::Arc;
 use crate::budget::Budget;
 use crate::cost_model::CallSiteProfile;
 use crate::dag::Call;
+use crate::model_catalog::{ModelCatalog, RoutedModelTarget};
 use crate::planner::{CostDriver, Plan, Proposal, RewriteRule};
 use crate::shadow::ShadowSampler;
 
@@ -29,6 +30,9 @@ pub const MIN_SHORT_OR_STRUCTURED_FRACTION: f32 = 0.80;
 pub const PROBATION_OBSERVATIONS: u64 = 20;
 /// Probability of firing during the probation window.
 pub const PROBATION_FIRE_RATE: f32 = 0.30;
+/// Keep the legacy routing-only baseline focused on short outputs. The joint
+/// planner may enumerate the target's full output capacity independently.
+pub const DEFAULT_DOWNGRADE_OUTPUT_P95_CEILING: u32 = 512;
 
 /// One `from → to` routing entry.
 #[derive(Debug, Clone)]
@@ -43,6 +47,7 @@ pub struct ModelDowngradeRoute {
 
 pub struct ModelDowngradeRule {
     routes: Vec<ModelDowngradeRoute>,
+    catalog: Option<Arc<ModelCatalog>>,
     budget: Arc<Budget>,
     probation_sampler: ShadowSampler,
     accuracy_budget: f32,
@@ -52,6 +57,19 @@ impl ModelDowngradeRule {
     pub fn new(routes: Vec<ModelDowngradeRoute>, budget: Arc<Budget>) -> Self {
         Self {
             routes,
+            catalog: None,
+            budget,
+            probation_sampler: ShadowSampler::new(PROBATION_FIRE_RATE),
+            accuracy_budget: DEFAULT_ACCURACY_BUDGET,
+        }
+    }
+
+    /// Production constructor. Targets and dispatch metadata come from one
+    /// versioned catalog rather than a hard-coded one-hop route table.
+    pub fn from_catalog(catalog: Arc<ModelCatalog>, budget: Arc<Budget>) -> Self {
+        Self {
+            routes: Vec::new(),
+            catalog: Some(catalog),
             budget,
             probation_sampler: ShadowSampler::new(PROBATION_FIRE_RATE),
             accuracy_budget: DEFAULT_ACCURACY_BUDGET,
@@ -68,9 +86,37 @@ impl ModelDowngradeRule {
         self
     }
 
-    fn route_for<'a>(&'a self, model: &str) -> Option<&'a ModelDowngradeRoute> {
-        self.routes.iter().find(|r| r.from == model)
+    fn route_for(&self, call: &Call) -> Option<ResolvedRoute> {
+        if let Some(catalog) = &self.catalog {
+            let (target, price_ratio) = catalog.cheaper_targets(call).into_iter().next()?;
+            let metadata = catalog.routed_target(call, target).ok()?;
+            return Some(ResolvedRoute {
+                route: ModelDowngradeRoute {
+                    from: call.model.clone(),
+                    to: target.model_id.clone(),
+                    price_ratio,
+                    max_output_tokens: target
+                        .max_output_tokens
+                        .min(DEFAULT_DOWNGRADE_OUTPUT_P95_CEILING),
+                },
+                metadata: Some(metadata),
+            });
+        }
+
+        self.routes
+            .iter()
+            .find(|route| route.from == call.model)
+            .cloned()
+            .map(|route| ResolvedRoute {
+                route,
+                metadata: None,
+            })
     }
+}
+
+struct ResolvedRoute {
+    route: ModelDowngradeRoute,
+    metadata: Option<RoutedModelTarget>,
 }
 
 impl RewriteRule for ModelDowngradeRule {
@@ -79,7 +125,10 @@ impl RewriteRule for ModelDowngradeRule {
     }
 
     fn applies(&self, call: &Call, profile: &CallSiteProfile) -> bool {
-        let Some(route) = self.route_for(&call.model) else { return false; };
+        let Some(resolved) = self.route_for(call) else {
+            return false;
+        };
+        let route = resolved.route;
         if profile.output_token_p95 > route.max_output_tokens as f32 {
             return false;
         }
@@ -97,7 +146,8 @@ impl RewriteRule for ModelDowngradeRule {
     }
 
     fn propose(&self, call: &Call, profile: &CallSiteProfile) -> Option<Proposal> {
-        let route = self.route_for(&call.model)?.clone();
+        let resolved = self.route_for(call)?;
+        let route = resolved.route;
 
         // Probation gate: during warmup, fire probabilistically.
         let entry = self.budget.get_entry(&call.call_site_id, self.name());
@@ -117,13 +167,15 @@ impl RewriteRule for ModelDowngradeRule {
             }
         }
 
-        let projected_savings =
-            profile.cost_usd.mean as f32 * (1.0 - route.price_ratio).max(0.0);
+        let projected_savings = profile.cost_usd.mean as f32 * (1.0 - route.price_ratio).max(0.0);
 
-        let rewritten = Call {
+        let mut rewritten = Call {
             model: route.to.clone(),
             ..call.clone()
         };
+        if let Some(metadata) = resolved.metadata {
+            metadata.annotate_call(&mut rewritten).ok()?;
+        }
 
         let rule_name = self.name().to_string();
         Some(Proposal {
@@ -152,6 +204,10 @@ mod tests {
     use super::*;
     use crate::cost_model::WelfordStats;
     use crate::dag::Parameters;
+    use crate::model_catalog::{
+        default_model_catalog, OPENAI_CHAT_COMPLETIONS_PROTOCOL, ROUTED_TARGET_KEY,
+        ROUTE_CONTEXT_KEY,
+    };
 
     fn routes() -> Vec<ModelDowngradeRoute> {
         vec![ModelDowngradeRoute {
@@ -285,5 +341,42 @@ mod tests {
         let prop = rule.propose(&call(), &hot_profile(20)).unwrap();
         // cost.mean = 0.01, price_ratio = 0.1 → savings = 0.009.
         assert!((prop.projected_savings_usd - 0.009).abs() < 1e-4);
+    }
+
+    #[test]
+    fn catalog_route_emits_pinned_provider_dispatch_contract() {
+        let budget = Arc::new(Budget::new());
+        for _ in 0..25 {
+            budget.record_sample("site", "ModelDowngrade", 0.01, 1.0, 0);
+        }
+        let rule =
+            ModelDowngradeRule::from_catalog(Arc::new(default_model_catalog().unwrap()), budget);
+        let mut request = call();
+        request.model = "gpt-5.4".into();
+        request.parameters.extra = serde_json::json!({
+            ROUTE_CONTEXT_KEY: {
+                "provider_protocol": OPENAI_CHAT_COMPLETIONS_PROTOCOL,
+                "provider_namespace": "openai",
+                "input_tokens_upper_bound": 64,
+                "image_input": false,
+                "tool_calling": false,
+                "structured_outputs": false,
+                "streaming": false
+            }
+        });
+
+        let proposal = rule.propose(&request, &hot_profile(20)).unwrap();
+        let Plan::Rewritten { call, .. } = proposal.rewritten else {
+            panic!("expected rewritten plan");
+        };
+        assert_eq!(call.model, "gpt-5.4-mini-2026-03-17");
+        let metadata = &call.parameters.extra[ROUTED_TARGET_KEY];
+        assert_eq!(metadata["requested_model_id"], "gpt-5.4");
+        assert_eq!(metadata["provider_namespace"], "openai");
+        assert_eq!(metadata["output_token_parameter"], "max_completion_tokens");
+        assert!(metadata["catalog_version"]
+            .as_str()
+            .unwrap()
+            .contains("2026-09-03"));
     }
 }

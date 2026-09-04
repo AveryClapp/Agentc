@@ -1,7 +1,7 @@
 ---
 title: Literature and Nearest Neighbors
 status: active
-last-updated: 2026-05-09
+last-updated: 2026-09-03
 owner: paper-intelligence
 ---
 
@@ -23,17 +23,17 @@ Supersedes:
 
 ## Verification Summary
 
-- Verified source rows: 69 active literature entries.
+- Verified source rows: 76 active literature entries.
 - Rows needing correction from the candidate pass: `LIT-003`, `LIT-006`, `LIT-011`, `LIT-015`, `LIT-020`, `LIT-024`, `LIT-034`, `LIT-039`, `LIT-043`, `LIT-044`, `LIT-045`, `LIT-046`, `LIT-049`, `LIT-053`, `LIT-054`, `LIT-059`, `LIT-061`, `LIT-063`, `LIT-069`, `LIT-070`.
-- Strongest novelty threats: `LIT-008`, `LIT-024`, `LIT-025`, `LIT-036`, `LIT-040`, `LIT-041`, `LIT-043`, `LIT-044`, `LIT-055`, `LIT-060`.
-- Strongest runnable baselines to consider: `LIT-007`, `LIT-008`, `LIT-009`, `LIT-013`, `LIT-014`, `LIT-017`, `LIT-021`, `LIT-034`, `LIT-036`, `LIT-042`, `LIT-047`, `LIT-055`.
+- Strongest novelty threats: `LIT-008`, `LIT-024`, `LIT-025`, `LIT-036`, `LIT-040`, `LIT-041`, `LIT-043`, `LIT-044`, `LIT-055`, `LIT-060`, `LIT-071`-`LIT-074`.
+- Strongest runnable baselines to consider: `LIT-007`, `LIT-008`, `LIT-009`, `LIT-013`, `LIT-014`, `LIT-017`, `LIT-021`, `LIT-034`, `LIT-036`, `LIT-042`, `LIT-047`, `LIT-055`, `LIT-072`.
 - Most important evaluation-caution sources: `LIT-031`, `LIT-032`, `LIT-064`, `LIT-065`, `LIT-068`, `LIT-070`.
 
 ## High-Level Blurb
 
 The verified literature still supports the main framing: AgentC is best positioned as a runtime optimizer for compound AI / multi-step LLM agent traces, not as a paper about routing alone. Prior work already owns the individual tricks: routing, cascades, prompt compression, semantic caching, parallel tool execution, and serving optimization. AgentC's plausible contribution is the control layer: observing framework-emitted traces and applying multiple rewrite classes under one runtime policy.
 
-The dangerous reviewer objection is now sharper: several systems already optimize compound AI or agent workflows, especially Agentix/Autellix, Halo, Murakkab, AIOS, Cognify, DSPy, LMQL, SGLang, LLMCompiler, LLM-Tool Compiler, and vCache. The paper should avoid broad "first runtime optimizer" claims and instead say exactly what AgentC optimizes, where it intercepts, which rewrites it applies, what guarantees it does not provide, and how behavior is measured under stochasticity.
+The dangerous reviewer objection is now sharper: several systems already optimize compound AI or agent workflows, especially Agentix/Autellix, Halo, Murakkab, AIOS, Cognify, ApproxMLIR, AgentOpt, Agent JIT Compilation, Parrot, DSPy, LMQL, SGLang, LLMCompiler, LLM-Tool Compiler, and vCache. The 2026 additions eliminate broad novelty claims around transparent client-side interception, joint model/workflow configuration, accuracy-aware heterogeneous transformation, or the phrase "agent JIT" in isolation. The paper should instead say exactly what AgentC optimizes, where it intercepts, which online evidence is plan-specific, what risk contract gates execution, and how behavior is measured under stochasticity.
 
 ## How To Use This File
 
@@ -47,14 +47,14 @@ The dangerous reviewer objection is now sharper: several systems already optimiz
 
 | Cluster | AgentC connection | Main IDs | What it proves | What it threatens |
 |---|---|---|---|---|
-| Compound AI systems and agent frameworks | Optimizer target is a multi-call workflow/trace. | `LIT-002`-`LIT-006`, `LIT-042`, `LIT-043` | Agent workloads are structured systems, not isolated prompts. | AgentC may look like a thinner framework/runtime layer. |
-| Runtime optimization for LM workflows | AgentC belongs in systems/runtime optimization. | `LIT-006`, `LIT-008`, `LIT-023`-`LIT-025`, `LIT-040`-`LIT-045` | Cost/latency/quality optimization over LM programs is legitimate. | Broad "first optimizer" claims are unsafe. |
-| Model routing and cascades | Direct home for `ModelDowngrade`. | `LIT-007`-`LIT-012`, `LIT-046` | Some calls can use cheaper models. | Routing itself is crowded prior art. |
+| Compound AI systems and agent frameworks | Optimizer target is a multi-call workflow/trace. | `LIT-002`-`LIT-006`, `LIT-042`, `LIT-043`, `LIT-077` | Agent workloads are structured systems, not isolated prompts. | AgentC may look like a thinner framework/runtime layer. |
+| Runtime optimization for LM workflows | AgentC belongs in systems/runtime optimization. | `LIT-006`, `LIT-008`, `LIT-023`-`LIT-025`, `LIT-040`-`LIT-045`, `LIT-071`-`LIT-074`, `LIT-077` | Cost/latency/quality optimization over LM programs is legitimate. | Broad "first optimizer" and "agent JIT" claims are unsafe. |
+| Model routing and cascades | Direct home for `ModelDowngrade`. | `LIT-007`-`LIT-012`, `LIT-046`, `LIT-072` | Some calls can use cheaper models. | Routing and transparent client-side model selection are crowded prior art. |
 | Prompt/context compression | Direct home for `ContextCompress`. | `LIT-013`-`LIT-016`, `LIT-047`-`LIT-050` | Long prompts contain removable redundancy. | Standalone compressors are strong baselines. |
 | State/liveness/program analysis | Best support for `StateDrop`. | `LIT-037`, `LIT-038`, `LIT-051`-`LIT-054` | Pruning irrelevant state has a compiler lineage. | StateDrop is only principled if dependencies/read windows are defined. |
 | Semantic caching and memoization | Direct home for `CacheHit`. | `LIT-017`-`LIT-020`, `LIT-055`-`LIT-059` | Reuse can save cost/latency. | False hits and context sensitivity are central reviewer risks. |
-| Tool-call scheduling and parallelism | Direct home for `ParallelBranch`. | `LIT-021`-`LIT-023`, `LIT-060`, `LIT-061` | Independent tool/model calls can be parallelized. | Dependency and side-effect safety must be explicit. |
-| Serving and inference systems | Orthogonal systems contrast. | `LIT-020`, `LIT-033`-`LIT-036`, `LIT-062` | Serving stacks optimize admitted requests. | Reviewers may ask if serving systems erase gains. |
+| Tool-call scheduling and parallelism | Direct home for `ParallelBranch`. | `LIT-021`-`LIT-023`, `LIT-060`, `LIT-061`, `LIT-073`, `LIT-075`, `LIT-076` | Independent tool/model calls can be parallelized. | Dependency, effect, and causality safety must be explicit. |
+| Serving and inference systems | Orthogonal systems contrast. | `LIT-020`, `LIT-033`-`LIT-036`, `LIT-062`, `LIT-074`, `LIT-075` | Serving stacks optimize admitted requests and cross-request execution. | Reviewers may ask if serving systems erase gains or already recover the same graph structure. |
 | Stochastic evaluation | Evaluation protocol backbone. | `LIT-026`-`LIT-032`, `LIT-063`-`LIT-070` | Single-run agent evaluation is weak. | Quality-preservation claims need repeated paired tests. |
 
 ## Nearest-Neighbor Matrix
@@ -66,6 +66,10 @@ The dangerous reviewer objection is now sharper: several systems already optimiz
 | `LIT-040` | Murakkab | Compound-AI workflow resource efficiency | Declarative workflow + adaptive runtime | Runtime/adaptive | Major threat to broad runtime-optimizer claim; AgentC must emphasize online trace rewrite and concrete multi-rule passes. |
 | `LIT-043` | AIOS | Agent execution runtime | Agent OS scheduler/context/memory/tool layer | Runtime | Closest OS/runtime analogy; AgentC is narrower and focused on trace rewrite/control. |
 | `LIT-044` | Cognify | Gen-AI workflow autotuning | Hierarchical autotuner over structure/operator/model/prompt choices | Mostly offline/autotuning | Close optimizer threat; AgentC is runtime interception and trace rewrites rather than evaluator-driven autotuning. |
+| `LIT-071` | ApproxMLIR | Accuracy/performance choices across compound-AI components | MLIR approximation dialect, optimizer, and emitted runtime policy | Profile/compile plus runtime | Strongest heterogeneous-transformation threat; AgentC must distinguish online opaque-API plan learning and abstention from compiler-visible approximation search. |
+| `LIT-072` | AgentOpt | Per-role model combinations, per-call routing, tracking, and caching | Framework-agnostic HTTP/network interception | Offline selection plus runtime routing | Strongest transparent-deployment threat; AgentC needs semantic rewrites, plan-specific online evidence, and an explicit damage contract to remain distinct. |
+| `LIT-073` | Agent JIT Compilation | Web-agent plan generation and latency scheduling | Task-to-code planner plus Monte Carlo scheduler | JIT planning/runtime | The unqualified "agent JIT" label is unavailable; AgentC acts on existing emitted calls rather than compiling tasks into agent programs. |
+| `LIT-074` | Parrot | End-to-end dataflow optimization for multi-call LLM applications | Semantic-variable programming abstraction plus serving runtime | Runtime/service | Parrot already exposes cross-request semantics; AgentC's distinction is client-side recovery over opaque provider APIs without requiring a new application abstraction. |
 | `LIT-006` | DSPy | LM pipelines | Declarative LM-program compiler | Mostly compile/optimize time | AgentC does not require applications to be authored in DSPy. |
 | `LIT-041` | LMQL | LM programs | Query language and optimizing runtime | Runtime/compiler | AgentC does not require rewriting apps into a new language. |
 | `LIT-036` | SGLang | Structured LM-program execution | LM-program language + optimized runtime | Runtime/compiler | AgentC should emphasize framework-emitted trace optimization without porting workloads into SGLang. |
@@ -82,11 +86,11 @@ The dangerous reviewer objection is now sharper: several systems already optimiz
 
 | Rewrite or comparison | Strongest runnable candidates | Notes |
 |---|---|---|
-| ModelDowngrade | `LIT-007` FrugalGPT, `LIT-009` RouteLLM, `LIT-008` LLMSelector if artifact works | Use if routing claims are more than incidental. |
+| ModelDowngrade | `LIT-007` FrugalGPT, `LIT-009` RouteLLM, `LIT-008` LLMSelector if artifact works, `LIT-072` AgentOpt | AgentOpt is mandatory if transparent interception or pipeline-level model assignment is claimed. |
 | ContextCompress | `LIT-013` LLMLingua, `LIT-014` LongLLMLingua, `LIT-047` LLMLingua-2 | Needed if ContextCompress is a headline result. |
 | CacheHit | `LIT-017` GPTCache, `LIT-055` vCache, possibly `LIT-019` ContextCache | Only run if CacheHit is evaluated; otherwise cite as future-risk. |
-| ParallelBranch | `LIT-021` LLMCompiler | Needed if ParallelBranch becomes a result, not just future work. |
-| Framework/runtime substrate | `LIT-042` LangGraph, `LIT-043` AIOS, `LIT-036` SGLang | Mostly integration/orthogonality comparisons. |
+| ParallelBranch | `LIT-021` LLMCompiler, `LIT-075` AI Metropolis, `LIT-076` AsyncFC | Needed if ParallelBranch becomes a result, not just future work; match dependency and effect assumptions explicitly. |
+| Framework/runtime substrate | `LIT-042` LangGraph, `LIT-043` AIOS, `LIT-036` SGLang, `LIT-071` ApproxMLIR, `LIT-074` Parrot | Mostly integration/orthogonality comparisons; ApproxMLIR is a direct heterogeneous-plan comparison even if a port is infeasible. |
 | Evaluation methods | `LIT-066` JudgeBench, `LIT-068` Don't Pass@k tooling | Useful if judge or stochastic reliability claims become central. |
 
 ## Related-Work Section Shape
@@ -391,6 +395,22 @@ The entries below are checked source blurbs. They preserve the `LIT` IDs, citati
 - AgentC difference: AgentC's broader claim requires multiple rewrite types and framework-trace interception.
 - Use: important if ParallelBranch is central. Baseline: `cite-only`. Evidence: 4. Threat: 3.
 
+### `LIT-075` - AI Metropolis
+
+- Primary: https://proceedings.mlsys.org/paper_files/paper/2025/hash/4f31327e046913c7238d5b671f5d820e-Abstract-Conference.html
+- Verdict: verified MLSys 2025 paper; its scope is LLM-based multi-agent simulation rather than arbitrary online agents.
+- Citation blurb: AI Metropolis dynamically tracks real inter-agent dependencies and uses out-of-order execution to remove false synchronization in LLM-agent simulations.
+- AgentC difference: AgentC intercepts general provider calls and proposes multiple semantic rewrite classes; AI Metropolis owns the stronger executed-parallelism result for dependency-aware agent scheduling.
+- Use: must-cite if ParallelBranch is evaluated. Baseline: `run-if-workload-compatible`. Evidence: 5. Threat: 4.
+
+### `LIT-076` - AsyncFC
+
+- Primary: https://arxiv.org/abs/2605.15077
+- Verdict: verified 2026 preprint; archival status and artifact readiness still need checking before camera-ready use.
+- Citation blurb: AsyncFC overlaps model decoding with function execution and permits inter-function concurrency through symbolic futures without modifying models or tool implementations.
+- AgentC difference: AgentC's current synchronous path cannot claim equivalent concurrency; its broader opening is constrained selection across routing and semantic rewrites at intercepted call sites.
+- Use: must-cite if ParallelBranch remains in scope. Baseline: `run-if-artifact-available`. Evidence: 4. Threat: 4.
+
 ## Serving And Inference Systems
 
 ### `LIT-033` - Orca
@@ -498,6 +518,46 @@ The entries below are checked source blurbs. They preserve the `LIT` IDs, citati
 - Citation blurb: TextGrad optimizes generative/compound AI systems by backpropagating natural-language feedback.
 - AgentC difference: AgentC is rule/runtime rewriting, not iterative textual-gradient optimization.
 - Use: related-work context, not direct baseline. Baseline: `cite-only`. Evidence: 4. Threat: 3.
+
+### `LIT-071` - ApproxMLIR
+
+- Primary: https://proceedings.mlsys.org/paper_files/paper/2026/hash/bbd3e0e9913824bbc46e7e87b11461ae-Abstract-Conference.html
+- Verdict: verified MLSys 2026 paper; use the published title "ApproxMLIR: Accuracy-Aware Compiler for Compound ML System."
+- Citation blurb: ApproxMLIR provides a unified approximation dialect and optimizer that searches end-to-end accuracy/performance tradeoffs across ML and non-ML components, then materializes profitable compound-system choices.
+- AgentC difference: AgentC's defensible target is online, call-conditional selection over opaque provider APIs with exact-plan evidence and abstention, rather than compiler-visible offline approximation search.
+- Use: must-cite and compare directly in the contribution table. Baseline: `cite-only-unless-port-feasible`. Evidence: 5. Threat: 5.
+
+### `LIT-072` - AgentOpt
+
+- Primary: https://arxiv.org/abs/2604.06296 and https://github.com/AgentOptimizer/agentopt
+- Verdict: verified 2026 technical report and official artifact; the report's evaluated core is combinatorial model assignment, while the artifact also exposes runtime routing, tracking, caching, and in-process/proxy interception.
+- Citation blurb: AgentOpt is the closest deployment neighbor for framework-agnostic client-side interception and cost/latency/quality-aware model selection across agent pipeline roles.
+- AgentC difference: transparent interception and routing are no longer differentiators; AgentC must demonstrate online per-call-site learning across heterogeneous semantic rewrites, interaction-aware complete plans, persistent drift adaptation, and an explicit damage contract.
+- Use: must-cite and mandatory runnable baseline for routing or transparent-deployment claims. Baseline: `run`. Evidence: 5. Threat: 5.
+
+### `LIT-073` - Agent JIT Compilation for Latency-Optimizing Web Agent Planning and Scheduling
+
+- Primary: https://arxiv.org/abs/2605.21470
+- Verdict: verified 2026 preprint; archival status and public artifact availability still need checking.
+- Citation blurb: Agent JIT Compilation generates executable web-agent plans, validates them against tool contracts, selects low-cost candidates, and searches parallel schedules using learned latency distributions.
+- AgentC difference: AgentC optimizes calls emitted by existing applications and targets provider cost plus semantic risk; it does not compile a natural-language task into an agent program.
+- Use: must-cite for naming, JIT framing, planning, and scheduling. Baseline: `cite-only` pending artifact. Evidence: 4. Threat: 5.
+
+### `LIT-074` - Parrot
+
+- Primary: https://www.usenix.org/conference/osdi24/presentation/lin-chaofan
+- Verdict: verified OSDI 2024 paper.
+- Citation blurb: Parrot introduces semantic variables that expose application-level dataflow across multiple LLM requests to a service runtime, enabling end-to-end scheduling and reuse optimizations.
+- AgentC difference: AgentC attempts to recover conservative structure at the client boundary while treating provider APIs as opaque; Parrot requires a semantic-variable abstraction and a cooperating service runtime but has richer explicit dataflow.
+- Use: must-cite systems nearest neighbor and architectural contrast. Baseline: `cite-only`. Evidence: 5. Threat: 5.
+
+### `LIT-077` - JIT-Agent
+
+- Primary: https://arxiv.org/abs/2608.25593
+- Verdict: verified August 2026 preprint; it optimizes generated agent harnesses rather than intercepted runtime calls.
+- Citation blurb: JIT-Agent synthesizes, repairs, and evolves task-specific agent harnesses spanning memory, planning, action protocols, and tool or skill orchestration.
+- AgentC difference: AgentC retains an existing harness and chooses guarded execution plans for its calls; JIT-Agent changes the harness itself using a trained generation system.
+- Use: cite for the now-crowded JIT/harness-optimization framing, not as a direct runtime baseline. Baseline: `cite-only`. Evidence: 4. Threat: 3.
 
 ## State, Memory, And Compiler Analogies
 

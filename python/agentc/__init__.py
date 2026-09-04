@@ -34,6 +34,7 @@ from agentc._memoize import memoize  # noqa: F401
 
 # Import optimizer API.
 from agentc._optimizer import Plan  # noqa: F401
+from agentc._optimizer import model_catalog  # noqa: F401
 from agentc._optimizer import observe_outcome  # noqa: F401
 from agentc._optimizer import plan_call  # noqa: F401
 from agentc._executor import dispatch  # noqa: F401
@@ -69,6 +70,7 @@ __all__ = [
     "cache_invalidate",
     "cache_invalidate_all",
     "Plan",
+    "model_catalog",
     "plan_call",
     "observe_outcome",
     "dispatch",

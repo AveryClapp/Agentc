@@ -1,7 +1,7 @@
 # Agentc MLSys 2027 staged evaluation protocol
 
 - Protocol: `agentc-mlsys2027-v1`
-- Revision: 10
+- Revision: 11
 - Initial freeze: 2026-09-03
 - Revision 2 freeze: 2026-09-03
 - Revision 3 freeze: 2026-09-03
@@ -12,6 +12,7 @@
 - Revision 8 freeze: 2026-09-03
 - Revision 9 freeze: 2026-09-03
 - Revision 10 freeze: 2026-09-03
+- Revision 11 freeze: 2026-09-03
 - Revision 2 record: [mlsys-2027-protocol-revision-2.json](mlsys-2027-protocol-revision-2.json)
 - Revision 3 record: [mlsys-2027-protocol-revision-3.json](mlsys-2027-protocol-revision-3.json)
 - Revision 4 record: [mlsys-2027-protocol-revision-4.json](mlsys-2027-protocol-revision-4.json)
@@ -21,6 +22,7 @@
 - Revision 8 record: [mlsys-2027-protocol-revision-8.json](mlsys-2027-protocol-revision-8.json)
 - Revision 9 record: [mlsys-2027-protocol-revision-9.json](mlsys-2027-protocol-revision-9.json)
 - Revision 10 record: [mlsys-2027-protocol-revision-10.json](mlsys-2027-protocol-revision-10.json)
+- Revision 11 record: [mlsys-2027-protocol-revision-11.json](mlsys-2027-protocol-revision-11.json)
 - Runtime baseline before this protocol: `4250a01`
 - Revision 2 runtime baseline: `27f896f`
 - Revision 3 runtime baseline: `6339d79`
@@ -31,6 +33,7 @@
 - Revision 8 runtime baseline: `b73d703`
 - Revision 9 contract baseline: `75dcc97`
 - Revision 10 implementation baseline: `0fac352`
+- Revision 11 pre-change implementation baseline: `b4471c4`
 - Target decision date: 2026-10-01
 - Target venue deadline: 2026-10-30 20:00 UTC
 
@@ -88,13 +91,22 @@ comparisons to the exact observed plan execution. This correction occurred
 before any Stage E1, C, P, or T execution or outcome inspection and changes no
 threshold, task, model, outcome, statistical test, or stopping rule.
 
+Revision 11 was issued when the versioned dispatch catalog exposed that both
+Together-hosted Llama 3.1 models frozen in revision 9 had already been retired
+before the initial freeze. It replaces that non-executable pair with the
+current Together serverless `GLM-5.3`/`GLM-5.3-Flash` pair and records the
+LiteLLM provider-prefix convention. The correction occurred before any Stage
+E1, C, P, or T execution or outcome inspection. It changes no task, outcome,
+margin, statistical test, arm semantics, or stopping rule.
+
 Revisions 2 through 10 do not change the `agentc-mlsys2027-v1` split namespace,
 task membership, workloads, models, outcomes, margins, inference, or stopping
-rules. Revision 9 deliberately changes the arms and gates before
-calibration; Revision 10 corrects only the evidence-retention and correlation
-mechanism. Their machine-readable records enumerate the changes. Earlier
-revision records enumerate the runtime-contract changes and engineering evidence
-that triggered them.
+rules. Revision 9 deliberately changes the arms and gates before calibration;
+Revision 10 corrects only the evidence-retention and correlation mechanism.
+Revision 11 changes only the unavailable hosted-open-weight model pair before
+any task outcome exists. Their machine-readable records enumerate the changes.
+Earlier revision records enumerate the runtime-contract changes and engineering
+evidence that triggered them.
 
 ## 1. Change control and blinding
 
@@ -491,19 +503,27 @@ admissible.
 |---|---|---|
 | OpenAI | `gpt-5.4-2026-03-05` | `gpt-5.4-mini-2026-03-17` |
 | Anthropic | `claude-sonnet-4-5-20250929` | `claude-haiku-4-5-20251001` |
-| Meta via Together | `meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo` | `meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` |
+| Z.ai via Together | `zai-org/GLM-5.3` | `zai-org/GLM-5.3-Flash` |
 
 The OpenAI and Anthropic IDs were present in the provider account catalogs on
-2026-09-03. The Together IDs were present in `GET /v1/models` on that date but
-do not expose an immutable served-binary revision. Every Together run therefore
-archives the catalog response digest, returned model string, provider request
-ID, date, and region. A catalog or behavior change starts a new cohort.
+2026-09-03. Together's official deprecation ledger records retirement of the
+revision-9 Llama 3.1 70B and 8B endpoints on 2026-02-25 and 2026-03-06,
+respectively; no experimental run used them. The replacement IDs and prices
+come from Together's serverless catalog observed on 2026-09-03. They do not
+expose an immutable served-binary revision, so every Together run archives the
+catalog response digest, returned model string, provider request ID, date, and
+region. LiteLLM dispatch uses `together_ai/zai-org/GLM-5.3` and
+`together_ai/zai-org/GLM-5.3-Flash`; manifests retain both that dispatch string
+and the provider-native ID above. A catalog or behavior change starts a new
+cohort. See [Together deprecations](https://docs.together.ai/docs/deprecations),
+[Together serverless models](https://docs.together.ai/docs/serverless/models),
+and [LiteLLM provider routing](https://docs.litellm.ai/).
 
 Required cells are:
 
 | Workload | Required model pairs |
 |---|---|
-| tau2 banking knowledge | OpenAI and Meta/Together |
+| tau2 banking knowledge | OpenAI and Z.ai/Together |
 | SWE-agent / SWE-bench Verified | OpenAI and Anthropic |
 | OSWorld V2 | Anthropic |
 
@@ -751,8 +771,8 @@ contract, or durable-write overhead.
   125% of the pre-run estimate. Spend stops pause the complete cell for explicit
   budget review; completed favorable tasks are not reported alone.
 - Rate-limit or outage pauses resume with the same arm schedule and fresh
-  environment. A provider model retirement creates a failed/incomplete frozen
-  cell, not an alias substitution.
+  environment. After the revision-11 freeze, a provider model retirement
+  creates a failed/incomplete frozen cell, not an alias substitution.
 
 ## 13. Artifact contract
 
@@ -824,11 +844,11 @@ No Stage C, P, or T result is admissible while its relevant blocker is open.
 | Bead | Blocked evidence |
 |---|---|
 | `bd-323l.5` | the broader compatibility/overhead matrix and additive-value experiment above native provider or serving optimizations remain incomplete; this blocks the competitive-position gate, not E1 interception of the frozen tau2/SWE-agent non-streaming paths. |
-| `bd-323l.6.1`--`bd-323l.6.7` | complete-plan identity, constrained selection, plan-specific persistent profiles, bounded exploration, model-catalog dispatch, plan-level guard attribution, diagnostics, and the joint baseline harness are not yet implemented; no Stage C, P, or T result can support the revision-9 thesis until the applicable children close. |
+| `bd-323l.6.3`, `bd-323l.6.5`--`bd-323l.6.7` | bounded exploration, counterfactual feedback, plan-level guard attribution, diagnostics, and the joint baseline harness are not yet implemented; no Stage C, P, or T result can support the revision-9 thesis until the applicable children close. |
 | `bd-ez1k` | route-independent LiteLLM streaming is incomplete; this does not block the frozen non-streaming cells but blocks any framework-neutral streaming claim. |
 | `bd-8uxj` | shared helper call-site identity collapses distinct RAG stages; semantic call-site identity needs a general solution. |
 | `bd-3q3l` | the composition proxy destroys its own provenance tags and cannot validate provenance-dependent rewrites. |
-| `bd-vdj` | exact current model routes and snapshot pins are absent from runtime wiring. |
+| `bd-vdj` | the revision-11 runtime catalog pins its selected routes, but benchmark agents, repro scripts, and historical paper records have not yet been audited to eliminate every floating alias. |
 | `bd-o2qj` | pricing, dataset pin, and fixture-count integrity defects remain. |
 | `bd-jq6c`, `bd-shi1.4` | 2% guard behavior, harmful-site detection, and false disables are not yet established. |
 | `bd-rm0w` | per-shadow-sample durable-write overhead and cost-DB mutex contention are not quantified. |
@@ -929,3 +949,15 @@ deterministic 1,000-execution replay at the frozen 2% sampling rate retains all
 runtime-version cold-start, idempotent asynchronous pairing, and concurrent
 flush-generation tests also pass. These are engineering checks labeled
 `paper_evidence=false`, not support for the joint-planning efficacy claim.
+
+Revision 11 replaces a non-dispatchable hosted-open-weight model pair at Stage
+E0 without admitting a workload at Stage E1. Together's own deprecation ledger
+shows that both revision-9 Llama endpoints were retired months before the
+initial freeze. The replacement pair is enumerated by the versioned runtime
+catalog with provider protocol, credential namespace, capability, context,
+output-limit, token-parameter, price, observation date, and source metadata.
+Provider adapters reject cross-namespace routes and replay the exact original
+request once when a routed dispatch fails. Sync and async no-network integration
+checks preserve native message/tool objects and mark fallbacks explicitly.
+These are engineering checks labeled `paper_evidence=false`; no task outcome
+informed the correction.

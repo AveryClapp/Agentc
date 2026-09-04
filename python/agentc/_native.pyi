@@ -172,6 +172,10 @@ def optimize_plan(call_json: str) -> str:
     """
     ...
 
+def optimize_model_catalog() -> str:
+    """Return the active versioned model catalog as JSON."""
+    ...
+
 def optimize_observe(plan_json: str, outcome_json: str) -> None:
     """Feed an Outcome back into the cost model after a Plan dispatch.
 

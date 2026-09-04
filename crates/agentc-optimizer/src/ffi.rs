@@ -61,10 +61,7 @@ pub fn optimize_observe(
         // For PassThrough / Cached the plan itself doesn't carry a Call,
         // so the caller must populate `outcome.call_site_id`. Without it
         // the cost model never warms up cold sites.
-        Plan::PassThrough | Plan::Cached { .. } => outcome
-            .call_site_id
-            .clone()
-            .unwrap_or_default(),
+        Plan::PassThrough | Plan::Cached { .. } => outcome.call_site_id.clone().unwrap_or_default(),
     };
     if call_site_id.is_empty() {
         return Ok(());
@@ -82,7 +79,12 @@ pub fn optimize_observe(
 
     // For composed plans, also record per-rule-set realized savings so the
     // cost model can track composition payoff vs. solo rules over time.
-    if let Plan::Composed { rules, net_savings_usd, .. } = &plan {
+    if let Plan::Composed {
+        rules,
+        net_savings_usd,
+        ..
+    } = &plan
+    {
         let rule_names: Vec<&str> = rules.iter().map(|r| r.rule.as_str()).collect();
         cost_model.observe_rule_set(&call_site_id, &rule_names, *net_savings_usd as f64);
     }
@@ -132,6 +134,7 @@ mod tests {
             output_is_structured: false,
             output_is_short: true,
             call_site_id: None,
+            ..Outcome::default()
         };
         let ok = optimize_observe(
             &cm,
@@ -154,6 +157,7 @@ mod tests {
             output_is_structured: false,
             output_is_short: true,
             call_site_id: Some("site-warm".to_string()),
+            ..Outcome::default()
         };
         let ok = optimize_observe(
             &cm,

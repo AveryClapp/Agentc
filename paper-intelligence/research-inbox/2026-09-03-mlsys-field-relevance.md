@@ -68,6 +68,14 @@ The 2026-07-14 venue roadmap records a **weak reject for MLSys main even after a
 
 Accordingly, the July verdict is **not stale**. The stronger manuscript makes the workshop/COLM case more compelling and makes the honest core easier to see, but MLSys main remains a weak reject until the same missing experiment identified in July—blind, unengineered traffic at useful scale, over repeated trials—comes back positive. The concrete October gate below is the decision procedure for revisiting that verdict.
 
+### Model-availability and price audit
+
+The implementation audit on 2026-09-03 exposed a reproducibility failure in the prospective evaluation plan: its Together-hosted Llama 3.1 strong/cheap pair was already unavailable. Together's own deprecation ledger dates retirement of the 70B endpoint to 2026-02-25 and the 8B endpoint to 2026-03-06. Because no calibration, pilot, or confirmatory task had run, protocol revision 11 replaces that impossible cell with the currently cataloged `zai-org/GLM-5.3` and `zai-org/GLM-5.3-Flash` pair. This is an outcome-blind artifact correction, not model selection based on favorable results. [Together deprecations](https://docs.together.ai/docs/deprecations), [Together serverless catalog](https://docs.together.ai/docs/serverless/models)
+
+The runtime catalog now records the dispatch protocol, credential namespace, exact model/revision form, context and output limits, required capabilities, output-token parameter convention, prices, observation date, and primary source together. OpenAI's frozen pair is `gpt-5.4-2026-03-05`/`gpt-5.4-mini-2026-03-17`; Anthropic's is `claude-sonnet-4-5-20250929`/`claude-haiku-4-5-20251001`; LiteLLM carries the `together_ai/` prefix for the Together pair. The observed list prices are $2.50/$15 and $0.75/$4.50 per million input/output tokens for the OpenAI pair, $3/$15 and $1/$5 for the Anthropic pair, and $1.40/$4.40 and $0.15/$0.50 for the Together pair. Cached-input categories are versioned separately. [OpenAI GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4), [OpenAI GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini), [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), [LiteLLM](https://docs.litellm.ai/)
+
+This strengthens artifact integrity but does not strengthen the novelty claim. A model catalog and price table are infrastructure. Their research relevance is that a persistent online planner cannot claim drift adaptation or reproducible cost optimization while silently routing aliases, conflating immutable snapshots, or retaining retired endpoints. Experimental manifests must therefore archive both the catalog version used for the decision and the exact model actually returned by the provider.
+
 ## Closest-work matrix
 
 “Overlap” below is deliberately strict: it identifies the exact portion of Agentc that a reviewer could say is already known. “Remaining difference” is the narrow separation Agentc could defend, not an assertion of novelty.
@@ -202,7 +210,7 @@ The strongest intellectual center is therefore not the list of rules. It is a **
 | “Nine rewrite rules” as a contribution | Six lack isolated end-to-end validation; rule count is not systems depth | “A runtime substrate evaluated through three active rewrite families; other passes are implementation case studies” | Natural activation, isolated causal effect, quality, and overhead for each claimed rule. Remove or demote rules that do not change execution |
 | “Up to 34% savings without accuracy loss” | The maximum is on a fixture intentionally built to cross the gate and expose separable distractors; natural HotpotQA mostly abstains | “33.9% on the activating fixture; near-zero on the natural boundary workload; savings depend on structural prevalence” | Blind unengineered workloads with aggregate savings distribution, confidence intervals, and prevalence/abstention breakdown |
 | “Three real production agents” | They appear to be local/evaluation agents; `debug_agent` lacks task accuracy; “production” implies independent deployment evidence | “Three realistic agent programs plus an unseen third-party integration” | External deployment, anonymized production traces, operator testimony, or remove “production” everywhere |
-| “Across three model providers” | Together-hosted open weights are not a model provider/category equivalent to a distinct closed-model protocol; pricing was missing in the frozen table | Name the exact models, hosts, API protocols, and pricing source | Re-run with pinned identifiers and complete prices on at least two closed-provider protocols plus one self-hosted/open stack |
+| “Across three model providers” | The revised protocol now names and prices Z.ai models hosted by Together through LiteLLM, but a hosting route is not equivalent to a third closed-provider protocol | Name the exact models, hosts, API protocols, catalog observation, and pricing source | Run pinned identifiers on at least two closed-provider protocols plus one hosted or self-hosted open-weight stack, and report these categories separately |
 | “Automatic label-free accuracy guard” | Output divergence is not task accuracy. Lexically different correct answers and lexically similar wrong answers defeat it | “A label-free sampled output-divergence circuit breaker” | Calibrated semantic risk, human/task-label audit, false-negative/false-positive curves, and non-inferiority at a declared damage budget |
 | “Bounded 2% shadow-sampling cost prevents 97% of damage” | The showcased guard experiments use dense or effectively full shadowing; at 2%, five consecutive violations can require hundreds of eligible calls and each shadow is a synchronous billed request | State the measured sampling rate for every experiment and separately project—not claim—2% deployment overhead | Run 0/1/2/5/10/100% sampling with real stochastic timing, sequential detection analysis, cumulative loss before disable, retained savings, p95/p99 latency, and dollars |
 | “Fail-open safety” | Fail-open protects availability, not semantic correctness or external tool effects | “Exceptions preserve baseline request execution” | Pair with effect-aware or task-aware safeguards; do not conflate operational fallback with safe agent behavior |
@@ -461,3 +469,13 @@ The main-track path is to make the paper about a principled rewrite contract and
 - τ³-bench current repository: https://github.com/sierra-research/tau2-bench
 - SWE-bench: https://github.com/SWE-bench/SWE-bench
 - OSWorld: https://github.com/xlang-ai/OSWorld
+
+### Provider model and price records
+
+- OpenAI GPT-5.4: https://developers.openai.com/api/docs/models/gpt-5.4
+- OpenAI GPT-5.4 mini: https://developers.openai.com/api/docs/models/gpt-5.4-mini
+- Anthropic model overview: https://platform.claude.com/docs/en/about-claude/models/overview
+- Anthropic pricing: https://platform.claude.com/docs/en/about-claude/pricing
+- Together serverless model catalog: https://docs.together.ai/docs/serverless/models
+- Together model deprecations: https://docs.together.ai/docs/deprecations
+- LiteLLM provider routing: https://docs.litellm.ai/

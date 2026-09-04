@@ -20,6 +20,18 @@ _Avoid_: Default model, control rule
 A complete choice of target model, ordered semantic rewrites, cache behavior, output budget, and validation policy for one request.
 _Avoid_: Rule, route
 
+**Provider protocol**:
+The adapter-owned request/response contract and credential namespace through which a model call executes. Compatibility never crosses this boundary implicitly.
+_Avoid_: Provider name alone, endpoint
+
+**Model target**:
+A concrete dispatchable model identity under one provider protocol and credential namespace, with version, capabilities, token limits, price, and provenance.
+_Avoid_: Model name, tier
+
+**Model catalog**:
+The versioned, provenance-bearing set of model targets from which the planner may enumerate candidates. It is the only production source of model-routing alternatives.
+_Avoid_: Route table, model list
+
 **Semantic rewrite**:
 A declared transformation of an LLM request whose safety must be evaluated as part of its complete execution plan.
 _Avoid_: Prompt tweak
@@ -35,3 +47,7 @@ _Avoid_: Ordinary observation
 **Divergence exposure**:
 The accumulated amount by which sampled output divergence exceeds a plan's calibrated threshold. It is an online safety proxy, not observed task damage.
 _Avoid_: Accuracy loss, task damage
+
+**Dispatch fallback**:
+The single exact replay of the reference request after an optimized provider dispatch fails. It is recorded as an execution outcome and never triggers an additional shadow replay.
+_Avoid_: Retry, shadow call

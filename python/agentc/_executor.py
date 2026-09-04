@@ -30,6 +30,12 @@ log = logging.getLogger(__name__)
 CallDispatcher = Callable[[dict[str, Any]], Awaitable[Any]]
 
 
+def _mark_dispatch_fallback(plan: Plan, reason: str) -> None:
+    plan.dispatch_fallback = True
+    plan.dispatch_fallback_reason = reason
+    plan.executed_model_id = None
+
+
 async def dispatch(
     plan: Plan,
     *,
@@ -55,11 +61,13 @@ async def dispatch(
         try:
             decoded = decode(plan.value)
         except BaseException:
+            _mark_dispatch_fallback(plan, "cache_decode_failed")
             log.warning("cached plan decode failed; falling back to original", exc_info=True)
             return await run_original()
         if decoded is None:
             # A cache hit that decodes to None must not be served as a None
             # response — fall back to the real call (mirrors dispatch_sync; bd-8ln).
+            _mark_dispatch_fallback(plan, "cache_decode_empty")
             log.warning("cached plan decoded to None; falling back to original")
             return await run_original()
         return decoded
@@ -69,11 +77,15 @@ async def dispatch(
         # exactly like Rewritten — dispatch it the same way. (dispatch_sync
         # groups them identically.)
         if plan.call is None:
+            _mark_dispatch_fallback(plan, "missing_mutated_call")
             log.debug("%s plan missing call; falling back", plan.kind)
             return await run_original()
         try:
-            return await run_mutated(plan.call)
+            result = await run_mutated(plan.call)
+            plan.executed_model_id = str(plan.call.get("model") or "") or None
+            return result
         except BaseException as exc:
+            _mark_dispatch_fallback(plan, "mutated_dispatch_failed")
             log.warning(
                 "%s plan %r failed (%s); retrying original call once",
                 plan.kind,
@@ -84,11 +96,13 @@ async def dispatch(
 
     if plan.kind == "parallel":
         if not plan.calls:
+            _mark_dispatch_fallback(plan, "parallel_calls_missing")
             log.debug("parallel plan with no calls; falling back")
             return await run_original()
         try:
             return await asyncio.gather(*(run_mutated(c) for c in plan.calls))
         except BaseException as exc:
+            _mark_dispatch_fallback(plan, "parallel_dispatch_failed")
             log.warning(
                 "parallel plan %r failed (%s); retrying original call once",
                 plan.rule,
@@ -96,5 +110,6 @@ async def dispatch(
             )
             return await run_original()
 
+    _mark_dispatch_fallback(plan, "unknown_plan_kind")
     log.debug("unknown plan kind %r; falling back", plan.kind)
     return await run_original()

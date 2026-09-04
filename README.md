@@ -55,12 +55,14 @@ an MLSys efficacy result; the held-out baseline/ablation campaign remains.
 | Agent diversity (rag_summarizer + autogen_bridge) | — | CC fires 30–54% of hot calls; SD fires 9–24% | — |
 | Provider generalization (Anthropic Claude, HF Llama) | 50 each | CC: 98% fire / 34% tok savings (HF, measured); 0% (Anthropic single-msg). MD cost reductions are cost-model *projections* (models absent from the pricing table), not billed measurements — see paper caveat | — |
 | StateDrop negative control (all-state-read variant) | 20 | 0/320 SD fires when all state writes have matching reads; confirms unread-state precondition | — |
-| Optimizer complete-call overhead (Stage E0, no provider) | 183,600 | fixed-shape p50/p99: reference **100/165µs**, admitted rewrite **115/307µs**; across 4–64 KiB at C=32: p50 **1.74–2.85ms**, p99 **14.6–46.1ms** | diagnostic only |
+| Optimizer audit before/after (Stage E0, no provider) | 367,200 | off-path audit cuts matched C=32 p50 **89–93%** and raises absolute throughput **2.6–4.0×** with zero observed audit loss; C=32 p99 remains **9.0–16.8ms** | diagnostic only |
 
-The old 76/120µs values timed only the internal planner and stopped before the
-synchronous audit write and outer FFI return. The complete-call scaling result is
-an honest negative diagnostic: audit persistence currently serializes callers and
-must move off the request path before Agentc can claim lightweight scaling.
+The old 76/120µs values timed only the internal planner. A 153,600-call baseline
+then exposed synchronous SQLite audit persistence: C=32 p50 reached 1.74–2.85ms.
+The matched clean-commit rerun moves persistence behind a bounded non-blocking
+queue, bringing C=32 p50 to 0.16–0.31ms while accepting and writing all 170,700
+setup-plus-measured audit rows. The 1.2ms p99 gate is still open because the
+oversubscribed eight-core host retains 9.0–16.8ms scheduler/FFI tails.
 
 `ParallelBranch` ships and emits audit rows; the latency win currently comes from the user-side `parallel_map` ThreadPoolExecutor. `CacheHit` functions as a bridge between memoized and non-memoized callers; neither is a headline paper claim yet.
 
@@ -265,7 +267,7 @@ By default the runtime fails open: the optimizer's FFI boundary traps panics (`f
 - **Python** SDK and bindings for SDK instrumentation, framework adapters, evaluation harness.
 - **PyO3 + maturin** bridges them. Single wheel, native speed where it matters.
 
-Storage is three SQLite databases under `~/.agentc`: `traces.db` (spans + cache entries), `cost_model.db` (per-call-site empirical cost model + shadow-mode divergence), and `optimizer_audit.db` (every plan decision the optimizer ever made, with the runtime input that produced it).
+Storage is three SQLite databases under `~/.agentc`: `traces.db` (spans + cache entries), `cost_model.db` (per-call-site empirical cost model + shadow-mode divergence), and `optimizer_audit.db` (content-free plan decisions accepted by a bounded writer, with explicit queue/loss telemetry).
 
 ---
 

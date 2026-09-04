@@ -63,6 +63,34 @@ canonical files are
 `bench/repro/optimizer-e2e-scaling-2026-09-04.{json,csv.gz}` and remain explicitly
 `paper_evidence=false`.
 
+### Systems-evidence follow-up: off-path audit rerun, 2026-09-04
+
+The implementation gap above is now closed and measured. Plan-audit records are
+constructed on the request path, offered non-blockingly to a bounded 4,096-row
+queue, and persisted by one background owner in batches of at most 128. An
+ordered flush is available for evidence boundaries and shutdown. The contract
+counts every attempted, accepted, written, pending, dropped, disconnected, and
+write-failed row; abrupt-process loss is bounded by the current batch plus queue
+rather than claimed impossible.
+
+The clean rerun uses the same 153,600-call matrix and pins source commit
+`322235570cacdf6cc6193b0d8e0d8e258200c876`. At C=32, matched p50 falls by
+89--93% and absolute throughput rises by 2.6--4.0x versus synchronous
+persistence. Reference p50/p99 is 0.164--0.184/8.956--11.078 ms and admitted
+rewrite p50/p99 is 0.186--0.312/10.414--16.776 ms. All 170,700 setup-plus-timed
+audit attempts are accepted and written with zero pending, dropped,
+disconnected, or failed rows after flush. Twenty-three of 76,800 admitted timed
+calls (0.030%) safely return the reference at the 5 ms deadline, all at C=32.
+
+This materially improves the systems case but does not make it pass the frozen
+runtime gate. C=8 p99 reaches 2.315 ms and C=32 p99 reaches 16.776 ms, so the
+declared 1.2 ms bound still fails. The synchronous SQLite transaction was the
+dominant median/throughput bottleneck; remaining p99 now requires
+scheduler/FFI/oversubscription attribution and a second-host rerun. The
+canonical follow-up is
+`bench/repro/optimizer-e2e-scaling-offpath-audit-2026-09-04.{json,csv.gz}` and
+remains `paper_evidence=false`.
+
 ## What the repository currently proves
 
 The repository contains a real runtime, not a paper-only proposal. Its differentiating implementation ingredients are SDK interception, a typed trace/IR, observe-before-act hotness, per-call-site empirical profiles, deterministic rewrite preconditions, a composition planner, fail-open behavior, and a sampled shadow-output circuit breaker. Those are a credible substrate.
@@ -78,7 +106,7 @@ The evidence, however, is much narrower than the abstract and contribution list 
 | ContextCompress + StateDrop, (n=30): 100.5% of additive token ideal, but StateDrop contributes only 0.06% alone | Same-driver rules need not interfere when they affect disjoint message subsets | A meaningful multi-rule gain or a general interference model |
 | Deliberately harmful StateDrop guard sweep | The implementation can observe output divergence, disable a rule, and sharply limit a constructed failure under dense shadowing | An “accuracy guarantee,” guard false-positive/false-negative rates, restart durability, semantic equivalence, or the claimed result at 2% sampling |
 | A handful of authors' agents and one unseen third-party integration | The interception path can operate outside the micro-fixtures and sometimes abstain correctly | Broad production prevalence, independent production deployment, diverse framework compatibility, or statistically powered generalization |
-| Complete-call size/concurrency matrix (153,600 local calls) | Sequential planning is cheap; exact audit pairing works under threads; the 5 ms deadline fails open | Scalable hot-path persistence: C=32 p99 reaches 46.1 ms and throughput gains at most 1.98x |
+| Complete-call audit before/after (307,200 local scaling calls) | Off-path batching cuts matched C=32 p50 89–93%, raises throughput 2.6–4.0x, conserves all rows after flush, and retains fail-open deadlines | Tail scalability and external validity: post-fix C=32 p99 remains 9.0–16.8 ms on one synthetic eight-core host |
 
 There are also submission-blocking synchronization issues. The current `DATA_MANIFEST.txt`, generated 2026-05-17, lists `autogen_bridge` at (n=200) with 38.5% token savings, while `main.tex` reports (n=300) and two operating points at 23.5% and 14.0%. The manifest marks StateDrop precondition validation “IN PROGRESS,” while the manuscript reports 0/320 versus 116/320 behavior. This may simply mean the manuscript has newer runs, but the canonical data ledger and paper currently disagree. No reviewer should be asked to infer which is authoritative. At inspection time the presubmit file left every gate open; this assessment has since verified the target CFP, but the manuscript is still not in the MLSys format and the visible author block still violates double-blind submission requirements.
 
@@ -396,7 +424,7 @@ The MLSys campaign is a **GO only if every row below passes on frozen, held-out 
 | Joint-planner value | On at least two unengineered workloads, the selected joint model-by-rewrite policy beats route-only, rewrite-only, the best static joint configuration, both sequential orders, and the current greedy planner at matched quality after charging search, exploration, and shadow costs; its selection-valid 95% lower bound on the primary benefit is positive, and at least one workload exhibits a held-out model/rewrite rank reversal or other material non-separability |
 | Safety at the advertised rate | At 2% sampling, at least 90% of injected harmful call sites are disabled before their predeclared cumulative damage budget; benign-rule disable rate is at most 5%; at least 80% of gross optimization savings remains after shadow cost |
 | Competitive position | At matched quality, Agentc beats AgentOpt or the relevant point-solution baseline on a primary outcome on at least two workloads, or demonstrates a measured integration/composition capability that the baseline cannot provide |
-| Runtime scalability | After removing the synchronous audit bottleneck, the frozen complete-call matrix meets the declared p99 bound at every reported concurrency and shows that no single global lock caps throughput |
+| Runtime scalability | The synchronous bottleneck is removed, but the current rerun **does not pass**: the frozen matrix must still meet the declared 1.2 ms p99 bound at every reported concurrency on more than one host and show that no single global lock caps throughput |
 | Statistical validity | Primary results use disjoint calibration/test tasks, repeated paired trials or a justified power design, selection-aware analysis, and intervals—not “non-significant” single-run deltas |
 | Submission integrity | Manuscript, manifest, figures, prices, and raw outcomes agree; clean-clone replay works; the anonymous paper fits the official ten-page body |
 
@@ -433,7 +461,7 @@ Stop by the early-October gate if any of these remain true:
 
 The field has **surpassed the current broad story but not necessarily the constrained problem**. Agentc is relevant because existing agents increasingly run over opaque provider APIs and cannot all be ported into Parrot, SGLang, Murakkab, ApproxMLIR, or a custom serving engine. A safe application-side optimizer is a legitimate missing layer. But transparency alone is no longer enough after AgentOpt, and “JIT for agents” is no longer an ownable phrase after ICML 2026.
 
-The main-track path is to make the paper about a principled rewrite contract and prove it under natural traffic: evidence before rewrite, explicit abstention, interference-aware plan choice, sampled counterfactual validation, bounded damage, and a non-blocking observability path. The current implementation contains pieces of that system. The current evaluation does not yet prove the system matters broadly or that the guard works under the operating rate advertised in the abstract, and the new local matrix shows that audit persistence must be redesigned before scalability can be claimed.
+The main-track path is to make the paper about a principled rewrite contract and prove it under natural traffic: evidence before rewrite, explicit abstention, interference-aware plan choice, sampled counterfactual validation, bounded damage, and a non-blocking observability path. The current implementation now contains that observability mechanism, and its before/after matrix shows that it removes the dominant median bottleneck. The current evaluation still does not prove the joint system matters broadly or that the guard works under the operating rate advertised in the abstract; the residual local p99 additionally needs attribution and multi-host validation before scalability can be claimed.
 
 **Net: relevant, not obsolete; broad novelty surpassed; MLSys 2027 is a high-risk conditional go, contingent on blind real-workload evidence and a safety-centered reframing.**
 

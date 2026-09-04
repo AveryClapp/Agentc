@@ -1,14 +1,18 @@
 Optimizer size/concurrency scaling -- paired complete-call Stage E0 diagnostic
 =============================================================================
 
-Canonical summary:
-  bench/repro/optimizer-e2e-scaling-2026-09-04.json
+Off-path audit summary (current):
+  bench/repro/optimizer-e2e-scaling-offpath-audit-2026-09-04.json
 Compressed raw samples:
+  bench/repro/optimizer-e2e-scaling-offpath-audit-2026-09-04.csv.gz
+Synchronous baseline summary:
+  bench/repro/optimizer-e2e-scaling-2026-09-04.json
+Synchronous baseline raw samples:
   bench/repro/optimizer-e2e-scaling-2026-09-04.csv.gz
-Source commit:
-  994f9e85f6b20ce9ffc54542b39bd0caf4824fad
-Native extension SHA-256:
-  770e20b7d7bb2eb4bd65172af2f2f1869856298c36f35a2c2efc498c60e5cee8
+Measured source commit:
+  322235570cacdf6cc6193b0d8e0d8e258200c876 (clean)
+Measured native extension SHA-256:
+  ab4d5f38a67a0417dd7e32d35d07c4aa9abd68c705461d953116572afcbb620b
 
 Method
 ------
@@ -17,70 +21,78 @@ The full factorial crosses exact 4/8/16/32/64 KiB serialized calls, 1/8/32
 Python callers, and guarded-reference/admitted-joint-rewrite paths. Each cell
 has five seeded-random-order replications of 1,024 timed calls, for 153,600
 samples. One hundred untimed calls warm each cell. All callers share one hot
-call site and the production WAL-backed audit connection. There are no provider
-or network calls.
+call site and one bounded audit queue. There are no provider or network calls.
 
-Each timed call has a span ID unique within its timed replication. Its outer
-`_native.optimize_plan` duration
-is paired with the exact internal `plan_audit.overhead_us` row even when thread
-completion and audit order differ. The native writer is closed after the timed
-group and before the separately linked Python SQLite reader inspects its WAL;
-that checkpoint is outside both clocks.
+Each call constructs and non-blockingly enqueues its audit row; one background
+writer batches up to 128 rows. Replication-unique span IDs pair concurrent outer
+durations with exact internal audit rows after an ordered flush. The flush and
+SQLite commit are outside the timed group. The native writer is closed before
+Python's separately linked SQLite reader is opened, avoiding process-scoped
+POSIX lock interference between the two SQLite copies on macOS.
 
-Admitted joint rewrite -- pooled complete-call order statistics
----------------------------------------------------------------
+Admitted joint rewrite -- pooled complete-call order statistics after the fix
+-----------------------------------------------------------------------------
 
  Size   C       p50       p99    mean throughput    speedup vs C=1
- 4 KiB  1    0.128 ms   0.377 ms       5,148/s          1.00x
- 4 KiB  8    0.483 ms  13.338 ms       7,551/s          1.47x
- 4 KiB 32    2.070 ms  36.398 ms       7,085/s          1.38x
- 8 KiB  1    0.142 ms   1.578 ms       4,396/s          1.00x
- 8 KiB  8    0.490 ms   9.334 ms       8,852/s          2.01x
- 8 KiB 32    2.453 ms  23.655 ms       7,251/s          1.65x
-16 KiB  1    0.157 ms   1.183 ms       4,167/s          1.00x
-16 KiB  8    0.510 ms  14.693 ms       7,720/s          1.85x
-16 KiB 32    2.122 ms  41.815 ms       7,276/s          1.75x
-32 KiB  1    0.187 ms   0.642 ms       4,058/s          1.00x
-32 KiB  8    0.581 ms  16.037 ms       6,599/s          1.63x
-32 KiB 32    2.458 ms  30.183 ms       6,379/s          1.57x
-64 KiB  1    0.253 ms   1.181 ms       2,986/s          1.00x
-64 KiB  8    0.689 ms  15.189 ms       6,493/s          2.17x
-64 KiB 32    2.853 ms  46.122 ms       5,909/s          1.98x
+ 4 KiB  1    0.097 ms   0.222 ms       9,804/s          1.00x
+ 4 KiB  8    0.148 ms   1.610 ms      28,725/s          2.93x
+ 4 KiB 32    0.186 ms  11.290 ms      25,337/s          2.58x
+ 8 KiB  1    0.106 ms   0.132 ms       9,211/s          1.00x
+ 8 KiB  8    0.168 ms   2.064 ms      24,978/s          2.71x
+ 8 KiB 32    0.197 ms  10.414 ms      25,916/s          2.81x
+16 KiB  1    0.122 ms   0.164 ms       7,961/s          1.00x
+16 KiB  8    0.176 ms   1.363 ms      25,875/s          3.25x
+16 KiB 32    0.218 ms  14.027 ms      22,629/s          2.84x
+32 KiB  1    0.156 ms   0.353 ms       6,086/s          1.00x
+32 KiB  8    0.218 ms   1.933 ms      20,309/s          3.34x
+32 KiB 32    0.277 ms  14.644 ms      18,636/s          3.06x
+64 KiB  1    0.222 ms   0.443 ms       4,346/s          1.00x
+64 KiB  8    0.283 ms   2.315 ms      16,475/s          3.79x
+64 KiB 32    0.312 ms  16.776 ms      15,375/s          3.54x
 
-Guarded-reference p50 spans 0.108--0.135 ms at C=1 and 1.744--2.388 ms
-at C=32. Its C=32 pooled p99 spans 14.620--41.436 ms and throughput speedup
-is 1.35--1.69x. The admitted path's corresponding C=32 speedup is 1.38--1.98x,
-only 4.3--6.2% efficiency relative to ideal 32-way scaling.
+Guarded-reference p50 spans 0.077--0.104 ms at C=1 and 0.164--0.184 ms
+at C=32. Its C=32 pooled p99 spans 8.956--11.078 ms and throughput speedup
+is 2.52--2.75x. The admitted path's corresponding C=32 speedup is 2.58--3.54x.
 
-Interpretation
---------------
-Sequential medians remain below 0.3 ms over the full 16x byte range. Under
-contention, complete-call medians become millisecond-scale and p99 becomes
-10--50 ms scale. Replication p50s are stable, while replication p99s and
-throughput vary materially; the JSON therefore retains seeded 10,000-resample
-95% intervals over replication-level values rather than presenting a single
-tail as exact.
+Before/after diagnosis
+----------------------
+At matched C=32 cells, off-path persistence reduces p50 by 90.6--92.9% for
+reference selection and 88.7--92.0% for admitted rewrites. Absolute throughput
+is 3.06--3.97x and 2.60--3.58x the synchronous baseline, respectively. The
+paired residual falls from 94--97% to 68--73% of mean time. This confirms that
+synchronous SQLite persistence was the dominant median/throughput bottleneck.
 
-At C=32, the internal pre-audit planner p99 is 0.363--0.721 ms, but the paired
-boundary/state/audit residual accounts for 94.2--96.9% of mean complete-call
-time. The residual is not an audit-only timer. Still, the production code's
-single mutex-protected synchronous audit connection is the known serialized
-operation in that scope and is the first optimization target.
+It does not solve the tail. C=8 p99 reaches 2.315 ms and C=32 p99 reaches
+16.776 ms, so the frozen 1.2 ms ship target still fails. Internal C=32 p99 is
+0.418--0.784 ms for reference and 0.725--1.713 ms for admitted rewrites; normal
+host scheduling, the FFI/state boundary, and 32 callers oversubscribing eight
+logical CPUs remain inside the outer clock and require attribution. Replication
+tail intervals remain materially wider than median intervals.
 
-Two of 76,800 admitted-path calls (0.0026%) returned the immutable reference
-with `planning_overhead_exceeded`: one 64 KiB/C=1 call and one 16 KiB/C=32 call.
-The harness preserves these events rather than aborting or excluding them.
+Audit and fallback accounting
+-----------------------------
+Across setup and timed calls, 170,700 rows were attempted, accepted, and
+written. After every ordered flush there were zero pending rows, full-queue
+drops, disconnected drops, or write failures. All 153,600 timed rows pair
+exactly with raw samples.
+
+Twenty-three of 76,800 admitted timed calls (0.030%) returned the immutable
+reference with `planning_overhead_exceeded`. All occurred at C=32: 5/3/6/2/7
+for 4/8/16/32/64 KiB. The harness preserves these events rather than aborting
+or excluding them.
 
 Evidence boundary
 -----------------
-This artifact has `paper_evidence=false`. It is a zero-network, single-machine
-Stage E0 diagnostic with synthetic fixed-structure ASCII payloads. It measures
-request-byte scaling and a deliberately contended hot site, not semantic
-complexity, provider latency, task quality, savings, or multi-host behavior.
+Both artifacts have `paper_evidence=false`. They are zero-network,
+single-machine Stage E0 diagnostics with synthetic fixed-structure ASCII
+payloads. They measure request-byte scaling and a deliberately contended hot
+site, not semantic complexity, provider latency, task quality, savings, or
+multi-host behavior. The result validates the audit redesign and identifies a
+remaining tail problem; it is not a confirmatory latency claim.
 
 Reproduction
 ------------
 maturin develop --release --manifest-path crates/agentc-profiler/Cargo.toml
 python -m bench.optimizer_e2e_scaling --build-profile release \
-  --output bench/repro/optimizer-e2e-scaling-2026-09-04.json \
-  --raw-output bench/repro/optimizer-e2e-scaling-2026-09-04.csv.gz
+  --output bench/repro/optimizer-e2e-scaling-offpath-audit-2026-09-04.json \
+  --raw-output bench/repro/optimizer-e2e-scaling-offpath-audit-2026-09-04.csv.gz

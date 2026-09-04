@@ -62,8 +62,9 @@ sentence about the same pipeline.
 
 > **Superseded 2026-09-04:** do not insert the paragraph below. Its 76/120 µs
 > values stop before audit persistence and the outer FFI return. The active
-> manuscript and `RES-013` now use paired complete-call diagnostics, including
-> the negative 4–64 KiB x C=1/8/32 scaling result.
+> manuscript and `RES-013` now use paired complete-call before/after
+> diagnostics. Off-path persistence fixes the median/throughput bottleneck;
+> the 4–64 KiB x C=1/8/32 rerun still fails the frozen p99 target.
 
 **Insert** (between the existing "Total API spend" sentence and §6.1):
 

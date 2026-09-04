@@ -1,0 +1,976 @@
+{
+  "agentc_git_commit": "322235570cacdf6cc6193b0d8e0d8e258200c876",
+  "agentc_git_dirty": false,
+  "aggregate_measurements_us": {
+    "joint_admitted_rewrite": {
+      "boundary_state_audit_residual": {
+        "max_us": 93.917,
+        "mean_us": 13.162317,
+        "p50_us": 12.875,
+        "p95_us": 15.792,
+        "p99_us": 17.208
+      },
+      "e2e": {
+        "max_us": 466.917,
+        "mean_us": 86.007717,
+        "p50_us": 85.25,
+        "p95_us": 89.25,
+        "p99_us": 97.542
+      },
+      "internal_pre_audit": {
+        "max_us": 373.0,
+        "mean_us": 72.8454,
+        "p50_us": 72.0,
+        "p95_us": 75.0,
+        "p99_us": 83.0
+      },
+      "mean_e2e_to_internal_ratio": 1.180688375655841,
+      "mean_residual_share_pct": 15.303646532089674,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 85.5334,
+        "ci95_low": 84.9082,
+        "estimate": 85.2082
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 116.3332,
+        "ci95_low": 92.6418,
+        "estimate": 101.95
+      },
+      "sample_count": 10000
+    },
+    "joint_reference": {
+      "boundary_state_audit_residual": {
+        "max_us": 50.833,
+        "mean_us": 9.3017018,
+        "p50_us": 9.0,
+        "p95_us": 11.542,
+        "p99_us": 19.833
+      },
+      "e2e": {
+        "max_us": 260.708,
+        "mean_us": 74.8675018,
+        "p50_us": 72.75,
+        "p95_us": 79.0,
+        "p99_us": 161.5
+      },
+      "internal_pre_audit": {
+        "max_us": 226.0,
+        "mean_us": 65.5658,
+        "p50_us": 64.0,
+        "p95_us": 69.0,
+        "p99_us": 141.0
+      },
+      "mean_e2e_to_internal_ratio": 1.1418681965292883,
+      "mean_residual_share_pct": 12.42421822067529,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 73.7418,
+        "ci95_low": 72.1754,
+        "estimate": 72.9586
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 138.075,
+        "ci95_low": 80.27459999999999,
+        "estimate": 101.158
+      },
+      "sample_count": 10000
+    },
+    "legacy_greedy_rewrite": {
+      "boundary_state_audit_residual": {
+        "max_us": 34.959,
+        "mean_us": 7.9765883,
+        "p50_us": 7.959,
+        "p95_us": 9.125,
+        "p99_us": 11.167
+      },
+      "e2e": {
+        "max_us": 196.0,
+        "mean_us": 52.0085883,
+        "p50_us": 51.125,
+        "p95_us": 55.458,
+        "p99_us": 62.083
+      },
+      "internal_pre_audit": {
+        "max_us": 171.0,
+        "mean_us": 44.032,
+        "p50_us": 43.0,
+        "p95_us": 48.0,
+        "p99_us": 54.0
+      },
+      "mean_e2e_to_internal_ratio": 1.1811543491097385,
+      "mean_residual_share_pct": 15.337059821714101,
+      "replication_count": 5,
+      "replication_mean_p50_us": {
+        "ci95_high": 51.2166,
+        "ci95_low": 51.041399999999996,
+        "estimate": 51.132999999999996
+      },
+      "replication_mean_p99_us": {
+        "ci95_high": 80.9666,
+        "ci95_low": 59.3918,
+        "estimate": 66.9668
+      },
+      "sample_count": 10000
+    }
+  },
+  "created_at_utc": "2026-09-04T12:18:34.119022+00:00",
+  "experiment_kind": "optimizer_end_to_end_overhead_preflight",
+  "interpretation_limits": [
+    "This is a repeated single-machine Stage E0 systems microbenchmark, not task-quality or savings evidence.",
+    "Inputs and outcomes are deterministic synthetic records; no provider or network is invoked.",
+    "The residual is paired subtraction, but it combines boundary, state lookup, audit-row construction/enqueue, clock quantization, and return conversion; it is not an audit-only timer.",
+    "The build profile is operator-attested; the native extension hash pins the measured binary.",
+    "The ordered audit flush and SQLite commit are outside the request-path clock; normal host scheduling remains inside it.",
+    "The harness derives its audit-id boundary from flushed native counters and opens Python's separately linked SQLite only after closing the native writer."
+  ],
+  "network_calls": 0,
+  "paired_internal_clock_scope": [
+    "native planning after optimizer-state lookup",
+    "optional exploration reservation (disabled in this experiment)",
+    "excludes enqueue_plan_audit and the outer FFI boundary"
+  ],
+  "paper_evidence": false,
+  "raw_samples": {
+    "path": "optimizer-e2e-overhead-offpath-audit-2026-09-04.csv",
+    "rows": 30000,
+    "sha256": "f3cb3ed6c0c99178d4025a6e999e089701b4a64c4afa7f5d5b1b4c1e4146eb9d"
+  },
+  "replications": [
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2204,
+        "attempted_rows": 2204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2204
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 204,
+        "attempted_rows": 204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 204
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 25.25,
+        "mean_us": 9.181707000000001,
+        "p50_us": 9.0,
+        "p95_us": 11.75,
+        "p99_us": 13.042
+      },
+      "configure_us": 5303.708,
+      "e2e": {
+        "max_us": 132.0,
+        "mean_us": 75.16070699999999,
+        "p50_us": 74.125,
+        "p95_us": 80.167,
+        "p99_us": 88.416
+      },
+      "first_cold_call_us": 135.875,
+      "internal_pre_audit": {
+        "max_us": 109.0,
+        "mean_us": 65.979,
+        "p50_us": 65.0,
+        "p95_us": 70.0,
+        "p99_us": 78.0
+      },
+      "plan_kind": "pass_through",
+      "replication": 1,
+      "scenario": "joint_reference"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2224,
+        "attempted_rows": 2224,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2224
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 224,
+        "attempted_rows": 224,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 224
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 26.083,
+        "mean_us": 13.321545,
+        "p50_us": 13.167,
+        "p95_us": 16.167,
+        "p99_us": 17.167
+      },
+      "configure_us": 5034.75,
+      "e2e": {
+        "max_us": 132.458,
+        "mean_us": 86.541545,
+        "p50_us": 85.792,
+        "p95_us": 90.375,
+        "p99_us": 99.292
+      },
+      "first_cold_call_us": 60.291,
+      "internal_pre_audit": {
+        "max_us": 107.0,
+        "mean_us": 73.22,
+        "p50_us": 73.0,
+        "p95_us": 77.0,
+        "p99_us": 86.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 1,
+      "scenario": "joint_admitted_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2204,
+        "attempted_rows": 2204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2204
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 204,
+        "attempted_rows": 204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 204
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 15.625,
+        "mean_us": 7.9984785,
+        "p50_us": 7.958,
+        "p95_us": 8.875,
+        "p99_us": 11.5
+      },
+      "configure_us": 4926.667,
+      "e2e": {
+        "max_us": 140.291,
+        "mean_us": 51.9244785,
+        "p50_us": 51.041,
+        "p95_us": 55.834,
+        "p99_us": 60.667
+      },
+      "first_cold_call_us": 55.125,
+      "internal_pre_audit": {
+        "max_us": 127.0,
+        "mean_us": 43.926,
+        "p50_us": 43.0,
+        "p95_us": 48.0,
+        "p99_us": 52.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 1,
+      "scenario": "legacy_greedy_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2224,
+        "attempted_rows": 2224,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2224
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 224,
+        "attempted_rows": 224,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 224
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 22.166,
+        "mean_us": 12.892316500000002,
+        "p50_us": 12.75,
+        "p95_us": 14.209,
+        "p99_us": 16.583
+      },
+      "configure_us": 5222.959,
+      "e2e": {
+        "max_us": 101.542,
+        "mean_us": 85.0653165,
+        "p50_us": 84.833,
+        "p95_us": 87.958,
+        "p99_us": 89.792
+      },
+      "first_cold_call_us": 65.334,
+      "internal_pre_audit": {
+        "max_us": 87.0,
+        "mean_us": 72.173,
+        "p50_us": 72.0,
+        "p95_us": 73.0,
+        "p99_us": 76.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 2,
+      "scenario": "joint_admitted_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2204,
+        "attempted_rows": 2204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2204
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 204,
+        "attempted_rows": 204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 204
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 11.125,
+        "mean_us": 7.8446875,
+        "p50_us": 7.916,
+        "p95_us": 8.417,
+        "p99_us": 9.042
+      },
+      "configure_us": 4860.459,
+      "e2e": {
+        "max_us": 70.125,
+        "mean_us": 51.5206875,
+        "p50_us": 51.0,
+        "p95_us": 55.125,
+        "p99_us": 58.75
+      },
+      "first_cold_call_us": 49.333,
+      "internal_pre_audit": {
+        "max_us": 59.0,
+        "mean_us": 43.676,
+        "p50_us": 43.0,
+        "p95_us": 47.0,
+        "p99_us": 51.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 2,
+      "scenario": "legacy_greedy_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2204,
+        "attempted_rows": 2204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2204
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 204,
+        "attempted_rows": 204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 204
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 17.167,
+        "mean_us": 8.929405000000001,
+        "p50_us": 9.084,
+        "p95_us": 9.5,
+        "p99_us": 10.209
+      },
+      "configure_us": 4812.083,
+      "e2e": {
+        "max_us": 114.167,
+        "mean_us": 72.835405,
+        "p50_us": 72.375,
+        "p95_us": 75.042,
+        "p99_us": 80.208
+      },
+      "first_cold_call_us": 62.375,
+      "internal_pre_audit": {
+        "max_us": 97.0,
+        "mean_us": 63.906,
+        "p50_us": 63.0,
+        "p95_us": 66.0,
+        "p99_us": 72.0
+      },
+      "plan_kind": "pass_through",
+      "replication": 2,
+      "scenario": "joint_reference"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2204,
+        "attempted_rows": 2204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2204
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 204,
+        "attempted_rows": 204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 204
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 13.709,
+        "mean_us": 7.963035,
+        "p50_us": 8.083,
+        "p95_us": 8.417,
+        "p99_us": 9.084
+      },
+      "configure_us": 4838.792,
+      "e2e": {
+        "max_us": 87.458,
+        "mean_us": 51.70453500000001,
+        "p50_us": 51.166,
+        "p95_us": 55.125,
+        "p99_us": 59.709
+      },
+      "first_cold_call_us": 50.5,
+      "internal_pre_audit": {
+        "max_us": 74.0,
+        "mean_us": 43.7415,
+        "p50_us": 43.0,
+        "p95_us": 47.0,
+        "p99_us": 52.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 3,
+      "scenario": "legacy_greedy_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2204,
+        "attempted_rows": 2204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2204
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 204,
+        "attempted_rows": 204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 204
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 15.791,
+        "mean_us": 8.715961,
+        "p50_us": 8.833,
+        "p95_us": 9.209,
+        "p99_us": 9.833
+      },
+      "configure_us": 4864.916,
+      "e2e": {
+        "max_us": 106.791,
+        "mean_us": 72.427961,
+        "p50_us": 71.959,
+        "p95_us": 74.625,
+        "p99_us": 78.333
+      },
+      "first_cold_call_us": 61.666,
+      "internal_pre_audit": {
+        "max_us": 91.0,
+        "mean_us": 63.712,
+        "p50_us": 63.0,
+        "p95_us": 66.0,
+        "p99_us": 70.0
+      },
+      "plan_kind": "pass_through",
+      "replication": 3,
+      "scenario": "joint_reference"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2224,
+        "attempted_rows": 2224,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2224
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 224,
+        "attempted_rows": 224,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 224
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 22.708,
+        "mean_us": 13.11054,
+        "p50_us": 13.084,
+        "p95_us": 13.833,
+        "p99_us": 16.583
+      },
+      "configure_us": 4730.417,
+      "e2e": {
+        "max_us": 148.708,
+        "mean_us": 85.80453999999999,
+        "p50_us": 85.458,
+        "p95_us": 87.959,
+        "p99_us": 95.625
+      },
+      "first_cold_call_us": 57.375,
+      "internal_pre_audit": {
+        "max_us": 126.0,
+        "mean_us": 72.694,
+        "p50_us": 72.0,
+        "p95_us": 74.0,
+        "p99_us": 82.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 3,
+      "scenario": "joint_admitted_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2204,
+        "attempted_rows": 2204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2204
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 204,
+        "attempted_rows": 204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 204
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 24.666,
+        "mean_us": 9.176299,
+        "p50_us": 9.084,
+        "p95_us": 12.0,
+        "p99_us": 12.875
+      },
+      "configure_us": 4889.208,
+      "e2e": {
+        "max_us": 104.417,
+        "mean_us": 73.364799,
+        "p50_us": 72.292,
+        "p95_us": 78.041,
+        "p99_us": 84.291
+      },
+      "first_cold_call_us": 68.334,
+      "internal_pre_audit": {
+        "max_us": 91.0,
+        "mean_us": 64.1885,
+        "p50_us": 63.0,
+        "p95_us": 68.0,
+        "p99_us": 75.0
+      },
+      "plan_kind": "pass_through",
+      "replication": 4,
+      "scenario": "joint_reference"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2224,
+        "attempted_rows": 2224,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2224
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 224,
+        "attempted_rows": 224,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 224
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 23.166,
+        "mean_us": 13.053177999999999,
+        "p50_us": 12.875,
+        "p95_us": 16.125,
+        "p99_us": 16.917
+      },
+      "configure_us": 5297.833,
+      "e2e": {
+        "max_us": 129.166,
+        "mean_us": 85.549678,
+        "p50_us": 85.041,
+        "p95_us": 88.834,
+        "p99_us": 94.541
+      },
+      "first_cold_call_us": 64.208,
+      "internal_pre_audit": {
+        "max_us": 106.0,
+        "mean_us": 72.4965,
+        "p50_us": 72.0,
+        "p95_us": 74.0,
+        "p99_us": 81.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 4,
+      "scenario": "joint_admitted_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2204,
+        "attempted_rows": 2204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2204
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 204,
+        "attempted_rows": 204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 204
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 18.792,
+        "mean_us": 8.109837,
+        "p50_us": 8.083,
+        "p95_us": 8.958,
+        "p99_us": 11.334
+      },
+      "configure_us": 5886.583,
+      "e2e": {
+        "max_us": 91.167,
+        "mean_us": 51.813837,
+        "p50_us": 51.166,
+        "p95_us": 55.417,
+        "p99_us": 61.0
+      },
+      "first_cold_call_us": 47.167,
+      "internal_pre_audit": {
+        "max_us": 78.0,
+        "mean_us": 43.704,
+        "p50_us": 43.0,
+        "p95_us": 48.0,
+        "p99_us": 52.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 4,
+      "scenario": "legacy_greedy_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2224,
+        "attempted_rows": 2224,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2224
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 224,
+        "attempted_rows": 224,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 224
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 93.917,
+        "mean_us": 13.4340055,
+        "p50_us": 12.791,
+        "p95_us": 16.208,
+        "p99_us": 20.375
+      },
+      "configure_us": 6384.75,
+      "e2e": {
+        "max_us": 466.917,
+        "mean_us": 87.0775055,
+        "p50_us": 84.917,
+        "p95_us": 91.125,
+        "p99_us": 130.5
+      },
+      "first_cold_call_us": 65.417,
+      "internal_pre_audit": {
+        "max_us": 373.0,
+        "mean_us": 73.6435,
+        "p50_us": 72.0,
+        "p95_us": 76.0,
+        "p99_us": 98.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 5,
+      "scenario": "joint_admitted_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2204,
+        "attempted_rows": 2204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2204
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 204,
+        "attempted_rows": 204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 204
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 34.959,
+        "mean_us": 7.9669035,
+        "p50_us": 7.542,
+        "p95_us": 9.75,
+        "p99_us": 13.083
+      },
+      "configure_us": 5436.625,
+      "e2e": {
+        "max_us": 196.0,
+        "mean_us": 53.0794035,
+        "p50_us": 51.292,
+        "p95_us": 57.125,
+        "p99_us": 94.708
+      },
+      "first_cold_call_us": 52.917,
+      "internal_pre_audit": {
+        "max_us": 171.0,
+        "mean_us": 45.1125,
+        "p50_us": 44.0,
+        "p95_us": 48.0,
+        "p99_us": 81.0
+      },
+      "plan_kind": "rewritten",
+      "replication": 5,
+      "scenario": "legacy_greedy_rewrite"
+    },
+    {
+      "audit_journal_mode": "wal",
+      "audit_writer": {
+        "accepted_rows": 2204,
+        "attempted_rows": 2204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 2204
+      },
+      "audit_writer_before_measurement": {
+        "accepted_rows": 204,
+        "attempted_rows": 204,
+        "available": true,
+        "batch_size_rows": 128,
+        "dropped_disconnected_rows": 0,
+        "dropped_full_rows": 0,
+        "pending_rows": 0,
+        "queue_capacity_rows": 4096,
+        "write_failed_rows": 0,
+        "written_rows": 204
+      },
+      "boundary_state_audit_residual": {
+        "max_us": 50.833,
+        "mean_us": 10.505137000000001,
+        "p50_us": 10.0,
+        "p95_us": 19.709,
+        "p99_us": 22.834
+      },
+      "configure_us": 5616.958,
+      "e2e": {
+        "max_us": 260.708,
+        "mean_us": 80.548637,
+        "p50_us": 74.042,
+        "p95_us": 161.5,
+        "p99_us": 174.542
+      },
+      "first_cold_call_us": 68.625,
+      "internal_pre_audit": {
+        "max_us": 226.0,
+        "mean_us": 70.0435,
+        "p50_us": 64.0,
+        "p95_us": 141.0,
+        "p99_us": 151.0
+      },
+      "plan_kind": "pass_through",
+      "replication": 5,
+      "scenario": "joint_reference"
+    }
+  ],
+  "runtime": {
+    "machine": "arm64",
+    "native_extension": "_native.cpython-313-darwin.so",
+    "native_extension_sha256": "ab4d5f38a67a0417dd7e32d35d07c4aa9abd68c705461d953116572afcbb620b",
+    "operator_attested_build_profile": "release",
+    "perf_counter": {
+      "adjustable": false,
+      "implementation": "mach_absolute_time()",
+      "monotonic": true,
+      "resolution_seconds": 4.166666666666666e-08
+    },
+    "platform": "macOS-26.5-arm64-arm-64bit-Mach-O",
+    "python": "3.13.1",
+    "sqlite": "3.51.2"
+  },
+  "schema_version": 1,
+  "settings": {
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 20260904,
+    "enabled_rules": [
+      "OutputBudget"
+    ],
+    "exploration_enabled": false,
+    "iterations_per_replication": 2000,
+    "max_overhead_ms": 5.0,
+    "objective": "cost",
+    "paired_evidence_for_admitted_scenario": 20,
+    "replications": 5,
+    "scenario_order": "three-way rotation by replication",
+    "shadow_rate": 0.0,
+    "warmup_calls_per_replication": 200
+  },
+  "timed_scope": [
+    "Python call into _native.optimize_plan",
+    "native optimizer-state lookup",
+    "JSON decode and encode",
+    "complete-plan enumeration, guard lookup, and selection",
+    "plan_audit row construction and bounded non-blocking enqueue",
+    "conversion and return of the Python plan string"
+  ]
+}

@@ -100,9 +100,11 @@ fig6_composition_orthogonality.pdf
 
 fig7_overhead_scaling.pdf
   Script: bench/paper_figures/fig7_overhead_scaling.py
-  Source: bench/repro/optimizer-e2e-scaling-2026-09-04.json
+  Sources: bench/repro/optimizer-e2e-scaling-2026-09-04.json
+           bench/repro/optimizer-e2e-scaling-offpath-audit-2026-09-04.json
   Scope: admitted joint-rewrite complete-call p50/p99 by exact serialized size
-         (4/8/16/32/64 KiB) and concurrency (1/8/32); log scale
+         (4/8/16/32/64 KiB) and concurrency (1/8/32), before and after moving
+         audit persistence off path; log scale
   Status: Stage E0 diagnostic, paper_evidence=false
 
 ============================================================
@@ -118,6 +120,22 @@ Complete optimizer call -- fixed shape
            115.000/307.209 us; legacy greedy rewrite 74.959/219.750 us
   Boundary: release mode, single arm64 host, SQLite only, no provider/network;
             paper_evidence=false
+
+Complete optimizer call -- fixed shape, off-path audit rerun
+  Summary: bench/repro/optimizer-e2e-overhead-offpath-audit-2026-09-04.json
+  Raw:     bench/repro/optimizer-e2e-overhead-offpath-audit-2026-09-04.csv
+  SHA256:  summary 9cc904bfbefcd7b4fc1b44aef815be2fa51152d3259b67ba253c58e070a3ea91
+           raw f3cb3ed6c0c99178d4025a6e999e089701b4a64c4afa7f5d5b1b4c1e4146eb9d
+  Source:  git 322235570cacdf6cc6193b0d8e0d8e258200c876 (clean);
+           native ab4d5f38a67a0417dd7e32d35d07c4aa9abd68c705461d953116572afcbb620b
+  Script:  python -m bench.optimizer_e2e_overhead
+  Samples: 30,000 timed calls; five replications per path
+  Result:  reference p50/p99 72.750/161.500 us; admitted joint rewrite
+           85.250/97.542 us; legacy greedy rewrite 51.125/62.083 us
+  Audit accounting: 33,160 attempted = accepted = written rows across setup and
+                    measurement; zero pending, dropped, or write-failed rows
+  Boundary: release mode, single arm64 host, SQLite only, no provider/network;
+            paper_evidence=false; ordered flush is outside the timed scope
 
 Complete optimizer call -- size/concurrency matrix
   Summary: bench/repro/optimizer-e2e-scaling-2026-09-04.json
@@ -137,6 +155,31 @@ Complete optimizer call -- size/concurrency matrix
              known serialized operation but the residual is not audit-only.
   Boundary: release mode, one eight-core Apple M2, synthetic calls, no
             provider/network; paper_evidence=false; tail intervals are wide.
+
+Complete optimizer call -- size/concurrency matrix, off-path audit rerun
+  Summary: bench/repro/optimizer-e2e-scaling-offpath-audit-2026-09-04.json
+  Raw:     bench/repro/optimizer-e2e-scaling-offpath-audit-2026-09-04.csv.gz
+  SHA256:  summary 48f7b2bc6776cfc2797be5cae9dcccf7573f4e36ad066621f043f60b2dccf0ca
+           raw 6a4aed7eaf23dcfab2b4dde5b2d92a7f3322316f86f656faa467855c1f901890
+  Source:  git 322235570cacdf6cc6193b0d8e0d8e258200c876 (clean);
+           native ab4d5f38a67a0417dd7e32d35d07c4aa9abd68c705461d953116572afcbb620b
+  Script:  python -m bench.optimizer_e2e_scaling
+  Samples: 153,600 timed calls; exact 4/8/16/32/64 KiB x C=1/8/32 x
+           reference/admitted-rewrite x five replications
+  Result:  C=1 p50 0.077--0.222 ms. At C=32, reference p50/p99
+           0.164--0.184/8.956--11.078 ms and admitted rewrite p50/p99
+           0.186--0.312/10.414--16.776 ms. Versus the synchronous baseline,
+           C=32 p50 falls 89--93% and absolute throughput rises 2.6--4.0x.
+  Audit accounting: 170,700 attempted = accepted = written rows across setup
+                    and measurement; zero pending, dropped, or failed rows.
+                    23/76,800 admitted timed calls (0.030%) safely fell back,
+                    all at C=32.
+  Diagnosis: synchronous persistence is no longer the median bottleneck, but
+             C=32 p99 still misses the frozen 1.2 ms target; scheduler/FFI/
+             oversubscription attribution and multi-host validation remain.
+  Boundary: release mode, one eight-core Apple M2, synthetic calls, no
+            provider/network; paper_evidence=false; ordered flush is outside
+            the timed scope and tail intervals remain wide.
 
 The historical 1,818-row 76/120 us result measures the internal pre-audit clock.
 It is not complete-call overhead and must not be used as an end-to-end claim.

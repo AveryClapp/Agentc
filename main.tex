@@ -463,12 +463,15 @@ concurrent workloads, actual parallel dispatch is realized at the
 the agent callback for each input item in parallel. The optimizer never manages
 worker threads; it observes the calls those threads emit and evaluates rules on
 each one. Its in-memory profiles and guards are concurrency-safe, while each
-\texttt{plan\_audit} row is synchronously appended through one mutex-protected
-SQLite connection.
+\texttt{plan\_audit} row is offered to a bounded non-blocking queue. One
+background worker owns the SQLite connection and commits batches of at most
+128 rows; a full queue drops the newest diagnostic row rather than delaying a
+provider request. Queue, persistence-failure, and drop counters are exposed,
+and shutdown uses an ordered flush barrier.
 
 This has three consequences. First, shared state is synchronized rather than
-absent: profile access remains concurrent, but audit persistence can queue callers
-under load (Section~\ref{sec:eval}). Second,
+absent: profile access remains concurrent, while audit persistence cannot queue
+callers behind SQLite (Section~\ref{sec:eval}). Second,
 \texttt{Plan::Parallel}, emitted by the ParallelBranch rule when a disjointness
 certificate is produced, is a bookkeeping artifact, not a scheduling directive.
 It records that the optimizer verified the paired calls are provenance-disjoint,
@@ -836,43 +839,48 @@ The \texttt{plan\_audit.overhead\_us} clock used for the historical
 Python--Rust return. Its 76\,\textmu s pass-through and 120\,\textmu s rewrite
 medians are therefore internal diagnostics, not complete interception overhead.
 We added a paired release-mode Stage~E0 microbenchmark that wraps the full native
-call and aligns every sample with its exact audit row. Across five 2{,}000-call
-replications per path, full-call p50/p99 was 0.100/0.165\,ms for guarded reference
-selection, 0.115/0.307\,ms for an admitted joint rewrite, and 0.075/0.220\,ms for
-the legacy greedy rewrite. The paired internal medians were 0.062, 0.071, and
-0.042\,ms, respectively. Their difference combines the FFI boundary, native-state
-lookup, audit serialization and commit, clock quantization, and return conversion;
-it is not an audit-only timer. These E0 measurements keep p99 below 1\,ms on the
-recorded host, but the frozen protocol excludes them from confirmatory latency
-claims.
+call and aligns every sample with its exact audit row. With the original
+synchronous writer, full-call p50/p99 across five 2{,}000-call replications per
+path was 0.100/0.165\,ms for guarded reference selection, 0.115/0.307\,ms for an
+admitted joint rewrite, and 0.075/0.220\,ms for the legacy greedy rewrite. After
+moving SQLite off path, the matched values are 0.073/0.162, 0.085/0.098, and
+0.051/0.062\,ms. The paired residual combines the FFI boundary, native-state
+lookup, audit-row construction and enqueue, clock quantization, and return
+conversion; the ordered SQLite flush is outside the request clock. These E0
+measurements are diagnostics, not confirmatory latency claims.
 
 We next vary exact serialized call size (4, 8, 16, 32, and 64\,KiB) and
 concurrency (1, 8, and 32 callers) for both guarded-reference and admitted joint-
 rewrite paths: five randomized 1{,}024-call replications per cell, or 153{,}600
-complete calls. At one caller, p50 spans 0.108--0.135\,ms for reference selection
-and 0.128--0.253\,ms for an admitted rewrite. At 32 callers, those ranges become
-1.744--2.388\,ms and 2.070--2.853\,ms; pooled p99 reaches 14.6--41.4\,ms and
-23.7--46.1\,ms, respectively. Throughput improves only 1.35--1.69$\times$ for
-reference selection and 1.38--1.98$\times$ for rewriting relative to one caller
-on an eight-core Apple M2. The paired internal planner p99 remains at or below
-0.721\,ms at 32 callers, while the combined boundary/state/audit residual accounts
-for 94--97\% of mean complete-call time. This residual is not an audit-only clock,
-but the synchronous mutex-protected audit append is the known serialized operation
-in its scope. Two of 76{,}800 admitted-path calls (0.0026\%) safely fell back with
-\texttt{planning\_overhead\_exceeded}. These results expose a local persistence
-bottleneck; they remain single-machine Stage~E0 diagnostics rather than
-confirmatory latency evidence.
+complete calls per implementation. The original synchronous matrix reaches
+1.744--2.388\,ms reference and 2.070--2.853\,ms rewrite p50 at 32 callers, with
+14.6--46.1\,ms pooled p99 and only 1.35--1.98$\times$ throughput scaling over one
+caller. In the clean-commit off-path rerun, C=32 p50 falls to 0.164--0.184\,ms
+and 0.186--0.312\,ms---an 89--93\% matched-cell reduction. Absolute C=32
+throughput rises 2.6--4.0$\times$ over the synchronous implementation and scales
+2.52--2.75$\times$ for reference selection and 2.58--3.54$\times$ for rewriting
+relative to one caller. All 170{,}700 setup-plus-measured audit attempts are
+accepted and written with zero reported loss.
+
+The remaining tail is not hidden: pooled C=32 p99 is still 8.96--11.08\,ms for
+reference selection and 10.41--16.78\,ms for rewriting on the eight-logical-core
+Apple M2. The paired internal p99 is 0.418--1.713\,ms and the residual accounts
+for 68--73\% of mean complete-call time, implicating oversubscribed scheduling
+and boundary work rather than synchronous SQLite. Twenty-three of 76{,}800
+admitted calls (0.030\%) safely return the immutable reference after crossing
+the 5\,ms planning deadline. Thus the audit serialization bottleneck is removed,
+but the predeclared 1.2\,ms p99 gate remains open pending controlled offered-load
+and multi-host measurements.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/fig7_overhead_scaling.pdf}
-\caption{Complete-call latency for an admitted joint rewrite across exact
-serialized call sizes and concurrent callers (five randomized replications,
-5{,}120 calls per point; log scale). Sequential medians remain below 0.3\,ms,
-but the synchronous production path develops millisecond medians and
-10--50\,ms-scale p99 tails under contention. Stage~E0, one Apple M2 host, no
-provider calls; replication-level intervals and the guarded-reference control
-are retained in the artifact.}
+\caption{Complete-call latency for an admitted joint rewrite before (dashed)
+and after (solid) moving audit persistence off path, across exact serialized
+call sizes and concurrent callers (five randomized replications, 5{,}120 calls
+per point; log scale). C=32 medians fall 89--93\%, while scheduler/FFI p99
+remains 10--17\,ms. Stage~E0, one Apple M2 host, no provider calls; both
+artifacts retain the guarded-reference control and replication intervals.}
 \label{fig:overhead}
 \end{figure}
 
@@ -1970,11 +1978,12 @@ accuracy guard (Section~\ref{sec:eval-guard}). Input-token savings are within 1\
 three model providers (OpenAI, Anthropic, open-source Llama-3.3-70B) when structural
 preconditions are met. A CompositionPlanner grounded in cost-driver orthogonality
 combines compatible rules to near-additive savings (95.2\% of ideal for orthogonal
-pairs). A paired fixed-shape Stage~E0 diagnostic stays below 0.4\,ms at p99, while
-a 153{,}600-call size/concurrency diagnostic exposes the synchronous audit append as
-a scalability target: 32-caller p50 is 1.7--2.9\,ms and p99 is 14.6--46.1\,ms on
-the recorded host. Confirmatory multi-host and provider-level latency measurements
-remain part of the frozen evaluation campaign. The methodology introduced here, comprising
+pairs). A paired 307{,}200-call Stage~E0 scaling before/after diagnostic shows that moving
+audit persistence behind a bounded non-blocking queue cuts matched C=32 medians
+89--93\% and raises absolute throughput 2.6--4.0$\times$ with zero reported audit
+loss. C=32 p99 remains 9.0--16.8\,ms on the oversubscribed eight-logical-core host,
+so the 1.2\,ms ship gate and confirmatory multi-host/provider-level latency
+measurements remain open. The methodology introduced here, comprising
 shared-baseline ablation,
 input-token attribution as a deterministic signal, and McNemar exact testing on
 per-task pass/fail vectors, addresses a general measurement problem for
@@ -2081,12 +2090,12 @@ Stage~E0 local diagnostic (no API; not paper evidence) &
 
 \addlinespace
 Optimizer complete-call overhead &
-\texttt{optimizer-e2e-overhead-2026-09-04.\{json,csv\}} (Stage~E0) &
+\texttt{optimizer-e2e-overhead[-offpath-audit]-2026-09-04.\{json,csv\}} (Stage~E0) &
 \texttt{python -m bench.optimizer\_\allowbreak e2e\_\allowbreak overhead} \\
 
 \addlinespace
 Optimizer size/concurrency scaling &
-\texttt{optimizer-e2e-scaling-2026-09-04.json} and \texttt{.csv.gz} (Stage~E0) &
+\texttt{optimizer-e2e-scaling[-offpath-audit]-2026-09-04.\{json,csv.gz\}} (Stage~E0) &
 \texttt{python -m bench.optimizer\_\allowbreak e2e\_\allowbreak scaling} \\
 
 \addlinespace

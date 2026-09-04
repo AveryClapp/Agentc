@@ -31,13 +31,13 @@ Short version:
 - Best current evidence: `ContextCompress` and `ModelDowngrade`.
 - Most useful caveat: `StateDrop` is promising but not yet a sound compiler-style pass.
 - Biggest experiment gap: no held-out joint routing-plus-rewrite result against route-only, rewrite-only, ordering, and static controls.
-- Biggest engineering blocker: synchronous audit persistence creates 14.6–46.1ms C=32 p99 complete-call latency and weak throughput scaling in the current Stage E0 diagnostic.
+- Biggest engineering blocker: the audit median bottleneck is fixed, but scheduler/FFI/oversubscription tails still produce 9.0–16.8ms C=32 p99 in the Stage E0 rerun.
 
 ## Venue Ladder
 
 | ID | Venue/family | Recommendation | Best framing | Current readiness | Must improve |
 |---|---|---|---|---|---|
-| `VEN-001` | MLSys | strongest long-run topical fit | guarded joint routing-and-rewrite control plane | promising but not comfortable yet | positive held-out joint-policy result, non-blocking audit path, post-fix scaling, baselines |
+| `VEN-001` | MLSys | strongest long-run topical fit | guarded joint routing-and-rewrite control plane | promising but not comfortable yet | positive held-out joint-policy result, tail attribution, multi-host scaling, baselines |
 | `VEN-002` | Systems venues broadly | mixed | systems/runtime infrastructure | ATC/EuroSys plausible; OSDI/SOSP/NSDI weak right now | deeper systems evidence and operational realism |
 | `VEN-003` | NLP/LLM venues | possible | LM cost-quality optimizer and evaluation methodology | COLM strongest | LM-facing breadth, stochastic quality, baseline comparisons |
 | `VEN-004` | Broad AI/ML venues | weak-main, possible workshop | agent optimization method | not a main default | stronger algorithmic novelty and broad benchmarks |
@@ -135,11 +135,11 @@ Rules to describe:
 
 ### Methodology
 
-Use rule-specific workloads to isolate behavior, then make the held-out joint-policy campaign the central test: fixed model, route only, rewrite only, both sequential orders, current greedy, learned/joint AgentC, and best static policy. Report complete-call overhead separately; the current Stage E0 scaling diagnostic is a negative result until audit persistence is moved off the request path and rerun.
+Use rule-specific workloads to isolate behavior, then make the held-out joint-policy campaign the central test: fixed model, route only, rewrite only, both sequential orders, current greedy, learned/joint AgentC, and best static policy. Report complete-call overhead separately. The Stage E0 before/after diagnostic validates the off-path audit mechanism and isolates a remaining tail problem; it does not substitute for provider-backed or multi-host latency evidence.
 
 ### Results
 
-Use `RES-001` and `RES-002` as the strongest current rule-level results. Use `RES-004` as promising but partial, `RES-005` as activation-boundary evidence, and `RES-006` only as diagnostic headroom until trace-query support exists. Treat the `RES-013` size/concurrency artifact as an honest negative systems diagnostic, not a latency win.
+Use `RES-001` and `RES-002` as the strongest current rule-level results. Use `RES-004` as promising but partial, `RES-005` as activation-boundary evidence, and `RES-006` only as diagnostic headroom until trace-query support exists. Treat the `RES-013` before/after result as evidence that off-path observability removes the dominant median bottleneck, paired with an honest admission that high-concurrency p99 still fails the target.
 
 ### Related work
 
@@ -164,7 +164,7 @@ Keep limitations honest but contained:
 - StateDrop needs a dependency model;
 - provider pricing/cache behavior affects billed-cost interpretation;
 - CacheHit/ParallelBranch are not current headline results.
-- the synchronous audit writer does not yet meet the complete-call scaling target.
+- the audit redesign fixes median/throughput scaling on one host, but high-concurrency p99 still misses the target and multi-host behavior is unmeasured.
 
 ## Title Ideas
 
@@ -198,7 +198,7 @@ Keep limitations honest but contained:
 
 ## Next Strategy Decisions
 
-1. Treat MLSys as the primary long-run lane only if the audit-path fix and held-out joint-policy result both land.
+1. Treat MLSys as the primary long-run lane only if the held-out joint-policy result lands and residual tails are understood across hosts; the audit-path fix itself is complete.
 2. Decide whether `CacheHit` and `ParallelBranch` stay future work.
 3. Decide whether StateDrop gets stronger evidence or stays a caveated supporting result.
 4. Keep the system contribution foregrounded: joint online choice under an explicit risk contract, supported by practical cost savings and rigorous evaluation.

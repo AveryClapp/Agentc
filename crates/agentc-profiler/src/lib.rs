@@ -26,7 +26,8 @@ use agentc_optimizer::{
         complete_profiled_exploration as rust_complete_exploration,
         fail_embedded_exploration as rust_fail_embedded_exploration,
         fail_profiled_exploration as rust_fail_exploration,
-        optimize_observe as rust_observe, optimize_profiled_plan as rust_profiled_plan,
+        guard_and_attach_observation_context, optimize_observe as rust_observe,
+        optimize_plan as rust_projected_plan, optimize_profiled_plan as rust_profiled_plan,
         record_observation_divergence, reserve_profiled_exploration as rust_reserve_exploration,
         DivergenceAttribution, PASS_THROUGH_JSON,
     },
@@ -892,6 +893,45 @@ where
         .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EvaluationPlannerMode {
+    JointGuarded,
+    CurrentGreedy,
+    Invalid,
+}
+
+fn parse_evaluation_planner_mode(value: Option<&str>) -> EvaluationPlannerMode {
+    match value.map(str::trim) {
+        None | Some("") | Some("joint_guarded") => EvaluationPlannerMode::JointGuarded,
+        Some("current_greedy") => EvaluationPlannerMode::CurrentGreedy,
+        Some(_) => EvaluationPlannerMode::Invalid,
+    }
+}
+
+fn evaluation_planner_mode() -> EvaluationPlannerMode {
+    parse_evaluation_planner_mode(
+        std::env::var("AGENTC_EVAL_PLANNER_MODE")
+            .ok()
+            .as_deref(),
+    )
+}
+
+fn projected_greedy_plan(state: &OptimizerState, call_json: &str, now_us: i64) -> String {
+    let plan_json = rust_projected_plan(&state.optimizer, call_json);
+    let threshold = serde_json::from_str::<Plan>(&plan_json)
+        .ok()
+        .map(|plan| state.optimizer.divergence_threshold_for_plan(&plan))
+        .unwrap_or(0.05);
+    guard_and_attach_observation_context(
+        state.model_catalog.as_deref(),
+        &state.plan_guard,
+        call_json,
+        &plan_json,
+        threshold,
+        now_us,
+    )
+}
+
 /// Plan an intercepted LLM call. JSON-in, JSON-out; any panic on the Rust
 /// side is swallowed and the caller receives `{"kind":"pass_through"}`.
 ///
@@ -911,17 +951,25 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
         } else {
             0
         };
+        let evaluation_mode = evaluation_planner_mode();
         let primary_plan_json = guard_plan_fail_safe(|| {
-            rust_profiled_plan(
-                &state.optimizer,
-                state.model_catalog.as_deref(),
-                &state.plan_profiles,
-                &state.plan_guard,
-                call_json,
-                now_us_i64(),
-            )
+            match evaluation_mode {
+                EvaluationPlannerMode::JointGuarded => rust_profiled_plan(
+                    &state.optimizer,
+                    state.model_catalog.as_deref(),
+                    &state.plan_profiles,
+                    &state.plan_guard,
+                    call_json,
+                    now_us_i64(),
+                ),
+                EvaluationPlannerMode::CurrentGreedy => {
+                    projected_greedy_plan(&state, call_json, now_us_i64())
+                }
+                EvaluationPlannerMode::Invalid => PASS_THROUGH_JSON.to_string(),
+            }
         });
-        let plan_json = if state.exploration_enabled
+        let plan_json = if evaluation_mode == EvaluationPlannerMode::JointGuarded
+            && state.exploration_enabled
             && t0.elapsed().as_micros() <= max_overhead_us
         {
             state
@@ -1456,6 +1504,34 @@ mod tests {
     fn plan_guard_panic_falls_back_to_reference() {
         let plan = guard_plan_fail_safe(|| panic!("injected plan-guard failure"));
         assert_eq!(plan, PASS_THROUGH_JSON);
+    }
+
+    #[test]
+    fn evaluation_planner_mode_defaults_to_joint_guarded() {
+        assert_eq!(
+            parse_evaluation_planner_mode(None),
+            EvaluationPlannerMode::JointGuarded
+        );
+        assert_eq!(
+            parse_evaluation_planner_mode(Some("")),
+            EvaluationPlannerMode::JointGuarded
+        );
+        assert_eq!(
+            parse_evaluation_planner_mode(Some(" joint_guarded ")),
+            EvaluationPlannerMode::JointGuarded
+        );
+    }
+
+    #[test]
+    fn evaluation_planner_mode_accepts_only_the_frozen_greedy_baseline() {
+        assert_eq!(
+            parse_evaluation_planner_mode(Some("current_greedy")),
+            EvaluationPlannerMode::CurrentGreedy
+        );
+        assert_eq!(
+            parse_evaluation_planner_mode(Some("first_match")),
+            EvaluationPlannerMode::Invalid
+        );
     }
 }
 

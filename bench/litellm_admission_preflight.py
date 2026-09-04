@@ -112,6 +112,14 @@ def _plan_event(call: dict[str, Any], plan: Any, sequence: int) -> dict[str, Any
     parameters = call.get("parameters") or {}
     rewritten = getattr(plan, "call", None) or {}
     rewritten_parameters = rewritten.get("parameters") or {}
+    execution_plan_id = None
+    try:
+        raw_plan = json.loads(str(getattr(plan, "raw_json", "{}")))
+        execution_plan_id = raw_plan.get("agentc_observation_context", {}).get(
+            "key", {}
+        ).get("execution_plan_id")
+    except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+        execution_plan_id = None
     return {
         "sequence": sequence,
         "call_site_id": str(call.get("call_site_id", "")),
@@ -122,6 +130,7 @@ def _plan_event(call: dict[str, Any], plan: Any, sequence: int) -> dict[str, Any
         },
         "plan_kind": str(getattr(plan, "kind", "")),
         "rules": _plan_rules(plan),
+        "execution_plan_id": execution_plan_id,
         "rewritten": (
             {
                 "model": str(rewritten.get("model", "")),
@@ -255,7 +264,15 @@ def _restore_capture(originals: tuple[Any, Any, Any]) -> None:
     _litellm._write_root_span = original_write_root
 
 
-def _run_tau2(turns: int, storage_path: Path) -> dict[str, Any]:
+def _run_tau2(
+    turns: int,
+    storage_path: Path,
+    *,
+    model: str = _MODEL,
+    user_model: str | None = None,
+    prompt_prefix: str = "offline admission turn",
+    max_output_tokens: int = _MAX_OUTPUT_TOKENS,
+) -> dict[str, Any]:
     # Import aliases first: initialization must repair tau2's by-value imports.
     from tau2.agent import llm_agent
     from tau2.data_model.message import UserMessage
@@ -283,21 +300,21 @@ def _run_tau2(turns: int, storage_path: Path) -> dict[str, Any]:
         with _blocked_network() as network_attempts:
             for turn in range(turns):
                 messages = [
-                    UserMessage(role="user", content=f"offline admission turn {turn}")
+                    UserMessage(role="user", content=f"{prompt_prefix} {turn}")
                 ]
                 assistant_response = llm_agent.generate(
-                    model=_MODEL,
+                    model=model,
                     messages=messages,
                     temperature=0,
-                    max_tokens=_MAX_OUTPUT_TOKENS,
+                    max_tokens=max_output_tokens,
                     mock_response=f"assistant-{turn}",
                     call_name="agent_response",
                 )
                 user_response = user_simulator.generate(
-                    model=_MODEL,
+                    model=user_model or model,
                     messages=messages,
                     temperature=0,
-                    max_tokens=_MAX_OUTPUT_TOKENS,
+                    max_tokens=max_output_tokens,
                     mock_response=f"user-{turn}",
                     call_name="user_simulator_response",
                 )
@@ -371,7 +388,13 @@ def _run_tau2(turns: int, storage_path: Path) -> dict[str, Any]:
     }
 
 
-def _run_sweagent(storage_path: Path) -> dict[str, Any]:
+def _run_sweagent(
+    storage_path: Path,
+    *,
+    model: str = _MODEL,
+    prompt: str = "offline SWE-agent admission prompt",
+    max_output_tokens: int = _MAX_OUTPUT_TOKENS,
+) -> dict[str, Any]:
     # Import the actual model module before Agentc to cover lifecycle patch order.
     import litellm
     from sweagent.agent.models import GenericAPIModelConfig, LiteLLMModel
@@ -389,17 +412,17 @@ def _run_sweagent(storage_path: Path) -> dict[str, Any]:
             and getattr(litellm.completion, "__wrapped__", None) is completion_before
         )
         config = GenericAPIModelConfig(
-            name=_MODEL,
+            name=model,
             max_input_tokens=8192,
-            max_output_tokens=_MAX_OUTPUT_TOKENS,
+            max_output_tokens=max_output_tokens,
             per_instance_cost_limit=0,
             completion_kwargs={"mock_response": "sweagent-offline-response"},
         )
         tools = ToolConfig(parse_function=ThoughtActionParser())
-        model = LiteLLMModel(config, tools)
+        model_client = LiteLLMModel(config, tools)
         with _blocked_network() as network_attempts:
-            outputs = model._single_query(
-                [{"role": "user", "content": "offline SWE-agent admission prompt"}]
+            outputs = model_client._single_query(
+                [{"role": "user", "content": prompt}]
             )
         if network_attempts:
             raise RuntimeError(f"unexpected network attempts: {network_attempts}")

@@ -254,3 +254,49 @@ fake-provider invocations.
 This is Stage E0 mechanism evidence with `network_calls=0` and
 `paper_evidence=false`. Its sub-millisecond local timings are not provider
 latency results and must not appear as efficacy evidence.
+
+### Joint policy campaign harness
+
+`bench.joint_campaign` is the prospective runner for the ten frozen policy
+arms. It schedules each task/arm/repetition with protocol-derived seeds and arm
+order, keeps a separate persistent Agentc store per arm and repetition,
+validates every worker result before appending it, and seals four canonical
+artifacts:
+
+- `raw-records.jsonl`: intention-to-treat task outcomes and raw model calls;
+- `campaign.json`: the exact frozen input contract;
+- `analysis.json`: per-arm quality, cost, tokens, tail latency, abstention,
+  exploration cost, task damage, interaction contrasts, negative regimes, and
+  hierarchical paired intervals;
+- `manifest.json`: source, task, protocol, schedule, state, and artifact
+  digests plus frozen expected spend, actual billed-spend basis, the 125% stop
+  threshold, stop reason, and completeness.
+
+Held-out Stage P/T configurations are rejected unless they contain a Stage-C
+calibration lock. The runner never derives policy settings from held-out
+outcomes. It also refuses incomplete arm sets, duplicate task IDs, changed
+protocol or task-list digests, unsafe resume ledgers, non-finite metrics,
+network use in a network-forbidden cell, and home-directory paths in worker
+records.
+
+The committed `joint-campaign-e0.json` drives a two-family, two-repetition
+no-network admission campaign over the exact frozen tau2 and SWE-agent source
+revisions. Supply only machine-local paths through environment variables:
+
+```bash
+export AGENTC_TAU2_ROOT=/path/to/tau2-v1.0.1
+export AGENTC_TAU2_PYTHON="$AGENTC_TAU2_ROOT/.venv/bin/python"
+export AGENTC_SWEAGENT_ROOT=/path/to/swe-agent-v1.1.0
+export AGENTC_SWEAGENT_PYTHON="$AGENTC_SWEAGENT_ROOT/.venv/bin/python"
+export AGENTC_SWEBENCH_PARQUET=/path/to/test-00000-of-00001.parquet
+
+python -m bench.joint_campaign bench/repro/joint-campaign-e0.json \
+  --output /tmp/agentc-joint-campaign-e0
+```
+
+The E0 worker invokes real upstream LiteLLM call sites with deterministic mock
+responses and a socket guard. It does not run or score complete tasks, measure
+provider latency, or estimate instrumentation overhead. Its static/sequential
+arms only validate orchestration. Therefore every resulting metric remains
+`paper_evidence=false`; only a worker that passes the stricter Stage C/P/T
+conformance fields can create efficacy evidence.

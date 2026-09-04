@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "campaign_id": "agentc-mlsys2027-joint-harness-e0-r1",
+  "stage": "E0",
+  "paper_evidence": false,
+  "expected_spend_usd": 0.0,
+  "protocol": {
+    "path": "mlsys-2027-evaluation-protocol.md",
+    "sha256": "82943dbb351f9154f2e3a75f01d8659d590c9a7e45797725ba0cdfbced054791",
+    "revision": 12
+  },
+  "arms": [
+    "unmodified_fixed_strong",
+    "trace_only_fixed_strong",
+    "fixed_cheap",
+    "routing_only",
+    "rewrite_only_fixed_strong",
+    "best_static_joint",
+    "route_then_rewrite",
+    "rewrite_then_route",
+    "current_greedy",
+    "joint_guarded"
+  ],
+  "bootstrap_resamples": 10000,
+  "workloads": [
+    {
+      "workload_id": "tau2-banking-knowledge-openai-e0",
+      "family": "stateful_tool_use_and_retrieval",
+      "unengineered_upstream": true,
+      "provenance": {
+        "upstream_commit": "fc0055dc4e0a316c3f83133267fbd6faaa770992",
+        "task_universe_sha256": "213c7f3e6dc0420b1184ee271e39e38c6ece3c43edfa362db49a560828ebd543"
+      },
+      "split": "calibration-prefix-e0",
+      "worker_command": [
+        "{env:AGENTC_TAU2_PYTHON}",
+        "{repo}/bench/litellm_joint_preflight_worker.py"
+      ],
+      "worker_cwd": "{env:AGENTC_TAU2_ROOT}",
+      "worker_configuration": {
+        "workload_kind": "tau2",
+        "task_universe_path": "data/tau2/domains/banking_knowledge/tasks.json"
+      },
+      "task_ids": [
+        "task_017"
+      ],
+      "task_ids_sha256": "3909fa151558c4d280a216b7559004dbdd772335d49cb6e0f88b8248fd4149eb",
+      "repetitions": 2,
+      "model_pair": {
+        "strong": "openai/gpt-5.4-2026-03-05",
+        "cheap": "openai/gpt-5.4-mini-2026-03-17"
+      },
+      "quality_margin": -0.03,
+      "network_policy": "forbidden",
+      "timeout_seconds": 120
+    },
+    {
+      "workload_id": "swebench-verified-anthropic-e0",
+      "family": "software_engineering",
+      "unengineered_upstream": true,
+      "provenance": {
+        "upstream_commit": "0f3acafacabc0def8cc76b4e48acb4b6cf302cb9",
+        "task_universe_sha256": "a45b1fe4e2f0c8390b2b2938ac83e92ed5979000856808f3679c07812e9e6dcd"
+      },
+      "split": "calibration-prefix-e0",
+      "worker_command": [
+        "{env:AGENTC_SWEAGENT_PYTHON}",
+        "{repo}/bench/litellm_joint_preflight_worker.py"
+      ],
+      "worker_cwd": "{env:AGENTC_SWEAGENT_ROOT}",
+      "worker_configuration": {
+        "workload_kind": "sweagent",
+        "task_universe_path": "{env:AGENTC_SWEBENCH_PARQUET}"
+      },
+      "task_ids": [
+        "pytest-dev__pytest-5787"
+      ],
+      "task_ids_sha256": "4fc7cda52b71b02d68027d8fa97c8e16cb0ad146b9d28c39f1cb505cca014080",
+      "repetitions": 2,
+      "model_pair": {
+        "strong": "anthropic/claude-sonnet-4-5-20250929",
+        "cheap": "anthropic/claude-haiku-4-5-20251001"
+      },
+      "quality_margin": -0.02,
+      "network_policy": "forbidden",
+      "timeout_seconds": 120
+    }
+  ],
+  "interpretation_limits": [
+    "This is a Stage-E0 scheduling, adapter, and artifact-integrity experiment only.",
+    "LiteLLM mock_response supplies outputs and a socket guard forbids network calls.",
+    "Official full task execution, task scoring, provider latency, token use, and billed cost are not measured.",
+    "Static and sequential arms are plumbing controls rather than Stage-C-selected policies.",
+    "The unmodified arm is traced in this E0 worker and cannot estimate instrumentation overhead.",
+    "The current_greedy arm uses the frozen projected-savings greedy planner rather than the profiled joint selector."
+  ]
+}

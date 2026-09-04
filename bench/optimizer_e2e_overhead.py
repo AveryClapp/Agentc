@@ -36,7 +36,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Sequence, cast
 
 from agentc import _native
 
@@ -188,14 +188,27 @@ def _bootstrap_mean_ci(
     }
 
 
-def _max_audit_id(audit_path: Path) -> int:
-    with sqlite3.connect(audit_path) as connection:
-        row = connection.execute(
-            "SELECT COALESCE(MAX(audit_id), 0) FROM plan_audit"
-        ).fetchone()
-    if row is None:
-        raise RuntimeError("audit-id query returned no row")
-    return int(row[0])
+def _validated_audit_stats(*, expected_attempted_rows: int) -> dict[str, Any]:
+    stats = cast(dict[str, Any], json.loads(_native.optimize_audit_stats()))
+    attempted = int(stats.get("attempted_rows", -1))
+    accepted = int(stats.get("accepted_rows", -1))
+    written = int(stats.get("written_rows", -1))
+    pending = int(stats.get("pending_rows", -1))
+    dropped_full = int(stats.get("dropped_full_rows", -1))
+    dropped_disconnected = int(stats.get("dropped_disconnected_rows", -1))
+    write_failed = int(stats.get("write_failed_rows", -1))
+    if (
+        not stats.get("available")
+        or attempted != expected_attempted_rows
+        or accepted + dropped_full + dropped_disconnected != attempted
+        or written + write_failed + pending != accepted
+        or pending != 0
+        or dropped_full != 0
+        or dropped_disconnected != 0
+        or write_failed != 0
+    ):
+        raise RuntimeError(f"audit writer did not drain cleanly: {stats}")
+    return stats
 
 
 def _read_audit_rows(audit_path: Path, after_id: int) -> list[tuple[int, str]]:
@@ -291,7 +304,18 @@ def _measure_replication(
 
         audit_path = storage / "optimizer_audit.db"
         _native.optimize_flush()
-        first_measured_audit_id = _max_audit_id(audit_path)
+        setup_attempted_rows = warmup + (
+            24 if scenario == "joint_admitted_rewrite" else 4
+        )
+        audit_writer_before_measurement = _validated_audit_stats(
+            expected_attempted_rows=setup_attempted_rows
+        )
+        # This benchmark owns a fresh DB. The flushed native write count is
+        # therefore also the next audit-id boundary. Do not open Python's
+        # separately linked SQLite while the native WAL writer is live: POSIX
+        # advisory locks are process-scoped, so closing either SQLite library's
+        # descriptor can release locks held by the other library.
+        first_measured_audit_id = int(audit_writer_before_measurement["written_rows"])
         e2e_ns: list[int] = []
         returned_kinds: list[str] = []
         for _ in range(iterations):
@@ -301,15 +325,9 @@ def _measure_replication(
             returned_kinds.append(_plan_kind(plan_json))
 
         _native.optimize_flush()
-        audit_writer = json.loads(_native.optimize_audit_stats())
-        if (
-            not audit_writer.get("available")
-            or audit_writer.get("pending_rows") != 0
-            or audit_writer.get("dropped_full_rows") != 0
-            or audit_writer.get("dropped_disconnected_rows") != 0
-            or audit_writer.get("write_failed_rows") != 0
-        ):
-            raise RuntimeError(f"audit writer did not drain cleanly: {audit_writer}")
+        audit_writer = _validated_audit_stats(
+            expected_attempted_rows=setup_attempted_rows + iterations
+        )
         _native.optimize_reset()
         audit_rows = _read_audit_rows(audit_path, first_measured_audit_id)
         if len(audit_rows) != iterations:
@@ -353,6 +371,7 @@ def _measure_replication(
             "configure_us": configure_ns / 1_000.0,
             "first_cold_call_us": first_call_ns / 1_000.0,
             "audit_journal_mode": journal_mode,
+            "audit_writer_before_measurement": audit_writer_before_measurement,
             "audit_writer": audit_writer,
             "e2e": _summarize_ns(e2e_ns),
             "internal_pre_audit": _summarize_ns(internal_ns),
@@ -546,6 +565,7 @@ def run(
             "The residual is paired subtraction, but it combines boundary, state lookup, audit-row construction/enqueue, clock quantization, and return conversion; it is not an audit-only timer.",
             "The build profile is operator-attested; the native extension hash pins the measured binary.",
             "The ordered audit flush and SQLite commit are outside the request-path clock; normal host scheduling remains inside it.",
+            "The harness derives its audit-id boundary from flushed native counters and opens Python's separately linked SQLite only after closing the native writer.",
         ],
     }
     return result, raw

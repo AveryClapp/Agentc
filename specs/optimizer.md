@@ -1419,9 +1419,12 @@ record is `bench/repro/joint-planner-preflight-2026-09-04.json`.
 outer clock includes optimizer-state lookup, the FFI boundary, audit-row
 construction and bounded enqueue, and return conversion. An ordered flush runs
 after the timed group and the harness rejects pending, dropped, or failed rows
-before pairing. The paired residual is therefore deliberately labeled as a
-combined boundary/state/audit residual, not audit-enqueue latency. The committed
-release-mode record contains five
+before pairing. Its audit-ID boundary comes from the flushed native write
+counter; Python's separately linked SQLite library is opened only after the
+native writer closes, because same-process descriptor closure can release
+process-scoped POSIX locks held by the other SQLite library. The paired residual
+is therefore deliberately labeled as a combined boundary/state/audit residual,
+not audit-enqueue latency. The committed release-mode record contains five
 2,000-call replications per path and is
 `bench/repro/optimizer-e2e-overhead-2026-09-04.json`, with checksummed raw
 samples beside it. It is a single-machine Stage E0 diagnostic and is permanently

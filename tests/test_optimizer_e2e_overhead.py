@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
+import bench.optimizer_e2e_overhead as overhead
 from bench.optimizer_e2e_overhead import (
     _bootstrap_mean_ci,
     _reset_native_optimizer,
@@ -12,6 +15,43 @@ from bench.optimizer_e2e_overhead import (
     _write_raw,
     run,
 )
+
+
+def test_harness_closes_native_writer_before_python_sqlite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    writer_open = False
+    original_configure = overhead._native.optimize_configure
+    original_reset = overhead._native.optimize_reset
+    original_connect = overhead.sqlite3.connect
+
+    def configure(*args: object, **kwargs: object) -> str:
+        nonlocal writer_open
+        result = str(original_configure(*args, **kwargs))
+        writer_open = True
+        return result
+
+    def reset() -> None:
+        nonlocal writer_open
+        original_reset()
+        writer_open = False
+
+    def connect(*args: object, **kwargs: object) -> object:
+        assert not writer_open, "Python SQLite opened while native WAL writer was live"
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(overhead._native, "optimize_configure", configure)
+    monkeypatch.setattr(overhead._native, "optimize_reset", reset)
+    monkeypatch.setattr(overhead.sqlite3, "connect", connect)
+
+    overhead._measure_replication(
+        root=tmp_path,
+        scenario="joint_reference",
+        replication=1,
+        iterations=8,
+        warmup=2,
+        max_overhead_ms=1_000.0,
+    )
 
 
 def test_native_optimizer_is_reset_after_benchmark_failure() -> None:

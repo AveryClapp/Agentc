@@ -1825,7 +1825,7 @@ def analyze_campaign(
                     comparisons["joint_guarded"]["quality_delta_vs_reference"]["estimate"]
                 )
                 <= float(workload["quality_margin"]),
-                "interaction_not_positive": selection_valid.estimate <= 0.0,
+                "interaction_not_positive": cost_synergy.estimate <= 0.0,
                 "safety_failure_observed": int(joint_summary["safety_failures"]) > 0,
             },
         }

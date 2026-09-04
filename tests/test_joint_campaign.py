@@ -281,6 +281,15 @@ def test_resume_rejects_changed_source_context(tmp_path: Path) -> None:
         run_campaign(campaign, output, resume=True)
 
 
+def test_completed_resume_preserves_worker_commands(tmp_path: Path) -> None:
+    campaign = _write_campaign(tmp_path)
+    output = tmp_path / "output"
+    initial = run_campaign(campaign, output)
+    resumed = run_campaign(campaign, output, resume=True)
+    assert resumed["worker_commands"] == initial["worker_commands"]
+    assert set(resumed["worker_commands"]) == {"fixture-stateful", "fixture-coding"}
+
+
 def test_source_context_detects_worktree_drift(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

@@ -20,9 +20,9 @@ pub const LITELLM_COMPLETION_PROTOCOL: &str = "litellm.completion.v1";
 pub const ROUTE_CONTEXT_KEY: &str = "agentc_route_context";
 pub const ROUTED_TARGET_KEY: &str = "agentc_routed_target";
 
-pub const DEFAULT_MODEL_CATALOG_VERSION: &str = "agentc-model-catalog-2026-09-03-r1";
+pub const DEFAULT_MODEL_CATALOG_VERSION: &str = "agentc-model-catalog-2026-09-04-r2";
 pub const DEFAULT_PRICE_TABLE_VERSION: &str = "agentc-price-table-2026-09-03-r1";
-pub const DEFAULT_CATALOG_OBSERVED_AT_UTC: &str = "2026-09-03T00:00:00Z";
+pub const DEFAULT_CATALOG_OBSERVED_AT_UTC: &str = "2026-09-04T00:00:00Z";
 
 const OPENAI_GPT_54_SOURCE: &str = "https://developers.openai.com/api/docs/models/gpt-5.4";
 const OPENAI_GPT_54_MINI_SOURCE: &str =
@@ -598,9 +598,69 @@ pub fn default_model_catalog() -> Result<ModelCatalog, CatalogError> {
             price(1.00, 5.00, Some(0.10), ANTHROPIC_PRICING_SOURCE),
             ANTHROPIC_MODELS_SOURCE,
         ),
-        // LiteLLM requires a provider prefix. Together exposes no immutable served
-        // binary revision, so these versions explicitly identify the observed
-        // catalog cohort; a refreshed provider catalog starts a cold profile.
+        // LiteLLM preserves provider prefixes on both requested and routed model
+        // IDs. These duplicate the underlying provider facts under LiteLLM's
+        // distinct adapter protocol and credential namespace; they are not
+        // cross-provider routes.
+        target(
+            LITELLM_COMPLETION_PROTOCOL,
+            "openai",
+            "openai/gpt-5.4-2026-03-05",
+            ModelRevisionKind::ImmutableSnapshot,
+            &["openai/gpt-5.4"],
+            "litellm-openai-gpt-5.4",
+            1_050_000,
+            128_000,
+            OutputTokenParameter::MaxCompletionTokens,
+            all_capabilities(true),
+            price(2.50, 15.00, Some(0.25), OPENAI_GPT_54_SOURCE),
+            OPENAI_GPT_54_SOURCE,
+        ),
+        target(
+            LITELLM_COMPLETION_PROTOCOL,
+            "openai",
+            "openai/gpt-5.4-mini-2026-03-17",
+            ModelRevisionKind::ImmutableSnapshot,
+            &["openai/gpt-5.4-mini"],
+            "litellm-openai-gpt-5.4",
+            400_000,
+            128_000,
+            OutputTokenParameter::MaxCompletionTokens,
+            all_capabilities(true),
+            price(0.75, 4.50, Some(0.075), OPENAI_GPT_54_MINI_SOURCE),
+            OPENAI_GPT_54_MINI_SOURCE,
+        ),
+        target_with_distinct_price_source(
+            LITELLM_COMPLETION_PROTOCOL,
+            "anthropic",
+            "anthropic/claude-sonnet-4-5-20250929",
+            ModelRevisionKind::ImmutableSnapshot,
+            &["anthropic/claude-sonnet-4-5"],
+            "litellm-anthropic-claude-4.5",
+            200_000,
+            64_000,
+            OutputTokenParameter::MaxTokens,
+            all_capabilities(true),
+            price(3.00, 15.00, Some(0.30), ANTHROPIC_PRICING_SOURCE),
+            ANTHROPIC_MODELS_SOURCE,
+        ),
+        target_with_distinct_price_source(
+            LITELLM_COMPLETION_PROTOCOL,
+            "anthropic",
+            "anthropic/claude-haiku-4-5-20251001",
+            ModelRevisionKind::ImmutableSnapshot,
+            &["anthropic/claude-haiku-4-5"],
+            "litellm-anthropic-claude-4.5",
+            200_000,
+            64_000,
+            OutputTokenParameter::MaxTokens,
+            all_capabilities(true),
+            price(1.00, 5.00, Some(0.10), ANTHROPIC_PRICING_SOURCE),
+            ANTHROPIC_MODELS_SOURCE,
+        ),
+        // Together exposes no immutable served binary revision, so these
+        // versions identify the observed catalog cohort; a catalog refresh
+        // starts a cold profile.
         target(
             LITELLM_COMPLETION_PROTOCOL,
             "together_ai",
@@ -858,6 +918,18 @@ mod tests {
             ),
             (
                 LITELLM_COMPLETION_PROTOCOL,
+                "openai",
+                "openai/gpt-5.4-2026-03-05",
+                "openai/gpt-5.4-mini-2026-03-17",
+            ),
+            (
+                LITELLM_COMPLETION_PROTOCOL,
+                "anthropic",
+                "anthropic/claude-sonnet-4-5-20250929",
+                "anthropic/claude-haiku-4-5-20251001",
+            ),
+            (
+                LITELLM_COMPLETION_PROTOCOL,
                 "together_ai",
                 "together_ai/zai-org/GLM-5.3",
                 "together_ai/zai-org/GLM-5.3-Flash",
@@ -871,11 +943,21 @@ mod tests {
     }
 
     #[test]
-    fn cross_provider_litellm_request_abstains() {
+    fn litellm_routing_stays_within_provider_namespace() {
         let catalog = default_model_catalog().unwrap();
         let request = call(LITELLM_COMPLETION_PROTOCOL, "openai", "openai/gpt-5.4");
-        assert!(catalog.compatible_targets(&request).is_empty());
-        assert!(catalog.cheaper_targets(&request).is_empty());
+        let compatible = catalog.compatible_targets(&request);
+        assert_eq!(compatible.len(), 2);
+        assert!(compatible
+            .iter()
+            .all(|target| target.provider_namespace == "openai"));
+        assert_eq!(
+            catalog.cheaper_targets(&request)[0].0.model_id,
+            "openai/gpt-5.4-mini-2026-03-17"
+        );
+        assert!(compatible
+            .iter()
+            .all(|target| !target.model_id.starts_with("anthropic/")));
     }
 
     #[test]

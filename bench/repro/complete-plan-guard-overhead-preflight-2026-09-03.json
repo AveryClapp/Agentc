@@ -1,0 +1,64 @@
+{
+  "agentc_git_commit": "35d042ca9152f77bf7d98e31ab9642898adea41b",
+  "created_at_utc": "2026-09-04T02:54:10.085635+00:00",
+  "excluded_scope": [
+    "primary provider call",
+    "shadow provider call",
+    "plan selection and request dispatch",
+    "network latency and billed tokens"
+  ],
+  "experiment_kind": "complete_plan_guard_overhead_preflight",
+  "interpretation_limits": [
+    "This is a single-machine Stage E0 engineering measurement, not paper evidence.",
+    "The benchmark uses deterministic synthetic optimizer inputs and performs no network calls.",
+    "The combined mean sums separately timed metric and feedback paths; it is not an end-to-end request latency.",
+    "Provider counterfactual latency and cost dominate sampled requests and must be measured separately."
+  ],
+  "measurements_us": {
+    "divergence_metric": {
+      "mean_us": 5.06920018,
+      "p50_us": 5.0,
+      "p99_us": 6.75
+    },
+    "estimated_combined_mean": 309.02352468,
+    "fresh_complete_plan_feedback": {
+      "mean_us": 303.9543245,
+      "p50_us": 299.917,
+      "p99_us": 401.375
+    }
+  },
+  "network_calls": 0,
+  "paper_evidence": false,
+  "runtime": {
+    "platform": "macOS-26.5-arm64-arm-64bit-Mach-O",
+    "python": "3.13.1"
+  },
+  "schema_version": 1,
+  "settings": {
+    "divergence_metric": "normalized_containment",
+    "divergence_sample": 0.05,
+    "divergence_threshold": 0.1,
+    "enabled_rules": [
+      "ContextCompress",
+      "OutputBudget"
+    ],
+    "feedback_warmup_tokens": 100,
+    "fresh_feedback_tokens": 2000,
+    "metric_iterations": 50000,
+    "plan_kind": "composed"
+  },
+  "timed_scope": [
+    "Python normalized-containment divergence metric",
+    "opaque observation-token validation",
+    "exact complete-plan paired-profile update",
+    "exact complete-plan exposure-guard update",
+    "synchronous SQLite durability for accepted feedback"
+  ],
+  "validated_state": {
+    "divergence_exposure": 0.0,
+    "divergence_threshold": 0.1,
+    "legacy_rule_rows": 0,
+    "plan_guard_rows": 1,
+    "positive_exposure_events": 0
+  }
+}

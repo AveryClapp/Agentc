@@ -173,3 +173,11 @@ the overhead result is a single-machine local diagnostic that excludes the
 shadow provider call, request dispatch, contention, and billed tokens. The
 historical `18 us/sample` claim came from replaying one synthetic token through
 the legacy idempotence path and is superseded; do not cite it.
+
+Committed outputs from the corrected harnesses are
+[persistence](complete-plan-guard-persistence-preflight-2026-09-03.json),
+[input validation](complete-plan-guard-input-validation-preflight-2026-09-03.json),
+and [overhead](complete-plan-guard-overhead-preflight-2026-09-03.json). On the
+recorded development-machine run, 2,000 fresh feedback samples had a 304.0 us
+mean and 401.4 us p99, plus a separately measured 5.1 us divergence metric.
+Those values characterize this E0 run only.

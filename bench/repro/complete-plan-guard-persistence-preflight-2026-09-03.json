@@ -1,0 +1,113 @@
+{
+  "agentc_git_commit": "35d042ca9152f77bf7d98e31ab9642898adea41b",
+  "created_at_utc": "2026-09-04T02:54:08.441126+00:00",
+  "experiment_kind": "complete_plan_guard_persistence_preflight",
+  "interpretation_limits": [
+    "This proves exposure persistence and restart behavior for one exact composed plan only.",
+    "Calls, outcomes, and divergences are deterministic synthetic optimizer inputs; no LLM or provider is invoked.",
+    "The raised planning ceiling is an activation control, not the production setting.",
+    "This does not measure guard precision, recall, semantic quality, or task-equivalent damage.",
+    "SQLite rows are read in a child process to avoid same-process cache interactions between Python SQLite and rusqlite's bundled SQLite."
+  ],
+  "network_calls": 0,
+  "paper_evidence": false,
+  "result": {
+    "disabled_after_disable": {
+      "call_site_version": "b70b39b3bcd524876366971e4f74a9443bd0b54044d22f818fe0643d9c4fc1ab",
+      "disabled_at_us": 1788490448127124,
+      "execution_plan_id": "2169722c82c3a6df646df5355ea4131cc8abe338ad3483ef534e7b565e7cf30e",
+      "exposure": 1.2000000000000002,
+      "reason": "divergence_exposure",
+      "reenable_at_us": 1788576848127124
+    },
+    "disabled_before_restart": null,
+    "guard_after_disable": {
+      "call_site_version": "b70b39b3bcd524876366971e4f74a9443bd0b54044d22f818fe0643d9c4fc1ab",
+      "divergence_exposure": 1.2000000000000002,
+      "divergence_threshold": 0.1,
+      "execution_plan_id": "2169722c82c3a6df646df5355ea4131cc8abe338ad3483ef534e7b565e7cf30e",
+      "price_table_version": "agentc-price-table-2026-09-03-r1",
+      "provider_protocol": "openai.chat.completions.v1",
+      "target_model_id": "gpt-4o",
+      "target_model_version": "gpt-4o@agentc-model-catalog-2026-09-03-r1",
+      "window_samples": 3
+    },
+    "guard_before_restart": {
+      "call_site_version": "b70b39b3bcd524876366971e4f74a9443bd0b54044d22f818fe0643d9c4fc1ab",
+      "divergence_exposure": 0.8,
+      "divergence_threshold": 0.1,
+      "execution_plan_id": "2169722c82c3a6df646df5355ea4131cc8abe338ad3483ef534e7b565e7cf30e",
+      "price_table_version": "agentc-price-table-2026-09-03-r1",
+      "provider_protocol": "openai.chat.completions.v1",
+      "target_model_id": "gpt-4o",
+      "target_model_version": "gpt-4o@agentc-model-catalog-2026-09-03-r1",
+      "window_samples": 2
+    },
+    "legacy_after_disable": {
+      "rule_disabled_rows": 0,
+      "rule_divergence_rows": 0
+    },
+    "legacy_before_restart": {
+      "rule_disabled_rows": 0,
+      "rule_divergence_rows": 0
+    },
+    "native_storage_match": true,
+    "plan_after_budget_crossing": {
+      "kind": "pass_through",
+      "rules": []
+    },
+    "plan_after_second_restart": {
+      "kind": "pass_through",
+      "rules": []
+    },
+    "plan_before_budget_crossing": {
+      "kind": "composed",
+      "rules": [
+        "ContextCompress",
+        "OutputBudget"
+      ]
+    },
+    "pre_restart_plans": [
+      {
+        "kind": "composed",
+        "rules": [
+          "ContextCompress",
+          "OutputBudget"
+        ]
+      },
+      {
+        "kind": "composed",
+        "rules": [
+          "ContextCompress",
+          "OutputBudget"
+        ]
+      }
+    ],
+    "warmup_plan_kinds": [
+      "pass_through",
+      "pass_through",
+      "pass_through"
+    ]
+  },
+  "runtime": {
+    "platform": "macOS-26.5-arm64-arm-64bit-Mach-O",
+    "python": "3.13.1"
+  },
+  "schema_version": 2,
+  "settings": {
+    "divergence_sample": 0.5,
+    "divergence_threshold": 0.1,
+    "enabled_rules": [
+      "ContextCompress",
+      "OutputBudget"
+    ],
+    "excess_per_sample": 0.4,
+    "hot_threshold": 3,
+    "max_planning_overhead_ms": 1000,
+    "plan_exposure_budget": 1.0,
+    "post_restart_samples": 1,
+    "pre_restart_samples": 2,
+    "process_reinitializations": 2,
+    "sqlite_probe_process": "separate child process"
+  }
+}

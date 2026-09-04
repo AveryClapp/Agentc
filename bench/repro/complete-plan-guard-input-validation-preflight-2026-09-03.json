@@ -1,0 +1,414 @@
+{
+  "agentc_git_commit": "35d042ca9152f77bf7d98e31ab9642898adea41b",
+  "created_at_utc": "2026-09-04T02:54:08.796619+00:00",
+  "experiment_kind": "complete_plan_guard_input_validation_preflight",
+  "interpretation_limits": [
+    "This proves native-boundary validation for one canonical composed plan and synthetic inputs only.",
+    "No LLM, provider, semantic-quality metric, billed cost, or network transport is involved.",
+    "The experiment does not evaluate detection delay, false disables, drift, or task-equivalent damage."
+  ],
+  "network_calls": 0,
+  "paper_evidence": false,
+  "result": {
+    "invalid_divergence_sampled_plans": [
+      {
+        "kind": "composed",
+        "rules": [
+          "ContextCompress",
+          "OutputBudget"
+        ]
+      },
+      {
+        "kind": "composed",
+        "rules": [
+          "ContextCompress",
+          "OutputBudget"
+        ]
+      },
+      {
+        "kind": "composed",
+        "rules": [
+          "ContextCompress",
+          "OutputBudget"
+        ]
+      },
+      {
+        "kind": "composed",
+        "rules": [
+          "ContextCompress",
+          "OutputBudget"
+        ]
+      },
+      {
+        "kind": "composed",
+        "rules": [
+          "ContextCompress",
+          "OutputBudget"
+        ]
+      },
+      {
+        "kind": "composed",
+        "rules": [
+          "ContextCompress",
+          "OutputBudget"
+        ]
+      },
+      {
+        "kind": "composed",
+        "rules": [
+          "ContextCompress",
+          "OutputBudget"
+        ]
+      }
+    ],
+    "invalid_divergence_state": {
+      "legacy_rule_disabled_rows": 0,
+      "legacy_rule_divergence_rows": 0,
+      "lifetime_paired_observations": 0,
+      "plan_disabled": null,
+      "plan_guard": null,
+      "retained_paired_observations": 0
+    },
+    "invalid_threshold_fallbacks": {
+      "-0.1": {
+        "plan_after_budget": {
+          "kind": "pass_through",
+          "rules": []
+        },
+        "sampled_plans": [
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          }
+        ],
+        "state": {
+          "legacy_rule_disabled_rows": 0,
+          "legacy_rule_divergence_rows": 0,
+          "lifetime_paired_observations": 3,
+          "plan_disabled": {
+            "exposure": 1.4700000006705523,
+            "reason": "divergence_exposure"
+          },
+          "plan_guard": {
+            "divergence_exposure": 1.4700000006705523,
+            "divergence_threshold": 0.009999999776482582,
+            "window_samples": 3
+          },
+          "retained_paired_observations": 3
+        }
+      },
+      "-1e-300": {
+        "plan_after_budget": {
+          "kind": "pass_through",
+          "rules": []
+        },
+        "sampled_plans": [
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          }
+        ],
+        "state": {
+          "legacy_rule_disabled_rows": 0,
+          "legacy_rule_divergence_rows": 0,
+          "lifetime_paired_observations": 3,
+          "plan_disabled": {
+            "exposure": 1.4700000006705523,
+            "reason": "divergence_exposure"
+          },
+          "plan_guard": {
+            "divergence_exposure": 1.4700000006705523,
+            "divergence_threshold": 0.009999999776482582,
+            "window_samples": 3
+          },
+          "retained_paired_observations": 3
+        }
+      },
+      "-inf": {
+        "plan_after_budget": {
+          "kind": "pass_through",
+          "rules": []
+        },
+        "sampled_plans": [
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          }
+        ],
+        "state": {
+          "legacy_rule_disabled_rows": 0,
+          "legacy_rule_divergence_rows": 0,
+          "lifetime_paired_observations": 3,
+          "plan_disabled": {
+            "exposure": 1.4700000006705523,
+            "reason": "divergence_exposure"
+          },
+          "plan_guard": {
+            "divergence_exposure": 1.4700000006705523,
+            "divergence_threshold": 0.009999999776482582,
+            "window_samples": 3
+          },
+          "retained_paired_observations": 3
+        }
+      },
+      "1.000000000001": {
+        "plan_after_budget": {
+          "kind": "pass_through",
+          "rules": []
+        },
+        "sampled_plans": [
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          }
+        ],
+        "state": {
+          "legacy_rule_disabled_rows": 0,
+          "legacy_rule_divergence_rows": 0,
+          "lifetime_paired_observations": 3,
+          "plan_disabled": {
+            "exposure": 1.4700000006705523,
+            "reason": "divergence_exposure"
+          },
+          "plan_guard": {
+            "divergence_exposure": 1.4700000006705523,
+            "divergence_threshold": 0.009999999776482582,
+            "window_samples": 3
+          },
+          "retained_paired_observations": 3
+        }
+      },
+      "1.1": {
+        "plan_after_budget": {
+          "kind": "pass_through",
+          "rules": []
+        },
+        "sampled_plans": [
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          }
+        ],
+        "state": {
+          "legacy_rule_disabled_rows": 0,
+          "legacy_rule_divergence_rows": 0,
+          "lifetime_paired_observations": 3,
+          "plan_disabled": {
+            "exposure": 1.4700000006705523,
+            "reason": "divergence_exposure"
+          },
+          "plan_guard": {
+            "divergence_exposure": 1.4700000006705523,
+            "divergence_threshold": 0.009999999776482582,
+            "window_samples": 3
+          },
+          "retained_paired_observations": 3
+        }
+      },
+      "inf": {
+        "plan_after_budget": {
+          "kind": "pass_through",
+          "rules": []
+        },
+        "sampled_plans": [
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          }
+        ],
+        "state": {
+          "legacy_rule_disabled_rows": 0,
+          "legacy_rule_divergence_rows": 0,
+          "lifetime_paired_observations": 3,
+          "plan_disabled": {
+            "exposure": 1.4700000006705523,
+            "reason": "divergence_exposure"
+          },
+          "plan_guard": {
+            "divergence_exposure": 1.4700000006705523,
+            "divergence_threshold": 0.009999999776482582,
+            "window_samples": 3
+          },
+          "retained_paired_observations": 3
+        }
+      },
+      "nan": {
+        "plan_after_budget": {
+          "kind": "pass_through",
+          "rules": []
+        },
+        "sampled_plans": [
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          },
+          {
+            "kind": "composed",
+            "rules": [
+              "ContextCompress",
+              "OutputBudget"
+            ]
+          }
+        ],
+        "state": {
+          "legacy_rule_disabled_rows": 0,
+          "legacy_rule_divergence_rows": 0,
+          "lifetime_paired_observations": 3,
+          "plan_disabled": {
+            "exposure": 1.4700000006705523,
+            "reason": "divergence_exposure"
+          },
+          "plan_guard": {
+            "divergence_exposure": 1.4700000006705523,
+            "divergence_threshold": 0.009999999776482582,
+            "window_samples": 3
+          },
+          "retained_paired_observations": 3
+        }
+      }
+    },
+    "plan_after_invalid_divergences": {
+      "kind": "composed",
+      "rules": [
+        "ContextCompress",
+        "OutputBudget"
+      ]
+    },
+    "rejected_divergence_labels": [
+      "nan",
+      "positive_infinity",
+      "negative_infinity",
+      "negative_epsilon_before_f32_cast",
+      "above_one_before_f32_cast",
+      "negative_fraction",
+      "above_one_fraction"
+    ]
+  },
+  "runtime": {
+    "platform": "macOS-26.5-arm64-arm-64bit-Mach-O",
+    "python": "3.13.1"
+  },
+  "schema_version": 2,
+  "settings": {
+    "fallback_plan_threshold": 0.01,
+    "plan_exposure_budget": 1.0,
+    "rules": [
+      "ContextCompress",
+      "OutputBudget"
+    ],
+    "samples_to_disable": 3,
+    "valid_control_divergence": 0.5
+  }
+}

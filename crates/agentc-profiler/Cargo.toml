@@ -16,6 +16,7 @@ agentc-memo = { workspace = true }
 agentc-optimizer = { workspace = true }
 pyo3 = { workspace = true }
 rusqlite = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]

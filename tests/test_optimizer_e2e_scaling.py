@@ -91,6 +91,21 @@ def test_plan_result_preserves_an_overhead_fallback_reason() -> None:
     )
 
 
+def test_plan_result_preserves_a_runtime_saturation_reason() -> None:
+    plan_json = json.dumps(
+        {
+            "kind": "pass_through",
+            "agentc_runtime_fallback": {
+                "schema_version": 1,
+                "fallback_reason": "optimizer_saturated",
+                "max_inflight_plans": 4,
+            },
+        }
+    )
+
+    assert _plan_result(plan_json) == ("pass_through", "optimizer_saturated")
+
+
 def test_raw_gzip_is_reproducible_and_uses_lf(tmp_path: Path) -> None:
     first = tmp_path / "first.csv.gz"
     second = tmp_path / "second.csv.gz"
@@ -148,5 +163,12 @@ def test_small_run_pairs_concurrent_calls_by_span() -> None:
         and replication["audit_writer"]["dropped_full_rows"] == 0
         and replication["audit_writer"]["dropped_disconnected_rows"] == 0
         and replication["audit_writer"]["write_failed_rows"] == 0
+        for replication in result["replications"]
+    )
+    assert all(
+        replication["admission_after_measurement"]["attempted"]
+        == replication["admission_after_measurement"]["admitted"]
+        + replication["admission_after_measurement"]["rejected_saturated"]
+        and replication["admission_after_measurement"]["inflight"] == 0
         for replication in result["replications"]
     )

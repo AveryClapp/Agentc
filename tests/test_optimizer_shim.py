@@ -27,9 +27,31 @@ def test_pass_through_shape():
 
 
 def test_plan_call_decodes_pass_through():
-    with patch("agentc._optimizer._native.optimize_plan", return_value='{"kind":"pass_through"}'):
+    with patch(
+        "agentc._optimizer._native.optimize_plan",
+        return_value='{"kind":"pass_through"}',
+    ):
         p = plan_call({"call_site_id": "x", "model": "m"})
     assert p.kind == "pass_through"
+
+
+def test_plan_call_decodes_runtime_saturation_fallback():
+    payload = json.dumps(
+        {
+            "kind": "pass_through",
+            "agentc_runtime_fallback": {
+                "schema_version": 1,
+                "fallback_reason": "optimizer_saturated",
+                "max_inflight_plans": 4,
+            },
+        }
+    )
+    with patch("agentc._optimizer._native.optimize_plan", return_value=payload):
+        plan = plan_call({"call_site_id": "x", "model": "m"})
+
+    assert plan.is_pass_through
+    assert plan.runtime_fallback_reason == "optimizer_saturated"
+    assert plan.runtime_fallback_limit == 4
 
 
 def test_plan_call_decodes_reference_visible_counterfactual():
@@ -131,7 +153,9 @@ def test_plan_call_hydrates_versioned_dispatch_metadata():
 
 def test_model_catalog_decodes_native_snapshot():
     payload = '{"catalog_version":"v1","targets":[{"model_id":"m"}]}'
-    with patch("agentc._optimizer._native.optimize_model_catalog", return_value=payload):
+    with patch(
+        "agentc._optimizer._native.optimize_model_catalog", return_value=payload
+    ):
         catalog = model_catalog()
     assert catalog["catalog_version"] == "v1"
     assert catalog["targets"] == [{"model_id": "m"}]

@@ -225,3 +225,7 @@ def optimize_flush() -> None:
 def optimize_audit_stats() -> str:
     """Return bounded audit-writer queue and loss counters as JSON."""
     ...
+
+def optimize_admission_stats() -> str:
+    """Return nonblocking planner-admission counters as JSON."""
+    ...

@@ -50,6 +50,7 @@ _DEFAULT_CALLS_PER_CELL = 1_024
 _DEFAULT_WARMUP = 100
 _DEFAULT_REPLICATIONS = 5
 _DEFAULT_BOOTSTRAP_RESAMPLES = 10_000
+_DEFAULT_MAX_INFLIGHT_PLANS = 4
 _MATRIX_SEED = 20_260_904
 _SCENARIOS = ("joint_reference", "joint_admitted_rewrite")
 _CONTENT_PATTERN = "agent systems context token "
@@ -93,7 +94,12 @@ def _sized_call_json(site: str, *, target_bytes: int, span_number: int) -> str:
     return encoded
 
 
-def _settings(*, scenario: str, max_overhead_ms: float) -> dict[str, str]:
+def _settings(
+    *,
+    scenario: str,
+    max_overhead_ms: float,
+    max_inflight_plans: int = _DEFAULT_MAX_INFLIGHT_PLANS,
+) -> dict[str, str]:
     if scenario not in _SCENARIOS:
         raise ValueError(f"unknown scenario: {scenario}")
     return {
@@ -104,11 +110,39 @@ def _settings(*, scenario: str, max_overhead_ms: float) -> dict[str, str]:
         "AGENTC_OPTIMIZE_EXPLORATION": "0",
         "AGENTC_OPTIMIZE_HOT_THRESHOLD": "3",
         "AGENTC_OPTIMIZE_MAX_OVERHEAD_MS": str(max_overhead_ms),
+        "AGENTC_OPTIMIZE_MAX_INFLIGHT_PLANS": str(max_inflight_plans),
         "AGENTC_OPTIMIZE_MIN_PLAN_EVIDENCE": str(e2e._PAIRED_EVIDENCE),
         "AGENTC_OPTIMIZE_OBJECTIVE": "cost",
         "AGENTC_OPTIMIZE_SHADOW": "0",
         "AGENTC_PROVIDER": "openai",
     }
+
+
+def _validated_admission_stats(*, expected_attempted: int) -> dict[str, int]:
+    value = json.loads(_native.optimize_admission_stats())
+    required = {
+        "attempted",
+        "admitted",
+        "rejected_saturated",
+        "inflight",
+        "max_observed_inflight",
+        "limit",
+    }
+    if not isinstance(value, dict) or not required.issubset(value):
+        raise RuntimeError("native planner-admission stats are incomplete")
+    stats = {key: int(value[key]) for key in required}
+    if stats["attempted"] != expected_attempted:
+        raise RuntimeError(
+            "planner-admission attempt count drifted: "
+            f"expected {expected_attempted}, found {stats['attempted']}"
+        )
+    if stats["attempted"] != stats["admitted"] + stats["rejected_saturated"]:
+        raise RuntimeError("planner-admission accounting does not conserve attempts")
+    if stats["inflight"] != 0:
+        raise RuntimeError("planner-admission permits leaked after timed calls")
+    if not 0 <= stats["max_observed_inflight"] <= stats["limit"]:
+        raise RuntimeError("planner-admission high-water mark exceeded its limit")
+    return stats
 
 
 def _read_correlated_audit_rows(
@@ -117,17 +151,19 @@ def _read_correlated_audit_rows(
     with sqlite3.connect(audit_path) as connection:
         rows = connection.execute(
             "SELECT lower(hex(span_id)), overhead_us, plan_kind, "
-            "planner_diagnostics_json "
+            "planner_diagnostics_json, runtime_fallback_reason "
             "FROM plan_audit WHERE audit_id > ? ORDER BY audit_id",
             (after_id,),
         ).fetchall()
     correlated: dict[str, tuple[int, str, str | None]] = {}
-    for span_id, overhead_us, plan_kind, diagnostics_json in rows:
+    for span_id, overhead_us, plan_kind, diagnostics_json, runtime_reason in rows:
         key = str(span_id)
         if key in correlated:
             raise RuntimeError(f"duplicate measured span ID in plan_audit: {key}")
         fallback_reason: str | None = None
-        if diagnostics_json is not None:
+        if runtime_reason is not None:
+            fallback_reason = str(runtime_reason)
+        elif diagnostics_json is not None:
             diagnostics = json.loads(str(diagnostics_json))
             reason = diagnostics.get("fallback_reason")
             if isinstance(reason, str):
@@ -145,6 +181,11 @@ def _plan_result(plan_json: str) -> tuple[str, str | None]:
     diagnostics = value.get("agentc_planner_diagnostics")
     if isinstance(diagnostics, dict):
         reason = diagnostics.get("fallback_reason")
+        if isinstance(reason, str):
+            fallback_reason = reason
+    runtime_fallback = value.get("agentc_runtime_fallback")
+    if isinstance(runtime_fallback, dict):
+        reason = runtime_fallback.get("fallback_reason")
         if isinstance(reason, str):
             fallback_reason = reason
     return kind, fallback_reason
@@ -228,6 +269,7 @@ def _measure_replication(
     calls_per_cell: int,
     warmup: int,
     max_overhead_ms: float,
+    max_inflight_plans: int = _DEFAULT_MAX_INFLIGHT_PLANS,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     storage = root / (
         f"{replication:02d}-{scenario}-{target_bytes}-bytes-c{concurrency}"
@@ -244,7 +286,11 @@ def _measure_replication(
     with (
         e2e._reset_native_optimizer(),
         e2e._isolated_agentc_environment(
-            _settings(scenario=scenario, max_overhead_ms=max_overhead_ms)
+            _settings(
+                scenario=scenario,
+                max_overhead_ms=max_overhead_ms,
+                max_inflight_plans=max_inflight_plans,
+            )
         ),
     ):
         configured_at = time.perf_counter_ns()
@@ -289,6 +335,9 @@ def _measure_replication(
         audit_writer_before_measurement = e2e._validated_audit_stats(
             expected_attempted_rows=setup_attempted_rows
         )
+        admission_before_measurement = _validated_admission_stats(
+            expected_attempted=setup_attempted_rows
+        )
         first_measured_audit_id = int(audit_writer_before_measurement["written_rows"])
         call_jsons = [
             (
@@ -304,6 +353,13 @@ def _measure_replication(
         _native.optimize_flush()
         audit_writer = e2e._validated_audit_stats(
             expected_attempted_rows=setup_attempted_rows + calls_per_cell
+        )
+        admission_after_measurement = _validated_admission_stats(
+            expected_attempted=setup_attempted_rows + calls_per_cell
+        )
+        measured_rejected_saturated = (
+            admission_after_measurement["rejected_saturated"]
+            - admission_before_measurement["rejected_saturated"]
         )
 
         # Close the native writer before reading its WAL through Python's
@@ -400,6 +456,15 @@ def _measure_replication(
             if row["fell_back_from_expected"]
         )
         fallback_count = sum(bool(row["fell_back_from_expected"]) for row in raw)
+        correlated_saturation_count = sum(
+            row["planner_fallback_reason"] == "optimizer_saturated" for row in raw
+        )
+        if correlated_saturation_count != measured_rejected_saturated:
+            raise RuntimeError(
+                "correlated saturation fallbacks disagree with admission counters: "
+                f"plans={correlated_saturation_count}, "
+                f"counter={measured_rejected_saturated}"
+            )
         summary = {
             "scenario": scenario,
             "target_call_json_bytes": target_bytes,
@@ -416,6 +481,9 @@ def _measure_replication(
             "audit_journal_mode": journal_mode,
             "audit_writer_before_measurement": audit_writer_before_measurement,
             "audit_writer": audit_writer,
+            "admission_before_measurement": admission_before_measurement,
+            "admission_after_measurement": admission_after_measurement,
+            "measured_rejected_saturated": measured_rejected_saturated,
             "group_elapsed_ms": group_elapsed_ns / 1_000_000.0,
             "throughput_calls_per_second": (
                 calls_per_cell * 1_000_000_000.0 / group_elapsed_ns
@@ -501,6 +569,10 @@ def _aggregate_cells(
                 fallback_count = sum(
                     bool(row["fell_back_from_expected"]) for row in cell_raw
                 )
+                saturation_count = sum(
+                    row["planner_fallback_reason"] == "optimizer_saturated"
+                    for row in cell_raw
+                )
                 aggregate.append(
                     {
                         "scenario": scenario,
@@ -515,6 +587,10 @@ def _aggregate_cells(
                         ),
                         "fallback_count": fallback_count,
                         "fallback_rate_pct": 100.0 * fallback_count / len(cell_raw),
+                        "saturation_fallback_count": saturation_count,
+                        "saturation_fallback_rate_pct": (
+                            100.0 * saturation_count / len(cell_raw)
+                        ),
                         "e2e": e2e_summary,
                         "thread_cpu": thread_cpu_summary,
                         "off_cpu": off_cpu_summary,
@@ -598,6 +674,7 @@ def run(
     bootstrap_resamples: int,
     max_overhead_ms: float,
     build_profile: str,
+    max_inflight_plans: int = _DEFAULT_MAX_INFLIGHT_PLANS,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if not context_kib or not concurrencies:
         raise ValueError("context_kib and concurrencies must be non-empty")
@@ -615,6 +692,8 @@ def run(
         raise ValueError("matrix dimensions must not contain duplicates")
     if not math.isfinite(max_overhead_ms) or max_overhead_ms <= 0:
         raise ValueError("max_overhead_ms must be finite and positive")
+    if max_inflight_plans <= 0:
+        raise ValueError("max_inflight_plans must be positive")
 
     load_average_before = _load_average()
     cells = [
@@ -647,6 +726,7 @@ def run(
                     calls_per_cell=calls_per_cell,
                     warmup=warmup,
                     max_overhead_ms=max_overhead_ms,
+                    max_inflight_plans=max_inflight_plans,
                 )
                 summaries.append(summary)
                 raw.extend(samples)
@@ -702,6 +782,7 @@ def run(
             "realized_cell_order": realized_orders,
             "bootstrap_resamples": bootstrap_resamples,
             "max_overhead_ms": max_overhead_ms,
+            "max_inflight_plans": max_inflight_plans,
             "enabled_rules": ["OutputBudget"],
             "exploration_enabled": False,
             "shadow_rate": 0.0,
@@ -797,6 +878,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--max-overhead-ms", type=_positive_float, default=5.0)
     parser.add_argument(
+        "--max-inflight-plans",
+        type=_positive_int,
+        default=_DEFAULT_MAX_INFLIGHT_PLANS,
+    )
+    parser.add_argument(
         "--build-profile", choices=("debug", "release", "unknown"), default="unknown"
     )
     parser.add_argument("--output", type=Path)
@@ -856,6 +942,7 @@ def main(argv: list[str] | None = None) -> int:
         bootstrap_resamples=args.bootstrap_resamples,
         max_overhead_ms=args.max_overhead_ms,
         build_profile=args.build_profile,
+        max_inflight_plans=args.max_inflight_plans,
     )
     if args.raw_output is not None:
         _write_raw(args.raw_output, raw)

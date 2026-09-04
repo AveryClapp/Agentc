@@ -62,6 +62,8 @@ pub struct PlanAudit {
     pub shadow_divergence: Option<f64>,
     /// Content-free complete-plan decision trace serialized as JSON.
     pub planner_diagnostics_json: Option<String>,
+    /// Content-free request-path fallback reason outside semantic selection.
+    pub runtime_fallback_reason: Option<String>,
 }
 
 /// Append one audit row. Does **not** prune; pruning is a separate maintenance
@@ -72,8 +74,8 @@ pub fn insert(conn: &Connection, audit: &PlanAudit) -> Result<i64> {
             ts_us, call_site_id, span_id, plan_kind, rule, \
             projected_savings_usd, measured_savings_usd, \
             overhead_us, shadow_sampled, shadow_divergence, \
-            planner_diagnostics_json\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            planner_diagnostics_json, runtime_fallback_reason\
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             audit.ts_us,
             audit.call_site_id,
@@ -86,6 +88,7 @@ pub fn insert(conn: &Connection, audit: &PlanAudit) -> Result<i64> {
             audit.shadow_sampled as i64,
             audit.shadow_divergence,
             audit.planner_diagnostics_json,
+            audit.runtime_fallback_reason,
         ],
     )
     .context("insert plan_audit")?;
@@ -105,8 +108,8 @@ pub fn insert_batch(conn: &mut Connection, rows: &[PlanAudit]) -> Result<usize> 
                 ts_us, call_site_id, span_id, plan_kind, rule, \
                 projected_savings_usd, measured_savings_usd, \
                 overhead_us, shadow_sampled, shadow_divergence, \
-                planner_diagnostics_json\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                planner_diagnostics_json, runtime_fallback_reason\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         )?;
         for r in rows {
             stmt.execute(params![
@@ -121,6 +124,7 @@ pub fn insert_batch(conn: &mut Connection, rows: &[PlanAudit]) -> Result<usize> 
                 r.shadow_sampled as i64,
                 r.shadow_divergence,
                 r.planner_diagnostics_json,
+                r.runtime_fallback_reason,
             ])?;
         }
     }
@@ -188,14 +192,25 @@ mod tests {
             shadow_sampled: false,
             shadow_divergence: None,
             planner_diagnostics_json: None,
+            runtime_fallback_reason: None,
         }
     }
 
     #[test]
     fn insert_single_row_returns_audit_id() {
         let conn = fresh_conn();
-        let id = insert(&conn, &sample_row(1)).unwrap();
+        let mut row = sample_row(1);
+        row.runtime_fallback_reason = Some("optimizer_saturated".to_string());
+        let id = insert(&conn, &row).unwrap();
         assert_eq!(id, 1);
+        let reason: String = conn
+            .query_row(
+                "SELECT runtime_fallback_reason FROM plan_audit WHERE audit_id = 1",
+                [],
+                |stored| stored.get(0),
+            )
+            .unwrap();
+        assert_eq!(reason, "optimizer_saturated");
     }
 
     #[test]

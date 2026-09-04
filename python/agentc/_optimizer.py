@@ -40,7 +40,7 @@ class Plan:
     # For composed plans: list of rule names that contributed.
     rules: list[str] = field(default_factory=list)
     projected_savings_usd: float = 0.0
-    raw_json: str = "{\"kind\":\"pass_through\"}"
+    raw_json: str = '{"kind":"pass_through"}'
     # Thread-through fields for TraceOptimizer.record() and cache auto-seeding.
     trace_id: Optional[str] = None
     messages: list[dict[str, Any]] = field(default_factory=list)
@@ -58,6 +58,11 @@ class Plan:
     executed_model_id: Optional[str] = None
     dispatch_fallback: bool = False
     dispatch_fallback_reason: Optional[str] = None
+    # Request-path admission can abstain before semantic planning when the
+    # local runtime is saturated. This is distinct from provider dispatch
+    # fallback and leaves the original call immutable.
+    runtime_fallback_reason: Optional[str] = None
+    runtime_fallback_limit: Optional[int] = None
     # Opaque Rust-issued handle binding a measured execution to its exact
     # plan profile, runtime version, and sequence. Provider adapters must not
     # inspect or reconstruct it.
@@ -81,13 +86,17 @@ def plan_call(call: dict[str, Any]) -> Plan:
     try:
         call_json = json.dumps(call)
     except (TypeError, ValueError):
-        log.debug("plan_call: call not JSON-serializable; passing through", exc_info=True)
+        log.debug(
+            "plan_call: call not JSON-serializable; passing through", exc_info=True
+        )
         return PASS_THROUGH
 
     try:
         plan_json = _native.optimize_plan(call_json)
     except BaseException:
-        log.debug("plan_call: native optimize_plan raised; passing through", exc_info=True)
+        log.debug(
+            "plan_call: native optimize_plan raised; passing through", exc_info=True
+        )
         return PASS_THROUGH
 
     try:
@@ -208,6 +217,7 @@ def _plan_from_dict(data: dict[str, Any], raw_json: str) -> Plan:
     kind = data.get("kind", "pass_through")
     if kind == "pass_through":
         plan = Plan(kind="pass_through", raw_json=raw_json)
+        _hydrate_runtime_fallback(plan, data)
         _hydrate_exploration(plan, data)
         return plan
     if kind == "cached":
@@ -242,13 +252,29 @@ def _plan_from_dict(data: dict[str, Any], raw_json: str) -> Plan:
     return PASS_THROUGH
 
 
+def _hydrate_runtime_fallback(plan: Plan, data: dict[str, Any]) -> None:
+    diagnostics = data.get("agentc_runtime_fallback")
+    if not isinstance(diagnostics, dict) or diagnostics.get("schema_version") != 1:
+        return
+    reason = diagnostics.get("fallback_reason")
+    limit = diagnostics.get("max_inflight_plans")
+    if isinstance(reason, str) and reason:
+        plan.runtime_fallback_reason = reason
+    if isinstance(limit, int) and not isinstance(limit, bool) and limit > 0:
+        plan.runtime_fallback_limit = limit
+
+
 def _hydrate_exploration(plan: Plan, data: dict[str, Any]) -> None:
     context = data.get("agentc_exploration_context")
     if not isinstance(context, dict) or context.get("schema_version") != 1:
         return
     lease_token = context.get("lease_token")
     candidate_data = context.get("candidate_plan")
-    if not isinstance(lease_token, str) or not lease_token or not isinstance(candidate_data, dict):
+    if (
+        not isinstance(lease_token, str)
+        or not lease_token
+        or not isinstance(candidate_data, dict)
+    ):
         return
     try:
         candidate_json = json.dumps(candidate_data, separators=(",", ":"))
@@ -270,8 +296,12 @@ def _hydrate_dispatch_metadata(plan: Plan, original_call: dict[str, Any]) -> Non
         extra.get("agentc_route_context") if isinstance(extra, dict) else None
     )
     if isinstance(route_context, dict):
-        plan.provider_protocol = _optional_string(route_context.get("provider_protocol"))
-        plan.provider_namespace = _optional_string(route_context.get("provider_namespace"))
+        plan.provider_protocol = _optional_string(
+            route_context.get("provider_protocol")
+        )
+        plan.provider_namespace = _optional_string(
+            route_context.get("provider_namespace")
+        )
 
     routed_call = plan.call if isinstance(plan.call, dict) else None
     routed_params = routed_call.get("parameters") if routed_call is not None else None

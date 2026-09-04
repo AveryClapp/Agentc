@@ -311,6 +311,7 @@ mod tests {
             shadow_sampled: false,
             shadow_divergence: None,
             planner_diagnostics_json: None,
+            runtime_fallback_reason: None,
         }
     }
 

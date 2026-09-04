@@ -278,7 +278,8 @@ CREATE TABLE IF NOT EXISTS plan_audit (
     overhead_us           INTEGER NOT NULL,
     shadow_sampled        INTEGER NOT NULL DEFAULT 0,
     shadow_divergence     REAL,
-    planner_diagnostics_json TEXT
+    planner_diagnostics_json TEXT,
+    runtime_fallback_reason TEXT
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_audit_call_site ON plan_audit(call_site_id, ts_us DESC);
@@ -426,6 +427,11 @@ pub fn ensure_audit_schema(conn: &Connection) -> Result<()> {
         "ALTER TABLE plan_audit ADD COLUMN planner_diagnostics_json TEXT",
         "planner_diagnostics_json",
     )?;
+    add_column_if_missing(
+        conn,
+        "ALTER TABLE plan_audit ADD COLUMN runtime_fallback_reason TEXT",
+        "runtime_fallback_reason",
+    )?;
     Ok(())
 }
 
@@ -459,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_audit_schema_gains_planner_diagnostics_column() {
+    fn legacy_audit_schema_gains_diagnostic_columns() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE plan_audit (\
@@ -479,12 +485,12 @@ mod tests {
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM pragma_table_info('plan_audit') \
-                 WHERE name = 'planner_diagnostics_json'",
+                 WHERE name IN ('planner_diagnostics_json', 'runtime_fallback_reason')",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(count, 1);
+        assert_eq!(count, 2);
     }
 
     #[test]

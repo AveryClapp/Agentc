@@ -23,6 +23,7 @@ use crate::planner::MAX_JOINT_REWRITE_DEPTH;
 
 pub const DEFAULT_DIVERGENCE_WINDOW: u32 = 50;
 pub const DEFAULT_MIN_PLAN_EVIDENCE: u32 = 20;
+pub const DEFAULT_MAX_INFLIGHT_PLANS: usize = 4;
 pub const DEFAULT_PLAN_PROFILE_FRESHNESS_HOURS: f64 = 24.0;
 pub const DEFAULT_EVALUATION_TASK_DAMAGE_BUDGET: f64 = 5.0;
 pub const TAU2_NON_INFERIORITY_MARGIN: f64 = -0.03;
@@ -51,6 +52,7 @@ struct OptimizerFileConfig {
     plan_profile_window: Option<u32>,
     divergence_window: Option<u32>,
     max_overhead_ms: Option<f32>,
+    max_inflight_plans: Option<usize>,
     shadow_rate: Option<f32>,
     compose: Option<bool>,
     selection: Option<SelectionFileConfig>,
@@ -100,6 +102,8 @@ pub struct OptimizerConfig {
     pub divergence_window: u32,
     /// Kill switch over synchronous planning work.
     pub max_overhead_ms: f32,
+    /// Nonblocking process-local cap over concurrent request-path planners.
+    pub max_inflight_plans: usize,
     /// Probability that an admitted call also runs its reference counterpart.
     pub shadow_rate: f32,
     /// Whether compatible semantic rewrites may be composed.
@@ -143,6 +147,7 @@ impl Default for OptimizerConfig {
             plan_profile_window: 50,
             divergence_window: DEFAULT_DIVERGENCE_WINDOW,
             max_overhead_ms: 5.0,
+            max_inflight_plans: DEFAULT_MAX_INFLIGHT_PLANS,
             shadow_rate: 0.02,
             compose: true,
             objective: SelectionObjective::Cost,
@@ -243,6 +248,7 @@ impl OptimizerConfig {
         apply_option(&mut self.plan_profile_window, file.plan_profile_window);
         apply_option(&mut self.divergence_window, file.divergence_window);
         apply_option(&mut self.max_overhead_ms, file.max_overhead_ms);
+        apply_option(&mut self.max_inflight_plans, file.max_inflight_plans);
         apply_option(&mut self.shadow_rate, file.shadow_rate);
         apply_option(&mut self.compose, file.compose);
         if let Some(selection) = file.selection {
@@ -312,6 +318,11 @@ impl OptimizerConfig {
             "AGENTC_OPTIMIZE_MAX_OVERHEAD_MS",
             "a finite non-negative number",
             &mut self.max_overhead_ms,
+        )?;
+        apply_parsed(
+            "AGENTC_OPTIMIZE_MAX_INFLIGHT_PLANS",
+            "a positive integer",
+            &mut self.max_inflight_plans,
         )?;
         apply_parsed(
             "AGENTC_OPTIMIZE_SHADOW",
@@ -404,6 +415,7 @@ impl OptimizerConfig {
         if !self.max_overhead_ms.is_finite() || self.max_overhead_ms < 0.0 {
             return invalid("max_overhead_ms", "finite and non-negative");
         }
+        require_positive_usize("max_inflight_plans", self.max_inflight_plans)?;
         if !self.shadow_rate.is_finite() || !(0.0..=1.0).contains(&self.shadow_rate) {
             return invalid("shadow_rate", "a finite fraction in [0, 1]");
         }
@@ -492,6 +504,14 @@ fn apply_option<T>(destination: &mut T, value: Option<T>) {
 }
 
 fn require_positive_u32(field: &'static str, value: u32) -> Result<(), OptimizerConfigError> {
+    if value == 0 {
+        invalid(field, "positive")
+    } else {
+        Ok(())
+    }
+}
+
+fn require_positive_usize(field: &'static str, value: usize) -> Result<(), OptimizerConfigError> {
     if value == 0 {
         invalid(field, "positive")
     } else {
@@ -611,6 +631,7 @@ mod tests {
         assert_eq!(config.plan_profile_window, 50);
         assert_eq!(config.divergence_window, 50);
         assert_eq!(config.max_overhead_ms, 5.0);
+        assert_eq!(config.max_inflight_plans, DEFAULT_MAX_INFLIGHT_PLANS);
         assert_eq!(config.shadow_rate, 0.02);
         assert!(config.compose);
         assert_eq!(config.objective, SelectionObjective::Cost);
@@ -664,6 +685,10 @@ mod tests {
             },
             OptimizerConfig {
                 max_overhead_ms: f32::NAN,
+                ..OptimizerConfig::default()
+            },
+            OptimizerConfig {
+                max_inflight_plans: 0,
                 ..OptimizerConfig::default()
             },
             OptimizerConfig {
@@ -731,6 +756,7 @@ cost_model_window = 41
 plan_profile_window = 31
 divergence_window = 29
 max_overhead_ms = 8.5
+max_inflight_plans = 6
 shadow_rate = 0.04
 compose = false
 
@@ -761,6 +787,7 @@ non_inferiority_margin = -0.02
         assert_eq!(config.plan_profile_window, 31);
         assert_eq!(config.divergence_window, 29);
         assert_eq!(config.max_overhead_ms, 8.5);
+        assert_eq!(config.max_inflight_plans, 6);
         assert_eq!(config.shadow_rate, 0.04);
         assert!(!config.compose);
         assert_eq!(config.objective, SelectionObjective::Latency);
@@ -791,6 +818,20 @@ non_inferiority_margin = -0.02
 
         let config = OptimizerConfig::try_from_file(&path).unwrap();
         assert_eq!(config.objective, SelectionObjective::Cost);
+    }
+
+    #[test]
+    fn environment_overrides_max_inflight_plans() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let name = "AGENTC_OPTIMIZE_MAX_INFLIGHT_PLANS";
+        let _restore = EnvRestore {
+            name,
+            value: env::var_os(name),
+        };
+        env::set_var(name, "7");
+
+        let config = OptimizerConfig::try_from_env().unwrap();
+        assert_eq!(config.max_inflight_plans, 7);
     }
 
     #[test]

@@ -6,6 +6,7 @@
 
 #![allow(clippy::useless_conversion)] // PyO3 macro-generated code triggers this
 
+mod admission;
 mod audit_writer;
 
 use std::panic::AssertUnwindSafe;
@@ -44,6 +45,7 @@ use agentc_optimizer::{
 use audit_writer::{
     AuditWriter, AUDIT_BATCH_SIZE_ROWS, AUDIT_FLUSH_TIMEOUT, AUDIT_QUEUE_CAPACITY_ROWS,
 };
+use admission::PlannerAdmission;
 
 /// Package version, exposed as `agentc._native.__version__`.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -711,6 +713,7 @@ struct OptimizerState {
     #[allow(dead_code)]
     budget: Arc<Budget>,
     audit: Option<AuditWriter>,
+    admission: PlannerAdmission,
     cost_db: Option<Mutex<Connection>>,
     observe_counter: std::sync::atomic::AtomicU64,
     storage_dir: std::path::PathBuf,
@@ -737,6 +740,7 @@ fn build_optimizer_state(
     config: OptimizerConfig,
 ) -> OptimizerState {
     let exploration_enabled = config.exploration_enabled;
+    let max_inflight_plans = config.max_inflight_plans;
     match build_optimizer(&storage, config.clone()) {
         Ok(Wired {
             optimizer,
@@ -770,6 +774,7 @@ fn build_optimizer_state(
                 exploration_enabled,
                 budget,
                 audit,
+                admission: PlannerAdmission::new(max_inflight_plans),
                 cost_db,
                 observe_counter: std::sync::atomic::AtomicU64::new(0),
                 storage_dir: storage,
@@ -796,6 +801,7 @@ fn build_optimizer_state(
                 exploration_enabled: false,
                 budget,
                 audit: None,
+                admission: PlannerAdmission::new(max_inflight_plans),
                 cost_db: None,
                 observe_counter: std::sync::atomic::AtomicU64::new(0),
                 storage_dir: storage,
@@ -948,6 +954,21 @@ fn projected_greedy_plan(state: &OptimizerState, call_json: &str, now_us: i64) -
     )
 }
 
+const RUNTIME_FALLBACK_SCHEMA_VERSION: u16 = 1;
+const OPTIMIZER_SATURATED_REASON: &str = "optimizer_saturated";
+
+fn saturated_plan_json(max_inflight_plans: usize) -> String {
+    serde_json::json!({
+        "kind": "pass_through",
+        "agentc_runtime_fallback": {
+            "schema_version": RUNTIME_FALLBACK_SCHEMA_VERSION,
+            "fallback_reason": OPTIMIZER_SATURATED_REASON,
+            "max_inflight_plans": max_inflight_plans,
+        }
+    })
+    .to_string()
+}
+
 /// Plan an intercepted LLM call. JSON-in, JSON-out; any panic on the Rust
 /// side is swallowed and the caller receives `{"kind":"pass_through"}`.
 ///
@@ -963,14 +984,20 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
     py.allow_threads(|| {
         let state = optimizer_state();
         let t0 = std::time::Instant::now();
+        let admission_permit = state.admission.try_acquire();
+        let runtime_fallback_reason = admission_permit
+            .is_none()
+            .then_some(OPTIMIZER_SATURATED_REASON);
         let max_overhead_us = if state.optimizer.config().max_overhead_ms.is_finite() {
             (state.optimizer.config().max_overhead_ms.max(0.0) * 1_000.0) as u128
         } else {
             0
         };
-        let evaluation_mode = evaluation_planner_mode();
-        let primary_plan_json = guard_plan_fail_safe(|| {
-            match evaluation_mode {
+        let plan_json = if admission_permit.is_none() {
+            saturated_plan_json(state.admission.limit())
+        } else {
+            let evaluation_mode = evaluation_planner_mode();
+            let primary_plan_json = guard_plan_fail_safe(|| match evaluation_mode {
                 EvaluationPlannerMode::JointGuarded => rust_profiled_plan(
                     &state.optimizer,
                     state.model_catalog.as_deref(),
@@ -983,62 +1010,69 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
                     projected_greedy_plan(&state, call_json, now_us_i64())
                 }
                 EvaluationPlannerMode::Invalid => PASS_THROUGH_JSON.to_string(),
-            }
-        });
-        let plan_json = if evaluation_mode == EvaluationPlannerMode::JointGuarded
-            && state.exploration_enabled
-            && t0.elapsed().as_micros() <= max_overhead_us
-        {
-            state
-                .cost_db
-                .as_ref()
-                // Exploration is optional calibration work. Never make a user
-                // call wait behind a background completion holding the DB.
-                .and_then(|mutex| mutex.try_lock().ok())
-                .map(|mut connection| {
-                    if t0.elapsed().as_micros() > max_overhead_us {
-                        return primary_plan_json.clone();
-                    }
-                    guard_plan_fail_safe(|| {
-                        let explored = rust_reserve_exploration(
-                            &state.optimizer,
-                            state.model_catalog.as_deref(),
-                            &state.plan_profiles,
-                            &state.plan_guard,
-                            &state.exploration_controller,
-                            &mut connection,
-                            call_json,
-                            &primary_plan_json,
-                            now_us_i64(),
-                        );
-                        if explored != primary_plan_json
-                            && t0.elapsed().as_micros() > max_overhead_us
-                        {
-                            // Reservation is already durable, but the envelope
-                            // has not crossed into Python/provider dispatch.
-                            // Cancel it before stripping the candidate.
-                            let _ = rust_cancel_embedded_exploration(
+            });
+            if evaluation_mode == EvaluationPlannerMode::JointGuarded
+                && state.exploration_enabled
+                && t0.elapsed().as_micros() <= max_overhead_us
+            {
+                state
+                    .cost_db
+                    .as_ref()
+                    // Exploration is optional calibration work. Never make a user
+                    // call wait behind a background completion holding the DB.
+                    .and_then(|mutex| mutex.try_lock().ok())
+                    .map(|mut connection| {
+                        if t0.elapsed().as_micros() > max_overhead_us {
+                            return primary_plan_json.clone();
+                        }
+                        guard_plan_fail_safe(|| {
+                            let explored = rust_reserve_exploration(
+                                &state.optimizer,
+                                state.model_catalog.as_deref(),
+                                &state.plan_profiles,
+                                &state.plan_guard,
                                 &state.exploration_controller,
                                 &mut connection,
-                                &explored,
+                                call_json,
+                                &primary_plan_json,
+                                now_us_i64(),
                             );
-                            primary_plan_json.clone()
-                        } else {
-                            explored
-                        }
+                            if explored != primary_plan_json
+                                && t0.elapsed().as_micros() > max_overhead_us
+                            {
+                                // Reservation is already durable, but the envelope
+                                // has not crossed into Python/provider dispatch.
+                                // Cancel it before stripping the candidate.
+                                let _ = rust_cancel_embedded_exploration(
+                                    &state.exploration_controller,
+                                    &mut connection,
+                                    &explored,
+                                );
+                                primary_plan_json.clone()
+                            } else {
+                                explored
+                            }
+                        })
                     })
-                })
-                .unwrap_or_else(|| primary_plan_json.clone())
-        } else {
-            primary_plan_json
+                    .unwrap_or_else(|| primary_plan_json.clone())
+            } else {
+                primary_plan_json
+            }
         };
         let overhead_us = t0.elapsed().as_micros() as i64;
 
         // Best-effort audit. The plan is always returned regardless of
         // whether the audit row lands.
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            enqueue_plan_audit(&state, call_json, &plan_json, overhead_us);
+            enqueue_plan_audit(
+                &state,
+                call_json,
+                &plan_json,
+                overhead_us,
+                runtime_fallback_reason,
+            );
         }));
+        drop(admission_permit);
 
         plan_json
     })
@@ -1064,26 +1098,19 @@ fn optimize_model_catalog(py: Python<'_>) -> String {
 /// Decode just enough of the call/plan to log one audit row. Anything
 /// missing is treated as "pass-through, no rule" — we'd rather log a
 /// partial truth than skip the row entirely.
-fn enqueue_plan_audit(state: &OptimizerState, call_json: &str, plan_json: &str, overhead_us: i64) {
+fn enqueue_plan_audit(
+    state: &OptimizerState,
+    call_json: &str,
+    plan_json: &str,
+    overhead_us: i64,
+    runtime_fallback_reason: Option<&str>,
+) {
     let Some(audit) = state.audit.as_ref() else { return; };
 
-    // Pull call_site_id + span_id from the call. If the call is malformed
-    // we already returned PassThrough; record it as such with empty IDs so
-    // the audit row count still tracks invocations.
-    let (call_site_id, span_id) = match serde_json::from_str::<serde_json::Value>(call_json) {
-        Ok(v) => {
-            let site = v.get("call_site_id")
-                .and_then(|x| x.as_str())
-                .unwrap_or("")
-                .to_string();
-            let span = v.get("span_id")
-                .and_then(|x| x.as_str())
-                .map(|s| decode_hex8(s).unwrap_or([0u8; 8]))
-                .unwrap_or([0u8; 8]);
-            (site, span)
-        }
-        Err(_) => (String::new(), [0u8; 8]),
-    };
+    // Pull only the audit identifiers from the call. Unknown fields are
+    // skipped without materializing the prompt payload into a JSON value;
+    // this keeps saturated fail-open calls from creating an allocation storm.
+    let (call_site_id, span_id) = decode_audit_call_metadata(call_json);
 
     let plan: Plan = match serde_json::from_str(plan_json) {
         Ok(p) => p,
@@ -1123,9 +1150,32 @@ fn enqueue_plan_audit(state: &OptimizerState, call_json: &str, plan_json: &str, 
         shadow_sampled: false,
         shadow_divergence: None,
         planner_diagnostics_json,
+        runtime_fallback_reason: runtime_fallback_reason.map(str::to_string),
     };
 
     let _ = audit.try_enqueue(row);
+}
+
+#[derive(serde::Deserialize)]
+struct AuditCallMetadata<'a> {
+    #[serde(default, borrow)]
+    call_site_id: std::borrow::Cow<'a, str>,
+    #[serde(default, borrow)]
+    span_id: Option<std::borrow::Cow<'a, str>>,
+}
+
+fn decode_audit_call_metadata(call_json: &str) -> (String, [u8; 8]) {
+    match serde_json::from_str::<AuditCallMetadata<'_>>(call_json) {
+        Ok(metadata) => {
+            let span_id = metadata
+                .span_id
+                .as_deref()
+                .and_then(decode_hex8)
+                .unwrap_or([0u8; 8]);
+            (metadata.call_site_id.into_owned(), span_id)
+        }
+        Err(_) => (String::new(), [0u8; 8]),
+    }
 }
 
 fn decode_hex8(s: &str) -> Option<[u8; 8]> {
@@ -1478,6 +1528,24 @@ fn optimize_audit_stats(py: Python<'_>) -> String {
     })
 }
 
+/// Return process-local nonblocking planner-admission counters.
+#[pyfunction]
+fn optimize_admission_stats(py: Python<'_>) -> String {
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        let stats = state.admission.stats();
+        serde_json::json!({
+            "attempted": stats.attempted,
+            "admitted": stats.admitted,
+            "rejected_saturated": stats.rejected_saturated,
+            "inflight": stats.inflight,
+            "max_observed_inflight": stats.max_observed_inflight,
+            "limit": stats.limit,
+        })
+        .to_string()
+    })
+}
+
 /// The `_native` Python module.
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -1507,6 +1575,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(optimize_fail_exploration, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_flush, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_audit_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_admission_stats, m)?)?;
     Ok(())
 }
 
@@ -1552,6 +1621,27 @@ mod tests {
     fn plan_guard_panic_falls_back_to_reference() {
         let plan = guard_plan_fail_safe(|| panic!("injected plan-guard failure"));
         assert_eq!(plan, PASS_THROUGH_JSON);
+    }
+
+    #[test]
+    fn saturated_plan_is_pass_through_with_versioned_reason() {
+        let encoded = saturated_plan_json(4);
+        let plan: Plan = serde_json::from_str(&encoded).unwrap();
+        assert!(matches!(plan, Plan::PassThrough));
+
+        let value: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+        let fallback = &value["agentc_runtime_fallback"];
+        assert_eq!(fallback["schema_version"], 1);
+        assert_eq!(fallback["fallback_reason"], OPTIMIZER_SATURATED_REASON);
+        assert_eq!(fallback["max_inflight_plans"], 4);
+    }
+
+    #[test]
+    fn audit_metadata_decoder_skips_payload_and_preserves_escaped_site() {
+        let call = r#"{"messages":[{"content":"unused payload"}],"span_id":"0123456789abcdef","call_site_id":"site\nplanner"}"#;
+        let (site, span_id) = decode_audit_call_metadata(call);
+        assert_eq!(site, "site\nplanner");
+        assert_eq!(span_id, 0x0123_4567_89ab_cdef_u64.to_be_bytes());
     }
 
     #[test]

@@ -64,6 +64,7 @@ def test_native_audit_persists_candidate_rejections(
 ) -> None:
     monkeypatch.setenv("AGENTC_OPTIMIZE_EXPLORATION", "0")
     monkeypatch.setenv("AGENTC_OPTIMIZE_MAX_OVERHEAD_MS", "1000")
+    monkeypatch.setenv("AGENTC_OPTIMIZE_MAX_INFLIGHT_PLANS", "4")
     monkeypatch.setenv("AGENTC_OPTIMIZE_OBJECTIVE", "latency")
     storage = tmp_path / "agentc"
     _native.optimize_configure(str(storage))
@@ -102,6 +103,15 @@ def test_native_audit_persists_candidate_rejections(
     assert audit_stats["dropped_full_rows"] == 0
     assert audit_stats["dropped_disconnected_rows"] == 0
     assert audit_stats["write_failed_rows"] == 0
+    admission_stats = json.loads(_native.optimize_admission_stats())
+    assert admission_stats == {
+        "attempted": 4,
+        "admitted": 4,
+        "rejected_saturated": 0,
+        "inflight": 0,
+        "max_observed_inflight": 1,
+        "limit": 4,
+    }
 
     with sqlite3.connect(storage / "optimizer_audit.db") as connection:
         persisted = connection.execute(

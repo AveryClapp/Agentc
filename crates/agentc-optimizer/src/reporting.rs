@@ -42,17 +42,20 @@ pub struct RuleBreakdown {
 /// Aggregate report over the last `window_us` of plan_audit rows.
 ///
 /// - `calls_intercepted` counts every audit row in the window.
-/// - `cold_calls` is the slice that ran through the optimizer before any rule
-///   was eligible — we tag these by `plan_kind = "pass_through" AND rule IS
-///   NULL AND projected_savings_usd IS NULL`. Hot pass-through (a rule was
-///   evaluated but nothing safe fired) keeps a `rule` label so we can tell
-///   them apart.
+/// - `runtime_fallbacks` counts calls that bypassed planning because the
+///   runtime's safety contract selected a fail-open path (for example, a
+///   saturated planner admission gate).
+/// - `cold_calls` is the remaining slice that ran through the optimizer before
+///   any rule was eligible — we tag these by `plan_kind = "pass_through" AND
+///   rule IS NULL`. Hot pass-through (a rule was evaluated but nothing safe
+///   fired) keeps a `rule` label so we can tell them apart.
 /// - Overhead is measured in microseconds in the audit table; we render the
 ///   average and P99 in milliseconds.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct OptimizerReport {
     pub window_hours: u64,
     pub calls_intercepted: u64,
+    pub runtime_fallbacks: u64,
     pub cold_calls: u64,
     pub hot_pass_through: u64,
     pub hot_optimized: u64,
@@ -94,7 +97,7 @@ pub fn build_report(
         .prepare(
             "SELECT plan_kind, rule, projected_savings_usd, \
                     measured_savings_usd, overhead_us, shadow_sampled, \
-                    shadow_divergence \
+                    shadow_divergence, runtime_fallback_reason \
              FROM plan_audit \
              WHERE ts_us >= ?1",
         )
@@ -110,12 +113,14 @@ pub fn build_report(
                 overhead_us: r.get::<_, i64>(4)?,
                 shadow_sampled: r.get::<_, i64>(5)? != 0,
                 shadow_divergence: r.get::<_, Option<f64>>(6)?,
+                runtime_fallback_reason: r.get::<_, Option<String>>(7)?,
             })
         })
         .context("execute plan_audit read")?;
 
     let mut overhead_us: Vec<i64> = Vec::new();
     let mut calls_intercepted = 0u64;
+    let mut runtime_fallbacks = 0u64;
     let mut cold = 0u64;
     let mut hot_pass_through = 0u64;
     let mut hot_optimized = 0u64;
@@ -129,30 +134,37 @@ pub fn build_report(
         calls_intercepted += 1;
         overhead_us.push(row.overhead_us);
 
+        let is_runtime_fallback = row.runtime_fallback_reason.is_some();
         let has_rule = row.rule.is_some();
-        match row.plan_kind.as_str() {
-            "pass_through" if !has_rule => cold += 1,
-            "pass_through" => hot_pass_through += 1,
-            _ => hot_optimized += 1,
+        if is_runtime_fallback {
+            runtime_fallbacks += 1;
+        } else {
+            match row.plan_kind.as_str() {
+                "pass_through" if !has_rule => cold += 1,
+                "pass_through" => hot_pass_through += 1,
+                _ => hot_optimized += 1,
+            }
         }
 
-        if let Some(ref rule) = row.rule {
-            let entry = rules.entry(rule.clone()).or_insert_with(|| RuleBreakdown {
-                rule: rule.clone(),
-                ..RuleBreakdown::default()
-            });
-            if row.plan_kind == "pass_through" {
-                entry.skipped += 1;
-            } else {
-                entry.applied += 1;
-                // measured_savings_usd would replace projected once the
-                // executor reports realized savings back — but the production
-                // writer hardcodes it to NULL (no measured feedback is
-                // recorded yet), so in practice this is ALWAYS the projected
-                // value. The report labels it as projected accordingly (bd-scy).
-                let saved = row.measured.or(row.projected).unwrap_or(0.0);
-                entry.savings_usd += saved;
-                total_savings += saved;
+        if !is_runtime_fallback {
+            if let Some(ref rule) = row.rule {
+                let entry = rules.entry(rule.clone()).or_insert_with(|| RuleBreakdown {
+                    rule: rule.clone(),
+                    ..RuleBreakdown::default()
+                });
+                if row.plan_kind == "pass_through" {
+                    entry.skipped += 1;
+                } else {
+                    entry.applied += 1;
+                    // measured_savings_usd would replace projected once the
+                    // executor reports realized savings back — but the production
+                    // writer hardcodes it to NULL (no measured feedback is
+                    // recorded yet), so in practice this is ALWAYS the projected
+                    // value. The report labels it as projected accordingly (bd-scy).
+                    let saved = row.measured.or(row.projected).unwrap_or(0.0);
+                    entry.savings_usd += saved;
+                    total_savings += saved;
+                }
             }
         }
 
@@ -220,6 +232,7 @@ pub fn build_report(
     Ok(OptimizerReport {
         window_hours,
         calls_intercepted,
+        runtime_fallbacks,
         cold_calls: cold,
         hot_pass_through,
         hot_optimized,
@@ -255,6 +268,7 @@ struct AuditRow {
     overhead_us: i64,
     shadow_sampled: bool,
     shadow_divergence: Option<f64>,
+    runtime_fallback_reason: Option<String>,
 }
 
 fn overhead_stats(overhead_us: &mut [i64]) -> (f64, f64) {
@@ -619,6 +633,12 @@ pub fn render_report(r: &OptimizerReport) -> String {
             format_pct_1(n as f64 / r.calls_intercepted as f64)
         }
     };
+    let _ = writeln!(
+        out,
+        "Runtime fallback:   {:>10}    ({})    # fail-open safety path",
+        format_u64(r.runtime_fallbacks),
+        pct(r.runtime_fallbacks)
+    );
     let _ = writeln!(
         out,
         "Cold (profiling):   {:>10}    ({})",
@@ -1003,6 +1023,7 @@ mod tests {
             shadow_sampled: false,
             shadow_divergence: None,
             planner_diagnostics_json: None,
+            runtime_fallback_reason: None,
         }
     }
 
@@ -1021,6 +1042,9 @@ mod tests {
     #[test]
     fn report_partitions_cold_hot_pass_through_optimized() {
         let mut a = fresh_audit();
+        let mut runtime_fallback =
+            audit(600, "site.a", PlanKind::PassThrough, None, None, 100);
+        runtime_fallback.runtime_fallback_reason = Some("optimizer_saturated".to_string());
         let rows = vec![
             // Cold: pass_through, no rule.
             audit(100, "site.a", PlanKind::PassThrough, None, None, 400),
@@ -1030,10 +1054,13 @@ mod tests {
             // Hot optimized.
             audit(400, "site.a", PlanKind::Cached, Some("CacheHit"), Some(0.02), 700),
             audit(500, "site.a", PlanKind::Rewritten, Some("ModelDowngrade"), Some(0.01), 800),
+            // Runtime fallback: deliberately distinct from an ordinary cold call.
+            runtime_fallback,
         ];
         insert_batch(&mut a, &rows).unwrap();
         let r = build_report(&a, None, 10_000, 24).unwrap();
-        assert_eq!(r.calls_intercepted, 5);
+        assert_eq!(r.calls_intercepted, 6);
+        assert_eq!(r.runtime_fallbacks, 1);
         assert_eq!(r.cold_calls, 2);
         assert_eq!(r.hot_pass_through, 1);
         assert_eq!(r.hot_optimized, 2);
@@ -1117,6 +1144,7 @@ mod tests {
         let r = OptimizerReport {
             window_hours: 24,
             calls_intercepted: 100,
+            runtime_fallbacks: 0,
             cold_calls: 10,
             hot_pass_through: 20,
             hot_optimized: 70,
@@ -1351,6 +1379,7 @@ mod tests {
         let r = OptimizerReport {
             window_hours: 24,
             calls_intercepted: 18_402,
+            runtime_fallbacks: 0,
             cold_calls: 2_104,
             hot_pass_through: 3_291,
             hot_optimized: 13_007,
@@ -1380,6 +1409,7 @@ mod tests {
         let checks: &[&str] = &[
             "Optimizer report (last 24h)",
             "Calls intercepted:      18,402",
+            "Runtime fallback:            0    (0.0%)",
             "Cold (profiling):        2,104    (11.4%)",
             "Hot, pass-through:       3,291    (17.9%)",
             "Hot, optimized:         13,007    (70.7%)",

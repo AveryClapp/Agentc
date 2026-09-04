@@ -107,6 +107,7 @@ dependencies = [
  "agentc-optimizer",
  "pyo3",
  "rusqlite",
+ "serde",
  "serde_json",
  "tempfile",
 ]

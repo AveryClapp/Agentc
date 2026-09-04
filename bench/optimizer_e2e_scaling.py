@@ -55,6 +55,13 @@ _SCENARIOS = ("joint_reference", "joint_admitted_rewrite")
 _CONTENT_PATTERN = "agent systems context token "
 
 
+def _load_average() -> list[float] | None:
+    try:
+        return list(os.getloadavg())
+    except (AttributeError, OSError):
+        return None
+
+
 def _sized_call_json(site: str, *, target_bytes: int, span_number: int) -> str:
     """Return a valid call whose compact UTF-8 JSON encoding is exactly sized."""
     if target_bytes <= 0:
@@ -170,8 +177,15 @@ def _measure_concurrent_calls(
         measurements: list[dict[str, Any]] = []
         for worker_iteration, (sequence, call_json) in enumerate(assigned, start=1):
             started_at = time.perf_counter_ns()
+            thread_cpu_started_at = time.thread_time_ns()
             plan_json = _native.optimize_plan(call_json)
+            thread_cpu_ns = time.thread_time_ns() - thread_cpu_started_at
             elapsed_ns = time.perf_counter_ns() - started_at
+            # The wall interval encloses the thread-CPU interval. A positive
+            # difference is time the calling thread was runnable or blocked
+            # but not executing, including scheduler delay, lock waits, and
+            # GIL reacquisition after ``allow_threads`` returns.
+            off_cpu_ns = max(0, elapsed_ns - thread_cpu_ns)
             measurements.append(
                 {
                     "sequence": sequence,
@@ -179,6 +193,8 @@ def _measure_concurrent_calls(
                     "worker_iteration": worker_iteration,
                     "span_id": f"{sequence:016x}",
                     "e2e_ns": elapsed_ns,
+                    "thread_cpu_ns": thread_cpu_ns,
+                    "off_cpu_ns": off_cpu_ns,
                     "plan_json": plan_json,
                 }
             )
@@ -334,6 +350,8 @@ def _measure_replication(
                 )
             internal_ns = overhead_us * 1_000
             e2e_ns = int(row["e2e_ns"])
+            thread_cpu_ns = int(row["thread_cpu_ns"])
+            off_cpu_ns = int(row["off_cpu_ns"])
             residual_ns = e2e_ns - internal_ns
             if residual_ns < 0:
                 raise RuntimeError(
@@ -354,6 +372,8 @@ def _measure_replication(
                     "fell_back_from_expected": returned_kind != expected_kind,
                     "planner_fallback_reason": returned_fallback_reason,
                     "e2e_ns": e2e_ns,
+                    "thread_cpu_ns": thread_cpu_ns,
+                    "off_cpu_ns": off_cpu_ns,
                     "internal_pre_audit_ns": internal_ns,
                     "boundary_state_audit_residual_ns": residual_ns,
                 }
@@ -363,6 +383,8 @@ def _measure_replication(
         if journal_mode != "wal":
             raise RuntimeError(f"optimizer audit DB is not in WAL mode: {journal_mode}")
         e2e_ns_values = [int(row["e2e_ns"]) for row in raw]
+        thread_cpu_ns_values = [int(row["thread_cpu_ns"]) for row in raw]
+        off_cpu_ns_values = [int(row["off_cpu_ns"]) for row in raw]
         internal_ns_values = [int(row["internal_pre_audit_ns"]) for row in raw]
         residual_ns_values = [
             int(row["boundary_state_audit_residual_ns"]) for row in raw
@@ -398,7 +420,12 @@ def _measure_replication(
             "throughput_calls_per_second": (
                 calls_per_cell * 1_000_000_000.0 / group_elapsed_ns
             ),
+            "measured_thread_cpu_core_equivalents": (
+                sum(thread_cpu_ns_values) / group_elapsed_ns
+            ),
             "e2e": e2e._summarize_ns(e2e_ns_values),
+            "thread_cpu": e2e._summarize_ns(thread_cpu_ns_values),
+            "off_cpu": e2e._summarize_ns(off_cpu_ns_values),
             "internal_pre_audit": e2e._summarize_ns(internal_ns_values),
             "boundary_state_audit_residual": e2e._summarize_ns(residual_ns_values),
         }
@@ -446,6 +473,12 @@ def _aggregate_cells(
                 e2e_summary = e2e._summarize_ns(
                     [int(row["e2e_ns"]) for row in cell_raw]
                 )
+                thread_cpu_summary = e2e._summarize_ns(
+                    [int(row["thread_cpu_ns"]) for row in cell_raw]
+                )
+                off_cpu_summary = e2e._summarize_ns(
+                    [int(row["off_cpu_ns"]) for row in cell_raw]
+                )
                 internal_summary = e2e._summarize_ns(
                     [int(row["internal_pre_audit_ns"]) for row in cell_raw]
                 )
@@ -483,10 +516,15 @@ def _aggregate_cells(
                         "fallback_count": fallback_count,
                         "fallback_rate_pct": 100.0 * fallback_count / len(cell_raw),
                         "e2e": e2e_summary,
+                        "thread_cpu": thread_cpu_summary,
+                        "off_cpu": off_cpu_summary,
                         "internal_pre_audit": internal_summary,
                         "boundary_state_audit_residual": residual_summary,
                         "mean_residual_share_pct": (
                             100.0 * residual_summary["mean_us"] / e2e_summary["mean_us"]
+                        ),
+                        "mean_off_cpu_share_pct": (
+                            100.0 * off_cpu_summary["mean_us"] / e2e_summary["mean_us"]
                         ),
                         "replication_mean_p50_us": e2e._bootstrap_mean_ci(
                             [float(row["e2e"]["p50_us"]) for row in cell_replications],
@@ -506,6 +544,16 @@ def _aggregate_cells(
                                 ],
                                 resamples=bootstrap_resamples,
                                 seed=seed + 2,
+                            )
+                        ),
+                        "replication_mean_thread_cpu_core_equivalents": (
+                            e2e._bootstrap_mean_ci(
+                                [
+                                    float(row["measured_thread_cpu_core_equivalents"])
+                                    for row in cell_replications
+                                ],
+                                resamples=bootstrap_resamples,
+                                seed=seed + 3,
                             )
                         ),
                     }
@@ -568,6 +616,7 @@ def run(
     if not math.isfinite(max_overhead_ms) or max_overhead_ms <= 0:
         raise ValueError("max_overhead_ms must be finite and positive")
 
+    load_average_before = _load_average()
     cells = [
         (scenario, size_kib * 1_024, concurrency)
         for scenario in _SCENARIOS
@@ -605,10 +654,12 @@ def run(
     aggregate = _aggregate_cells(
         summaries, raw, bootstrap_resamples=bootstrap_resamples
     )
+    load_average_after = _load_average()
     native_path = Path(str(_native.__file__))
     clock = time.get_clock_info("perf_counter")
+    thread_clock = time.get_clock_info("thread_time")
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "experiment_kind": "optimizer_end_to_end_size_concurrency_preflight",
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "agentc_git_commit": e2e._git_commit(),
@@ -621,6 +672,8 @@ def run(
             "machine": platform.machine(),
             "processor": platform.processor(),
             "logical_cpu_count": os.cpu_count(),
+            "load_average_before": load_average_before,
+            "load_average_after": load_average_after,
             "sqlite": sqlite3.sqlite_version,
             "native_extension": native_path.name,
             "native_extension_sha256": e2e._sha256(native_path),
@@ -630,6 +683,12 @@ def run(
                 "monotonic": clock.monotonic,
                 "adjustable": clock.adjustable,
                 "resolution_seconds": clock.resolution,
+            },
+            "thread_time": {
+                "implementation": thread_clock.implementation,
+                "monotonic": thread_clock.monotonic,
+                "adjustable": thread_clock.adjustable,
+                "resolution_seconds": thread_clock.resolution,
             },
         },
         "settings": {
@@ -676,8 +735,10 @@ def run(
             "Threads share one hot call site and one bounded optimizer audit queue per cell; this exposes request-path contention without placing the ordered SQLite flush inside the clock.",
             "Inputs and outcomes are deterministic synthetic records; no provider or network is invoked.",
             "The paired residual combines boundary, state lookup, audit-row construction/enqueue, clock quantization, and return conversion; it is not an audit-only timer.",
+            "Per-call thread CPU is enclosed by the wall clock; wall minus thread CPU estimates off-CPU delay but cannot distinguish scheduler delay, lock waiting, and GIL reacquisition.",
             "The build profile is operator-attested; the native extension hash pins the measured binary.",
             "The ordered audit flush and SQLite commit are outside the request-path clock; normal host scheduling remains inside it.",
+            "Host load averages are recorded before and after the matrix; overlapping external workloads can inflate off-CPU tails and invalidate a canonical run.",
             "The harness derives its audit-id boundary from flushed native counters and opens Python's separately linked SQLite only after closing the native writer.",
         ],
     }
@@ -757,6 +818,8 @@ _RAW_FIELDS = (
     "fell_back_from_expected",
     "planner_fallback_reason",
     "e2e_ns",
+    "thread_cpu_ns",
+    "off_cpu_ns",
     "internal_pre_audit_ns",
     "boundary_state_audit_residual_ns",
 )

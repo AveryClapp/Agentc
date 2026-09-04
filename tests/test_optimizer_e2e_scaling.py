@@ -124,6 +124,8 @@ def test_small_run_pairs_concurrent_calls_by_span() -> None:
         == 32
     )
     assert all(row["e2e_ns"] >= row["internal_pre_audit_ns"] for row in raw)
+    assert all(row["e2e_ns"] >= row["thread_cpu_ns"] for row in raw)
+    assert all(row["off_cpu_ns"] >= 0 for row in raw)
     assert all(row["boundary_state_audit_residual_ns"] >= 0 for row in raw)
     assert not any(row["fell_back_from_expected"] for row in raw)
     aggregates = result["aggregate_measurements_us_and_throughput"]
@@ -132,6 +134,11 @@ def test_small_run_pairs_concurrent_calls_by_span() -> None:
     assert all(row["replication_count"] == 1 for row in aggregates)
     assert all(row["fallback_rate_pct"] == 0.0 for row in aggregates)
     assert all(row["e2e"]["p99_us"] >= row["e2e"]["p50_us"] for row in aggregates)
+    assert all(
+        row["thread_cpu"]["p99_us"] >= row["thread_cpu"]["p50_us"]
+        and row["off_cpu"]["p99_us"] >= row["off_cpu"]["p50_us"]
+        for row in aggregates
+    )
     assert all(
         replication["audit_journal_mode"] == "wal"
         for replication in result["replications"]

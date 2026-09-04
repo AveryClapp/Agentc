@@ -42,7 +42,7 @@ The current evidence supports: targeted savings for `ContextCompress` (34.8% tok
 | `CLM-008` | supported | McNemar exact tests and 95% bootstrap CIs are computed for all headline accuracy claims. No test rejects accuracy degradation at α=0.05 for StateDrop, CC on natural prose, or CC+SD composition. | `RES-007`, `RES-008`, `RES-009`, `RES-010`, `RES-012` | Strong wording should say "does not significantly degrade" not "preserves." |
 | `CLM-009` | supported | ContextCompress operates at message granularity and correctly abstains when the structural precondition (identifiable low-attention messages) is absent. LLMLingua-2 compresses indiscriminately at token granularity regardless of fixture structure. | `RES-007`, `RES-008` | Dual-regime result; cite both fixtures together. |
 | `CLM-010` | supported | The V2 CompositionPlanner's cost-driver orthogonality gate avoids a concrete greedy composition error (V1-CC+OB −2pp; V2-CC+OB +0pp) on a controlled workload. | `RES-010` | n=50, p=0.0412 borderline; V2-CC+PD not testable due to model drift. |
-| `CLM-011` | diagnostic | In a release-mode Stage E0 diagnostic on one arm64 host, complete-call p50/p99 is 104/351µs for guarded reference selection and 118/385µs for an admitted joint rewrite. | `RES-013` | No provider, concurrency, or context-size matrix; `paper_evidence=false`. Historical 76/120µs values use a pre-audit clock. |
+| `CLM-011` | diagnostic | In a release-mode Stage E0 diagnostic on one arm64 host, complete-call p50/p99 is 100/165µs for guarded reference selection and 115/307µs for an admitted joint rewrite. | `RES-013` | No provider, concurrency, or context-size matrix; `paper_evidence=false`. Historical 76/120µs values use a pre-audit clock. |
 
 ## Unsafe Claims
 

@@ -11,6 +11,7 @@ import pytest
 from bench.joint_campaign import (
     PRIMARY_ARMS,
     CampaignError,
+    _agentc_source_context,
     _artifact_stem,
     build_schedule,
     derive_run_seed,
@@ -183,7 +184,13 @@ def test_one_command_emits_complete_raw_manifest_and_analysis(tmp_path: Path) ->
         "threshold_exceeded": False,
     }
     assert manifest["spend"]["recorded_cost_usd"] > 0.0
-    for artifact in ("campaign.json", "raw-records.jsonl", "analysis.json", "report.md"):
+    for artifact in (
+        "campaign.json",
+        "run-context.json",
+        "raw-records.jsonl",
+        "analysis.json",
+        "report.md",
+    ):
         assert (output / artifact).is_file()
         assert manifest["artifacts"][artifact] == digest_file(output / artifact)
 
@@ -260,3 +267,50 @@ def test_resume_rejects_changed_campaign_and_poisoned_ledger(tmp_path: Path) -> 
     ledger.write_text("\n".join(records) + "\n")
     with pytest.raises(CampaignError, match="exactly one task record|unscheduled"):
         run_campaign(campaign, output, resume=True)
+
+
+def test_resume_rejects_changed_source_context(tmp_path: Path) -> None:
+    campaign = _write_campaign(tmp_path)
+    output = tmp_path / "output"
+    run_campaign(campaign, output)
+    context_path = output / "run-context.json"
+    context = json.loads(context_path.read_text())
+    context["agentc_git_commit"] = "0" * 40
+    context_path.write_text(json.dumps(context))
+    with pytest.raises(CampaignError, match="source context does not match"):
+        run_campaign(campaign, output, resume=True)
+
+
+def test_source_context_detects_worktree_drift(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "source.txt"
+    source.write_text("frozen\n")
+    for command in (
+        ["git", "init", "-q"],
+        ["git", "add", "source.txt"],
+        [
+            "git",
+            "-c",
+            "user.name=Agentc Test",
+            "-c",
+            "user.email=agentc-test@example.invalid",
+            "commit",
+            "-qm",
+            "freeze",
+        ],
+    ):
+        subprocess.run(command, cwd=repo, check=True, capture_output=True)
+
+    clean = _agentc_source_context(
+        repo, tmp_path / "output", paper_evidence=False
+    )
+    assert clean["agentc_git_dirty"] is False
+    source.write_text("changed\n")
+    dirty = _agentc_source_context(
+        repo, tmp_path / "output", paper_evidence=False
+    )
+    assert dirty["agentc_git_dirty"] is True
+    assert dirty["agentc_source_state_sha256"] != clean["agentc_source_state_sha256"]
+    with pytest.raises(CampaignError, match="clean Agentc source tree"):
+        _agentc_source_context(repo, tmp_path / "output", paper_evidence=True)

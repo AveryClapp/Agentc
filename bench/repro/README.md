@@ -260,11 +260,13 @@ latency results and must not appear as efficacy evidence.
 `bench.joint_campaign` is the prospective runner for the ten frozen policy
 arms. It schedules each task/arm/repetition with protocol-derived seeds and arm
 order, keeps a separate persistent Agentc store per arm and repetition,
-validates every worker result before appending it, and seals four canonical
+validates every worker result before appending it, and seals five canonical
 artifacts:
 
 - `raw-records.jsonl`: intention-to-treat task outcomes and raw model calls;
 - `campaign.json`: the exact frozen input contract;
+- `run-context.json`: the Git revision and digest of any local source changes,
+  locked before the first cell and required to match on resume;
 - `analysis.json`: per-arm quality, cost, tokens, tail latency, abstention,
   exploration cost, task damage, interaction contrasts, negative regimes, and
   hierarchical paired intervals;
@@ -274,7 +276,8 @@ artifacts:
 
 Held-out Stage P/T configurations are rejected unless they contain a Stage-C
 calibration lock. The runner never derives policy settings from held-out
-outcomes. It also refuses incomplete arm sets, duplicate task IDs, changed
+outcomes, and it rejects any paper-evidence run from a dirty source tree. It
+also refuses incomplete arm sets, duplicate task IDs, changed source, changed
 protocol or task-list digests, unsafe resume ledgers, non-finite metrics,
 network use in a network-forbidden cell, and home-directory paths in worker
 records.

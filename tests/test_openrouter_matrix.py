@@ -77,7 +77,7 @@ class MatrixTests(unittest.TestCase):
 
 
 @contextmanager
-def fake_run():
+def fake_run(*, real_ledger=False):
     """Exercise actual run/checkpoint logic with no native extension or network."""
     with ExitStack() as stack:
         directory = Path(stack.enter_context(tempfile.TemporaryDirectory()))
@@ -106,7 +106,18 @@ def fake_run():
                     "finish_reason": "stop", "paper_evidence": False}
         ledger.call.side_effect = result
         ledger.summary.return_value = {}
-        stack.enter_context(patch("bench.openrouter_matrix.Ledger", return_value=ledger))
+        if real_ledger:
+            stack.enter_context(patch("bench.openrouter_pilot.account", return_value={"usage": "0"}))
+            def response(path, key, payload):
+                return {"id": "provider-generation", "model": payload["model"], "provider": "Provider",
+                        "choices": [{"message": {"content": "gold secret"}, "finish_reason": "stop"}],
+                        "usage": {"prompt_tokens": 100, "completion_tokens": 2, "cost": "0.0001"},
+                        "openrouter_metadata": {"requested": payload["model"], "attempt": 1, "is_byok": False,
+                            "endpoints": {"available": [{"provider": "Provider", "model": "model", "selected": True}]}}}
+            transport = stack.enter_context(patch("bench.openrouter_pilot.request_json", side_effect=response))
+            args.test_transport = transport
+        else:
+            stack.enter_context(patch("bench.openrouter_matrix.Ledger", return_value=ledger))
         stack.enter_context(patch("bench.openrouter_matrix.source_hashes", return_value={}))
         stack.enter_context(patch("bench.openrouter_matrix.file_hash", return_value="hash"))
         stack.enter_context(patch("bench.openrouter_matrix.load_module",
@@ -116,6 +127,55 @@ def fake_run():
 
 
 class ResumeEvidenceTests(unittest.TestCase):
+    def test_complete_replay_repairs_summary_after_interrupted_checkpoint(self):
+        with fake_run(real_ledger=True) as (args, native, plan):
+            def interrupted_write(path, value, **kwargs):
+                if path.name == "summary.json" and value["completed_calls"] == 2:
+                    raise OSError("interrupted between result and summary replacement")
+                write_json(path, value, **kwargs)
+            with patch("bench.openrouter_matrix.write_json", side_effect=interrupted_write):
+                with self.assertRaises(OSError):
+                    run(args, "fake-key")
+            before = (args.output / "results.json").read_bytes()
+            self.assertEqual(len(json.loads(before)), 2)
+            self.assertEqual(json.loads((args.output / "summary.json").read_text())["completed_calls"], 1)
+            run(args, "fake-key")
+            self.assertEqual((args.output / "results.json").read_bytes(), before)
+            self.assertEqual(json.loads((args.output / "summary.json").read_text())["completed_calls"], 2)
+            self.assertEqual(args.test_transport.call_count, 2)
+
+    def test_real_ledger_fresh_and_cached_rows_preserve_identical_evidence(self):
+        with fake_run(real_ledger=True) as (args, native, plan):
+            args.max_calls = 1
+            run(args, "fake-key")
+            original = json.loads((args.output / "results.json").read_text())[0]
+            self.assertNotIn("at", original)
+            self.assertEqual(args.test_transport.call_count, 1)
+            args.max_calls = None
+            run(args, "fake-key")
+            rows = json.loads((args.output / "results.json").read_text())
+            self.assertEqual(rows[0], original)
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(args.test_transport.call_count, 2)
+            before = (args.output / "results.json").read_bytes()
+            args.max_calls = 1
+            run(args, "fake-key")
+            self.assertEqual((args.output / "results.json").read_bytes(), before)
+            self.assertEqual(args.test_transport.call_count, 2)
+
+    def test_legacy_ledger_timestamp_is_preserved_not_compared_as_evidence(self):
+        with fake_run(real_ledger=True) as (args, native, plan):
+            args.max_calls = 1
+            run(args, "fake-key")
+            rows = json.loads((args.output / "results.json").read_text())
+            rows[0]["at"] = "legacy-ledger-insertion-time"
+            write_json(args.output / "results.json", rows)
+            args.max_calls = None
+            run(args, "fake-key")
+            extended = json.loads((args.output / "results.json").read_text())
+            self.assertEqual(extended[0], rows[0])
+            self.assertEqual(args.test_transport.call_count, 2)
+
     def test_short_replay_does_not_truncate_longer_artifacts(self):
         with fake_run() as (args, native, plan):
             run(args, "fake-key")

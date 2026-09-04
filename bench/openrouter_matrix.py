@@ -258,8 +258,11 @@ def preserve_replayed_row(saved: dict[str, Any], replayed: dict[str, Any]) -> di
     # Exact provider payloads are checked separately by the ledger fingerprint.
     # Compare every persisted result field plus plan identity. Diagnostic plan
     # fields can vary with execution timing; retain their original evidence.
-    original = {k: v for k, v in saved.items() if k != "native_plan"}
-    current = {k: v for k, v in replayed.items() if k != "native_plan"}
+    # `at` is ledger insertion metadata: present on cached events, absent from
+    # the fresh call's return value. Legacy rows may contain it; it is not part
+    # of provider or plan evidence and must not make a valid replay fail.
+    original = {k: v for k, v in saved.items() if k not in {"native_plan", "at"}}
+    current = {k: v for k, v in replayed.items() if k not in {"native_plan", "at"}}
     if original != current or any(saved["native_plan"].get(k) != replayed["native_plan"].get(k)
                                   for k in ("kind", "agentc_observation_context")):
         raise PilotError("replay differs from saved result or plan identity; evidence preserved")
@@ -318,7 +321,7 @@ def run(args: argparse.Namespace, key: str) -> dict[str, Any]:
                 token = native.optimize_observe(json.dumps(plan), json.dumps(outcome))
                 if not token:
                     raise PilotError("native observation lacks exact-plan attribution")
-                row = {**item, **{k: v for k, v in result.items() if k not in {"key_id", "metadata"}},
+                row = {**item, **{k: v for k, v in result.items() if k not in {"key_id", "metadata", "at"}},
                        **score(result["answer"], task["expected"]), "native_plan": plan,
                        "expected": task["expected"], "original_message_count": len(call["messages"]),
                        "selected_message_count": len(selected["messages"])}
@@ -327,6 +330,11 @@ def run(args: argparse.Namespace, key: str) -> dict[str, Any]:
                 rows.append(row)
                 if len(rows) > len(existing):
                     write_json(args.output / "results.json", rows)
+                    write_json(args.output / "summary.json", analyze(rows, manifest))
+                elif len(rows) == len(existing):
+                    # A crash can occur after replacing results but before
+                    # replacing their summary. Repair only after the complete
+                    # saved prefix has been verified, never from a shorter one.
                     write_json(args.output / "summary.json", analyze(rows, manifest))
                 print(json.dumps({"completed": len(rows), "total": len(manifest["schedule"]),
                     "phase": item["phase"], "model": item["model"], "arm": item["arm"],

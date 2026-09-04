@@ -43,18 +43,24 @@ optimization.
 
 The dangerous reviewer objection is now sharper: several systems already optimize compound AI or agent workflows, especially Agentix/Autellix, Halo, Murakkab, AIOS, Cognify, ApproxMLIR, AgentOpt, Agent JIT Compilation, Parrot, DSPy, LMQL, SGLang, LLMCompiler, LLM-Tool Compiler, and vCache. The 2026 additions eliminate broad novelty claims around transparent client-side interception, joint model/workflow configuration, accuracy-aware heterogeneous transformation, or the phrase "agent JIT" in isolation. The paper should instead say exactly what AgentC optimizes, where it intercepts, which online evidence is plan-specific, what risk contract gates execution, and how behavior is measured under stochasticity.
 
-The 2026-09-04 complete-call matrix adds a systems constraint to that positioning.
-AgentC's planner computation remains sub-millisecond at p99 under 32 callers, but
-its current synchronous audit path yields 14.6--46.1 ms complete-call p99 and only
-1.35--1.98x throughput scaling on an eight-core host. This does not make serving-
-layer systems direct substitutes: they still cannot choose AgentC's semantic
-rewrites over an opaque provider API. It does mean the application-side boundary
-is defensible only after its own observability path stops serializing requests.
-Agentix, Murakkab, Parrot, SGLang, and related systems set an end-to-end scaling
-bar, not merely a related-work paragraph. Treat audit batching/off-path durability
-and a post-fix frozen rerun as prerequisites for claiming a lightweight control
-plane. The result is recorded under `RES-013` in the evidence ledger and is
-diagnostic, not paper evidence.
+The 2026-09-04 complete-call before/after matrix adds a systems constraint to
+that positioning. Replacing the synchronous audit transaction with a bounded
+non-blocking queue and one batched writer cuts matched C=32 median latency by
+89--93% and raises absolute throughput by 2.6--4.0x on an eight-core host. All
+170,700 setup-plus-timed audit attempts are accepted and written after ordered
+flush, with zero observed drops or write failures. This removes observability
+serialization as the dominant median bottleneck and strengthens the claim that
+an application-side control plane can remain lightweight.
+
+The comparison to Agentix, Murakkab, Parrot, SGLang, and related systems still
+sets an end-to-end bar rather than merely a related-work paragraph. C=32 p99
+remains 9.0--16.8 ms, the frozen 1.2 ms target still fails, and a one-host
+synthetic diagnostic cannot establish multi-host scalability. The remaining
+systems work is scheduler/FFI/oversubscription attribution plus confirmatory
+end-to-end measurement; the remaining scientific work is a held-out win for
+joint routing and semantic rewriting over the separate and sequential controls.
+The before/after result is recorded under `RES-013` and remains Stage E0
+diagnostic evidence, not a provider-latency or efficacy result.
 
 ## How To Use This File
 

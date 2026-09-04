@@ -1,11 +1,11 @@
 """Figure 7: complete optimizer-call scaling by request size and concurrency.
 
 The source is the committed Stage E0 artifact produced by
-``bench.optimizer_e2e_scaling``. The figure shows the admitted joint-rewrite
-path because it is the production path with the most planning work. Values are
-pooled order statistics across five randomized 1,024-call replications per
-cell. The JSON retains replication-level intervals and the guarded-reference
-control.
+``bench.optimizer_e2e_scaling``. The figure compares the synchronous-audit and
+off-path-audit implementations on the admitted joint-rewrite path because it is
+the production path with the most planning work. Values are pooled order
+statistics across five randomized 1,024-call replications per cell. Each JSON
+retains replication-level intervals and the guarded-reference control.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 
 plt.rcParams.update(
@@ -32,10 +33,15 @@ plt.rcParams.update(
 )
 
 OUT = Path(__file__).resolve().parent / "fig7_overhead_scaling.pdf"
-DATA = (
+BASELINE_DATA = (
     Path(__file__).resolve().parents[1]
     / "repro"
     / "optimizer-e2e-scaling-2026-09-04.json"
+)
+OFFPATH_DATA = (
+    Path(__file__).resolve().parents[1]
+    / "repro"
+    / "optimizer-e2e-scaling-offpath-audit-2026-09-04.json"
 )
 
 COLORS = {1: "#174a52", 8: "#4f7f86", 32: "#b45f3c"}
@@ -44,8 +50,8 @@ GRID = "#9a9a9a"
 REFERENCE = "#8e3b46"
 
 
-def _load_rows() -> list[dict[str, Any]]:
-    payload = json.loads(DATA.read_text(encoding="utf-8"))
+def _load_rows(path: Path) -> list[dict[str, Any]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
     if payload.get("paper_evidence") is not False:
         raise RuntimeError("Figure 7 expects the explicitly diagnostic Stage E0 run")
     rows = [
@@ -55,41 +61,49 @@ def _load_rows() -> list[dict[str, Any]]:
     ]
     if len(rows) != 15:
         raise RuntimeError(
-            f"expected 15 admitted-rewrite matrix cells, found {len(rows)}"
+            f"expected 15 admitted-rewrite matrix cells in {path.name}, "
+            f"found {len(rows)}"
         )
     return rows
 
 
 def main() -> None:
-    rows = _load_rows()
-    sizes = sorted({int(row["target_call_json_bytes"]) // 1_024 for row in rows})
-    concurrencies = sorted({int(row["concurrency"]) for row in rows})
+    baseline_rows = _load_rows(BASELINE_DATA)
+    offpath_rows = _load_rows(OFFPATH_DATA)
+    sizes = sorted(
+        {int(row["target_call_json_bytes"]) // 1_024 for row in offpath_rows}
+    )
+    concurrencies = sorted({int(row["concurrency"]) for row in offpath_rows})
 
     fig, axes = plt.subplots(1, 2, figsize=(5.5, 2.75), sharex=True, sharey=True)
     for axis, percentile in zip(axes, ("p50_us", "p99_us"), strict=True):
         for concurrency in concurrencies:
-            by_size = {
-                int(row["target_call_json_bytes"]) // 1_024: row
-                for row in rows
-                if int(row["concurrency"]) == concurrency
-            }
-            latency_ms = [
-                float(by_size[size]["e2e"][percentile]) / 1_000 for size in sizes
-            ]
-            axis.plot(
-                range(len(sizes)),
-                latency_ms,
-                marker=MARKERS[concurrency],
-                color=COLORS[concurrency],
-                linewidth=1.35,
-                markersize=4.2,
-                label=(
-                    f"{concurrency} caller"
-                    if concurrency == 1
-                    else f"{concurrency} callers"
-                ),
-                zorder=3,
-            )
+            for rows, line_style, alpha, marker_face in (
+                (baseline_rows, "--", 0.62, "none"),
+                (offpath_rows, "-", 1.0, COLORS[concurrency]),
+            ):
+                by_size = {
+                    int(row["target_call_json_bytes"]) // 1_024: row
+                    for row in rows
+                    if int(row["concurrency"]) == concurrency
+                }
+                latency_ms = [
+                    float(by_size[size]["e2e"][percentile]) / 1_000
+                    for size in sizes
+                ]
+                axis.plot(
+                    range(len(sizes)),
+                    latency_ms,
+                    marker=MARKERS[concurrency],
+                    markerfacecolor=marker_face,
+                    markeredgecolor=COLORS[concurrency],
+                    color=COLORS[concurrency],
+                    linestyle=line_style,
+                    alpha=alpha,
+                    linewidth=1.35,
+                    markersize=4.2,
+                    zorder=3,
+                )
         axis.axhline(
             1.0,
             color=REFERENCE,
@@ -99,7 +113,7 @@ def main() -> None:
             zorder=1,
         )
         axis.set_yscale("log")
-        axis.set_ylim(0.08, 100)
+        axis.set_ylim(0.045, 100)
         axis.set_xticks(range(len(sizes)))
         axis.set_xticklabels([str(size) for size in sizes])
         axis.set_xlabel("Serialized call size (KiB)")
@@ -118,7 +132,30 @@ def main() -> None:
         fontsize=7,
         transform=axes[0].get_yaxis_transform(),
     )
-    axes[0].legend(loc="upper left", frameon=False, ncol=1)
+    caller_handles = [
+        Line2D(
+            [0],
+            [0],
+            color=COLORS[concurrency],
+            marker=MARKERS[concurrency],
+            linewidth=1.35,
+            markersize=4.2,
+            label=f"C={concurrency}",
+        )
+        for concurrency in concurrencies
+    ]
+    mode_handles = [
+        Line2D([0], [0], color="#333333", linestyle="--", label="Synchronous"),
+        Line2D([0], [0], color="#333333", linestyle="-", label="Off-path"),
+    ]
+    axes[0].legend(handles=caller_handles, loc="upper left", frameon=False)
+    axes[1].legend(
+        handles=mode_handles,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.49),
+        ncol=2,
+        frameon=False,
+    )
 
     fig.tight_layout(w_pad=1.0)
     fig.savefig(OUT, format="pdf", dpi=300, bbox_inches="tight", pad_inches=0.04)

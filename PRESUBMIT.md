@@ -105,7 +105,7 @@ These are the highest-value improvements for MLSys review strength.
 | Prefix-cache interaction documented | OpenAI prefix caching is disclosed; Agentc savings are measured on top of it. | `OPEN` |
 | Provider generalization checked | Provider rows state what generalized and what abstained because preconditions were absent. | `OPEN` |
 | Guard overhead checked | CPU microbenchmark and request-path overhead are both framed correctly. | `OPEN` |
-| Optimizer scaling checked | The complete-call 4–64 KiB x C=1/8/32 matrix meets the frozen tail target after audit-path remediation. | `OPEN` |
+| Optimizer scaling checked | The complete-call 4–64 KiB x C=1/8/32 matrix meets the frozen tail target after audit-path remediation. | `FAIL`: median/throughput fixed; C=8/C=32 p99 still exceeds 1.2ms |
 
 Recommended final experiment commands:
 

@@ -1,14 +1,18 @@
 Optimizer overhead -- paired complete-call Stage E0 diagnostic
 ===============================================================
 
-Canonical summary:
-  bench/repro/optimizer-e2e-overhead-2026-09-04.json
+Off-path audit summary (current):
+  bench/repro/optimizer-e2e-overhead-offpath-audit-2026-09-04.json
 Raw paired samples:
+  bench/repro/optimizer-e2e-overhead-offpath-audit-2026-09-04.csv
+Synchronous baseline summary:
+  bench/repro/optimizer-e2e-overhead-2026-09-04.json
+Synchronous baseline raw samples:
   bench/repro/optimizer-e2e-overhead-2026-09-04.csv
-Source commit:
-  d47f58d0f00e7b8afb84d8d4a24a99d1049c5ab7
-Native extension SHA-256:
-  abf98d32b553f4550fd1859de730b51a969cb554b6acdfdca48422b354d7909c
+Measured source commit:
+  322235570cacdf6cc6193b0d8e0d8e258200c876 (clean)
+Measured native extension SHA-256:
+  ab4d5f38a67a0417dd7e32d35d07c4aa9abd68c705461d953116572afcbb620b
 
 Method
 ------
@@ -18,46 +22,63 @@ row), with 200 untimed warmup calls per replication and rotated scenario order.
 The workload is deterministic and synthetic, exploration and shadow execution
 are disabled, SQLite uses WAL, and no provider or network call occurs.
 
-The outer clock encloses the complete `_native.optimize_plan` call. Every sample
-is paired one-to-one with the exact `plan_audit.overhead_us` row produced by the
-call. That internal clock stops before audit persistence and excludes native
-state lookup plus the outer FFI boundary.
+The outer clock encloses the complete `_native.optimize_plan` call. In the
+current implementation, each call constructs and non-blockingly enqueues its
+audit row; a single background writer batches up to 128 rows. An ordered flush
+after each group places SQLite persistence outside the request-path clock and
+allows exact span pairing. Python opens its separately linked SQLite only after
+the native writer is closed. The internal clock still ends before audit-row
+construction and excludes native state lookup plus the outer FFI boundary.
 
-                                      Complete call (ms)              Internal   Residual
+                                  Complete call after (ms)       Internal   Residual
 Scenario                         n      mean    p50    p95    p99     max      p50        p50
-joint guarded: reference     10,000    0.153  0.100  0.123  0.165  73.570    0.062      0.038
-joint guarded: admitted      10,000    0.157  0.115  0.143  0.307  22.219    0.071      0.043
-legacy greedy: rewrite       10,000    0.103  0.075  0.097  0.220   6.695    0.042      0.031
+joint guarded: reference     10,000    0.075  0.073  0.079  0.162   0.261    0.064      0.009
+joint guarded: admitted      10,000    0.086  0.085  0.089  0.098   0.467    0.072      0.013
+legacy greedy: rewrite       10,000    0.052  0.051  0.055  0.062   0.196    0.043      0.008
 
-Seeded 10,000-resample percentile bootstrap over the five replication p50s:
-  joint guarded: reference     0.100 ms  95% CI [0.099, 0.103]
-  joint guarded: admitted      0.115 ms  95% CI [0.112, 0.117]
-  legacy greedy: rewrite       0.073 ms  95% CI [0.071, 0.075]
+Before/after complete-call p50/p99
+----------------------------------
+  joint guarded: reference   0.100/0.165 ms -> 0.073/0.162 ms
+  joint guarded: admitted    0.115/0.307 ms -> 0.085/0.098 ms
+  legacy greedy: rewrite     0.075/0.220 ms -> 0.051/0.062 ms
+
+Seeded 10,000-resample percentile bootstrap over current replication p50s:
+  joint guarded: reference     0.073 ms  95% CI [0.072, 0.074]
+  joint guarded: admitted      0.085 ms  95% CI [0.085, 0.086]
+  legacy greedy: rewrite       0.051 ms  95% CI [0.051, 0.051]
+
+Audit accounting
+----------------
+Across setup and timed calls, 33,160 rows were attempted, accepted, and written.
+After every ordered flush there were zero pending rows, full-queue drops,
+disconnected drops, or write failures. The 30,000 timed rows pair exactly with
+the raw samples.
 
 Interpretation
 --------------
-On this host, the complete production planning call remains below 0.4 ms at p99
-for all three measured steady-state paths. Boundary, state-lookup, persistence,
-clock-quantization, and return work account for 53-59% of mean complete-call
-time. Rare 7-74 ms maxima are retained rather than removed and materially raise
-the means.
+Off-path persistence cuts the admitted and legacy p99 substantially and reduces
+the paired residual to 12--15% of mean complete-call time. Reference p99 is
+almost unchanged because its tail is now inside planner/scheduling work rather
+than the removed SQLite commit. The residual combines the Python/Rust boundary,
+native-state lookup, audit-row construction/enqueue, clock quantization, and
+return conversion; it is not an audit-only timer.
 
-The residual is paired subtraction but is not an audit-only timer. The old
-76 us / 120 us result aggregated 1,818 historical `plan_audit.overhead_us` rows
-from different workloads and omitted the audit write plus outer FFI scope. It
-must be described as an internal planner-clock diagnostic, not end-to-end
-optimizer overhead.
+The old 76 us / 120 us result aggregated 1,818 historical
+`plan_audit.overhead_us` rows from different workloads and omitted both the old
+audit write and outer FFI scope. It must be described as an internal
+planner-clock diagnostic, not end-to-end optimizer overhead.
 
 Evidence boundary
 -----------------
-This artifact has `paper_evidence=false`. It is a zero-network, single-machine
-Stage E0 systems diagnostic. It validates the timing mechanism and measured-host
-budget but does not establish task quality, savings, provider latency, concurrent
-contention, or a confirmatory campaign result.
+Both artifacts have `paper_evidence=false`. They are zero-network,
+single-machine Stage E0 systems diagnostics. They validate the timing mechanism,
+request-path redesign, and measured-host loss accounting, but do not establish
+task quality, savings, provider latency, concurrent scaling, or a confirmatory
+campaign result.
 
 Reproduction
 ------------
 maturin develop --release --manifest-path crates/agentc-profiler/Cargo.toml
 python -m bench.optimizer_e2e_overhead --build-profile release \
-  --output bench/repro/optimizer-e2e-overhead-2026-09-04.json \
-  --raw-output bench/repro/optimizer-e2e-overhead-2026-09-04.csv
+  --output bench/repro/optimizer-e2e-overhead-offpath-audit-2026-09-04.json \
+  --raw-output bench/repro/optimizer-e2e-overhead-offpath-audit-2026-09-04.csv

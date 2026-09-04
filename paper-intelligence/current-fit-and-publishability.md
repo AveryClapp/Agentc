@@ -26,7 +26,7 @@ The current alpha is strongest as a **guarded, application-side rewrite control 
 | Hotpot oracle compression | Compression headroom / idea generation | There is likely useful headroom if AgentC can identify irrelevant context better. | The current automated rule does not achieve oracle-level compression. |
 | `CacheHit` | GPTCache, ContextCache, MeanCache, vCache | Important future direction and likely useful runtime pass. | Needs false-hit, invalidation, and context-key evidence before becoming a paper claim. |
 | `ParallelBranch` | LLMCompiler, LLM-Tool Compiler, LangGraph, LLMOrch | Important future direction for latency. | Needs dependency, side-effect, and idempotence policy before strong claims. |
-| Complete-call size/concurrency diagnostic (`RES-013`) | Agentix, Murakkab, Parrot, SGLang, serving/runtime scaling work | Sequential planner cost is small and the deadline fails open safely. | The synchronous audit connection is a real bottleneck: C=32 p99 reaches 46.1ms and throughput gains at most 1.98x. |
+| Complete-call size/concurrency diagnostic (`RES-013`) | Agentix, Murakkab, Parrot, SGLang, serving/runtime scaling work | A bounded off-path writer removes the dominant median bottleneck: matched C=32 p50 falls 89–93%, absolute throughput rises 2.6–4.0x, and all 170,700 audit attempts are written after flush. | C=32 p99 still reaches 9.0–16.8ms, the 1.2ms target still fails, and the result is one-host synthetic Stage E0 evidence. |
 
 ## Publishability Read
 
@@ -34,7 +34,7 @@ The current alpha is strongest as a **guarded, application-side rewrite control 
 |---|---|---|
 | Workshop / short paper | plausible | The trace-optimizer framing, verified literature map, and two strong rule-level results are enough for useful feedback. |
 | ATC operational track | possible but rushed | Needs operational lessons, overhead, failure modes, and a tighter deployed-runtime story. |
-| MLSys / EuroSys / strong systems venue | not yet | Needs a positive held-out joint-policy result, a non-blocking audit path with a post-fix scaling rerun, artifact polish, and stronger baselines. |
+| MLSys / EuroSys / strong systems venue | not yet | The non-blocking audit path and clean rerun are complete. It still needs a positive held-out joint-policy result, tail attribution/reduction, multi-host evidence, artifact polish, and stronger baselines. |
 | COLM / LM-facing venue | possible later | Needs clearer cost-quality frontier, stochastic evaluation, and comparisons against routing/compression baselines. |
 | Broad AI/ML main venue | weak right now | The contribution currently reads more like systems infrastructure than a new AI method. |
 
@@ -43,7 +43,7 @@ The current alpha is strongest as a **guarded, application-side rewrite control 
 - `RES-001`: ContextCompress has the cleanest token-savings story.
 - `RES-002`: ModelDowngrade has the cleanest dollar-savings story.
 - `RES-005`: HotpotQA near-zero savings can be used as an activation-boundary diagnostic.
-- `RES-013`: complete-call timing is now auditable at fixed shape and across size/concurrency; the scaling artifact is an honest negative result that identifies synchronous persistence as the next systems fix.
+- `RES-013`: complete-call timing now includes a clean before/after systems result. Off-path audit persistence removes the dominant median/throughput bottleneck without observed loss, while honestly exposing a separate high-concurrency tail problem.
 - `literature-and-nearest-neighbors.md`: the related-work map is now strong enough to guide writing and experiment selection.
 
 ## What Is Not Ready
@@ -56,7 +56,7 @@ The current alpha is strongest as a **guarded, application-side rewrite control 
 
 ## Best Next Contributions
 
-1. Remove or batch the synchronous per-call audit write, preserve bounded-loss durability, and rerun the frozen 153,600-call matrix.
+1. Attribute and reduce the C=8/C=32 scheduler, FFI, and oversubscription tails without weakening the frozen 1.2ms target; repeat on at least one additional host.
 2. Run the held-out joint model-routing plus semantic-rewrite campaign against fixed, route-only, rewrite-only, both sequential orders, current greedy, and best-static controls.
 3. Convert the strongest runnable baselines into a feasibility matrix: AgentOpt, RouteLLM, FrugalGPT, LLMSelector, LLMLingua/LongLLMLingua/LLMLingua-2, GPTCache/vCache, and LLMCompiler.
 4. Validate the persistent risk controller at its advertised 2% sampling rate, charging counterfactual calls and damage.

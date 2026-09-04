@@ -798,15 +798,15 @@ the lease eventually becomes abandoned and charged. This protects against
 pathological cases while keeping provider dispatch outside an over-budget
 decision.
 
-The original 2026-09-04 release-mode Stage E0 matrix did not meet this target under
-contention. Sequential p50 is 0.108--0.253 ms, but 32-caller p50/p99 reaches
+The original 2026-09-04 release-mode Stage E0 matrix did not meet this target
+under contention. Sequential p50 is 0.108--0.253 ms, but 32-caller p50/p99 reaches
 1.74--2.85 ms/14.6--46.1 ms and throughput improves only 1.35--1.98× on an
 eight-core Apple M2. The internal pre-audit p99 remains at or below 0.721 ms;
 the combined boundary/state/audit residual accounts for 94--97% of mean time.
 The known global operation in that residual was the synchronous audit-DB mutex.
-The production path now uses the bounded writer contract below; the overhead
-acceptance gate remains open until the frozen matrix is rerun from the clean
-implementation commit.
+The bounded writer rerun removes the median and throughput bottleneck, with the
+matched improvements reported below. The overhead acceptance gate remains open
+because scheduler/FFI p99 at C=8/32 still exceeds 1.2 ms.
 
 ### Persistent storage
 
@@ -1235,11 +1235,13 @@ A user's LLM call never fails because the optimizer failed.
   mutex to persist the summary and exact samples atomically. A flush clears
   only the captured generation, so a concurrent post-snapshot sample remains
   dirty.
-- **Audit writes are synchronous and serialized** by a separate audit-DB mutex.
-  The 153,600-call Stage E0 matrix shows that this lock dominates complete-call
-  scaling: at 32 callers the paired residual outside the internal planner is
-  94--97% of mean latency. This is an acceptance blocker, not a concurrency
-  guarantee.
+- **Audit writes are off the request path.** A 4,096-row bounded channel uses
+  non-blocking, drop-newest admission; one worker owns SQLite and commits at
+  most 128 rows per transaction. The clean 153,600-call rerun reports zero
+  pending, dropped, disconnected, or failed rows. At 32 callers, p50 falls
+  89--93% and absolute throughput rises 2.6--4.0× versus the synchronous
+  baseline. The remaining 9--17 ms p99 tail is an open scheduler/FFI blocker,
+  not evidence that the audit path still serializes all callers.
 - **Initial exploration runs in a background `asyncio.Task` or daemon thread.**
   The adapter schedules it only after the reference response is observed.
   **Post-admission shadow execution remains synchronous** in the provider
@@ -1428,7 +1430,12 @@ not audit-enqueue latency. The committed release-mode record contains five
 2,000-call replications per path and is
 `bench/repro/optimizer-e2e-overhead-2026-09-04.json`, with checksummed raw
 samples beside it. It is a single-machine Stage E0 diagnostic and is permanently
-labeled `paper_evidence=false`.
+labeled `paper_evidence=false`. The matched off-path-writer rerun is
+`bench/repro/optimizer-e2e-overhead-offpath-audit-2026-09-04.{json,csv}`;
+complete-call p50/p99 is 0.073/0.162 ms for guarded reference selection,
+0.085/0.098 ms for an admitted joint rewrite, and 0.051/0.062 ms for the legacy
+greedy rewrite. All 33,160 setup-plus-measured audit attempts persist with zero
+reported loss.
 
 `bench/optimizer_e2e_scaling.py` extends that clock to a full factorial over
 exact 4/8/16/32/64 KiB serialized calls, 1/8/32 Python callers, and guarded-
@@ -1439,8 +1446,22 @@ completion order. Five randomized 1,024-call replications per cell produce
 `bench/repro/optimizer-e2e-scaling-2026-09-04.{json,csv.gz}`. Sequential p50 is
 0.108--0.253 ms across paths and sizes; at 32 callers p50 reaches 1.744--2.853
 ms, p99 reaches 14.620--46.122 ms, and throughput speedup is only 1.35--1.98×.
-Two admitted calls (0.0026%) fail open with `planning_overhead_exceeded`. The
-artifact is permanently labeled `paper_evidence=false`.
+Two admitted calls (0.0026%) fail open with `planning_overhead_exceeded`. This
+original artifact is the synchronous-writer baseline.
+
+The clean-commit off-path rerun is
+`bench/repro/optimizer-e2e-scaling-offpath-audit-2026-09-04.{json,csv.gz}`.
+Across the same 153,600 timed calls, C=1 p50 is 0.078--0.104 ms for reference
+selection and 0.097--0.222 ms for admitted rewrites. At C=32, p50 is
+0.164--0.184 ms and 0.186--0.312 ms, respectively: an 89--93% matched-cell
+reduction. Absolute C=32 throughput is 2.6--4.0× the synchronous baseline and
+scales 2.52--2.75× (reference) or 2.58--3.54× (rewrite) over one caller. All
+170,700 setup-plus-measured audit attempts are accepted and written with zero
+reported loss. Pooled C=32 p99 remains 8.956--11.078 ms and 10.414--16.776 ms;
+23 of 76,800 admitted calls (0.030%) hit the 5 ms fail-open deadline. Thus the
+SQLite serialization defect is closed, but the frozen p99 ship gate remains
+open for scheduler/FFI-tail attribution. Both artifacts are permanently labeled
+`paper_evidence=false`.
 
 ### Performance targets
 
@@ -1453,12 +1474,14 @@ live joint-planner diagnostic above also remains Stage E0; its three recorded
 for a four-candidate search on the recorded arm64 development machine. The
 complete-call diagnostic had pooled p50/p99 of 99.958/164.750 us for guarded
 reference selection and 115.000/307.209 us for an admitted joint rewrite on the
-same class of host. The original size/concurrency companion shows 32-caller p99 of
-14.620--46.122 ms and only 1.35--1.98× throughput scaling. These diagnostics
-measure the production request path but do not replace the frozen campaign's
-end-to-end latency measurements. The original result includes the synchronous
-WAL-backed audit write; the off-path-writer rerun is a before/after systems
-diagnostic rather than a retroactive replacement.
+same class of host. The original size/concurrency companion shows 32-caller p99
+of 14.620--46.122 ms and only 1.35--1.98× throughput scaling. After moving
+SQLite off path, matched C=32 medians fall 89--93%, absolute throughput rises
+2.6--4.0×, and audit loss remains zero, but pooled p99 is still
+8.956--16.776 ms. These diagnostics measure the production request path but do
+not replace the frozen campaign's end-to-end latency measurements. The two
+artifacts form an explicit before/after systems diagnostic; neither is
+confirmatory paper evidence, and the 1.2 ms p99 ship target remains unmet.
 
 | Metric | Target | Measurement |
 |---|---|---|

@@ -26,7 +26,7 @@ Supersedes:
 
 AgentC has a solid workshop/short-paper shape and is approaching plausibility for a systems venue short paper. The claim is now sharper: **a runtime control plane for framework-emitted, multi-step LLM agent traces that applies several rewrite classes compositionally under one policy, with a cost-driver orthogonality framework that avoids the composition errors a greedy planner makes.**
 
-The current evidence supports: targeted savings for `ContextCompress` (34.8% tokens, RES-001) and `ModelDowngrade` (35.3% cost, RES-002); a direct LLMLingua-2 comparison with exact paired statistics showing favorable-fixture improvement (68%→100%, p=4.7×10⁻¹⁰) and natural-prose abstention (94.9%→94.9%, p=1.0); and a planner ablation showing V2 avoids a concrete V1 greedy error (RES-010). Stage E0 diagnostics under `RES-013` measure both fixed-shape complete-call overhead and size/concurrency scaling. The scaling artifact refutes the old sub-millisecond-under-concurrency story: C=32 p99 reaches 46.1ms and throughput improves by at most 1.98× on the measured host. The evidence does not yet support a broad claim that all eight rules are validated, that behavior is preserved in a semantics-level sense, that the current synchronous audit path scales, or that AgentC is the first optimizer for LLM agents.
+The current evidence supports: targeted savings for `ContextCompress` (34.8% tokens, RES-001) and `ModelDowngrade` (35.3% cost, RES-002); a direct LLMLingua-2 comparison with exact paired statistics showing favorable-fixture improvement (68%→100%, p=4.7×10⁻¹⁰) and natural-prose abstention (94.9%→94.9%, p=1.0); and a planner ablation showing V2 avoids a concrete V1 greedy error (RES-010). Stage E0 diagnostics under `RES-013` now include a clean synchronous-versus-off-path audit comparison. At C=32, the redesign cuts matched median latency 89–93% and raises absolute throughput 2.6–4.0× with zero observed audit loss, but p99 remains 9.0–16.8ms and misses the frozen target. The evidence does not yet support a broad claim that all eight rules are validated, that behavior is preserved in a semantics-level sense, that AgentC scales across hosts, that the joint policy beats separate/sequential controls, or that AgentC is the first optimizer for LLM agents.
 
 ## Safe Claims
 
@@ -42,7 +42,7 @@ The current evidence supports: targeted savings for `ContextCompress` (34.8% tok
 | `CLM-008` | supported | McNemar exact tests and 95% bootstrap CIs are computed for all headline accuracy claims. No test rejects accuracy degradation at α=0.05 for StateDrop, CC on natural prose, or CC+SD composition. | `RES-007`, `RES-008`, `RES-009`, `RES-010`, `RES-012` | Strong wording should say "does not significantly degrade" not "preserves." |
 | `CLM-009` | supported | ContextCompress operates at message granularity and correctly abstains when the structural precondition (identifiable low-attention messages) is absent. LLMLingua-2 compresses indiscriminately at token granularity regardless of fixture structure. | `RES-007`, `RES-008` | Dual-regime result; cite both fixtures together. |
 | `CLM-010` | supported | The V2 CompositionPlanner's cost-driver orthogonality gate avoids a concrete greedy composition error (V1-CC+OB −2pp; V2-CC+OB +0pp) on a controlled workload. | `RES-010` | n=50, p=0.0412 borderline; V2-CC+PD not testable due to model drift. |
-| `CLM-011` | diagnostic | On one arm64 host, fixed-shape complete-call p50/p99 is 100/165µs for guarded reference selection and 115/307µs for an admitted joint rewrite. Across exact 4–64 KiB calls, sequential p50 is 108–253µs, but C=32 p50/p99 reaches 1.74–2.85ms/14.6–46.1ms and throughput speedup is only 1.35–1.98×. | `RES-013` | Synthetic Stage E0 diagnostics with no provider; `paper_evidence=false`. Historical 76/120µs values use a pre-audit clock. The paired scaling residual includes more than audit time, although synchronous audit persistence is the known serialized operation. |
+| `CLM-011` | diagnostic | On one arm64 host, moving plan-audit persistence to a bounded off-path writer changes fixed-shape complete-call p50/p99 to 73/162µs for guarded reference selection and 85/98µs for an admitted joint rewrite. Across exact 4–64 KiB calls, C=32 p50 is 164–184µs reference and 186–312µs rewrite: 89–93% below the synchronous baseline, with 2.6–4.0× higher absolute throughput. All 170,700 audit attempts are written after flush, but C=32 p99 remains 9.0–16.8ms. | `RES-013` | Synthetic one-host Stage E0 diagnostics with no provider; `paper_evidence=false`. Ordered flush is outside the request clock. Zero loss is observed for this run, not a universal losslessness guarantee; crash loss remains bounded by the documented queue/batch contract. |
 
 ## Unsafe Claims
 
@@ -74,7 +74,7 @@ The current evidence supports: targeted savings for `ContextCompress` (34.8% tok
 | `GAP-012` | medium (compression closed, routing/caching open) | Direct baseline missing for routing (RouteLLM/FrugalGPT) and caching (vCache). LLMLingua-2 compression baseline done (RES-007/RES-008). | EXP-008 | Routing and caching baselines remain cite-only for now. |
 | `GAP-013` | medium | `StateDrop` needs a concrete dependency/read-window model. | `CLM-004` | Dependency model paragraph drafted in `draft-paper-edits.md §3`; needs to be inserted into §4 of the .tex. |
 | `GAP-014` | ~~high~~ **closed** | ~~Stochastic evaluation needs repeated-run or paired uncertainty treatment.~~ | EXP-006/RES-007/RES-008/RES-009/RES-010/RES-012 | McNemar exact tests (statsmodels) and bootstrap CIs computed for all headline accuracy claims. Methodology paragraph drafted in `draft-paper-edits.md §6`. |
-| `GAP-015` | high, bottleneck measured | Complete-call steady state and context/concurrency scaling are measured. The synchronous audit path now demonstrably blocks the target under contention; cold start, a post-fix rerun, and confirmatory end-to-end latency remain open. | `CLM-011` | Batch or move audit persistence off the call path, rerun the `RES-013` scaling artifact, then execute the frozen Stage C/P/T campaign before promotion. |
+| `GAP-015` | high, median bottleneck fixed; tail open | Complete-call steady state and context/concurrency scaling are measured before and after the audit redesign. Off-path batching fixes the dominant median/throughput bottleneck, but C=8/C=32 p99 still misses 1.2ms; cold start, tail attribution, multi-host behavior, and confirmatory end-to-end latency remain open. | `CLM-011` | Attribute scheduler/FFI/oversubscription tails, rerun on another host without weakening the target, then execute the frozen Stage C/P/T campaign before promotion. |
 | `GAP-016` | medium | Serving-system orthogonality needs crisp explanation. | Systems framing | Use serving sources to separate application-level rewrites from serving internals. |
 
 ## Reviewer Risk Register
@@ -123,8 +123,8 @@ The current evidence supports: targeted savings for `ContextCompress` (34.8% tok
 | `QST-003` | artifact | Where is the trace evidence for the Hotpot oracle ceiling? | Still open; needed before strong `CLM-006`. |
 | `QST-004` | positioning | How narrow should novelty be against close systems? | Very narrow: framework-call interception plus multi-rule trace rewriting. |
 | `QST-005` | method | What does behavior-preserving mean? | Use metric/tolerance-bounded wording, not semantic equivalence. |
-| `QST-006` | experiment | Can we produce one workload where multiple rewrite rules fire together? | Highest-value next experiment for MLSys/ATC. |
-| `QST-007` | systems | What are interception overhead and latency-tail effects? | Fixed-shape and size/concurrency Stage E0 results now exist. Sequential cost is small, but the synchronous audit path produces millisecond medians and 10–50ms-scale tails under contention; post-fix, cold-start, multi-host, and campaign-level measurements remain required. |
+| `QST-006` | experiment | Can we produce one workload where multiple rewrite rules fire together? | Answered mechanistically by `RES-009`/`RES-011`; the open question is whether a held-out joint policy beats single, sequential, greedy, and static controls. |
+| `QST-007` | systems | What are interception overhead and latency-tail effects? | The post-fix Stage E0 rerun shows sub-0.32ms C=32 medians and 2.6–4.0× higher absolute throughput than synchronous persistence, with exact audit conservation after flush. C=8/C=32 p99 remains 1.3–2.3ms/9.0–16.8ms; tail attribution, cold start, multi-host, and campaign-level measurements remain required. |
 
 ## Ordered Weak-Point Plan
 
@@ -145,8 +145,8 @@ The current evidence supports: targeted savings for `ContextCompress` (34.8% tok
 
 ## Highest-Priority Next Fixes
 
-1. Build one end-to-end workload where multiple rules can fire together: `GAP-011`, `QST-006`, `WP-011`.
-2. Add paired/repeated uncertainty treatment for headline results: `GAP-004`, `GAP-014`, `RR-002`, `RR-014`, `WP-002`, `WP-012`.
-3. Keep CacheHit and ParallelBranch out of headline claims unless new evidence lands: `RR-008`, `RR-011`, `RR-012`, `WP-007`.
-4. Define StateDrop's dependency/read-window model before using compiler-soundness language: `GAP-013`, `CIT-006`, `CIT-012`, `WP-010`.
-5. Write the exact novelty sentence against close systems: `GAP-010`, `RR-005`, `RR-013`, `WP-009`.
+1. Run the frozen held-out joint-policy campaign against route-only, rewrite-only, both sequential orders, greedy, and best-static controls: `GAP-010`, `QST-006`, `RR-009`, `RR-013`.
+2. Attribute and reduce the remaining C=8/C=32 p99 tail, then repeat on another host without weakening the target: `GAP-015`, `QST-007`, `WP-011`.
+3. Validate the risk controller at its advertised 2% sampling rate with counterfactual cost and cumulative damage charged: `RR-002`, `WP-012`.
+4. Run the missing routing baseline and blind unengineered-workload gate: `GAP-012`, `RR-001`, `RR-009`.
+5. Keep CacheHit and ParallelBranch out of headline claims and retain careful StateDrop semantics unless new evidence lands: `GAP-013`, `RR-008`, `RR-011`, `RR-012`, `WP-007`, `WP-010`.

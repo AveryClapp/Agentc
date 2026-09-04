@@ -14,8 +14,8 @@ committed Stage E0 artifact::
     maturin develop --release -m crates/agentc-profiler/Cargo.toml
     python -m bench.optimizer_e2e_scaling \
       --build-profile release \
-      --output bench/repro/optimizer-e2e-scaling-2026-09-04.json \
-      --raw-output bench/repro/optimizer-e2e-scaling-2026-09-04.csv.gz
+      --output bench/repro/optimizer-e2e-scaling-offpath-audit-2026-09-04.json \
+      --raw-output bench/repro/optimizer-e2e-scaling-offpath-audit-2026-09-04.csv.gz
 """
 
 from __future__ import annotations

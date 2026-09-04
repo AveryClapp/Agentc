@@ -75,7 +75,7 @@ The best current evidence is:
 - `RES-002`: `ModelDowngrade` saves substantial dollars on a routing workload.
 - `RES-004`: `StateDrop` is promising but partial/caveated.
 - `RES-005`: real HotpotQA near-zero savings is useful activation-boundary evidence.
-- `RES-013`: complete-call timing is now measured at fixed shape and across 4–64 KiB, C=1/8/32. Sequential medians are small, but the current synchronous audit path produces C=32 p99 up to 46.1ms and must be fixed.
+- `RES-013`: the complete-call audit bottleneck has been fixed and rerun at fixed shape and across 4–64 KiB, C=1/8/32. At C=32, off-path persistence cuts median latency 89–93% and raises absolute throughput 2.6–4.0× with zero observed audit loss; p99 remains 9.0–16.8ms and still misses the frozen target.
 
 The paper is not ready to claim:
 
@@ -97,4 +97,4 @@ Do not add a new top-level paper-intelligence file unless it will stay active. P
 
 ## Next Work
 
-The highest-value next sequence is concrete: move audit persistence off the request path and rerun the frozen scaling matrix; then run the held-out joint routing-plus-rewrite campaign against fixed, route-only, rewrite-only, both ordering controls, current greedy, and best-static policies. Routing/compression baselines, the 2% risk-controller check, and the blind unengineered-workload gate follow.
+The highest-value next sequence is concrete: attribute and reduce the remaining high-concurrency scheduler/FFI tail, then run the held-out joint routing-plus-rewrite campaign against fixed, route-only, rewrite-only, both ordering controls, current greedy, and best-static policies. The positive joint-policy result is now the largest contribution gap. Routing baselines, the 2% risk-controller check, multi-host scaling, and the blind unengineered-workload gate follow.

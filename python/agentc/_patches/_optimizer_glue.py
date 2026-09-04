@@ -153,11 +153,19 @@ _MODEL_PRICES: dict[str, tuple[float, float]] = {
 def estimate_cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:
     """Estimate USD cost for a chat completion. Returns 0 for unknown models."""
     prices = _MODEL_PRICES.get(model)
+    # LiteLLM prefixes provider-native IDs (for example ``openai/gpt-5.4``).
+    # The underlying provider price remains the same, but preserving the
+    # prefix in dispatch must not silently turn accounting into zero.
+    lookup_model = model
+    provider_prefix, separator, unprefixed = model.partition("/")
+    if prices is None and separator and provider_prefix in {"openai", "anthropic"}:
+        lookup_model = unprefixed
+        prices = _MODEL_PRICES.get(lookup_model)
     if prices is None:
         # Try matching by prefix — handle dated suffix variants.
         for known in sorted(_MODEL_PRICES, key=len, reverse=True):
             p = _MODEL_PRICES[known]
-            if model.startswith(known):
+            if lookup_model.startswith(known):
                 prices = p
                 break
     if prices is None:

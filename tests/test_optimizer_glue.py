@@ -25,6 +25,7 @@ from agentc._patches._optimizer_glue import (
     build_call_dict_openai,
     cancel_exploration,
     dispatch_sync,
+    estimate_cost_usd,
     maybe_explore_record,
     maybe_explore_record_async,
     maybe_shadow_record,
@@ -87,6 +88,21 @@ def _route_contract(
         "target_revision_kind": "immutable_snapshot",
         "output_token_parameter": output_parameter,
     }
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("openai/gpt-5.4-2026-03-05", 17.50),
+        ("openai/gpt-5.4-mini-2026-03-17", 5.25),
+        ("anthropic/claude-sonnet-4-5-20250929", 18.00),
+        ("anthropic/claude-haiku-4-5-20251001", 6.00),
+    ],
+)
+def test_litellm_provider_prefix_preserves_cost_accounting(
+    model: str, expected: float
+) -> None:
+    assert estimate_cost_usd(model, 1_000_000, 1_000_000) == expected
 
 
 def test_message_deps_mirrors_input_deps_for_untagged():

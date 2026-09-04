@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "record_kind": "prospective_protocol_revision",
+  "protocol_id": "agentc-mlsys2027-v1",
+  "split_namespace": "agentc-mlsys2027-v1",
+  "revision": 12,
+  "parent_revision": 11,
+  "created_at_utc": "2026-09-04T05:06:13Z",
+  "effective_before_stage": "E1",
+  "contract_baseline": "c34a45ddfb07a3767c407de1e9d604d146a654d3",
+  "protocol_document": {
+    "path": "bench/repro/mlsys-2027-evaluation-protocol.md",
+    "parent_sha256": "f0aad5cd06f2cb37422d4f1d8375a9d908cf6a656eea636ceecee22dc62c656f",
+    "revision_12_sha256": "82943dbb351f9154f2e3a75f01d8659d590c9a7e45797725ba0cdfbced054791"
+  },
+  "thesis_contract": {
+    "path": "specs/working/joint-execution-planning-contract.md",
+    "sha256": "d17ced6f5819e8ba2cca7145b8ca8403b22ad277a8c4fa9194ba3371b014d4b7",
+    "bead": "bd-323l.2"
+  },
+  "information_state": {
+    "stage_e0_executed": true,
+    "stage_e1_executed": false,
+    "stage_c_executed": false,
+    "stage_p_executed": false,
+    "stage_t_executed": false,
+    "pilot_outcomes_inspected": false,
+    "confirmatory_outcomes_inspected": false,
+    "calibration_data_invalidated": false,
+    "reason_calibration_not_invalidated": "No Stage C run existed. Revision 12 reconciles implementation status and the documented exposure comparison with code and the optimizer specification before any workload admission or task outcome inspection."
+  },
+  "changes": [
+    {
+      "id": "r12-complete-plan-guard-status",
+      "category": "implementation_status",
+      "beads": [
+        "bd-323l.6.7",
+        "bd-aw0y"
+      ],
+      "before": "The admission-blocker table described plan-level guard attribution as unimplemented.",
+      "after": "Complete-plan divergence is bound to one exact call-site version, execution-plan identity, runtime version, and threshold; composed feedback is recorded once, positive excess is exposure-gated, and disables survive restart."
+    },
+    {
+      "id": "r12-live-selection-and-exploration-status",
+      "category": "implementation_status",
+      "beads": [
+        "bd-323l.6.3",
+        "bd-323l.6.9",
+        "bd-aw0y"
+      ],
+      "before": "The protocol described joint selection and bounded counterfactual exploration as pending implementation.",
+      "after": "The production entrypoint invokes the exact-profile constrained selector. Cold candidates may run through one durable, capped, off-path provider request after the immutable reference is observed; completion persists exact paired evidence and restart can admit the evidenced plan."
+    },
+    {
+      "id": "r12-exposure-boundary-documentation",
+      "category": "safety_contract_documentation",
+      "beads": [
+        "bd-jhhk"
+      ],
+      "before": "Section 11 said a complete plan is disabled only when divergence exposure E_t is greater than 1.0.",
+      "after": "Section 11 now matches the implemented and optimizer-spec contract: a complete plan is disabled when E_t is at or above the 1.0 budget. No task outcome informed this correction."
+    },
+    {
+      "id": "r12-current-admission-blockers",
+      "category": "implementation_status",
+      "beads": [
+        "bd-323l.6.5",
+        "bd-323l.6.6",
+        "bd-323l.6.10",
+        "bd-323l.6.11"
+      ],
+      "before": "The joint-planning blocker row included completed exploration and guard work but omitted two open correctness bugs.",
+      "after": "The row now retains the baseline harness, selection diagnostics, transformed-request routing check, and same-field composition accounting as blockers while labeling completed mechanisms as Stage E0 only."
+    }
+  ],
+  "changed_frozen_items": [
+    "complete_plan_exposure_comparison_operator_documentation"
+  ],
+  "unchanged_frozen_items": [
+    "claim_under_test",
+    "primary_and_secondary_arms",
+    "model_and_provider_pool",
+    "upstream_workload_revisions_and_input_digests",
+    "task_split_namespace_membership_and_counts",
+    "primary_outcomes",
+    "non_inferiority_margins",
+    "divergence_exposure_budget_value",
+    "minimum_paired_evidence",
+    "plan_profile_window_size",
+    "production_shadow_rate",
+    "statistical_tests_and_multiplicity_control",
+    "guard_rate_grid_and_task_damage_limit",
+    "retry_exclusion_and_stopping_rules",
+    "artifact_contract"
+  ],
+  "split_invariants": {
+    "tau2-banking-knowledge": {
+      "counts_calibration_pilot_confirmatory": [
+        20,
+        20,
+        57
+      ],
+      "ordered_id_digest": "915b4717167618cf6d2da855450fe7cb5143a7c4be710e7baed5d80d898c417b"
+    },
+    "swebench-verified": {
+      "counts_calibration_pilot_confirmatory": [
+        30,
+        30,
+        90
+      ],
+      "not_selected": 350,
+      "ordered_id_digest": "5f649dc4518274c7a605cce1a5dcbf451eb1e14cba30a6dc2a032b84731ca9e4"
+    },
+    "osworld-v2": {
+      "counts_calibration_pilot_confirmatory": [
+        22,
+        22,
+        64
+      ],
+      "ordered_id_digest": "ec2798cd66968cf6735af9e4b5deafca38c006532df96fa0c3d6d9f08c273556"
+    }
+  },
+  "implementation_evidence": [
+    {
+      "path": "bench/repro/complete-plan-guard-persistence-preflight-2026-09-03.json",
+      "sha256": "4c661f62c717e3711a929f70e272393bb02e49ba4f4cc62aef92e9bf845967ab",
+      "paper_evidence": false
+    },
+    {
+      "path": "bench/repro/complete-plan-guard-input-validation-preflight-2026-09-03.json",
+      "sha256": "2776bd30ef2152c55c4eb734d4dc609a71a2f9ec4a53f4b8de4306ebeda524ea",
+      "paper_evidence": false
+    },
+    {
+      "path": "bench/repro/complete-plan-guard-overhead-preflight-2026-09-03.json",
+      "sha256": "a18d65ea28eddcbdbd3158e61817db6bbd1650873a294291166f2f72e21ec850",
+      "paper_evidence": false
+    },
+    {
+      "path": "bench/repro/bounded-exploration-preflight-2026-09-03.json",
+      "sha256": "84f2747950632f03def8810a6a8e81bc091ce3bd422d12bb31c375c5b46fabae",
+      "paper_evidence": false
+    },
+    {
+      "path": "bench/repro/joint-planner-preflight-2026-09-04.json",
+      "sha256": "f7e424d3cdf450ed0101d6823e508cffa760864274af98b530ec545fe8ebfa06",
+      "paper_evidence": false
+    },
+    {
+      "path": "bench/repro/live-exploration-preflight-2026-09-04.json",
+      "sha256": "8ffb72521d298e86ed7b797306c0172bf74e73b74f7b7c1576aae388f5473370",
+      "paper_evidence": false
+    }
+  ],
+  "implementation_status": {
+    "paper_evidence": false,
+    "runtime_capability_added": true,
+    "runtime_scope": "canonical execution-plan identity, exact per-plan profiles, provider-safe model dispatch, live constrained selection, exact complete-plan exposure guards, and bounded reference-visible exploration",
+    "parent_feature": "bd-323l.6",
+    "completed_children": [
+      "bd-323l.6.1",
+      "bd-323l.6.2",
+      "bd-323l.6.3",
+      "bd-323l.6.4",
+      "bd-323l.6.7",
+      "bd-323l.6.8",
+      "bd-323l.6.9"
+    ],
+    "remaining_children": [
+      "bd-323l.6.5",
+      "bd-323l.6.6",
+      "bd-323l.6.10",
+      "bd-323l.6.11",
+      "bd-323l.6.12"
+    ]
+  },
+  "outcome_blindness_assertion": "Revision 12 was frozen before any Stage E1, C, P, or T execution and before any pilot or confirmatory outcome inspection. It updates mechanism status and corrects the exposure comparison operator from stale prose to the already-implemented contract; all cited preflights remain non-paper Stage E0 evidence."
+}

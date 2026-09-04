@@ -1,7 +1,7 @@
 # Agentc MLSys 2027 staged evaluation protocol
 
 - Protocol: `agentc-mlsys2027-v1`
-- Revision: 11
+- Revision: 12
 - Initial freeze: 2026-09-03
 - Revision 2 freeze: 2026-09-03
 - Revision 3 freeze: 2026-09-03
@@ -13,6 +13,7 @@
 - Revision 9 freeze: 2026-09-03
 - Revision 10 freeze: 2026-09-03
 - Revision 11 freeze: 2026-09-03
+- Revision 12 freeze: 2026-09-04
 - Revision 2 record: [mlsys-2027-protocol-revision-2.json](mlsys-2027-protocol-revision-2.json)
 - Revision 3 record: [mlsys-2027-protocol-revision-3.json](mlsys-2027-protocol-revision-3.json)
 - Revision 4 record: [mlsys-2027-protocol-revision-4.json](mlsys-2027-protocol-revision-4.json)
@@ -23,6 +24,7 @@
 - Revision 9 record: [mlsys-2027-protocol-revision-9.json](mlsys-2027-protocol-revision-9.json)
 - Revision 10 record: [mlsys-2027-protocol-revision-10.json](mlsys-2027-protocol-revision-10.json)
 - Revision 11 record: [mlsys-2027-protocol-revision-11.json](mlsys-2027-protocol-revision-11.json)
+- Revision 12 record: [mlsys-2027-protocol-revision-12.json](mlsys-2027-protocol-revision-12.json)
 - Runtime baseline before this protocol: `4250a01`
 - Revision 2 runtime baseline: `27f896f`
 - Revision 3 runtime baseline: `6339d79`
@@ -34,6 +36,7 @@
 - Revision 9 contract baseline: `75dcc97`
 - Revision 10 implementation baseline: `0fac352`
 - Revision 11 pre-change implementation baseline: `b4471c4`
+- Revision 12 implementation baseline: `c34a45d`
 - Target decision date: 2026-10-01
 - Target venue deadline: 2026-10-30 20:00 UTC
 
@@ -99,14 +102,23 @@ LiteLLM provider-prefix convention. The correction occurred before any Stage
 E1, C, P, or T execution or outcome inspection. It changes no task, outcome,
 margin, statistical test, arm semantics, or stopping rule.
 
+Revision 12 was issued after Stage E0 implementation and review showed that the
+protocol's blocker table still described exact complete-plan guard attribution,
+live joint selection, and bounded exploration as unimplemented. Those paths are
+now executable and have deterministic no-network mechanism evidence. This
+revision corrects implementation status only; it changes no workload, split,
+model, arm, threshold, outcome, statistical test, or stopping rule, and it does
+not convert engineering preflights into paper evidence.
+
 Revisions 2 through 10 do not change the `agentc-mlsys2027-v1` split namespace,
 task membership, workloads, models, outcomes, margins, inference, or stopping
 rules. Revision 9 deliberately changes the arms and gates before calibration;
 Revision 10 corrects only the evidence-retention and correlation mechanism.
 Revision 11 changes only the unavailable hosted-open-weight model pair before
-any task outcome exists. Their machine-readable records enumerate the changes.
-Earlier revision records enumerate the runtime-contract changes and engineering
-evidence that triggered them.
+any task outcome exists. Revision 12 changes no frozen experimental item and
+only reconciles the document with the landed runtime. Their machine-readable
+records enumerate the changes. Earlier revision records enumerate the runtime-
+contract changes and engineering evidence that triggered them.
 
 ## 1. Change control and blinding
 
@@ -477,6 +489,19 @@ user-visible and the reference plan is sampled for drift detection. A changed
 call-site shape, tool schema, provider protocol, model version, or rewrite
 implementation version starts a cold profile.
 
+Revision 12 records that this production path is now executable. The live FFI
+enumerates bounded compatible complete plans, attaches only exact current
+profiles and guard state, and invokes the constrained selector. When all plans
+are cold, the immutable reference remains user-visible while at most one
+durably leased candidate runs off-path. Completion persists candidate cost,
+latency, and paired divergence against the exact plan identity; failure or
+shutdown closes the lease without retrying the reference. The user path
+abstains rather than waiting for a contended cost database, and total planning
+work remains subject to `max_overhead_ms`. Production exploration currently has
+only an assistant-text comparator, so tool-bearing and streaming calls receive
+no cold candidate. This limitation remains visible in admission and does not
+authorize a tool-call safety claim.
+
 ### 6.1 Guard-threshold selection
 
 For each provider/model pair and complete plan family, Stage C evaluates
@@ -728,8 +753,8 @@ only if all of the following hold on held-out scenarios:
 
 The unlabeled runtime separately tracks sampled **divergence exposure**
 `E_t = sum(max(0, divergence_i - threshold))` and durably disables a complete
-plan when `E_t > 1.0` within 24 hours. This is an observable proxy contract, not
-a claim that Agentc sees task quality online. One composed-plan comparison
+plan when `E_t >= 1.0` within 24 hours. This is an observable proxy contract,
+not a claim that Agentc sees task quality online. One composed-plan comparison
 updates one complete-plan guard; it is not copied into every constituent rule's
 causal history.
 
@@ -754,6 +779,17 @@ raw sampled divergence against a fixed threshold and requires five consecutive
 breaches. Bounding the estimator therefore does not establish the controller's
 detection/false-disable frontier, the 2% operating point, the cumulative-damage
 contract, or durable-write overhead.
+
+Revision 12 records the separate complete-plan exposure guard now used by joint
+selection. Each paired comparison is bound by an opaque token to one exact
+call-site version, execution-plan identity, runtime version, and threshold. A
+composed outcome updates that complete plan once and is not copied into its
+constituent rules. Positive threshold excess accumulates in a newest-24-hour
+window; exposure at or above `1.0` durably disables that plan across restart.
+The compatibility five-breach controller remains only for identifiable solo-
+rule evidence. Stage E0 restart, input-validation, and overhead preflights
+validate these mechanics, not the task-damage frontier or the production 2%
+operating point required above.
 
 ## 12. Retry, exclusion, and stopping rules
 
@@ -844,7 +880,7 @@ No Stage C, P, or T result is admissible while its relevant blocker is open.
 | Bead | Blocked evidence |
 |---|---|
 | `bd-323l.5` | the broader compatibility/overhead matrix and additive-value experiment above native provider or serving optimizations remain incomplete; this blocks the competitive-position gate, not E1 interception of the frozen tau2/SWE-agent non-streaming paths. |
-| `bd-323l.6.3`, `bd-323l.6.5`--`bd-323l.6.7` | bounded exploration, counterfactual feedback, plan-level guard attribution, diagnostics, and the joint baseline harness are not yet implemented; no Stage C, P, or T result can support the revision-9 thesis until the applicable children close. |
+| `bd-323l.6.5`, `bd-323l.6.6`, `bd-323l.6.10`, `bd-323l.6.11` | the joint baseline/ablation harness, complete selection diagnostics, transformed-request routing check, and same-field composition accounting remain incomplete; no Stage C, P, or T result can support the revision-9 thesis until the applicable children close. Bounded live exploration and exact plan-level guard attribution are implemented Stage E0 mechanisms, not efficacy evidence. |
 | `bd-ez1k` | route-independent LiteLLM streaming is incomplete; this does not block the frozen non-streaming cells but blocks any framework-neutral streaming claim. |
 | `bd-8uxj` | shared helper call-site identity collapses distinct RAG stages; semantic call-site identity needs a general solution. |
 | `bd-3q3l` | the composition proxy destroys its own provenance tags and cannot validate provenance-dependent rewrites. |
@@ -961,3 +997,20 @@ request once when a routed dispatch fails. Sync and async no-network integration
 checks preserve native message/tool objects and mark fallbacks explicitly.
 These are engineering checks labeled `paper_evidence=false`; no task outcome
 informed the correction.
+
+Revision 12 retires `bd-323l.6.3`, `bd-323l.6.7`, and `bd-323l.6.9` as
+implementation blockers at Stage E0 without admitting a workload at Stage E1.
+The production entrypoint now invokes exact-profile joint selection; complete-
+plan divergence is attributed once, threshold-bound, exposure-gated, and
+restart-persistent; and cold candidates run through a durably bounded off-path
+provider call while the reference remains user-visible. Deterministic
+preflights cover guard persistence and input validation, live joint selection,
+bounded exploration accounting, adapter execution, and restart admission. The
+records are
+[complete-plan-guard-persistence-preflight-2026-09-03.json](complete-plan-guard-persistence-preflight-2026-09-03.json),
+[complete-plan-guard-input-validation-preflight-2026-09-03.json](complete-plan-guard-input-validation-preflight-2026-09-03.json),
+[joint-planner-preflight-2026-09-04.json](joint-planner-preflight-2026-09-04.json),
+and
+[live-exploration-preflight-2026-09-04.json](live-exploration-preflight-2026-09-04.json).
+All remain `paper_evidence=false`; the baseline harness, selection diagnostics,
+2% damage frontier, and held-out workload evidence remain open.

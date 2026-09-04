@@ -49,14 +49,16 @@ impl RewriteRule for AlwaysFires {
         true
     }
     fn propose(&self, call: &Call, _: &CallSiteProfile) -> Option<Proposal> {
+        let mut rewritten = call.clone();
+        rewritten.parameters.max_output_tokens = Some(64);
         Some(Proposal {
             rewritten: Plan::Rewritten {
                 rule: "AlwaysFires".into(),
-                call: call.clone(),
+                call: rewritten,
                 projected_savings_usd: 1.0,
             },
             projected_savings_usd: 1.0,
-            cost_driver: CostDriver::InputTokens,
+            cost_driver: CostDriver::OutputTokens,
             safety_check: Box::new(|_| true),
         })
     }

@@ -14,10 +14,11 @@
 //! (messages vs. max_output_tokens vs. model), so their rewrites commute.
 //!
 //! Note: `apply_rewrite` merges by field: model, max_output_tokens, and messages
-//! (by count change). Content-only message mutations (StructuredTruncation) are
-//! not carried through in the multi-rule path, so StructuredTruncation is marked
-//! explicitly unsafe against every rule it could otherwise co-select with — it
-//! only ever applies solo, where its full pruned rewrite is returned directly.
+//! (only a strict ordered deletion of the current messages). Content-only message
+//! mutations (StructuredTruncation) are not carried through in the multi-rule
+//! path, so StructuredTruncation is marked explicitly unsafe against every rule
+//! it could otherwise co-select with — it only ever applies solo, where its full
+//! pruned rewrite is returned directly.
 
 use crate::dag::Call;
 use crate::planner::{CostDriver, Plan, Proposal, RuleApplication};
@@ -102,7 +103,7 @@ pub fn enumerate_compatible_plans(
     let mut plans = Vec::new();
     let mut composable = Vec::new();
     for (index, (_name, proposal)) in proposals.iter().enumerate() {
-        if !(proposal.safety_check)(call) {
+        if !(proposal.safety_check)(call) || !proposal_changes_execution(call, proposal) {
             continue;
         }
         plans.push(proposal.rewritten.clone());
@@ -258,6 +259,10 @@ fn rewrite_changed_call(previous: &Call, next: &Call) -> bool {
 /// whose safety check passes. This preserves the V1 "first safety-check
 /// pass wins" invariant.
 pub fn compose_proposals(proposals: Vec<(String, Proposal)>, call: &Call) -> CompositionResult {
+    let proposals: Vec<_> = proposals
+        .into_iter()
+        .filter(|(_, proposal)| proposal_changes_execution(call, proposal))
+        .collect();
     if proposals.is_empty() {
         return passthrough();
     }
@@ -341,7 +346,11 @@ pub fn compose_proposals(proposals: Vec<(String, Proposal)>, call: &Call) -> Com
             continue;
         }
         if let Plan::Rewritten { call: rewritten, projected_savings_usd, .. } = &prop.rewritten {
-            current_call = apply_rewrite(&current_call, rewritten);
+            let next_call = apply_rewrite(&current_call, rewritten);
+            if !rewrite_changed_call(&current_call, &next_call) {
+                continue;
+            }
+            current_call = next_call;
             net_savings += projected_savings_usd;
             rules_applied.push(RuleApplication {
                 rule: name.clone(),
@@ -391,17 +400,26 @@ fn is_explicit_unsafe(a: &str, b: &str) -> bool {
     EXPLICIT_UNSAFE.iter().any(|(x, y)| (*x == a && *y == b) || (*x == b && *y == a))
 }
 
+fn proposal_changes_execution(original: &Call, proposal: &Proposal) -> bool {
+    match &proposal.rewritten {
+        Plan::PassThrough => false,
+        Plan::Rewritten { call, .. } => rewrite_changed_call(original, call),
+        Plan::Composed { rules, call, .. } => {
+            !rules.is_empty() && rewrite_changed_call(original, call)
+        }
+        Plan::Cached { .. } | Plan::Parallel { .. } => true,
+    }
+}
+
 /// Merge mutations from `proposed` into `current` by field.
 ///
-/// Merges model, max_output_tokens (takes tighter cap), and messages
-/// only when the proposed call has strictly fewer messages than the
-/// current (a drop). Expansions — proposed carrying the original message
-/// list after a prior rule already reduced it — are intentionally
-/// ignored so that a parameter-only rule (e.g. OutputBudget) can
-/// compose without undoing an earlier message-drop rule (e.g. StateDrop
-/// or ContextCompress). Content-only mutations (same count, different
-/// content) are likewise not merged — those must run solo or via a
-/// different composition strategy.
+/// Merges model, max_output_tokens (takes tighter cap), and messages only
+/// when the proposed call is a strict ordered deletion of the current call.
+/// Expansions, replacements, and original-derived alternatives that conflict
+/// with an earlier deletion are ignored. This prevents a later rule from
+/// undoing an earlier message-drop rule or receiving credit for a discarded
+/// mutation. Content-only mutations (same count, different content) likewise
+/// must run solo or use a different composition strategy.
 fn apply_rewrite(current: &Call, proposed: &Call) -> Call {
     let mut result = current.clone();
     if proposed.model != current.model {
@@ -412,7 +430,9 @@ fn apply_rewrite(current: &Call, proposed: &Call) -> Call {
         (None, Some(b)) => result.parameters.max_output_tokens = Some(b),
         _ => {}
     }
-    if proposed.messages.len() < current.messages.len() {
+    if proposed.messages.len() < current.messages.len()
+        && proposed.messages_are_ordered_subsequence_of(current)
+    {
         result.messages = proposed.messages.clone();
     }
     result
@@ -441,15 +461,49 @@ mod tests {
     }
 
     fn make_prop(name: &str, driver: CostDriver, savings: f32) -> (String, Proposal) {
-        let call = make_call();
+        let mut call = make_call();
+        let rewritten = match driver {
+            CostDriver::InputTokens => {
+                call.messages.pop();
+                Plan::Rewritten {
+                    rule: name.to_string(),
+                    call,
+                    projected_savings_usd: savings,
+                }
+            }
+            CostDriver::OutputTokens => {
+                call.parameters.max_output_tokens = Some(if name == "OutputBudget" {
+                    64
+                } else {
+                    32
+                });
+                Plan::Rewritten {
+                    rule: name.to_string(),
+                    call,
+                    projected_savings_usd: savings,
+                }
+            }
+            CostDriver::ModelPrice => {
+                call.model = "gpt-4o-mini".into();
+                Plan::Rewritten {
+                    rule: name.to_string(),
+                    call,
+                    projected_savings_usd: savings,
+                }
+            }
+            CostDriver::CallElimination => {
+                Plan::Cached { value: serde_json::json!({"cached": true}) }
+            }
+            CostDriver::Structural => Plan::Parallel {
+                rule: name.to_string(),
+                calls: vec![call],
+                projected_savings_usd: savings,
+            },
+        };
         (
             name.to_string(),
             Proposal {
-                rewritten: Plan::Rewritten {
-                    rule: name.to_string(),
-                    call: call.clone(),
-                    projected_savings_usd: savings,
-                },
+                rewritten,
                 projected_savings_usd: savings,
                 cost_driver: driver,
                 safety_check: Box::new(|_| true),
@@ -511,10 +565,15 @@ mod tests {
 
     #[test]
     fn joint_enumerator_omits_combinations_that_credit_a_discarded_mutation() {
-        let original = make_call();
+        let mut original = make_call();
+        original.messages.extend([
+            Message { role: "user".into(), content: "duplicate".into() },
+            Message { role: "user".into(), content: "details".into() },
+        ]);
         let mut deduplicated = original.clone();
-        deduplicated.messages.truncate(1);
-        let compressed_to_same_shape = deduplicated.clone();
+        deduplicated.messages.remove(2);
+        let mut incompatible_compression = original.clone();
+        incompatible_compression.messages.drain(..2);
 
         let plans = enumerate_compatible_plans(
             vec![
@@ -522,7 +581,7 @@ mod tests {
                     "ContextCompress",
                     CostDriver::InputTokens,
                     0.5,
-                    compressed_to_same_shape,
+                    incompatible_compression,
                 ),
                 rewritten_prop(
                     "PromptDedup",
@@ -592,24 +651,73 @@ mod tests {
 
     #[test]
     fn explicit_safe_pair_composes_despite_same_driver() {
+        let mut original = make_call();
+        original.messages.push(Message { role: "user".into(), content: "details".into() });
+        let mut deduplicated = original.clone();
+        deduplicated.messages.remove(1);
+        let mut compressed = original.clone();
+        compressed.messages.truncate(1);
         let proposals = vec![
-            make_prop("ContextCompress", CostDriver::InputTokens, 0.5),
-            make_prop("PromptDedup", CostDriver::InputTokens, 0.3),
+            rewritten_prop("ContextCompress", CostDriver::InputTokens, 0.5, compressed),
+            rewritten_prop("PromptDedup", CostDriver::InputTokens, 0.3, deduplicated),
         ];
-        let result = compose_proposals(proposals, &make_call());
+        let result = compose_proposals(proposals, &original);
         assert_eq!(result.rules_applied.len(), 2);
     }
 
     #[test]
     fn dependency_order_puts_dedup_before_compress() {
+        let mut original = make_call();
+        original.messages.push(Message { role: "user".into(), content: "details".into() });
+        let mut deduplicated = original.clone();
+        deduplicated.messages.remove(1);
+        let mut compressed = original.clone();
+        compressed.messages.truncate(1);
         let proposals = vec![
-            make_prop("ContextCompress", CostDriver::InputTokens, 0.8),
-            make_prop("PromptDedup", CostDriver::InputTokens, 0.2),
+            rewritten_prop("ContextCompress", CostDriver::InputTokens, 0.8, compressed),
+            rewritten_prop("PromptDedup", CostDriver::InputTokens, 0.2, deduplicated),
         ];
-        let result = compose_proposals(proposals, &make_call());
+        let result = compose_proposals(proposals, &original);
         // Even though ContextCompress ranked higher by savings, PromptDedup runs first.
         assert_eq!(result.rules_applied[0].rule, "PromptDedup");
         assert_eq!(result.rules_applied[1].rule, "ContextCompress");
+    }
+
+    #[test]
+    fn conflicting_same_field_rewrite_is_not_credited() {
+        let mut original = make_call();
+        original.messages.extend([
+            Message { role: "user".into(), content: "duplicate".into() },
+            Message { role: "user".into(), content: "details".into() },
+        ]);
+
+        let mut deduplicated = original.clone();
+        deduplicated.messages.remove(2);
+        let mut incompatible_compression = original.clone();
+        incompatible_compression.messages.drain(..2);
+
+        let proposals = vec![
+            rewritten_prop(
+                "ContextCompress",
+                CostDriver::InputTokens,
+                0.5,
+                incompatible_compression,
+            ),
+            rewritten_prop("PromptDedup", CostDriver::InputTokens, 0.3, deduplicated),
+        ];
+        let result = compose_proposals(proposals, &original);
+
+        assert_eq!(result.rules_applied.len(), 1);
+        assert_eq!(result.rules_applied[0].rule, "PromptDedup");
+        assert_eq!(result.net_savings_usd, 0.3);
+        match result.plan {
+            Plan::Rewritten { rule, call, .. } => {
+                assert_eq!(rule, "PromptDedup");
+                assert_eq!(call.messages.len(), 3);
+                assert_eq!(call.messages[0].role, "system");
+            }
+            other => panic!("expected effective solo rewrite, got {other:?}"),
+        }
     }
 
     #[test]
@@ -630,12 +738,14 @@ mod tests {
     #[test]
     fn failing_safety_check_skips_proposal() {
         let call = make_call();
+        let mut rewritten = call.clone();
+        rewritten.messages.pop();
         let bad_prop = (
             "BadRule".to_string(),
             Proposal {
                 rewritten: Plan::Rewritten {
                     rule: "BadRule".into(),
-                    call: call.clone(),
+                    call: rewritten,
                     projected_savings_usd: 1.0,
                 },
                 projected_savings_usd: 1.0,
@@ -645,6 +755,24 @@ mod tests {
         );
         let result = compose_proposals(vec![bad_prop], &call);
         assert!(matches!(result.plan, Plan::PassThrough));
+    }
+
+    #[test]
+    fn no_op_proposal_is_not_exposed_or_credited() {
+        let call = make_call();
+        let no_op = rewritten_prop("NoOp", CostDriver::InputTokens, 1.0, call.clone());
+
+        let plans = enumerate_compatible_plans(
+            vec![rewritten_prop("NoOp", CostDriver::InputTokens, 1.0, call.clone())],
+            &call,
+            3,
+        );
+        assert!(plans.is_empty());
+
+        let result = compose_proposals(vec![no_op], &call);
+        assert!(matches!(result.plan, Plan::PassThrough));
+        assert!(result.rules_applied.is_empty());
+        assert_eq!(result.net_savings_usd, 0.0);
     }
 
     #[test]

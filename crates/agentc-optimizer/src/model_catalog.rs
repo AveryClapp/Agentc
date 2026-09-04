@@ -278,18 +278,8 @@ fn ordered_deletion_bytes(
     transformed: &Call,
     reference_upper_bound: u32,
 ) -> Option<usize> {
-    if transformed.messages.len() > reference.messages.len() {
+    if !transformed.messages_are_ordered_subsequence_of(reference) {
         return None;
-    }
-
-    let mut next_reference = 0;
-    for retained in &transformed.messages {
-        let relative_index = reference.messages[next_reference..]
-            .iter()
-            .position(|original| {
-                original.role == retained.role && original.content == retained.content
-            })?;
-        next_reference += relative_index + 1;
     }
 
     let reference_bytes = reference

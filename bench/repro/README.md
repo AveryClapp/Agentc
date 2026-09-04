@@ -25,6 +25,7 @@ the historical guard results described below.
 | `crossmodel_selectivity.sh` | `tab:xmodel` (one row) | n=100; run once per model family (below) |
 | `../guard_overhead_bench.py` | fresh complete-plan feedback overhead | `python -m bench.guard_overhead_bench`; structured Stage E0 output, CPU/SQLite only, no API |
 | `../../crates/agentc-optimizer/examples/exploration_preflight.rs` | bounded exploration persistence and accounting | `cargo run -p agentc-optimizer --example exploration_preflight --quiet`; structured Stage E0 output, SQLite only, no API |
+| `../../crates/agentc-optimizer/examples/joint_planner_preflight.rs` | live exact-profile joint selection and planning overhead | `cargo run --release -p agentc-optimizer --example joint_planner_preflight --quiet`; structured Stage E0 output, no API |
 | `../paper_figures/fig9_metric_tradeoff.py` | renders `fig:metric-tradeoff` | reads the `gsweep_tradeoff_*` CSVs |
 
 ## Reproducing `tab:guard` + `fig:metric-tradeoff`
@@ -201,6 +202,30 @@ retried; the other candidate consumes the remaining four-call site budget. The
 call cap, $0.04 counterfactual cost, divergence exposure, and separately labeled
 task damage survive a database close and restart.
 
-This is Stage E0 mechanism evidence only. It issues no provider calls, does not
-exercise the still-unwired production joint selector, and cannot support a
+This is Stage E0 mechanism evidence only. It issues no provider calls and tests
+the controller independently of provider dispatch, so it cannot support a
 quality, cost-savings, or safety claim.
+
+### Live profiled joint-planner preflight
+
+The zero-network release preflight exercises the production planning function:
+
+```bash
+cargo run --release -p agentc-optimizer --example joint_planner_preflight --quiet
+```
+
+It warms a reference call site, enumerates the reference, routing-only,
+rewrite-only, and joint candidates, persists exact reference and joint profiles,
+reloads them after a SQLite restart, and repeatedly runs the same function used
+by the PyO3 interceptor. The committed
+[output](joint-planner-preflight-2026-09-04.json) contains three 20,000-call
+replications. All 60,000 decisions selected the one evidenced
+`OutputBudget + gpt-4o-mini` plan with the expected identity; no unrelated or
+reference identity was returned. Median p50 was 127.25 us and the largest p99
+was 303.833 us on the recorded arm64 development machine.
+
+The timing includes JSON decode/encode, rewrite proposal and bounded
+enumeration, model cross-product, canonical identity hashing, exact-profile and
+guard lookup, and constrained selection. It excludes providers, task quality,
+counterfactual calls, and concurrent SQLite writes. Accordingly it is Stage E0
+mechanism evidence, not support for savings, quality, or main-track efficacy.

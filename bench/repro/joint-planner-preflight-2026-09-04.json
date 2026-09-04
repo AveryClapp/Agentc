@@ -1,0 +1,102 @@
+{
+  "agentc_git_commit": "5b35acc054c0a4dd4e228a12a0e0eda83dbc12df",
+  "checks": {
+    "all_measured_calls_selected_exact_joint_plan": true,
+    "candidate_space_includes_reference_route_rewrite_and_joint": true,
+    "persisted_exact_profile_selected_after_restart": true,
+    "unexpected_identity_count": 0
+  },
+  "created_at_utc": "2026-09-04T04:06:22Z",
+  "excluded_scope": [
+    "provider dispatch",
+    "model output and task quality",
+    "counterfactual provider latency and billed cost",
+    "SQLite contention during profile flush",
+    "candidate spaces larger than four complete plans"
+  ],
+  "experiment_kind": "live_profiled_joint_planner_preflight",
+  "interpretation_limits": [
+    "This is a single-machine Stage E0 engineering measurement, not paper evidence.",
+    "The benchmark uses deterministic synthetic profiles and performs no network calls.",
+    "The timed scope includes JSON decode, proposal generation, bounded plan enumeration, identity hashing, exact-profile lookup, guard admission, constrained selection, and JSON encoding.",
+    "One pre-finalization development run returned the safe reference once for an uninstrumented reason; the finalized harness now counts reference fallbacks and three recorded replications observed none.",
+    "Hosted-model latency, billed savings, quality non-inferiority, and joint-planning value require the frozen Stage C/P/T protocol."
+  ],
+  "network_calls": 0,
+  "paper_evidence": false,
+  "replications": [
+    {
+      "exact_joint_selections": 20000,
+      "latency_us": {
+        "max": 3269.458,
+        "p50": 127.25,
+        "p95": 196.042,
+        "p99": 302.417
+      },
+      "safe_reference_fallbacks": 0,
+      "unexpected_identities": 0
+    },
+    {
+      "exact_joint_selections": 20000,
+      "latency_us": {
+        "max": 4115.209,
+        "p50": 128.333,
+        "p95": 181.5,
+        "p99": 303.833
+      },
+      "safe_reference_fallbacks": 0,
+      "unexpected_identities": 0
+    },
+    {
+      "exact_joint_selections": 20000,
+      "latency_us": {
+        "max": 546.167,
+        "p50": 126.334,
+        "p95": 143.125,
+        "p99": 280.792
+      },
+      "safe_reference_fallbacks": 0,
+      "unexpected_identities": 0
+    }
+  ],
+  "runtime": {
+    "architecture": "arm64",
+    "build_profile": "release",
+    "operating_system": "macOS 26.5",
+    "rustc": "1.94.1 (e408947bf 2026-03-25)"
+  },
+  "scenario": "live-profiled-joint-planner-preflight",
+  "schema_version": 1,
+  "settings": {
+    "candidate_count_including_reference": 4,
+    "measured_calls_per_replication": 20000,
+    "paired_evidence_for_selected_plan": 20,
+    "planner_kill_switch_ms": 5.0,
+    "reference_model": "gpt-4o",
+    "selected_model": "gpt-4o-mini-2024-07-18",
+    "selected_rewrites": [
+      "OutputBudget"
+    ],
+    "shadow_rate": 0.0,
+    "warmup_calls_per_replication": 1000
+  },
+  "stage": "E0",
+  "summary": {
+    "exact_joint_selections": 60000,
+    "p50_us_median_across_replications": 127.25,
+    "p99_us_max_across_replications": 303.833,
+    "p99_us_median_across_replications": 302.417,
+    "safe_reference_fallbacks": 0,
+    "unexpected_identities": 0
+  },
+  "timed_scope": [
+    "Call JSON deserialization",
+    "rule proposal and structural safety gates",
+    "bounded semantic rewrite combination enumeration",
+    "compatible model-target cross product",
+    "canonical complete-plan identity construction",
+    "current exact-profile and plan-guard lookup",
+    "constrained deterministic selection",
+    "selected Plan JSON serialization with opaque observation context"
+  ]
+}

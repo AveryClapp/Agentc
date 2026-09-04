@@ -1,7 +1,7 @@
 ---
 title: Optimizer
 status: draft
-last-updated: 2026-09-03
+last-updated: 2026-09-04
 ---
 
 # Optimizer
@@ -1196,6 +1196,8 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Forbidden, incompatible, disabled, and sufficiently observed plans are never leased | `exploration::tests::forbidden_incompatible_disabled_and_warm_candidates_never_run` |
 | The immutable reference plan is never leased as its own counterfactual | `exploration::tests::reference_plan_is_never_leased_as_its_own_counterfactual` |
 | Divergence observations remain distinct from evaluation-only task-quality labels | `exploration::tests::observation_and_task_quality_feedback_remain_distinct` |
+| Bounded enumeration emits every effective compatible subset and never credits a discarded rewrite | `composition::tests::joint_enumerator_*` |
+| The live FFI abstains without evidence, then selects only the exact persisted joint profile after restart | `ffi::tests::live_profiled_path_selects_only_the_exact_evidenced_joint_plan` |
 | A failed selected target retries the exact original request once | `tests/test_optimizer_glue.py::test_routed_failure_replays_exact_original` |
 
 `bench/guard_persistence_preflight.py` is the deterministic Stage E0 replay for
@@ -1229,12 +1231,23 @@ rolling site call cap, counterfactual cost accounting, and restart persistence
 without provider calls. It does not exercise live candidate generation and is
 permanently labeled `paper_evidence=false`.
 
+`crates/agentc-optimizer/examples/joint_planner_preflight.rs` exercises the live
+profile-backed production planning function after persisting and reloading one
+exact joint profile. It times JSON handling, bounded candidate enumeration,
+model-target crossing, identity construction, profile and guard lookup,
+selection, and response encoding. It performs no provider calls and is
+permanently labeled `paper_evidence=false`; the committed development-machine
+record is `bench/repro/joint-planner-preflight-2026-09-04.json`.
+
 ### Performance targets
 
 Plan benchmarks live in `bench/optimizer_bench.py`. The release-mode bounded
 window diagnostic lives in
 `crates/agentc-optimizer/examples/cost_model_window_preflight.rs` and remains
-Stage E0 engineering evidence rather than a paper benchmark.
+Stage E0 engineering evidence rather than a paper benchmark. The release-mode
+live joint-planner diagnostic above also remains Stage E0; its three recorded
+20,000-call replications had a 127.25 us median p50 and 303.833 us maximum p99
+for a four-candidate search on the recorded arm64 development machine.
 
 | Metric | Target | Measurement |
 |---|---|---|

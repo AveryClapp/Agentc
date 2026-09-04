@@ -267,7 +267,13 @@ def _measure_replication(
 
         audit_path = storage / "optimizer_audit.db"
         _native.optimize_flush()
-        first_measured_audit_id = e2e._max_audit_id(audit_path)
+        setup_attempted_rows = warmup + (
+            24 if scenario == "joint_admitted_rewrite" else 4
+        )
+        audit_writer_before_measurement = e2e._validated_audit_stats(
+            expected_attempted_rows=setup_attempted_rows
+        )
+        first_measured_audit_id = int(audit_writer_before_measurement["written_rows"])
         call_jsons = [
             (
                 sequence,
@@ -280,15 +286,9 @@ def _measure_replication(
         )
 
         _native.optimize_flush()
-        audit_writer = json.loads(_native.optimize_audit_stats())
-        if (
-            not audit_writer.get("available")
-            or audit_writer.get("pending_rows") != 0
-            or audit_writer.get("dropped_full_rows") != 0
-            or audit_writer.get("dropped_disconnected_rows") != 0
-            or audit_writer.get("write_failed_rows") != 0
-        ):
-            raise RuntimeError(f"audit writer did not drain cleanly: {audit_writer}")
+        audit_writer = e2e._validated_audit_stats(
+            expected_attempted_rows=setup_attempted_rows + calls_per_cell
+        )
 
         # Close the native writer before reading its WAL through Python's
         # separately linked SQLite driver. Under high thread counts that reader
@@ -392,6 +392,7 @@ def _measure_replication(
             "configure_us": configure_ns / 1_000.0,
             "first_cold_call_us": first_call_ns / 1_000.0,
             "audit_journal_mode": journal_mode,
+            "audit_writer_before_measurement": audit_writer_before_measurement,
             "audit_writer": audit_writer,
             "group_elapsed_ms": group_elapsed_ns / 1_000_000.0,
             "throughput_calls_per_second": (
@@ -677,6 +678,7 @@ def run(
             "The paired residual combines boundary, state lookup, audit-row construction/enqueue, clock quantization, and return conversion; it is not an audit-only timer.",
             "The build profile is operator-attested; the native extension hash pins the measured binary.",
             "The ordered audit flush and SQLite commit are outside the request-path clock; normal host scheduling remains inside it.",
+            "The harness derives its audit-id boundary from flushed native counters and opens Python's separately linked SQLite only after closing the native writer.",
         ],
     }
     return result, raw

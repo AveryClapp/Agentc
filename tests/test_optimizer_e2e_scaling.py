@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import bench.optimizer_e2e_scaling as scaling
 from bench.optimizer_e2e_scaling import (
     _partition_calls,
     _plan_result,
@@ -15,6 +16,45 @@ from bench.optimizer_e2e_scaling import (
     _write_raw,
     run,
 )
+
+
+def test_scaling_harness_closes_native_writer_before_python_sqlite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    writer_open = False
+    original_configure = scaling._native.optimize_configure
+    original_reset = scaling._native.optimize_reset
+    original_connect = scaling.sqlite3.connect
+
+    def configure(*args: object, **kwargs: object) -> str:
+        nonlocal writer_open
+        result = str(original_configure(*args, **kwargs))
+        writer_open = True
+        return result
+
+    def reset() -> None:
+        nonlocal writer_open
+        original_reset()
+        writer_open = False
+
+    def connect(*args: object, **kwargs: object) -> object:
+        assert not writer_open, "Python SQLite opened while native WAL writer was live"
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(scaling._native, "optimize_configure", configure)
+    monkeypatch.setattr(scaling._native, "optimize_reset", reset)
+    monkeypatch.setattr(scaling.sqlite3, "connect", connect)
+
+    scaling._measure_replication(
+        root=tmp_path,
+        scenario="joint_reference",
+        target_bytes=4_096,
+        concurrency=2,
+        replication=1,
+        calls_per_cell=8,
+        warmup=2,
+        max_overhead_ms=1_000.0,
+    )
 
 
 @pytest.mark.parametrize("target_bytes", [4_096, 8_192, 65_536])

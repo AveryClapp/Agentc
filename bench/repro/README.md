@@ -178,6 +178,6 @@ Committed outputs from the corrected harnesses are
 [persistence](complete-plan-guard-persistence-preflight-2026-09-03.json),
 [input validation](complete-plan-guard-input-validation-preflight-2026-09-03.json),
 and [overhead](complete-plan-guard-overhead-preflight-2026-09-03.json). On the
-recorded development-machine run, 2,000 fresh feedback samples had a 304.0 us
-mean and 401.4 us p99, plus a separately measured 5.1 us divergence metric.
+recorded development-machine run, 2,000 fresh feedback samples had a 306.2 us
+mean and 412.3 us p99, plus a separately measured 5.0 us divergence metric.
 Those values characterize this E0 run only.

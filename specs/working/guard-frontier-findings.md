@@ -45,8 +45,8 @@ claim until a release-mode, end-to-end, contention-aware measurement is run.
 Shadow inference remains excluded from this local diagnostic and must be
 accounted as a real provider call.
 
-The corrected development-machine E0 run (2,000 fresh tokens) measured 304.0us
-mean / 401.4us p99 for accepted complete-plan feedback and 5.1us mean for the
+The corrected development-machine E0 run (2,000 fresh tokens) measured 306.2us
+mean / 412.3us p99 for accepted complete-plan feedback and 5.0us mean for the
 separate normalized-containment metric. The committed structured output is
 `bench/repro/complete-plan-guard-overhead-preflight-2026-09-03.json`; these
 numbers characterize one local run and are not promoted into the paper.

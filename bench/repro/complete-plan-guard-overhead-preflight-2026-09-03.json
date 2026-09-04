@@ -1,6 +1,6 @@
 {
-  "agentc_git_commit": "35d042ca9152f77bf7d98e31ab9642898adea41b",
-  "created_at_utc": "2026-09-04T02:54:10.085635+00:00",
+  "agentc_git_commit": "b0b19994aa2f68fa1511b06a7397224a2d413bd4",
+  "created_at_utc": "2026-09-04T02:55:44.943667+00:00",
   "excluded_scope": [
     "primary provider call",
     "shadow provider call",
@@ -16,15 +16,15 @@
   ],
   "measurements_us": {
     "divergence_metric": {
-      "mean_us": 5.06920018,
-      "p50_us": 5.0,
-      "p99_us": 6.75
+      "mean_us": 4.98620532,
+      "p50_us": 4.875,
+      "p99_us": 6.917
     },
-    "estimated_combined_mean": 309.02352468,
+    "estimated_combined_mean": 311.22507432000003,
     "fresh_complete_plan_feedback": {
-      "mean_us": 303.9543245,
-      "p50_us": 299.917,
-      "p99_us": 401.375
+      "mean_us": 306.238869,
+      "p50_us": 300.0,
+      "p99_us": 412.292
     }
   },
   "network_calls": 0,
@@ -58,7 +58,9 @@
     "divergence_exposure": 0.0,
     "divergence_threshold": 0.1,
     "legacy_rule_rows": 0,
+    "lifetime_paired_observations": 2100,
     "plan_guard_rows": 1,
-    "positive_exposure_events": 0
+    "positive_exposure_events": 0,
+    "retained_paired_observations": 50
   }
 }

@@ -41,7 +41,7 @@ authoritative in `crates/agentc-optimizer/src/wiring.rs`; this table must match 
 | `ParallelBranch` | Structural | ≥2 consecutive calls with disjoint input dependencies | Emit `Plan::Parallel` (observability only; the latency win comes from the caller's dispatcher). |
 | `ModelDowngrade` | ModelPrice | Call site's outputs are consistently simple | Route to a cheaper model with the same interface. |
 | `StateDrop` | InputTokens | Prompt contains agent state fields that no subsequent call in the window reads | Drop the unused fields before dispatch. |
-| `PromptDedup` | InputTokens | Near-duplicate message segments (Jaccard ≥ 0.92) | Keep the highest-IDF copy, drop the rest. |
+| `PromptDedup` | InputTokens | Same-role near-duplicate message segments (Jaccard ≥ 0.92) | Keep the highest-IDF copy per role, drop the rest. |
 | `OutputBudget` | OutputTokens | Call site has a stable output-length distribution | Cap `max_output_tokens` at p99 to prevent runaway generation. |
 | `StructuredTruncation` | InputTokens | Tool-output messages with unreferenced JSON fields | Project out fields no downstream call reads. |
 | `DeadOutputTruncation` | OutputTokens | Output feeds a branch that is never read | Cap output length on the dead branch. |
@@ -645,6 +645,17 @@ plan is safe or near-additive on a different model.
 - **Rewrite:** `Plan::Rewritten` with the identified state fields removed from `messages`.
 - **Projection:** `cost_usd.mean * dropped_state_fraction`.
 
+#### `PromptDedup`
+
+- **Applies when:** At least two messages with the same exact role contain at
+  least 20 tokens each and have token-set Jaccard similarity ≥ 0.92.
+- **Safety check:** Messages with different roles never enter the same duplicate
+  group. `DepSource::UserInput` messages are never dropped, and at least two
+  messages survive the rewrite.
+- **Rewrite:** Retain the highest-IDF message in each same-role duplicate group
+  and emit `Plan::Rewritten` with the remaining ordered messages.
+- **Projection:** `cost_usd.mean * dropped_input_fraction`.
+
 ### Plan risk, exploration, and fallback
 
 Every non-reference plan has a plan-level divergence threshold selected on the
@@ -1103,8 +1114,9 @@ Every optimizer path is wrapped to fail open:
 2. **Rule panics** → the Rust FFI catches the planner panic and returns
    `PassThrough`; no candidate from that planning attempt is dispatched.
 3. **Cost-model DB corruption** → in-memory cache continues; persistence is disabled until restart.
-4. **User-visible plan dispatch fails** (e.g., downgraded model is unavailable)
-   → executor catches, retries the original call once, and records the fallback.
+4. **User-visible plan dispatch fails** (e.g., a downgraded model is unavailable
+   or an Anthropic rewrite changes its top-level system prompt) → executor
+   catches, retries the exact original call once, and records the fallback.
 5. **Initial exploration dispatch fails** → the already-completed reference is
    returned unchanged, the lease is failed, and the reference is not retried.
 6. **Shadow-mode execution fails** → the primary result still returns;
@@ -1205,6 +1217,8 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | `ParallelBranch` requires disjoint deps | `tests/rules/parallel_branch.rs` |
 | `ModelDowngrade` waits for ≥ 20 shadow samples before committing | `tests/rules/model_downgrade.rs` |
 | `StateDrop` preserves system prompt | `tests/rules/state_drop.rs` |
+| `PromptDedup` never collapses messages across roles and retains a system-role copy | `rules::prompt_dedup::tests::identical_text_across_roles_is_not_deduplicated`, `rules::prompt_dedup::tests::duplicate_system_messages_retain_the_system_role` |
+| Anthropic text rewrites preserve the exact top-level system prompt or replay the original once | `tests/test_optimizer_glue.py::test_anthropic_system_removal_fails_closed_to_exact_original`, `tests/test_optimizer_glue.py::test_anthropic_system_replacement_or_duplication_is_rejected` |
 | Budget-exceeded rule auto-disables | `tests/accuracy_budget.rs` |
 | Auto-disabled rule re-enables after 24h | `tests/accuracy_budget.rs` |
 | Optimizer FFI panic yields PassThrough | `tests/fail_open.rs` |

@@ -2,9 +2,11 @@
 //!
 //! When an agent appends the same system instructions or tool descriptions
 //! across turns, near-duplicate messages (token Jaccard ≥ threshold) are
-//! deduplicated to a single copy. The retained copy is the one with the
-//! highest IDF score — i.e. the copy whose tokens are most distinctive
-//! relative to the surrounding messages.
+//! deduplicated to a single copy within the same semantic role. The retained
+//! copy is the one with the highest IDF score — i.e. the copy whose tokens are
+//! most distinctive relative to the surrounding messages. Text in different
+//! roles is never interchangeable: a system instruction is not equivalent to
+//! the same bytes in a user or assistant message.
 //!
 //! Compiler analog: common subexpression elimination. The repeated message
 //! is the common subexpression; we hoist it to a single occurrence.
@@ -62,6 +64,9 @@ impl RewriteRule for PromptDedupRule {
                 if tokens[j].len() < MIN_TOKEN_COUNT {
                     continue;
                 }
+                if call.messages[i].role != call.messages[j].role {
+                    continue;
+                }
                 if jaccard(&tokens[i], &tokens[j]) >= JACCARD_THRESHOLD {
                     return true;
                 }
@@ -112,6 +117,9 @@ impl RewriteRule for PromptDedupRule {
             let mut group: Vec<usize> = vec![i];
             for j in (i + 1)..call.messages.len() {
                 if tokens[j].len() < MIN_TOKEN_COUNT {
+                    continue;
+                }
+                if call.messages[i].role != call.messages[j].role {
                     continue;
                 }
                 if group_of[j].is_some() {
@@ -304,6 +312,42 @@ mod tests {
         match &prop.rewritten {
             Plan::Rewritten { call, .. } => assert_eq!(call.messages.len(), 2),
             _ => panic!("expected Rewritten"),
+        }
+    }
+
+    #[test]
+    fn identical_text_across_roles_is_not_deduplicated() {
+        let blob = long("safety policy ");
+        let call = make_call(&[
+            ("system", &blob),
+            ("user", &blob),
+            ("assistant", "short anchor"),
+        ]);
+        let rule = PromptDedupRule::default();
+
+        assert!(!rule.applies(&call, &hot_profile()));
+        assert!(rule.propose(&call, &hot_profile()).is_none());
+    }
+
+    #[test]
+    fn duplicate_system_messages_retain_the_system_role() {
+        let blob = long("repeated system policy ");
+        let call = make_call(&[
+            ("system", &blob),
+            ("system", &blob),
+            ("user", "short anchor"),
+        ]);
+        let rule = PromptDedupRule::default();
+
+        assert!(rule.applies(&call, &hot_profile()));
+        let proposal = rule.propose(&call, &hot_profile()).expect("must fire");
+        match proposal.rewritten {
+            Plan::Rewritten { call, .. } => {
+                assert_eq!(call.messages.len(), 2);
+                assert_eq!(call.messages[0].role, "system");
+                assert_eq!(call.messages[0].content, blob);
+            }
+            other => panic!("expected Rewritten, got {other:?}"),
         }
     }
 

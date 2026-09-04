@@ -261,6 +261,10 @@ def test_one_command_emits_complete_raw_manifest_and_analysis(tmp_path: Path) ->
             "latency_total_delta_ms_vs_reference",
         ):
             assert reference[field] == {"estimate": 0.0, "low": 0.0, "high": 0.0}
+        synergy = result["interaction"]["cost_synergy_usd_per_task"]["estimate"]
+        assert result["negative_regimes"]["interaction_not_positive"] is (
+            synergy <= 0.0
+        )
 
     lines = (output / "raw-records.jsonl").read_text().splitlines()
     records = [json.loads(line) for line in lines]

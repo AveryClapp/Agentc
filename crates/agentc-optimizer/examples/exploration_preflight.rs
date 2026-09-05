@@ -156,6 +156,7 @@ fn candidate(
             execution_plan_id: ExecutionPlanId::parse(plan_digit.to_string().repeat(64))?,
         },
         paired_observations: 0,
+        refresh_required: false,
         request_compatible: true,
         forbidden: false,
         disabled: false,

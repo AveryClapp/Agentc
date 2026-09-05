@@ -1,7 +1,7 @@
-//! Persistent, bounded exploration for cold execution plans.
+//! Persistent, bounded exploration for cold or refresh-requiring execution plans.
 //!
 //! The controller never chooses a user-visible candidate. Every decision
-//! returns the immutable reference result and may additionally lease one cold
+//! returns the immutable reference result and may additionally lease one eligible
 //! plan for counterfactual execution. A lease is committed to SQLite before
 //! provider work starts, so crashes cannot erase spend from the rolling cap.
 //! Output divergence and optional evaluation-only task-quality labels remain
@@ -23,7 +23,7 @@ pub const EXPLORATION_WINDOW_US: i64 = 24 * 60 * 60 * 1_000_000;
 pub const DEFAULT_EXPLORATION_CALL_CAP: u32 = 20;
 /// Maximum live counterfactuals at one call site.
 pub const DEFAULT_CONCURRENT_COUNTERFACTUAL_CAP: u32 = 1;
-/// Evidence count at which a plan is no longer a cold exploration candidate.
+/// Evidence count at which only stale/rejected plans remain exploration candidates.
 pub const DEFAULT_EXPLORATION_EVIDENCE_TARGET: u32 = 20;
 /// Conservative duration after which a lost lease no longer consumes a
 /// concurrency slot. It still consumes one call from the rolling spend cap.
@@ -137,6 +137,10 @@ impl ExplorationPolicy {
 pub struct ExplorationCandidate {
     pub key: PlanProfileKey,
     pub paired_observations: u32,
+    /// Current admission rejects stale or excessive-divergence evidence. This
+    /// permits a new comparison past the evidence target, never a user-visible
+    /// dispatch or bypass of request, disable, exposure, or spending limits.
+    pub refresh_required: bool,
     pub request_compatible: bool,
     pub forbidden: bool,
     pub disabled: bool,
@@ -371,7 +375,8 @@ impl ExplorationController {
         for candidate in candidates {
             if candidate.key.call_site_version != *call_site_version
                 || candidate.key.execution_plan_id == *reference_plan_id
-                || candidate.paired_observations >= self.policy.evidence_target
+                || (candidate.paired_observations >= self.policy.evidence_target
+                    && !candidate.refresh_required)
                 || !candidate.request_compatible
                 || candidate.forbidden
                 || candidate.disabled
@@ -988,6 +993,7 @@ mod tests {
                 .unwrap(),
             },
             paired_observations: 0,
+            refresh_required: false,
             request_compatible: true,
             forbidden: false,
             disabled: false,
@@ -1113,6 +1119,98 @@ mod tests {
             .unwrap(),
             0
         );
+    }
+
+    #[test]
+    fn refresh_never_bypasses_candidate_safety_filters() {
+        let call_site = site(14);
+        let mut refresh = candidate(&call_site, 1);
+        refresh.paired_observations = policy().evidence_target;
+        refresh.refresh_required = true;
+        for blocked in 0..8 {
+            let mut candidate = refresh.clone();
+            match blocked {
+                0 => candidate.forbidden = true,
+                1 => candidate.request_compatible = false,
+                2 => candidate.disabled = true,
+                3 => candidate.divergence_exposure = policy().divergence_exposure_budget,
+                4 => candidate.divergence_exposure = f64::NAN,
+                5 => candidate.divergence_threshold = f64::NAN,
+                6 => candidate.key.call_site_version = site(15),
+                7 => candidate.key.execution_plan_id = reference_plan_id(),
+                _ => unreachable!(),
+            }
+            let mut conn = connection();
+            let decision = ExplorationController::with_policy(policy()).unwrap()
+                .decide_and_reserve(&mut conn, &call_site, &reference_plan_id(),
+                    &[candidate], NOW_US);
+            assert!(decision.return_reference);
+            assert!(decision.counterfactual.is_none(), "safety filter {blocked}");
+            assert_eq!(decision.reason, ExplorationReason::NoEligibleCandidate);
+        }
+    }
+
+    #[test]
+    fn refresh_keeps_concurrency_and_durable_call_caps() {
+        let call_site = site(16);
+        let mut refresh = candidate(&call_site, 1);
+        refresh.paired_observations = policy().evidence_target;
+        refresh.refresh_required = true;
+        let candidates = [refresh];
+        let mut conn = connection();
+        for attempt in 0..policy().max_calls_per_site {
+            let controller = ExplorationController::with_policy(policy()).unwrap();
+            let now_us = NOW_US + i64::from(attempt) * 2;
+            let lease = controller.decide_and_reserve(&mut conn, &call_site,
+                &reference_plan_id(), &candidates, now_us).counterfactual.unwrap();
+            let concurrent = controller.decide_and_reserve(&mut conn, &call_site,
+                &reference_plan_id(), &candidates, now_us);
+            assert!(concurrent.return_reference);
+            assert!(concurrent.counterfactual.is_none());
+            assert_eq!(concurrent.reason, if attempt + 1 == policy().max_calls_per_site {
+                ExplorationReason::CallCapExhausted
+            } else {
+                ExplorationReason::ConcurrencyCapReached
+            });
+            controller.complete(&mut conn, &lease, &observation_feedback(0.0), now_us + 1).unwrap();
+        }
+        let capped = ExplorationController::with_policy(policy()).unwrap()
+            .decide_and_reserve(&mut conn, &call_site, &reference_plan_id(),
+                &candidates, NOW_US + 10);
+        assert!(capped.counterfactual.is_none());
+        assert_eq!(capped.reason, ExplorationReason::CallCapExhausted);
+    }
+
+    #[test]
+    fn refresh_respects_persisted_exposure_and_optional_task_damage_independently() {
+        for labeled_damage in [false, true] {
+            let call_site = site(17);
+            let mut refresh = candidate(&call_site, 1);
+            refresh.paired_observations = policy().evidence_target;
+            refresh.refresh_required = true;
+            let candidates = [refresh];
+            let mut conn = connection();
+            let controller = ExplorationController::with_policy(policy()).unwrap();
+            let lease = controller.decide_and_reserve(&mut conn, &call_site,
+                &reference_plan_id(), &candidates, NOW_US).counterfactual.unwrap();
+            let feedback = CounterfactualFeedback {
+                divergence: if labeled_damage { 0.0 } else { 0.7 },
+                label: if labeled_damage {
+                    CounterfactualLabel::TaskQuality { reference_quality: 1.0, candidate_quality: 0.0 }
+                } else {
+                    CounterfactualLabel::ObservationOnly
+                },
+                ..observation_feedback(0.0)
+            };
+            controller.complete(&mut conn, &lease, &feedback, NOW_US + 1).unwrap();
+            // The caller still supplies zero exposure: the persisted meter must win.
+            let blocked = ExplorationController::with_policy(policy()).unwrap()
+                .decide_and_reserve(&mut conn, &call_site, &reference_plan_id(),
+                    &candidates, NOW_US + 2);
+            assert!(blocked.return_reference);
+            assert!(blocked.counterfactual.is_none());
+            assert_eq!(blocked.reason, ExplorationReason::NoEligibleCandidate);
+        }
     }
 
     #[test]

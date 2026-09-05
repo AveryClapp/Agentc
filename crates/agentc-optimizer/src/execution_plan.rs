@@ -480,7 +480,8 @@ pub fn select_candidate<'a>(
     }
 }
 
-fn rejection_reason(
+/// Shared admission classification; callers must validate the policy first.
+pub(crate) fn rejection_reason(
     candidate: &CandidatePlan,
     policy: &SelectionPolicy,
 ) -> Option<CandidateRejectionReason> {

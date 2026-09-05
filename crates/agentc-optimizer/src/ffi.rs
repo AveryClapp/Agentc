@@ -25,7 +25,8 @@ use crate::cost_model::{CostModel, CostModelUpdate};
 use crate::dag::{Call, DepSource, Outcome};
 use crate::diagnostics::{attach_planner_diagnostics, PlannerDecisionDiagnostics};
 use crate::execution_plan::{
-    select_candidate, CachePolicy, CandidatePlan, ExecutionPlanSpec, PlanAdmission, PlanEstimate,
+    rejection_reason, select_candidate, CachePolicy, CandidatePlan, CandidateRejectionReason,
+    ExecutionPlanSpec, PlanAdmission, PlanEstimate,
     RewriteApplication, RewriteOrdering, ValidationPolicy,
     EXECUTION_PLAN_SCHEMA_VERSION,
 };
@@ -332,7 +333,7 @@ pub fn optimize_profiled_plan(
     .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
 }
 
-/// Attach at most one durably reserved cold-plan counterfactual to a
+/// Attach at most one durably reserved cold/refresh-plan counterfactual to a
 /// user-visible reference plan.
 ///
 /// The returned top-level Plan remains `pass_through`. Python sees the
@@ -378,6 +379,18 @@ pub fn reserve_profiled_exploration(
             return primary_plan_json.to_string();
         };
 
+        let selection_policy = opt.config().selection_policy(now_us);
+        if selection_policy.validate().is_err() {
+            return primary_plan_json.to_string();
+        }
+        let reference_profile = plan_profiles.get(
+            &reference_context.key, &reference_context.runtime_version);
+        let shadow_rate = if opt.config().shadow_rate.is_finite() {
+            f64::from(opt.config().shadow_rate.clamp(0.0, 1.0))
+        } else {
+            0.02
+        };
+
         let mut controller_candidates = Vec::new();
         let mut executable = Vec::new();
         let mut seen = HashSet::new();
@@ -400,13 +413,27 @@ pub fn reserve_profiled_exploration(
             ) else {
                 continue;
             };
-            let paired_observations = plan_profiles
-                .get(&descriptor.context.key, &descriptor.context.runtime_version)
+            let profile = plan_profiles
+                .get(&descriptor.context.key, &descriptor.context.runtime_version);
+            let paired_observations = profile.as_ref()
                 .map(|profile| profile.paired_observations)
                 .unwrap_or(0);
+            let estimate = profile.as_ref().and_then(|profile| {
+                reference_profile.as_ref().and_then(|reference| {
+                    estimate_plan(profile, reference, shadow_rate,
+                        f64::from(opt.config().max_overhead_ms.max(0.0)))
+                })
+            });
+            let refresh_required = CandidatePlan::new(
+                descriptor.spec.clone(), estimate, admission.clone())
+                .map(|candidate| matches!(rejection_reason(&candidate, &selection_policy),
+                    Some(CandidateRejectionReason::StaleProfile { .. }
+                        | CandidateRejectionReason::DivergenceExceeded { .. })))
+                .unwrap_or(false);
             controller_candidates.push(ExplorationCandidate {
                 key: descriptor.context.key.clone(),
                 paired_observations,
+                refresh_required,
                 request_compatible: admission.request_compatible,
                 forbidden: false,
                 disabled: admission.disabled,
@@ -1344,6 +1371,124 @@ mod tests {
             .unwrap();
         assert_eq!(snapshot.calls_in_window, 1);
         assert_eq!(snapshot.active_leases, 1);
+    }
+
+    fn seed_refresh_profiles(
+        profiles: &PlanProfiles,
+        catalog: &ModelCatalog,
+        optimizer: &Optimizer,
+        call: &Call,
+        last_divergence: f64,
+        now_us: i64,
+    ) -> PlanProfileKey {
+        let reference = describe_plan(catalog, call, &Plan::PassThrough, 0.05).unwrap();
+        let candidate = optimizer.candidate_plans(call, catalog).into_iter()
+            .find(|plan| matches!(plan, Plan::Rewritten { .. })).unwrap();
+        let candidate = describe_plan(catalog, call, &candidate,
+            optimizer.divergence_threshold_for_plan(&candidate)).unwrap();
+        for i in 0..20 {
+            for (descriptor, cost, divergence) in [
+                (&reference, 0.01, 0.0),
+                (&candidate, 0.0002, if i == 19 { last_divergence } else { 0.0 }),
+            ] {
+                profiles.observe(PlanProfileUpdate {
+                    key: descriptor.context.key.clone(),
+                    runtime_version: descriptor.context.runtime_version.clone(),
+                    input_tokens: 100,
+                    output_tokens: 50,
+                    latency_ms: 25.0,
+                    cost_usd: cost,
+                    output_is_structured: false,
+                    output_is_short: true,
+                    divergence: Some(divergence),
+                    dispatch_fallback: false,
+                    observed_at_us: Some(now_us + i),
+                }).unwrap();
+            }
+        }
+        candidate.context.key
+    }
+
+    #[test]
+    fn evidence_complete_stale_plan_reenters_exploration_after_profile_reload() {
+        let site = "stale-refresh-site";
+        let (catalog, optimizer) = output_optimizer(site);
+        let call = observable_call(site, "reference prompt");
+        let call_json = serde_json::to_string(&call).unwrap();
+        let old_time = 2_000_000;
+        let profiles = PlanProfiles::new();
+        let key = seed_refresh_profiles(&profiles, &catalog, &optimizer, &call, 0.0, old_time);
+        let guard = PlanGuard::new();
+        let fresh = optimize_profiled_plan(&optimizer, Some(&catalog), &profiles, &guard, &call_json, old_time + 20);
+        assert!(matches!(serde_json::from_str::<Plan>(&fresh).unwrap(), Plan::Rewritten { .. }));
+
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        profiles.flush_dirty(&mut connection).unwrap();
+        let restarted = PlanProfiles::new();
+        restarted.warm_from_db(&connection).unwrap();
+        let now_us = old_time + optimizer.config().selection_policy(old_time).max_profile_age_us + 100;
+        let controller = ExplorationController::with_policy(ExplorationPolicy {
+            max_calls_per_site: 1,
+            ..ExplorationPolicy::default()
+        }).unwrap();
+        let primary = optimize_profiled_plan(&optimizer, Some(&catalog), &restarted, &guard, &call_json, now_us);
+        assert!(matches!(serde_json::from_str::<Plan>(&primary).unwrap(), Plan::PassThrough));
+        let planned = reserve_profiled_exploration(&optimizer, Some(&catalog), &restarted, &guard,
+            &controller, &mut connection, &call_json, &primary, now_us);
+        let value: serde_json::Value = serde_json::from_str(&planned).unwrap();
+        let exploration: EmbeddedExplorationContext = serde_json::from_value(
+            value.get(EXPLORATION_CONTEXT_KEY).expect("stale evidence-complete plan needs fresh probe").clone()).unwrap();
+        assert!(matches!(serde_json::from_str::<Plan>(&planned).unwrap(), Plan::PassThrough));
+        assert_eq!(restarted.get_for_reporting(&key).unwrap().paired_observations, 20);
+        let capped = reserve_profiled_exploration(&optimizer, Some(&catalog), &restarted, &guard,
+            &controller, &mut connection, &call_json, &primary, now_us + 1);
+        assert_eq!(capped, primary, "refresh cannot bypass the rolling spend cap");
+        let mut result = outcome(site);
+        result.cost_usd = 0.0002;
+        complete_profiled_exploration(&restarted, &controller, &mut connection,
+            &exploration.lease_token, &serde_json::to_string(&result).unwrap(), 0.0, now_us + 2).unwrap();
+        let refreshed = optimize_profiled_plan(&optimizer, Some(&catalog), &restarted, &guard, &call_json, now_us + 3);
+        assert!(matches!(serde_json::from_str::<Plan>(&refreshed).unwrap(), Plan::Rewritten { .. }));
+        let profile = restarted.get_for_reporting(&key).unwrap();
+        assert_eq!(profile.paired_observations, 21);
+        assert_eq!(profile.last_paired_at_us, Some(now_us + 2));
+    }
+
+    #[test]
+    fn evidence_complete_divergence_rejection_can_collect_bounded_recovery_evidence() {
+        let site = "divergence-refresh-site";
+        let (catalog, optimizer) = output_optimizer(site);
+        let call = observable_call(site, "reference prompt");
+        let call_json = serde_json::to_string(&call).unwrap();
+        let profiles = PlanProfiles::new();
+        let key = seed_refresh_profiles(&profiles, &catalog, &optimizer, &call, 2.0 / 3.0, 2_000_000);
+        let guard = PlanGuard::new();
+        let controller = ExplorationController::new();
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        let mut probes = 0;
+        for i in 0..21 {
+            let now_us = 3_000_000 + i * 10;
+            let primary = optimize_profiled_plan(&optimizer, Some(&catalog), &profiles, &guard, &call_json, now_us);
+            if matches!(serde_json::from_str::<Plan>(&primary).unwrap(), Plan::Rewritten { .. }) {
+                assert!(probes > 0);
+                assert!(probes <= 20);
+                assert_eq!(profiles.get_for_reporting(&key).unwrap().paired_observations, 20 + probes);
+                return;
+            }
+            let planned = reserve_profiled_exploration(&optimizer, Some(&catalog), &profiles, &guard,
+                &controller, &mut connection, &call_json, &primary, now_us);
+            let value: serde_json::Value = serde_json::from_str(&planned).unwrap();
+            let exploration: EmbeddedExplorationContext = serde_json::from_value(
+                value.get(EXPLORATION_CONTEXT_KEY).expect("rejected bound must not freeze learning at20 pairs").clone()).unwrap();
+            let mut result = outcome(site);
+            result.cost_usd = 0.0002;
+            complete_profiled_exploration(&profiles, &controller, &mut connection,
+                &exploration.lease_token, &serde_json::to_string(&result).unwrap(), 0.0, now_us + 1).unwrap();
+            probes += 1;
+        }
+        panic!("bounded fresh evidence should permit re-admission after the outlier leaves p95");
     }
 
     #[test]

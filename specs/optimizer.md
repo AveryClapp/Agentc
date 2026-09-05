@@ -1,7 +1,7 @@
 ---
 title: Optimizer
 status: draft
-last-updated: 2026-09-04
+last-updated: 2026-09-05
 ---
 
 # Optimizer
@@ -275,7 +275,7 @@ Environment overrides:
 | `AGENTC_OPTIMIZE_MAX_REWRITE_DEPTH=3` | Bounds each candidate to one through three semantic rewrites. |
 | `AGENTC_OPTIMIZE_MAX_OVERHEAD_MS=5` | Sets the plan kill-switch budget. |
 | `AGENTC_OPTIMIZE_MAX_INFLIGHT_PLANS=4` | Sets the positive process-local cap on concurrent planners. Calls above the cap immediately execute the original request. |
-| `AGENTC_OPTIMIZE_EXPLORATION=0` | Disables initial off-path calibration. Exploration is enabled by default and issues real, billed candidate calls under the persisted site cap. |
+| `AGENTC_OPTIMIZE_EXPLORATION=0` | Disables initial off-path calibration and evidence refresh. Exploration is enabled by default and issues real, billed candidate calls under the persisted site cap. |
 | `AGENTC_OPTIMIZE_EXPLORATION_CALLS_PER_SITE_24H=20` | Sets the positive rolling counterfactual call cap. |
 | `AGENTC_OPTIMIZE_MAX_CONCURRENT_COUNTERFACTUALS=1` | Sets the positive per-site live counterfactual cap. |
 | `AGENTC_OPTIMIZE_DIVERGENCE_EXPOSURE_BUDGET=1.0` | Sets the finite non-negative complete-plan exposure ceiling. |
@@ -462,7 +462,7 @@ All plan execution happens in Python — the SDK receives the `Plan` back from R
     │ → exact plan profile updates    │
     └─────────────────────────────────┘
                  │
-                 └── cold alternative leased?
+                 └── cold or refresh alternative leased?
                        return reference now
                        run candidate off-path
                        compare text + persist exact paired evidence
@@ -710,6 +710,17 @@ candidate counterfactual in the background. It is capped at 20 candidate calls
 per call site in 24 hours and one concurrent counterfactual. After admission,
 the selected result is returned and the reference is sampled at `shadow_rate`
 (default 2%) for drift detection.
+
+Reaching the paired-observation floor does not permanently end exploration.
+When the primary selection returns the reference, an evidence-complete plan
+rejected for stale evidence or an excessive divergence bound may request a
+refresh counterfactual. The selector and explorer share the same rejection
+classification. Refresh preserves the actual paired count and uses the same
+rolling call cap, concurrency, compatibility, disable, divergence-exposure,
+and optional evaluation-only task-damage checks as initial exploration. An
+evidence-complete admissible plan receives no refresh lease. A fresh comparison
+updates the retained window and last-paired timestamp; it does not make every
+retained sample fresh or guarantee recovery before the budget is exhausted.
 
 Exploration is enabled by default through `AGENTC_OPTIMIZE_EXPLORATION=1`.
 Every counterfactual is a real provider request and may be billed. Setting the
@@ -1219,7 +1230,7 @@ Every optimizer path is wrapped to fail open:
 4. **User-visible plan dispatch fails** (e.g., a downgraded model is unavailable
    or an Anthropic rewrite changes its top-level system prompt) → executor
    catches, retries the exact original call once, and records the fallback.
-5. **Initial exploration dispatch fails** → the already-completed reference is
+5. **Initial or refresh exploration dispatch fails** → the already-completed reference is
    returned unchanged, the lease is failed, and the reference is not retried.
 6. **Shadow-mode execution fails** → the primary result still returns;
    divergence is not recorded for that call.
@@ -1272,7 +1283,7 @@ A user's LLM call never fails because the optimizer failed.
   2.33--10.19 ms on the loaded diagnostic host, but the frozen 1.2 ms target
   remains open and the 55--81% saturation rate must be charged as lost
   optimization coverage.
-- **Initial exploration runs in a background `asyncio.Task` or daemon thread.**
+- **Initial and refresh exploration run in a background `asyncio.Task` or daemon thread.**
   The adapter schedules it only after the reference response is observed.
   **Post-admission shadow execution remains synchronous** in the provider
   wrapper and adds latency to sampled calls; this cost belongs in evaluation.
@@ -1377,7 +1388,10 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Seeded exploration is invariant to candidate input order | `exploration::tests::selection_is_seeded_and_candidate_order_independent` |
 | The site call cap and feedback survive a database close and restart | `exploration::tests::rolling_state_survives_database_close_and_reopen` |
 | Independent database connections enforce one live counterfactual per site | `exploration::tests::independent_database_connections_share_concurrency_limit` |
-| Forbidden, incompatible, disabled, and sufficiently observed plans are never leased | `exploration::tests::forbidden_incompatible_disabled_and_warm_candidates_never_run` |
+| Forbidden, incompatible, disabled, and evidence-complete plans without a refresh requirement are never leased | `exploration::tests::forbidden_incompatible_disabled_and_warm_candidates_never_run` |
+| Refresh cannot bypass candidate safety checks, durable spend, concurrency, divergence exposure, or optional task damage | `exploration::tests::refresh_never_bypasses_candidate_safety_filters`, `exploration::tests::refresh_keeps_concurrency_and_durable_call_caps`, `exploration::tests::refresh_respects_persisted_exposure_and_optional_task_damage_independently` |
+| A stale evidence-complete plan can collect a bounded fresh comparison after profile reload | `ffi::tests::evidence_complete_stale_plan_reenters_exploration_after_profile_reload` |
+| A divergence-rejected evidence-complete plan can recover through bounded additional comparisons without exposing an unadmitted result | `ffi::tests::evidence_complete_divergence_rejection_can_collect_bounded_recovery_evidence` |
 | The immutable reference plan is never leased as its own counterfactual | `exploration::tests::reference_plan_is_never_leased_as_its_own_counterfactual` |
 | Divergence observations remain distinct from evaluation-only task-quality labels | `exploration::tests::observation_and_task_quality_feedback_remain_distinct` |
 | Canceling a provably unstarted lease releases call and concurrency capacity without reusing its sequence | `exploration::tests::cancelling_unstarted_lease_releases_call_and_concurrency_caps` |

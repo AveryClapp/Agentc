@@ -190,9 +190,11 @@ def render(data, directory):
         ax.set_title(context.capitalize() + f" context · {noops}/{pairs} unchanged pairs", loc="left", fontweight="bold", fontsize=11)
         ax.grid(axis="y", color="#d9e1e2", lw=.6)
     axes[0].set_ylabel("Answer token F1 (%)")
-    axes[0].legend(frameon=False, fontsize=8, loc="lower left")
+    axes[0].legend(frameon=False, fontsize=8, loc="lower center")
     fig.suptitle("Model × rewrite opportunity  |  ○ Full prompt    ■ ContextCompress", fontsize=13)
-    fig.supxlabel("Descriptive 95% intervals · unchanged prompts measure repeat variability · no setup or deployment-cost claim", fontsize=9)
+    question_counts = sorted({r["questions"] for r in data["activation"]})
+    sample_label = str(question_counts[0]) if len(question_counts) == 1 else "/".join(map(str, question_counts))
+    fig.supxlabel(f"{sample_label} shared questions per context × {len(models)} models · descriptive 95% intervals\nUnchanged prompts measure repeat variability · no setup or deployment-cost claim", fontsize=9)
     save(fig, "01-model-rewrite-opportunity")
 
     fig, axes = plt.subplots(2, 2, figsize=(13, 9), layout="constrained", sharex="col")

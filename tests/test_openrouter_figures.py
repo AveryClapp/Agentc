@@ -52,6 +52,9 @@ def test_render_exports_all_numeric_panels_and_refuses_overwrite(tmp_path, monke
     savefig = Figure.savefig
     row_limits = []
     def checked_savefig(figure, path, *args, **kwargs):
+        if path.name == "01-model-rewrite-opportunity.svg":
+            assert figure.axes[0].get_legend()._loc == 8  # lower center, clear of cheap-model CI tails
+            assert "160 shared questions per context × 4 models" in figure._supxlabel.get_text()
         if path.name == "02-policy-cost-quality-ablation.svg":
             row_limits.extend(ax.get_ylim() for ax in figure.axes)
         return savefig(figure, path, *args, **kwargs)

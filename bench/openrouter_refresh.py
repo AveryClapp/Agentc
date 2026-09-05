@@ -74,6 +74,17 @@ def compare(baseline, patched):
     return reports
 
 
+def validate_baseline(baseline, frozen, manifest, rows, calibration_only, restart):
+    if (baseline.get("manifest_sha256") != digest(manifest)
+            or baseline.get("consumed_rows_sha256") != digest(rows)
+            or baseline.get("calibration_only") is not calibration_only
+            or baseline.get("restart_after_calibration") is not restart
+            or baseline.get("paper_evidence") is not False
+            or baseline.get("evaluation_kind") != "offline_selected_feedback_replay"
+            or baseline.get("replay_source_sha256") != frozen["analysis_source_files"]["bench/openrouter_replay.py"]):
+        raise PilotError("refresh original-runtime baseline provenance differs")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("prepare", "run"))
@@ -113,10 +124,7 @@ def main():
         tasks = load_tasks(args.natural, args.extended)
         rows = validate_matrix(manifest, json.loads((args.artifacts / "results.json").read_text()), tasks,
             calibration_only=args.calibration_only)
-        if (baseline["manifest_sha256"] != digest(manifest) or baseline["consumed_rows_sha256"] != digest(rows)
-                or baseline["calibration_only"] != args.calibration_only
-                or baseline["restart_after_calibration"] != args.restart_after_calibration):
-            raise PilotError("refresh original-runtime baseline provenance differs")
+        validate_baseline(baseline, frozen, manifest, rows, args.calibration_only, args.restart_after_calibration)
         phase = "calibration" if args.calibration_only else "complete"
         path = args.output / (phase + ("-restart" if args.restart_after_calibration else "") + ".json")
         if path.exists():

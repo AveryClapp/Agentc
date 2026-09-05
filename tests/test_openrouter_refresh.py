@@ -2,8 +2,8 @@ from copy import deepcopy
 
 import pytest
 
-from bench.openrouter_pilot import PilotError
-from bench.openrouter_refresh import PATCH_FILES, compare, validate_patch
+from bench.openrouter_pilot import PilotError, digest
+from bench.openrouter_refresh import PATCH_FILES, compare, validate_baseline, validate_patch
 
 
 def test_only_exact_reviewed_patch_surface_is_permitted():
@@ -13,6 +13,24 @@ def test_only_exact_reviewed_patch_surface_is_permitted():
     for invalid in (original, {**patched, "Cargo.lock": "changed"}, {**patched, "extra": "x"}):
         with pytest.raises(PilotError):
             validate_patch(original, invalid)
+
+
+@pytest.mark.parametrize("field,value", [("replay_source_sha256", "wrong"), ("replay_source_sha256", None),
+    ("paper_evidence", True), ("paper_evidence", None), ("evaluation_kind", "other"),
+    ("calibration_only", 1), ("restart_after_calibration", 0)])
+def test_baseline_requires_exact_replay_source_and_original_evidence_scope(field, value):
+    manifest, rows = {"source": "frozen"}, [{"id": "measured"}]
+    frozen = {"analysis_source_files": {"bench/openrouter_replay.py": "reviewed"}}
+    baseline = {"manifest_sha256": digest(manifest), "consumed_rows_sha256": digest(rows),
+        "calibration_only": True, "restart_after_calibration": False, "paper_evidence": False,
+        "evaluation_kind": "offline_selected_feedback_replay", "replay_source_sha256": "reviewed"}
+    validate_baseline(baseline, frozen, manifest, rows, True, False)
+    if value is None:
+        baseline.pop(field)
+    else:
+        baseline[field] = value
+    with pytest.raises(PilotError, match="provenance"):
+        validate_baseline(baseline, frozen, manifest, rows, True, False)
 
 
 def trajectory():

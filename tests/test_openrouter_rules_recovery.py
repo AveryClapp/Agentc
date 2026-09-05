@@ -151,3 +151,13 @@ def test_second_unresolved_attempt_is_not_automatically_cleared(tmp_path):
     with base.locked() as handle:
         base.append(handle, {k: v for k, v in events[-1].items() if k not in {"at", "key_id"}})
     assert overlay.summary()["unresolved_calls"] == [recovery.CALL_ID]
+
+
+def test_changed_retry_payload_is_rejected_before_dispatch(tmp_path, monkeypatch):
+    base, overlay, events, r = prepare_ledger(tmp_path)
+    def forbidden(*args, **kwargs):
+        pytest.fail("changed retry must never reach underlying dispatcher")
+    monkeypatch.setattr(Ledger, "call", forbidden)
+    payload = {**events[-1]["request"], "max_tokens": 17}
+    with pytest.raises(PilotError, match="exact failed request"):
+        overlay.call("fake-key", recovery.CALL_ID, recovery.STAGE, Decimal("1"), payload, {})

@@ -92,9 +92,14 @@ class RecoveryLedger(Ledger):
 
     def call(self, key, call_id, stage, stage_cap, payload, metadata):
         with self.locked() as handle:
-            receipt = receipt_from(super().read(handle))
+            events = super().read(handle)
+            receipt = receipt_from(events)
         if stage != STAGE:
             raise PilotError("recovery overlay cannot dispatch an unrelated stage")
+        if call_id == CALL_ID:
+            original = next(e for e in events if e["event"] == "reserve" and digest(e) == receipt["reserve_sha256"])
+            if original["fingerprint"] != digest({"payload": payload, "metadata": metadata, "stage": stage}):
+                raise PilotError("retry differs from the exact failed request")
         hold = money(receipt["budget_hold_usd"])
         original_cap = pilot.HARD_CAP
         if not 0 < hold < stage_cap <= original_cap:

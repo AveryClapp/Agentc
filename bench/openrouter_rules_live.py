@@ -121,6 +121,23 @@ def application_answer(manifest, row):
     return row["answer"]
 
 
+def nominal_uncached_cost(manifest, model, usage):
+    """Frozen uncached counterfactual; actual billed cost stays authoritative.
+
+    OpenRouter's documented min_prompt_tokens threshold is strictly greater
+    than, not inclusive. Later matching overrides win per price key:
+    https://openrouter.ai/docs/guides/overview/models#pricing-overrides
+    Legacy workloads retain their original base-rate counterfactual.
+    """
+    pricing = manifest["endpoints"][model]["pricing"]
+    rates = {k: money(pricing[k]) for k in ("prompt", "completion")}
+    if manifest.get("workload") == "typed_relational_v1":
+        for tier in pricing.get("overrides", []):
+            if usage["prompt_tokens"] > tier["min_prompt_tokens"]:
+                rates.update({k: money(tier[k]) for k in rates if k in tier})
+    return rates["prompt"] * usage["prompt_tokens"] + rates["completion"] * usage["completion_tokens"]
+
+
 def workflow_for(manifest, *args, **kwargs):
     """One workload seam shared by acquisition and own-history validation."""
     workload = manifest.get("workload")
@@ -819,9 +836,7 @@ class Acquisition:
             "decision_sha256": digest(signature),
             "cached_input_tokens": cached,
             "nominal_uncached_cost_usd": str(
-                money(e["pricing"]["prompt"]) * result["usage"]["prompt_tokens"]
-                + money(e["pricing"]["completion"])
-                * result["usage"]["completion_tokens"]
+                nominal_uncached_cost(self.manifest, call["model"], result["usage"])
             ),
         }
         if self.call_index < len(self.calls):

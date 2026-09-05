@@ -91,10 +91,7 @@ def validate_row(row, payload, meta, manifest):
         and (type(cached) is not int or not 0 <= cached <= usage["prompt_tokens"])
     ) or row["cached_input_tokens"] != cached:
         raise PilotError("cached-token accounting changed")
-    nominal = (
-        money(endpoint["pricing"]["prompt"]) * usage["prompt_tokens"]
-        + money(endpoint["pricing"]["completion"]) * usage["completion_tokens"]
-    )
+    nominal = live.nominal_uncached_cost(manifest, payload["model"], usage)
     if money(row["nominal_uncached_cost_usd"]) != nominal:
         raise PilotError("nominal uncached cost differs from frozen prices")
     if (

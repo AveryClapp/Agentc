@@ -2,7 +2,9 @@
 
 The append-only ledger is shared across stages and worktrees. A lost response
 leaves its reservation unresolved and blocks further calls until reconciled.
-Credentials, authorization headers and provider error bodies are never logged.
+Credentials and authorization headers are never logged. Returned inference JSON,
+including provider-error details, is retained only in the private durable ledger;
+console errors are sanitized. Outer HTTP error bodies remain suppressed.
 This pilot is exploratory evidence, not the frozen MLSys confirmatory campaign.
 """
 
@@ -92,7 +94,11 @@ def request_json(path: str, key: str, payload: Json | None = None) -> Json:
         raise PilotError(f"provider returned HTTP {exc.code}; response body suppressed") from None
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         raise PilotError("API transport or JSON failure; response suppressed") from None
-    if not isinstance(value, dict) or "error" in value:
+    # Inference errors may arrive inside HTTP200 after partial generation. The
+    # ledger must preserve the returned envelope before rejecting its outcome.
+    # Read-only account/model queries still reject errors at this boundary.
+    defer_error_validation = path == "/chat/completions" and payload is not None
+    if not isinstance(value, dict) or ("error" in value and not defer_error_validation):
         raise PilotError("API response is not a successful JSON object")
     return value
 

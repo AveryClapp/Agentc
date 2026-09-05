@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 import tempfile
 import unittest
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
-from bench.openrouter_pilot import Ledger, PilotError, load_key, make_request, money
+from bench.openrouter_pilot import Ledger, PilotError, load_key, make_request, money, request_json
 
 
 def response():
@@ -116,6 +117,28 @@ class PilotTests(unittest.TestCase):
         request.return_value = bad
         with self.assertRaisesRegex(PilotError, "did not complete"):
             self.call()
+
+    @patch("bench.openrouter_pilot.account", return_value={"usage": 0})
+    @patch("bench.openrouter_pilot.urllib.request.build_opener")
+    def test_http200_top_level_error_reaches_private_ledger_before_rejection(self, opener, account):
+        bad = {"id": "failed-generation", "error": {"code": 503, "message": "private provider detail"},
+               "usage": {"cost": 0}, "choices": []}
+        opener.return_value.open.return_value = BytesIO(json.dumps(bad).encode())
+        with self.assertRaises(PilotError) as failure:
+            self.call()
+        self.assertNotIn("private provider", str(failure.exception))
+        events = [json.loads(line) for line in self.ledger.path.read_text().splitlines()]
+        self.assertEqual([e["event"] for e in events], ["origin", "reserve", "response"])
+        self.assertEqual(events[-1]["response"], bad)
+        with self.assertRaisesRegex(PilotError, "unresolved"):
+            self.call(call_id="another")
+        self.assertEqual(opener.return_value.open.call_count, 1)
+
+    @patch("bench.openrouter_pilot.urllib.request.build_opener")
+    def test_read_only_api_errors_are_not_deferred(self, opener):
+        opener.return_value.open.return_value = BytesIO(b'{"error":{"code":503}}')
+        with self.assertRaisesRegex(PilotError, "successful JSON"):
+            request_json("/key", "fake-key")
 
     @patch("bench.openrouter_pilot.account", return_value={"usage": 0})
     @patch("bench.openrouter_pilot.request_json")

@@ -26,6 +26,12 @@ FORMAT = {
 METADATA = {"dispatch_contract": {
     "provider_name": "Anthropic", "endpoint_model": pilot.SCHEMA_ENDPOINTS[MODEL][0]
 }}
+PASSED_MODERATION = {
+    "type": "guardrail", "name": "moderation",
+    "summary": "Content passed OpenAI moderation",
+    "data": {"engine": "openai-moderations", "flagged": False,
+             "moderator_ids": ["OpenAIOmniModerator"]},
+}
 
 
 def endpoint(model=MODEL):
@@ -241,5 +247,145 @@ def test_length_is_financial_receipt_not_an_application_success():
     body["choices"][0].update(finish_reason="length", native_finish_reason="max_tokens")
     assert pilot.schema_text_choice(body)["finish_reason"] == "length"
     body["choices"][0]["finish_reason"] = "stop"
+    with pytest.raises(pilot.PilotError):
+        pilot.schema_text_choice(body)
+
+
+def passed_moderation_response():
+    body = response()
+    body["openrouter_metadata"]["pipeline"] = [deepcopy(PASSED_MODERATION)]
+    body["usage"] = {"cost": "0.003945", "prompt_tokens": 1270, "completion_tokens": 9}
+    return body
+
+
+def test_exact_passed_moderation_is_diagnostic_and_never_stripped():
+    body = passed_moderation_response()
+    before = deepcopy(body)
+    assert pilot.schema_text_choice(body) is body["choices"][0]
+    assert body == before
+    assert body["choices"][0]["message"]["content"] == '{"result":"M01"}'
+
+
+def test_passed_moderation_actual_ledger_replay_and_billing(ledger):
+    body = passed_moderation_response()
+
+    def network(path, key, payload=None):
+        return deepcopy(body) if payload else {"data": {"endpoints": [endpoint()]}}
+
+    with patch.object(pilot, "account", return_value={"usage": 0}), patch.object(
+        pilot, "request_json", side_effect=network
+    ) as api:
+        first = dispatch(ledger)
+        before_replay = ledger.path.read_bytes()
+        replay = dispatch(ledger)
+        assert all(replay[k] == value for k, value in first.items())
+        assert ledger.path.read_bytes() == before_replay
+        assert api.call_count == 2
+        assert first["router_metadata"]["pipeline"] == [PASSED_MODERATION]
+        assert first["answer"] == body["choices"][0]["message"]["content"]
+    events = [json.loads(line) for line in ledger.path.read_text().splitlines()]
+    assert next(event for event in events if event["event"] == "response")["response"] == body
+    assert sum(event["event"] == "reserve" for event in events) == 1
+    assert sum(event["event"] == "result" for event in events) == 1
+    assert not any(event["event"] == "attempt_failure" for event in events)
+    summary = ledger.summary()
+    assert summary["spent_usd"] == "0.003945"
+    assert summary["retained_uncertainty_usd"] == "0"
+    assert summary["completed_calls"] == 1 and not summary["unresolved_calls"]
+
+
+def rejected_moderation_pipelines():
+    variants = []
+    for verdict in (True, 0, 0.0, "false", None):
+        stage = deepcopy(PASSED_MODERATION)
+        stage["data"]["flagged"] = verdict
+        variants.append(pytest.param([stage], id="flagged-" + repr(verdict)))
+    for key, value in (
+        ("engine", "unknown"), ("action", "passed"), ("action", "blocked"),
+        ("action", "redacted"), ("moderator_ids", []),
+        ("moderator_ids", ["UnknownModerator"]),
+        ("moderator_ids", ["OpenAIOmniModerator", "OpenAIOmniModerator"]),
+        ("moderator_ids", "OpenAIOmniModerator"), ("new_field", False),
+    ):
+        stage = deepcopy(PASSED_MODERATION)
+        stage["data"][key] = value
+        variants.append(pytest.param([stage], id="data-" + key + "-" + repr(value)))
+    for key, value in (
+        ("type", "plugin"), ("name", "content-filter"),
+        ("summary", "Content blocked by moderation"), ("summary", None),
+        ("action", "passed"), ("guardrail_id", "new-policy"), ("data", None),
+    ):
+        variants.append(pytest.param([deepcopy(PASSED_MODERATION) | {key: value}], id="stage-" + key + "-" + repr(value)))
+    for key in PASSED_MODERATION:
+        stage = deepcopy(PASSED_MODERATION)
+        del stage[key]
+        variants.append(pytest.param([stage], id="missing-stage-" + key))
+    for key in PASSED_MODERATION["data"]:
+        stage = deepcopy(PASSED_MODERATION)
+        del stage["data"][key]
+        variants.append(pytest.param([stage], id="missing-data-" + key))
+    for stage_type in ("response_healing", "context_compression", "plugin", "server_tools", "unknown"):
+        variants.append(pytest.param([deepcopy(PASSED_MODERATION), {"type": stage_type}], id="extra-" + stage_type))
+    variants.extend([
+        pytest.param([deepcopy(PASSED_MODERATION)] * 2, id="duplicate-diagnostic"),
+        pytest.param(PASSED_MODERATION, id="not-an-array"),
+        pytest.param(None, id="null-pipeline"),
+        pytest.param(False, id="boolean-pipeline"),
+        pytest.param({}, id="empty-object-pipeline"),
+        pytest.param([None], id="null-stage"),
+    ])
+    return variants
+
+
+@pytest.mark.parametrize("pipeline", rejected_moderation_pipelines())
+def test_unknown_flagged_or_mutating_pipeline_rejected_with_full_allowance(ledger, pipeline):
+    body = passed_moderation_response()
+    body["openrouter_metadata"]["pipeline"] = deepcopy(pipeline)
+    before = deepcopy(body)
+    with pytest.raises(pilot.PilotError):
+        pilot.schema_text_choice(body)
+    assert body == before
+
+    def network(path, key, payload=None):
+        return deepcopy(body) if payload else {"data": {"endpoints": [endpoint()]}}
+
+    with patch.object(pilot, "account", return_value={"usage": 0}), patch.object(
+        pilot, "request_json", side_effect=network
+    ) as api:
+        with pytest.raises(pilot.PilotError):
+            dispatch(ledger)
+        assert api.call_count == 2
+        with pytest.raises(pilot.PilotError):
+            dispatch(ledger)
+        assert api.call_count == 2
+    events = [json.loads(line) for line in ledger.path.read_text().splitlines()]
+    assert next(event for event in events if event["event"] == "response")["response"] == body
+    assert not any(event["event"] == "result" for event in events)
+    failure = next(event for event in events if event["event"] == "attempt_failure")
+    assert failure["budget_hold_usd"] == "6.01536"
+    assert failure["reported_cost_usd"] == "0.003945"
+    summary = ledger.summary()
+    assert summary["spent_usd"] == "0.003945"
+    assert summary["retained_uncertainty_usd"] == "6.011415"
+    assert Decimal(summary["conservative_committed_usd"]) == Decimal("6.01536")
+    assert summary["completed_calls"] == 0
+
+
+@pytest.mark.parametrize("mutation", ["refusal", "native-refusal", "finish-filtered", "error", "truncation"])
+def test_passed_moderation_does_not_override_other_status_checks(mutation):
+    body = passed_moderation_response()
+    choice = body["choices"][0]
+    if mutation == "refusal":
+        choice["message"]["refusal"] = "declined"
+    elif mutation == "native-refusal":
+        choice["native_finish_reason"] = "refusal"
+    elif mutation == "finish-filtered":
+        choice["finish_reason"] = "content_filter"
+    elif mutation == "error":
+        body["error"] = {"code": 403}
+    else:
+        choice.update(finish_reason="length", native_finish_reason="max_tokens")
+        assert pilot.schema_text_choice(body)["finish_reason"] == "length"
+        return  # Financial receipt only; the unchanged typed adapter rejects it.
     with pytest.raises(pilot.PilotError):
         pilot.schema_text_choice(body)

@@ -454,6 +454,160 @@ def test_actual_journal_replay_rejects_invalid_group_transitions(setup, mutation
         ledger.summary()
 
 
+@pytest.mark.parametrize(
+    "mutation", ["request_integer", "claim_boolean", "result_boolean", "usage_integer"]
+)
+def test_canonical_identity_rejects_python_equal_type_mutations(setup, mutation):
+    ledger, specs, _, dispatches = setup
+    specs["source"]["metadata"]["flag"] = True
+    receipt = reserve(setup)
+    groups.call_slot(ledger, KEY, receipt, "source")
+    events = rows(ledger)
+    claim = next(e for e in events if e["event"] == "reserve")
+    result = next(e for e in events if e["event"] == "result")
+    if mutation == "request_integer":
+        claim["request"]["max_tokens"] = 16.0
+    elif mutation == "claim_boolean":
+        claim["metadata"]["flag"] = 1
+    elif mutation == "result_boolean":
+        result["metadata"]["flag"] = 1
+    else:
+        result["usage"]["prompt_tokens"] = 5.0
+    ledger.path.write_text("".join(json.dumps(e) + "\n" for e in events))
+    with pytest.raises(pilot.PilotError):
+        accounting(rows(ledger))
+    with pytest.raises(pilot.PilotError):
+        groups.call_slot(ledger, KEY, receipt, "candidate")
+    assert len(dispatches) == 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "model",
+        "provider",
+        "selected_provider",
+        "endpoint_model",
+        "requested",
+        "attempt",
+        "byok",
+        "boolean_tokens",
+        "float_tokens",
+        "negative_tokens",
+        "missing_tokens",
+        "result_model",
+        "result_provider",
+        "result_generation",
+        "result_router",
+        "result_answer",
+    ],
+)
+def test_replay_revalidates_group_response_attribution_before_candidate(
+    setup, monkeypatch, mutation
+):
+    ledger, specs, _, dispatches = setup
+    specs["source"]["metadata"]["dispatch_contract"] = {
+        "provider_name": "Test",
+        "endpoint_model": "fake/native-source",
+    }
+    receipt = reserve(setup)
+
+    def request(path, key, payload):
+        dispatches.append(payload)
+        return {
+            **response(payload),
+            "openrouter_metadata": {
+                "requested": payload["model"],
+                "attempt": 1,
+                "is_byok": False,
+                "endpoints": {
+                    "available": [
+                        {
+                            "selected": True,
+                            "provider": "Test",
+                            "model": "fake/native-source",
+                        }
+                    ]
+                },
+            },
+        }
+
+    monkeypatch.setattr(pilot, "request_json", request)
+    groups.call_slot(ledger, KEY, receipt, "source")
+    events = rows(ledger)
+    body = next(e for e in events if e["event"] == "response")["response"]
+    result = next(e for e in events if e["event"] == "result")
+    if mutation in {"model", "provider"}:
+        body[mutation] = "fake/wrong"
+        result[mutation] = "fake/wrong"
+    elif mutation in {
+        "selected_provider",
+        "endpoint_model",
+        "requested",
+        "attempt",
+        "byok",
+    }:
+        router = body["openrouter_metadata"]
+        if mutation in {"selected_provider", "endpoint_model"}:
+            router["endpoints"]["available"][0][
+                "provider" if mutation == "selected_provider" else "model"
+            ] = "fake/wrong"
+        else:
+            router[
+                {"requested": "requested", "attempt": "attempt", "byok": "is_byok"}[
+                    mutation
+                ]
+            ] = "fake/wrong" if mutation == "requested" else True
+        result["router_metadata"] = deepcopy(router)
+    elif mutation.endswith("tokens"):
+        if mutation == "missing_tokens":
+            body["usage"].pop("prompt_tokens")
+        else:
+            body["usage"]["prompt_tokens"] = {
+                "boolean_tokens": True,
+                "float_tokens": 5.0,
+                "negative_tokens": -1,
+            }[mutation]
+        result["usage"] = deepcopy(body["usage"])
+    else:
+        field = {
+            "result_model": "model",
+            "result_provider": "provider",
+            "result_generation": "generation_id",
+            "result_router": "router_metadata",
+            "result_answer": "answer",
+        }[mutation]
+        result[field] = "different"
+    ledger.path.write_text("".join(json.dumps(e) + "\n" for e in events))
+    with pytest.raises(pilot.PilotError):
+        accounting(rows(ledger))
+    with pytest.raises(pilot.PilotError):
+        groups.call_slot(ledger, KEY, receipt, "candidate")
+    assert len(dispatches) == 1
+
+
+def test_prospective_source_manifests_freeze_group_replay_dependency():
+    from bench import openrouter_auto, openrouter_contract, openrouter_frontier
+    from bench import (
+        openrouter_matrix,
+        openrouter_rules_live,
+        openrouter_typed_factorial,
+    )
+
+    path = "bench/openrouter_groups.py"
+    expected = openrouter_matrix.file_hash(openrouter_matrix.ROOT / path)
+    source_sets = [
+        openrouter_auto.sources(),
+        openrouter_contract.sources(),
+        openrouter_frontier.sources(),
+        openrouter_matrix.source_hashes(),
+        openrouter_rules_live.sources(),
+        openrouter_rules_live.sources("typed_relational_v1"),
+        openrouter_typed_factorial.sources(),
+    ]
+    assert all(sources.get(path) == expected for sources in source_sets)
+
+
 def process_action(path, receipt, action, boundary, after, counter, queue, start=None):
     """Independent fake transport plus abrupt journal-boundary exit."""
     ledger = pilot.Ledger(Path(path), KEY)

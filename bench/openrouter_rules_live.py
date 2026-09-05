@@ -75,6 +75,7 @@ def sources(workload=None):
         "bench/agents/research_planner.py",
         "python/agentc/_attention.py",
         "bench/openrouter_attempts.py",
+        "bench/openrouter_groups.py",
         "bench/openrouter_transport.py",
         "bench/openrouter_joint_study.py",
     )

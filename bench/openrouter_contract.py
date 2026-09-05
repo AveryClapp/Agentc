@@ -32,7 +32,8 @@ def messages(task: dict[str, Any], contract: str) -> list[dict[str, str]]:
 
 
 def sources() -> dict[str, str]:
-    paths = ["bench/openrouter_contract.py", "bench/openrouter_matrix.py", "bench/openrouter_pilot.py"]
+    paths = ["bench/openrouter_contract.py", "bench/openrouter_matrix.py", "bench/openrouter_pilot.py",
+             "bench/openrouter_groups.py"]
     return {p: file_hash(ROOT / p) for p in paths}
 
 

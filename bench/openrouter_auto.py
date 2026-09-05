@@ -21,6 +21,7 @@ from bench.openrouter_pilot import Ledger, PilotError, digest, load_key, make_re
 
 def sources():
     return {p: file_hash(ROOT / p) for p in ("bench/openrouter_auto.py", "bench/openrouter_pilot.py",
+        "bench/openrouter_groups.py",
         "bench/openrouter_matrix.py", "bench/openrouter_contract.py", "bench/openrouter_frontier.py",
         "bench/openrouter_frontier_analysis.py")}
 

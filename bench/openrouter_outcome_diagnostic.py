@@ -82,15 +82,33 @@ def previous(args):
         ledger_events=events,
         ledger_sha256=ledger_hash,
     )
+    validate_previous_report(data, checked)
+    data["verified_known_stage_usd"] = checked["financial_snapshot"]["known_stage_usd"]
+    return data
+
+
+def validate_previous_report(data, checked):
+    summary = data["summary.json"]
+    finance = checked["financial_snapshot"]
     if (
         checked["failed_provider_results"]
         or checked["training_gate_reconstructed"] is None
         or checked["training_gate_reconstructed"]["proceed_to_heldout"]
-        or not checked["financial_snapshot"]["snapshot_financially_complete"]
+        or not finance["snapshot_financially_complete"]
+        or not checked["static_selection_verified"]
         or any(d["phase"] == "heldout" for d in data["decisions.json"])
+        or summary["manifest_sha256"] != PREVIOUS_HASH
+        or summary["calls_sha256"] != digest(data["calls.json"])
+        or summary["decisions_sha256"] != digest(data["decisions.json"])
+        or summary["completed_calls"] != len(data["calls.json"])
+        or summary["completed_decisions"] != len(data["decisions.json"])
+        or summary["training_gate"] != checked["training_gate_reconstructed"]
+        or data["training-gate.json"] != checked["training_gate_reconstructed"]
+        or money(summary["cost_usd"]) != money(finance["known_stage_usd"])
+        or money(summary["artifact_cost_usd"])
+        != sum((money(r["cost_usd"]) for r in data["calls.json"]), Decimal(0))
     ):
         raise PilotError("previous study is not a valid failed-admission training run")
-    return data
 
 
 def pairs_for(data):
@@ -401,9 +419,9 @@ def acquire(args, manifest, data, ledger, key, attention):
         "paired_comparisons": comparisons,
         "incremental_paid_usd": str(paid),
         "incremental_retained_uncertainty_usd": str(holds),
-        "previous_stage_paid_usd": data["summary.json"]["cost_usd"],
+        "previous_stage_paid_usd": data["verified_known_stage_usd"],
         "archive_and_diagnostic_known_usd": str(
-            paid + money(data["summary.json"]["cost_usd"])
+            paid + money(data["verified_known_stage_usd"])
         ),
         "incremental_artifact_paid_usd": str(
             sum((money(r["cost_usd"]) for r in rows), Decimal(0))

@@ -62,6 +62,7 @@ def example(tmp_path, monkeypatch):
             ]
         )
     data = {
+        "verified_known_stage_usd": "1",
         "calls.json": calls,
         "decisions.json": decisions,
         "summary.json": {"cost_usd": "1"},
@@ -153,6 +154,52 @@ def test_all_pairs_and_zero_disagreement_included(example):
     assert sum(p["lexical_divergence"] == 0 for p in manifest["pairs"]) == 1
     assert len({pilot.digest(i) for i in manifest["schedule"]}) == 12
     assert manifest["schedule"] == diag.schedule_for(manifest["pairs"])
+
+
+@pytest.mark.parametrize(
+    "mutation", [None, "cost", "selector", "hash", "gate", "count"]
+)
+def test_prior_report_requires_ledger_cost_and_valid_provenance(example, mutation):
+    _, _, data, _, _, _ = example
+    data = deepcopy(data)
+    for row in data["calls.json"]:
+        row["cost_usd"] = "0.001"
+    gate = {"proceed_to_heldout": False}
+    data["training-gate.json"] = gate
+    data["summary.json"] = {
+        "manifest_sha256": diag.PREVIOUS_HASH,
+        "calls_sha256": pilot.digest(data["calls.json"]),
+        "decisions_sha256": pilot.digest(data["decisions.json"]),
+        "completed_calls": 6,
+        "completed_decisions": 3,
+        "training_gate": gate,
+        "cost_usd": "0.006",
+        "artifact_cost_usd": "0.006",
+    }
+    checked = {
+        "failed_provider_results": [],
+        "training_gate_reconstructed": gate,
+        "static_selection_verified": True,
+        "financial_snapshot": {
+            "snapshot_financially_complete": True,
+            "known_stage_usd": "0.006",
+        },
+    }
+    if mutation == "cost":
+        data["summary.json"]["cost_usd"] = "0"
+    elif mutation == "selector":
+        checked["static_selection_verified"] = False
+    elif mutation == "hash":
+        data["summary.json"]["calls_sha256"] = "wrong"
+    elif mutation == "gate":
+        data["summary.json"]["training_gate"] = {"proceed_to_heldout": True}
+    elif mutation == "count":
+        data["summary.json"]["completed_calls"] = 1
+    if mutation is None:
+        diag.validate_previous_report(data, checked)
+    else:
+        with pytest.raises(pilot.PilotError, match="valid failed-admission"):
+            diag.validate_previous_report(data, checked)
 
 
 def test_paired_suffix_has_own_history_exact_repeat_and_source_only(example):

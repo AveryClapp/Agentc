@@ -1,7 +1,8 @@
 //! Forced rule materialization for a fixed-model benchmark, NOT plan admission.
 //!
 //! One JSON request on stdin: {"rule":"ContextCompress"|"StateDrop","call":Call}.
-//! One JSON response: {rule,applied,call,retained_indices,materialization_only:true}.
+//! One JSON response: {rule,applied,call,retained_indices,materialization_only:true,
+//! abstention_reason}. A materialized rewrite has a null abstention reason.
 //! `call` preserves the input JSON exactly except for native-selected messages.
 //! Aligned metadata remains RAW, as in the native proposal: the caller must remap
 //! message_deps/attention_scores/input_deps using retained_indices before reuse.
@@ -47,6 +48,13 @@ struct Response {
     call: BTreeMap<String, Box<RawValue>>,
     retained_indices: Vec<usize>,
     materialization_only: bool,
+    abstention_reason: Option<&'static str>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ProvenanceError {
+    NotOrderedDeletion,
+    Ambiguous,
 }
 
 fn same_message(left: &Message, right: &Message) -> bool {
@@ -54,18 +62,19 @@ fn same_message(left: &Message, right: &Message) -> bool {
 }
 
 /// Earliest and latest embeddings coincide exactly when the mapping is unique.
-/// Reject ambiguity rather than attaching the wrong provenance to equal text.
+/// Identify ambiguity separately: callers may retain the complete original call
+/// rather than attaching the wrong provenance to equal text.
 fn retained_indices(
     original: &[Message],
     selected: &[Message],
-) -> Result<Vec<usize>, &'static str> {
+) -> Result<Vec<usize>, ProvenanceError> {
     let mut earliest = Vec::with_capacity(selected.len());
     let mut cursor = 0;
     for message in selected {
         let offset = original[cursor..]
             .iter()
             .position(|candidate| same_message(candidate, message))
-            .ok_or("native proposal is not an ordered message deletion")?;
+            .ok_or(ProvenanceError::NotOrderedDeletion)?;
         cursor += offset;
         earliest.push(cursor);
         cursor += 1;
@@ -76,12 +85,12 @@ fn retained_indices(
         cursor = original[..cursor]
             .iter()
             .rposition(|candidate| same_message(candidate, message))
-            .ok_or("native proposal is not an ordered message deletion")?;
+            .ok_or(ProvenanceError::NotOrderedDeletion)?;
         latest.push(cursor);
     }
     latest.reverse();
     if earliest != latest {
-        return Err("native message deletion has ambiguous provenance");
+        return Err(ProvenanceError::Ambiguous);
     }
     Ok(earliest)
 }
@@ -109,16 +118,17 @@ fn materialize(request: Request) -> Result<String, &'static str> {
     // These two rules use this empty profile only for an unused savings
     // projection. No measured statistics are invented or observed by a planner.
     let profile = CallSiteProfile::new(original.call_site_id.clone());
-    let selected = if rule.applies(&original, &profile) {
+    let (selected, mut abstention_reason) = if rule.applies(&original, &profile) {
         match rule.propose(&original, &profile) {
             Some(proposal) if (proposal.safety_check)(&original) => match proposal.rewritten {
-                Plan::Rewritten { call, .. } => call,
+                Plan::Rewritten { call, .. } => (call, None),
                 _ => return Err("rule produced an unsupported plan kind"),
             },
-            _ => original.clone(),
+            Some(_) => (original.clone(), Some("safety_check_failed")),
+            None => (original.clone(), Some("no_proposal")),
         }
     } else {
-        original.clone()
+        (original.clone(), Some("not_applicable"))
     };
 
     // Compare native-normalized values only to prove the rule touched messages
@@ -140,12 +150,27 @@ fn materialize(request: Request) -> Result<String, &'static str> {
     if original_normalized != selected_normalized {
         return Err("native rule changed non-message fields");
     }
-    let retained = retained_indices(&original.messages, &selected.messages)?;
+    let retained = match retained_indices(&original.messages, &selected.messages) {
+        Ok(indices) => indices,
+        Err(ProvenanceError::Ambiguous) => {
+            // Invalid upstream state can produce equal ERROR_INPUT messages
+            // with different dependencies. Preserve both: guessing which one
+            // survived would invent provenance; aborting would censor the cell.
+            abstention_reason = Some("ambiguous_provenance");
+            (0..original.messages.len()).collect()
+        }
+        Err(ProvenanceError::NotOrderedDeletion) => {
+            return Err("native proposal is not an ordered message deletion");
+        }
+    };
     let messages: Vec<_> = retained
         .iter()
         .map(|&index| raw_messages[index].clone())
         .collect();
     let applied = retained.len() != original.messages.len();
+    if !applied && abstention_reason.is_none() {
+        return Err("native proposal did not remove messages");
+    }
     raw_call.insert(
         "messages".into(),
         RawValue::from_string(
@@ -159,6 +184,7 @@ fn materialize(request: Request) -> Result<String, &'static str> {
         call: raw_call,
         retained_indices: retained,
         materialization_only: true,
+        abstention_reason,
     })
     .map_err(|_| "response serialization failed")
 }
@@ -265,6 +291,11 @@ mod tests {
         let output = apply("StateDrop", &call).unwrap();
         assert_eq!(output["retained_indices"], json!([0, 2, 3]));
         assert_eq!(output["applied"], true);
+        assert_eq!(output["abstention_reason"], Value::Null);
+        assert!(output
+            .as_object()
+            .unwrap()
+            .contains_key("abstention_reason"));
         assert_eq!(output["materialization_only"], true);
         let mut expected = call.clone();
         expected["messages"] = json!([
@@ -294,17 +325,22 @@ mod tests {
         assert_eq!(output["retained_indices"], json!([0, 1, 2, 3, 21]));
         assert_eq!(output["call"]["messages"].as_array().unwrap().len(), 5);
         assert_eq!(output["applied"], true);
+        assert_eq!(output["abstention_reason"], Value::Null);
     }
 
     #[test]
     fn no_proposal_and_inapplicable_rule_return_exact_original_json() {
         let mut call = state_call();
         call["parameters"]["extra"]["window_state_reads"] = json!(["docs", "synthesis"]);
-        for rule in ["StateDrop", "ContextCompress"] {
+        for (rule, reason) in [
+            ("StateDrop", "no_proposal"),
+            ("ContextCompress", "not_applicable"),
+        ] {
             let output = apply(rule, &call).unwrap();
             assert_eq!(output["applied"], false);
             assert_eq!(output["call"], call);
             assert_eq!(output["retained_indices"], json!([0, 1, 2, 3]));
+            assert_eq!(output["abstention_reason"], reason);
         }
     }
 
@@ -321,13 +357,41 @@ mod tests {
         let output = apply("StateDrop", &call).unwrap();
         assert_eq!(output["applied"], false);
         assert_eq!(output["call"], call);
+        assert_eq!(output["abstention_reason"], "safety_check_failed");
     }
 
     #[test]
-    fn ambiguous_identical_message_provenance_is_rejected() {
+    fn ambiguous_identical_message_provenance_preserves_the_full_call() {
         let mut call = state_call();
         call["messages"][2] = call["messages"][1].clone();
-        assert!(apply("StateDrop", &call).unwrap_err().contains("ambiguous"));
+        let output = apply("StateDrop", &call).unwrap();
+        assert_eq!(output["applied"], false);
+        assert_eq!(output["call"], call);
+        assert_eq!(output["retained_indices"], json!([0, 1, 2, 3]));
+        assert_eq!(output["abstention_reason"], "ambiguous_provenance");
+    }
+
+    #[test]
+    fn invalid_upstream_duplicate_error_state_abstains_without_repair() {
+        let mut call = state_call();
+        let error = "ERROR_INPUT: preceding application output failed its typed contract.";
+        call["messages"][1] = json!({"role":"user", "content":error});
+        call["messages"][2] = json!({"role":"user", "content":error});
+        call["messages"][3]["content"] = json!(format!("Question: apply approval policy\n{error}"));
+        call["parameters"]["extra"]["message_deps"][1] =
+            json!({"kind":"state","key":"selected_records"});
+        call["parameters"]["extra"]["typed_relational_contract"] = json!({"upstream_valid":false});
+        let original: Call = serde_json::from_value(call.clone()).unwrap();
+        let rule = StateDropRule::default();
+        let profile = CallSiteProfile::new("test");
+        assert!(rule.applies(&original, &profile));
+        let proposal = rule.propose(&original, &profile).unwrap();
+        assert!((proposal.safety_check)(&original));
+        let output = apply("StateDrop", &call).unwrap();
+        assert_eq!(output["applied"], false);
+        assert_eq!(output["abstention_reason"], "ambiguous_provenance");
+        assert_eq!(output["call"], call);
+        assert_eq!(output["retained_indices"], json!([0, 1, 2, 3]));
     }
 
     #[test]
@@ -341,9 +405,20 @@ mod tests {
             retained_indices(&original, &original).unwrap(),
             vec![0, 1, 2]
         );
-        assert!(retained_indices(&original, &[message("a")]).is_err());
-        assert!(retained_indices(&original, &[message("absent")]).is_err());
-        assert!(retained_indices(&original, &[message("b"), message("b")]).is_err());
+        assert_eq!(
+            retained_indices(&original, &[message("a")]),
+            Err(ProvenanceError::Ambiguous)
+        );
+        for changed in [
+            vec![message("absent")],
+            vec![message("b"), message("b")],
+            vec![message("a"), message("a"), message("b")],
+        ] {
+            assert_eq!(
+                retained_indices(&original, &changed),
+                Err(ProvenanceError::NotOrderedDeletion)
+            );
+        }
     }
 
     #[test]

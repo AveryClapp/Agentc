@@ -1,5 +1,31 @@
 # Paired suffix and unchanged-source diagnostic
 
+**Complete:** all 210 new calls and 69 scheduled comparisons were reconstructed
+independently; the stored comparison summary matches. All 210 result rows also
+match the authoritative campaign ledger. Incremental known charges were
+$0.499449, with no stage uncertainty hold. The earlier study's $7.048348 remains
+counted separately.
+
+Across the 69 selected training pairs, candidate final-answer F1 had 4 losses,
+5 gains and 60 ties against the reference; exact match had 2 losses, 3 gains and
+64 ties. All observed losses were answer-stage contrasts already captured in
+the original probes. The 18 filter pairs had no losses and one gain; all 11
+synthesis pairs tied. Of 40 original lexical breaches, 36 had no observed F1
+loss. This does not make those breaches proven false positives: tied outputs
+can both be wrong, and other failure modes remain unmeasured.
+
+Unchanged-source repeat controls also had 4 F1 losses and 3 exact-match losses;
+11 repeat call-site outputs breached the corresponding candidate threshold.
+Thus lexical rejection, endpoint damage, and provider/suffix variation are
+different quantities. These adaptive pairs share only 25 questions and cannot
+establish joint-policy efficacy, safety, or a noise-corrected damage bound.
+
+The independent read-only analyzer is `bench/openrouter_outcome_analysis.py`;
+its per-site/rule/plan/question evidence is in
+`bench/repro/openrouter-outcome-analysis-2026-09-05.json`. Root review reran all
+25 focused tests and checked current authoritative ledger agreement. No native
+feedback, guard relaxation, or heldout evaluation followed from this analysis.
+
 This is a development diagnostic, not a new efficacy trial or a continuation of
 the closed input-rule study. It uses every one of that study's 69 training
 exploration pairs, including zero disagreements: 18 filter, 11 synthesis and

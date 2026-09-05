@@ -1,5 +1,25 @@
 # Structured procurement feasibility pilot
 
+**STOPPED_PROVIDER_FILTER — this manifest is permanently closed.** Five of
+54 calls completed; no complete comparisons or passing feasibility gate exist.
+The first Haiku workflow satisfied the grammar. Sonnet's filter output narrated
+the operation and exhausted 512 tokens; its synthesis returned `ERROR`. The
+next Sonnet answer attempt returned provider `content_filter` without usage.
+These are development observations, not comparative efficacy estimates.
+
+Known pilot charges are $0.033861. The filtered attempt's entire $0.031998
+reservation remains a budget hold: conservative pilot commitment $0.065859.
+Independent review approved retiring that exact logical call without retry,
+usable outcome, or release of uncertainty. Reservation SHA-256:
+`7e8349d12868ac10c6c311e57ec7abaeb8f3a7f2e566b1eb40a37c30c62d6afd`.
+The `attempt_abandoned` ledger event preserves the full possible charge. The
+original partial summary records the stop-time unresolved state; it is not
+rewritten into a completed or passing result. Campaign commitment after
+reconciliation is $17.65355247, including $0.179304 in retained uncertainty.
+
+Any instruction-placement follow-up must use a new source-bound manifest and
+disclose reuse of these development cases. This pilot cannot be resumed.
+
 This is a controlled generated-workload screen, not a joint-system efficiency
 result or real-world QA evidence. The three operations are record selection,
 relational join/multiplication, and application of an approval policy. Twenty
@@ -44,6 +64,6 @@ disagreement for invalid output/upstream state, and unchanged 20-pair admission
 floor and numerical risk settings. This stricter application validity check is
 explicitly different from the earlier free-form QA workload.
 
-Run `python -m bench.openrouter_structured_study run-pilot` with explicit
-`--env-file`, original `--ledger`, `--output` and the `--manifest-sha256` above.
-Use `PYTHONHASHSEED=0`; never replace the shared campaign ledger.
+The historical runner was `python -m bench.openrouter_structured_study run-pilot`
+with explicit environment, shared ledger, output and manifest identity, under
+`PYTHONHASHSEED=0`. Do not run it again for this closed manifest.

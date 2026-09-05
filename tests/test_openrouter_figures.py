@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import pytest
 
-from bench.openrouter_figures import conditional_intervals, policy_data, render
+from bench.openrouter_figures import POLICY_NAMES, activation_data, conditional_intervals, policy_data, render, validate_trajectories
 from bench.openrouter_frontier import CONTEXTS, SOURCE_MODEL
 from bench.openrouter_pilot import PilotError
 
@@ -57,9 +57,12 @@ def test_render_exports_all_numeric_panels_and_refuses_overwrite(tmp_path, monke
         return savefig(figure, path, *args, **kwargs)
     monkeypatch.setattr(Figure, "savefig", checked_savefig)
     models = [SOURCE_MODEL, "anthropic/claude-haiku-4.5", "google/gemini-2.5-flash-lite", "qwen/qwen3-30b-a3b-instruct-2507"]
-    data = {"opportunity": [], "policies": [], "interactions": []}
+    data = {"opportunity": [], "policies": [], "interactions": [], "activation": []}
     for context in CONTEXTS:
         for i, model in enumerate(models):
+            data["activation"].append({"context": context, "model": model, "questions": 160,
+                "native_rewritten": 0 if context == "natural" else 160,
+                "identical_payload_pairs": 160 if context == "natural" else 0})
             for arm in ("full", "compress"):
                 data["opportunity"].append({"context": context, "model": model, "arm": arm,
                     "mean_f1": .7 + .01*i, "mean_f1_95": [.65, .78], "mean_nominal_uncached_usd": .001*(i+1)})
@@ -76,3 +79,47 @@ def test_render_exports_all_numeric_panels_and_refuses_overwrite(tmp_path, monke
     assert row_limits == [(2.5, -.5)] * 4
     with pytest.raises(PilotError, match="overwrite"):
         render(data, tmp_path)
+
+
+def complete_policy_fixture():
+    specs = [{"name": name, "settings": {"AGENTC_OPTIMIZE_EXPLORATION_CALLS_PER_SITE_24H": "160" if "expanded" in name else "20"}} for name in POLICY_NAMES]
+    schedule = [{"context": c, "task_id": p, "phase": p} for c in CONTEXTS for p in ("warmup", "calibration", "holdout")]
+    rows = [{**r, "id": r["context"] + "/" + r["task_id"]} for r in schedule]
+    replay = {"trajectories": [{"context": c, "policy": s["name"], "settings": deepcopy(s["settings"]), "decisions": [
+        {"task_id": r["task_id"], "phase": r["phase"], "primary_row_id": r["id"]} for r in rows if r["context"] == c]}
+        for s in specs for c in CONTEXTS]}
+    return {"policy_replay": {"specs": specs}, "schedule": schedule}, rows, replay
+
+
+@pytest.mark.parametrize("corruption", ["missing_all", "missing_one", "duplicate", "budget", "missing_task", "wrong_phase", "wrong_primary"])
+def test_incomplete_or_relabeled_native_replays_fail_closed(corruption):
+    manifest, rows, replay = complete_policy_fixture()
+    validate_trajectories(manifest, rows, replay)
+    first = replay["trajectories"][0]
+    if corruption == "missing_all":
+        replay["trajectories"] = []
+    elif corruption == "missing_one":
+        replay["trajectories"].pop()
+    elif corruption == "duplicate":
+        replay["trajectories"][-1] = deepcopy(first)
+    elif corruption == "budget":
+        first["settings"]["AGENTC_OPTIMIZE_EXPLORATION_CALLS_PER_SITE_24H"] = "900"
+    elif corruption == "missing_task":
+        first["decisions"].pop()
+    elif corruption == "wrong_phase":
+        first["decisions"][0]["phase"] = "holdout"
+    else:
+        first["decisions"][0]["primary_row_id"] = first["decisions"][1]["primary_row_id"]
+    with pytest.raises(PilotError, match="figure replay"):
+        validate_trajectories(manifest, rows, replay)
+
+
+def test_activation_counts_use_payload_equality_not_only_planner_labels():
+    rows = []
+    for i in range(2):
+        for arm in ("full", "compress"):
+            rows.append({"task_id": str(i), "context": "natural", "model": SOURCE_MODEL, "phase": "holdout", "arm": arm,
+                "native_plan": {"kind": "rewritten" if arm == "compress" else "pass_through"},
+                "request_sha256": "same" if i == 0 else arm})
+    assert activation_data(rows) == [{"context": "natural", "model": SOURCE_MODEL, "questions": 2,
+        "native_rewritten": 2, "identical_payload_pairs": 1}]

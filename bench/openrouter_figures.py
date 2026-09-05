@@ -87,6 +87,41 @@ def policy_data(manifest, rows, lock, replay):
     return output
 
 
+def validate_trajectories(manifest, rows, replay):
+    """Reject partial/relabeled policy reports before a persuasive plot exists."""
+    specs = {p["name"]: p["settings"] for p in manifest["policy_replay"]["specs"]}
+    expected = {(name, context) for name in specs for context in CONTEXTS}
+    actual = [(t["policy"], t["context"]) for t in replay["trajectories"]]
+    if len(actual) != len(expected) or set(actual) != expected or set(specs) != set(POLICY_NAMES):
+        raise PilotError("figure replay needs exact unique frozen policy/context coverage")
+    by_id = {r["id"]: r for r in rows}
+    for trajectory in replay["trajectories"]:
+        name, context = trajectory["policy"], trajectory["context"]
+        if trajectory["settings"] != specs[name]:
+            raise PilotError("figure replay settings differ from frozen policy")
+        budget = "160" if "expanded" in name else "20"
+        if specs[name]["AGENTC_OPTIMIZE_EXPLORATION_CALLS_PER_SITE_24H"] != budget:
+            raise PilotError("figure policy budget label differs from frozen setting")
+        expected_tasks = list(dict.fromkeys((r["task_id"], r["phase"]) for r in manifest["schedule"] if r["context"] == context))
+        if [(d["task_id"], d["phase"]) for d in trajectory["decisions"]] != expected_tasks:
+            raise PilotError("figure replay task/phase chronology is incomplete or changed")
+        for decision in trajectory["decisions"]:
+            row = by_id.get(decision["primary_row_id"])
+            if row is None or (row["context"], row["task_id"], row["phase"]) != (context, decision["task_id"], decision["phase"]):
+                raise PilotError("figure replay primary outcome belongs to another task")
+
+
+def activation_data(rows):
+    full = {(r["context"], r["model"], r["task_id"]): r for r in rows if r["phase"] == "holdout" and r["arm"] == "full"}
+    output = []
+    for context, model in sorted({(r["context"], r["model"]) for r in full.values()}):
+        candidates = [r for r in rows if r["phase"] == "holdout" and (r["context"], r["model"], r["arm"]) == (context, model, "compress")]
+        output.append({"context": context, "model": model, "questions": len(candidates),
+            "native_rewritten": sum(r["native_plan"]["kind"] == "rewritten" for r in candidates),
+            "identical_payload_pairs": sum(r["request_sha256"] == full[(context, model, r["task_id"])]["request_sha256"] for r in candidates)})
+    return output
+
+
 def build_data(manifest, rows, lock, replay, mechanisms):
     for report, field in ((replay, "consumed_rows_sha256"), (mechanisms, "results_sha256")):
         if report["manifest_sha256"] != digest(manifest) or report[field] != digest(rows) or report["paper_evidence"] is not False:
@@ -95,6 +130,7 @@ def build_data(manifest, rows, lock, replay, mechanisms):
             or replay.get("evaluation_kind") != "offline_selected_feedback_replay"
             or replay.get("replay_source_sha256") != file_hash(Path(__file__).with_name("openrouter_replay.py"))):
         raise PilotError("figure inputs need original complete replay and frozen static lock")
+    validate_trajectories(manifest, rows, replay)
     opportunity = []
     for context in CONTEXTS:
         for model in sorted(manifest["endpoints"]):
@@ -107,8 +143,10 @@ def build_data(manifest, rows, lock, replay, mechanisms):
     return {"paper_evidence": False, "scope": "ContextCompress-only exploratory study, not full-rule factorial",
         "manifest_sha256": digest(manifest), "results_sha256": digest(rows), "replay_sha256": digest(replay),
         "mechanisms_sha256": digest(mechanisms), "plot_source_sha256": file_hash(Path(__file__)),
-        "opportunity": opportunity, "policies": policy_data(manifest, rows, lock, replay), "interactions": mechanisms["interactions"],
+        "opportunity": opportunity, "activation": activation_data(rows),
+        "policies": policy_data(manifest, rows, lock, replay), "interactions": mechanisms["interactions"],
         "limitations": ["Natural and extended panels reuse the same questions; they are not independent datasets.",
+            "Identical-payload pairs measure provider repeat variability, not a rewrite effect; see activation counts.",
             "Nominal costs reprice observed tokens without implicit cache discounts; these are not deployment bills.",
             "Native policy totals include all measured primary/exploration/shadow decisions; static totals pay all candidate calibration calls.",
             "Unadjusted descriptive intervals are conditional on the realized trajectory; they are not a safety or noninferiority certificate.",
@@ -146,12 +184,15 @@ def render(data, directory):
                     markerfacecolor="white" if marker == "o" else colors[index], label=NAMES.get(model, model) if marker == "o" else None)
         ax.set_xscale("log")
         ax.set_xlabel("Nominal uncached cost per answer (USD, log scale)")
-        ax.set_title(context.capitalize() + " context", loc="left", fontweight="bold")
+        activation = [r for r in data["activation"] if r["context"] == context]
+        noops = sum(r["identical_payload_pairs"] for r in activation)
+        pairs = sum(r["questions"] for r in activation)
+        ax.set_title(context.capitalize() + f" context · {noops}/{pairs} unchanged pairs", loc="left", fontweight="bold", fontsize=11)
         ax.grid(axis="y", color="#d9e1e2", lw=.6)
     axes[0].set_ylabel("Answer token F1 (%)")
     axes[0].legend(frameon=False, fontsize=8, loc="lower left")
     fig.suptitle("Model × rewrite opportunity  |  ○ Full prompt    ■ ContextCompress", fontsize=13)
-    fig.supxlabel("Exploratory paired questions · descriptive 95% intervals · no setup or deployment-cost claim", fontsize=9)
+    fig.supxlabel("Descriptive 95% intervals · unchanged prompts measure repeat variability · no setup or deployment-cost claim", fontsize=9)
     save(fig, "01-model-rewrite-opportunity")
 
     fig, axes = plt.subplots(2, 2, figsize=(13, 9), layout="constrained", sharex="col")
@@ -195,7 +236,7 @@ def render(data, directory):
     ax.grid(axis="x", color="#d9e1e2", lw=.6)
     ax.set_xlabel("Model-specific compression effect minus Sonnet's effect (F1 percentage points)")
     ax.set_title("Does the same rewrite behave differently across models?", loc="left", fontweight="bold")
-    fig.supxlabel("Four outcomes per question · paired difference-in-differences · unadjusted descriptive 95% intervals", fontsize=9)
+    fig.supxlabel("Four paired outcomes · unadjusted 95% intervals\nIdentical-payload arms measure repeat variability, not an exercised rewrite (see opportunity panel counts)", fontsize=9)
     save(fig, "03-model-rewrite-interactions")
     return {"matplotlib_version": matplotlib.__version__, "formats": ["svg", "png"]}
 

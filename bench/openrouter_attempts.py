@@ -126,7 +126,12 @@ def accounting(events):
     for key, reserve in reserves.items():
         if key not in terminals and key not in matched:
             pending.append(reserve)
+    from bench.openrouter_groups import replay
+
+    groups = replay(events)
+    pending.extend(groups["group_pending"])
     return {
+        **groups,
         "results": results,
         "reserves": reserves,
         "terminals": terminals,

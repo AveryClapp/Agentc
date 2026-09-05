@@ -538,6 +538,9 @@ class Ledger:
             raise PilotError("ledger is incomplete; reconcile before resuming") from exc
         if any(e.get("key_id") != self.key_id for e in events):
             raise PilotError("ledger belongs to a different API key")
+        from bench.openrouter_groups import validate_binding
+
+        validate_binding(self, events)
         return events
 
     def append(self, handle: Any, event: Json) -> Json:
@@ -648,6 +651,8 @@ class Ledger:
         stage_cap: Decimal,
         payload: Json,
         metadata: Json,
+        *,
+        _group: tuple[Json, str] | None = None,
     ) -> Json:
         from bench.openrouter_attempts import accounting
         from bench.openrouter_transport import require_deadline_support
@@ -674,6 +679,14 @@ class Ledger:
         fingerprint = digest({"payload": payload, "metadata": metadata, "stage": stage})
         with self.locked() as handle:
             events = Ledger.read(self, handle)
+            group_fields = {}
+            if _group is not None:
+                from bench.openrouter_groups import authorize
+
+                group_fields = authorize(
+                    self, accounting(events), *_group, call_id, stage,
+                    stage_cap, fingerprint,
+                )
             done = {e["id"]: e for e in events if e["event"] == "result"}
             if call_id in done:
                 if done[call_id]["fingerprint"] != fingerprint:
@@ -696,7 +709,13 @@ class Ledger:
                 accounting(events)
                 return done[call_id]
             state = accounting(events)
-            if state["pending"] or state["failed_calls"] - {call_id}:
+            if group_fields:
+                from bench.openrouter_groups import ready
+
+                ready(state, group_fields)
+            elif call_id in state["group_call_ids"]:
+                raise PilotError("group call requires its exact slot authorization")
+            elif state["pending"] or state["failed_calls"] - {call_id}:
                 raise PilotError(
                     "unresolved paid request; reconcile ledger before continuing"
                 )
@@ -728,12 +747,21 @@ class Ledger:
                             "retry_not_before_epoch": last["retry_not_before_epoch"],
                         },
                     )
-            total = state["known_usd"] + state["holds_usd"]
+            total = state["known_usd"] + state["holds_usd"] + state["pending_usd"]
             stage_total = state["known_by_stage"].get(stage, Decimal(0)) + state[
                 "holds_by_stage"
-            ].get(stage, Decimal(0))
+            ].get(stage, Decimal(0)) + sum(
+                (money(r["upper_cost_usd"]) for r in state["pending"] if r["stage"] == stage),
+                Decimal(0),
+            )
             reserve = upper_cost(payload)
-            if total + reserve > HARD_CAP or stage_total + reserve > stage_cap:
+            additional = reserve
+            if group_fields:
+                spec = state["groups"][group_fields["group_sha256"]]["reservation"]["slots"][group_fields["group_slot"]]
+                if reserve != money(spec["upper_cost_usd"]):
+                    raise PilotError("budget group slot allowance changed")
+                additional = Decimal(0)
+            if total + additional > HARD_CAP or stage_total + additional > stage_cap:
                 raise PilotError(
                     "next request would exceed the reserved spending limit"
                 )
@@ -747,12 +775,13 @@ class Ledger:
                 baseline = money(origins[0]["usage_usd"])
             if (
                 usage < baseline
-                or max(total, usage - baseline + state["holds_usd"]) + reserve
+                or max(total, usage - baseline + state["holds_usd"] + state["pending_usd"]) + additional
                 > HARD_CAP
             ):
                 raise PilotError("account usage would exceed the campaign ceiling")
             remaining = before.get("limit_remaining")
-            if remaining is not None and money(remaining) < reserve:
+            required = state["pending_usd"] if group_fields else reserve
+            if remaining is not None and money(remaining) < required:
                 raise PilotError("provider key budget is below the next reservation")
             schema_endpoint = (
                 schema_endpoint_before_dispatch(key, payload, metadata)
@@ -770,6 +799,7 @@ class Ledger:
                     "request": payload,
                     "metadata": metadata,
                     "account_usage_before_usd": str(usage),
+                    **group_fields,
                     **({"schema_endpoint_observation": schema_endpoint}
                        if schema_endpoint is not None else {}),
                 },
@@ -838,7 +868,8 @@ class Ledger:
             },
         )
         context["response"] = response
-        choice = (schema_text_choice if "response_format" in payload else text_choice)(response)
+        choice = (schema_text_choice if "response_format" in payload
+                  or reservation.get("group_sha256") else text_choice)(response)
         usage_data = response.get("usage", {})
         cost = money(usage_data.get("cost"))
         if cost > reserve:

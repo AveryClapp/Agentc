@@ -3,7 +3,6 @@
 from copy import deepcopy
 import json
 import os
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -13,9 +12,9 @@ from bench import openrouter_rules_live as live
 from bench.openrouter_matrix import write_json
 from bench.openrouter_pilot import PilotError, ProviderFailure
 from bench.openrouter_rules_protocol import workflow_call
-from test_openrouter_rules_live import (
-    experiment,
-)  # shared fake fixture; never provider inference
+import test_openrouter_rules_live as shared
+
+experiment = shared.experiment  # shared fake fixture; never provider inference
 
 
 def full_manifest():

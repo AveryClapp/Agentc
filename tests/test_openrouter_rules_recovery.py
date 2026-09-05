@@ -151,6 +151,9 @@ def test_second_unresolved_attempt_is_not_automatically_cleared(tmp_path):
     with base.locked() as handle:
         base.append(handle, {k: v for k, v in events[-1].items() if k not in {"at", "key_id"}})
     assert overlay.summary()["unresolved_calls"] == [recovery.CALL_ID]
+    status = recovery.recovery_status(overlay, r)
+    assert Decimal(status["unresolved_reserve_upper_bound_usd"]) == Decimal(r["budget_hold_usd"])
+    assert Decimal(status["conservative_campaign_total_usd"]) == Decimal(".3") + 2*Decimal(r["budget_hold_usd"])
 
 
 def test_changed_retry_payload_is_rejected_before_dispatch(tmp_path, monkeypatch):

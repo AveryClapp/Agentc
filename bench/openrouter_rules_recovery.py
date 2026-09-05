@@ -117,6 +117,19 @@ class RecoveryLedger(Ledger):
             pilot.HARD_CAP = original_cap
 
 
+def recovery_status(ledger, receipt):
+    status = ledger.summary()
+    with ledger.locked() as handle:
+        events = ledger.read(handle)
+    done = {e["id"] for e in events if e["event"] == "result"}
+    pending = sum((money(e["upper_cost_usd"]) for e in events
+                   if e["event"] == "reserve" and e["id"] not in done), Decimal(0))
+    status["retained_failed_attempt_allowance_usd"] = receipt["budget_hold_usd"]
+    status["unresolved_reserve_upper_bound_usd"] = str(pending)
+    status["conservative_campaign_total_usd"] = str(money(status["spent_usd"]) + money(receipt["budget_hold_usd"]) + pending)
+    return status
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("observe", "record-reviewed-retry", "run"))
@@ -160,9 +173,7 @@ def main():
             live.Ledger = saved
             # Even a second HTTP429 or a reservation-cap stop preserves this
             # sidecar and the underlying raw ledger; neither is paper success.
-            status = RecoveryLedger(args.ledger, key).summary()
-            status["retained_failed_attempt_allowance_usd"] = receipt["budget_hold_usd"]
-            status["conservative_campaign_total_usd"] = str(money(status["spent_usd"]) + money(receipt["budget_hold_usd"]))
+            status = recovery_status(RecoveryLedger(args.ledger, key), receipt)
             write_json(recovery / "status.json", status)
         print(json.dumps({"schedule_complete": result["schedule_complete"], "completed_calls": result["completed_calls"],
                           "stage_known_billed_usd": result["cost_usd"], "recovery": status}, indent=2))

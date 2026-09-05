@@ -2,9 +2,31 @@
 
 Frozen source `bcac7f1`. Canonical manifest SHA-256:
 `b6e81cb19d7a1fa704b712702096224b1659d79a2ea4e4395c5aa9e695138f8c`.
-Prospective development-only fixed-model screen: 54 calls, six exposed tasks,
-three stages, Sonnet source/repeat and Haiku target. No native execution or
-efficacy claim. Acquisition requires independent source and manifest review.
+Status: **STOPPED_APPLICATION_INVALID — 34/54 calls; incomplete, failed gate.**
+Development-only fixed-model screen: six exposed tasks, three stages, Sonnet
+source/repeat and Haiku target. Independent source/freeze review preceded
+acquisition; result reconstruction is recorded in `bd-323l.6.13.8.6.20.10.1`.
+No native execution or efficacy claim.
+
+The first 33 completions were typed-valid. Call 34 was a Haiku filter response,
+`{"result":["D15","D18","D07"]}`, with a normal stop. The three distinct in-range
+IDs violated this frozen application's ascending-order requirement, so it failed
+locally despite valid provider-schema JSON. All 34 receipts, attempts, results and
+journal entries are preserved. Eleven completed workflows scored target 3/3,
+source 3/4, repeat 4/4 exact. The source error was a real policy-answer error,
+not formatting; this prefix is not a model ranking or feasibility pass.
+
+The stage cost USD0.243573, with no new uncertainty, pending or unresolved calls.
+Campaign known charges afterward are USD18.11026447 plus USD6.259659 prior
+retained uncertainty: USD24.36992347 committed, USD25.63007653 remaining of the
+original USD50. No retry or hold release occurred.
+
+Independent public-data checks found downstream rendering uses filter membership
+in original paragraph order: all six ID permutations preserve complete downstream
+calls and provider payloads (144 checks across six tasks, two stages and models).
+This motivates a separately versioned set-valued filter contract (`.20.12`), not
+reclassification of this failure. That change cannot remove the source policy
+error. Any successor requires a new source/manifest and the unchanged full gate.
 
 This successor changes only the schema transport's acceptance of the exact
 observed singleton passed-moderation diagnostic (`bd-cjta`). Its complete shape

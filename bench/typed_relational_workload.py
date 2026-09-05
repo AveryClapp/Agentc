@@ -1,8 +1,10 @@
 """Prospective typed procurement application, not a repair of prior experiments.
 
-Only complete, normally finished JSON values cross the application seam. Raw
-provider receipts must remain separate; callers normalize finish status through
-application_text before storing workflow history. No transport or label oracle.
+Only complete, normally finished JSON values cross the application seam. The
+versioned filter result is a set of three IDs; other stage values remain exact.
+Raw provider receipts stay separate from canonical application state. This is
+not a reinterpretation of the earlier ascending-array contract or its failures.
+No transport or label oracle.
 """
 
 from __future__ import annotations
@@ -23,8 +25,8 @@ Json = dict[str, Any]
 STAGES = legacy.STAGES
 VERSION = legacy.VERSION  # Keep the generator, fixtures, and task IDs unchanged.
 WORKLOAD = "typed_relational_v1"
-FORMAT_VARIANT = "json-schema-result-v1"
-FEEDBACK_CONTRACT = "valid-typed-value-equality=0;otherwise=1-v1"
+FORMAT_VARIANT = "json-schema-filter-set-result-v2"
+FEEDBACK_CONTRACT = "valid-filter-set-or-exact-typed-value-equality=0;otherwise=1-v2"
 ERROR = '{"result":null}'
 ERROR_INPUT = "ERROR_INPUT: preceding application output failed its typed contract."
 MAX_OUTPUT_CHARS = 65536
@@ -68,8 +70,9 @@ _PROMPTS = {
         "Select exactly the three documents belonging to the requested tenant: "
         "its REQUESTS, CATALOG, and OFFERS documents. Do not solve the join or "
         "approval policy. Other tenants are unrelated, even if their keys match. "
-        "The result is an array of exactly three distinct document IDs, already "
-        "sorted ascending. IDs range D01 through D20. " + _JSON_RULE
+        "The result is an array of exactly three distinct document IDs. "
+        "Order is irrelevant: the application interprets these IDs as a set. "
+        "IDs range D01 through D20. " + _JSON_RULE
     ),
     "SYNTH_SYSTEM": (
         "You are the relational-join stage of a procurement application. "
@@ -93,7 +96,7 @@ _PROMPTS = {
     ),
 }
 _FINAL_OUTPUT_RULES = {
-    "filter": "Return a JSON result array containing exactly three sorted, distinct IDs.",
+    "filter": "Return a JSON result array containing exactly three distinct IDs; order is irrelevant.",
     "synthesize": "Return a JSON result object containing the six requested fields.",
     "answer": "Return a JSON result string containing the approver ID.",
 }
@@ -196,7 +199,7 @@ def _valid_result(stage: str, value: Any) -> bool:
             and all(
                 isinstance(v, str) and re.fullmatch(_FILTER_PATTERN, v) for v in value
             )
-            and value == sorted(set(value))
+            and len(set(value)) == 3
         )
     if stage == "synthesize":
         return (
@@ -223,7 +226,9 @@ def parse_stage(stage: str, text: Any, *, finish_reason: str = "stop") -> Any:
     value = _result(text, finish_reason)
     if not _valid_result(stage, value):
         return None
-    return tuple(value) if stage == "filter" else value
+    # Sort only after exact cardinality, distinctness and domain validation.
+    # This canonicalizes a valid set; it never drops duplicates or repairs IDs.
+    return tuple(sorted(value)) if stage == "filter" else value
 
 
 parse = parse_stage

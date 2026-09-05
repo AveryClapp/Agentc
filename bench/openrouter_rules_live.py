@@ -79,7 +79,7 @@ def sources(workload=None):
         "bench/openrouter_joint_study.py",
     )
     if workload is not None:
-        if workload != "structured_relational_v1":
+        if workload not in {"structured_relational_v1", "typed_relational_v1"}:
             raise PilotError("unknown workload adapter")
         paths += (
             "bench/structured_relational_workload.py",
@@ -89,7 +89,36 @@ def sources(workload=None):
             "bench/openrouter_rules_diagnostics.py",
             "bench/openrouter_rules_validity.py",
         )
+        if workload == "typed_relational_v1":
+            paths += ("bench/typed_relational_workload.py",)
     return {p: file_hash(ROOT / p) for p in paths}
+
+
+def workload_adapter(manifest):
+    name = manifest.get("workload")
+    if name == "structured_relational_v1":
+        from bench import structured_relational_workload
+
+        return structured_relational_workload
+    if name == "typed_relational_v1":
+        from bench import typed_relational_workload
+
+        return typed_relational_workload
+    raise PilotError("unknown workload adapter")
+
+
+def application_answer(manifest, row):
+    """Project a receipt into application state without changing its raw text.
+
+    Typed applications consume validated values, not provider formatting. A
+    length completion maps to invalid state even if its JSON happens to parse.
+    Legacy applications keep exactly their original raw-string semantics.
+    """
+    if manifest.get("workload") == "typed_relational_v1":
+        return workload_adapter(manifest).application_text(
+            row["answer"], row["finish_reason"], stage=row["workflow_stage"]
+        )
+    return row["answer"]
 
 
 def workflow_for(manifest, *args, **kwargs):
@@ -97,9 +126,7 @@ def workflow_for(manifest, *args, **kwargs):
     workload = manifest.get("workload")
     if workload is None:
         return workflow_call(*args, **kwargs)
-    if workload != "structured_relational_v1":
-        raise PilotError("unknown workload adapter")
-    from bench import structured_relational_workload as structured
+    structured = workload_adapter(manifest)
 
     if manifest["prompts"] != structured.prompts():
         raise PilotError("structured application prompts changed")
@@ -109,9 +136,7 @@ def workflow_for(manifest, *args, **kwargs):
 def score_for(manifest, answer, expected, *, history=None):
     if manifest.get("workload") is None:
         return score(answer, expected)
-    if manifest["workload"] != "structured_relational_v1":
-        raise PilotError("unknown workload scoring contract")
-    from bench import structured_relational_workload as structured
+    structured = workload_adapter(manifest)
 
     return structured.score_answer(answer, expected, history=history)
 
@@ -119,9 +144,12 @@ def score_for(manifest, answer, expected, *, history=None):
 def divergence_for(manifest, stage, call, reference, candidate):
     """Invalid application output cannot earn evidence by agreeing on an error."""
     if manifest.get("workload") is not None:
-        if manifest["workload"] != "structured_relational_v1":
-            raise PilotError("unknown workload divergence contract")
-        from bench import structured_relational_workload as structured
+        structured = workload_adapter(manifest)
+        if manifest["workload"] == "typed_relational_v1":
+            return structured.application_disagreement(
+                stage, reference, candidate,
+                upstream_valid=call["parameters"]["extra"]["typed_relational_contract"]["upstream_valid"],
+            )
 
         upstream = call["parameters"]["extra"]["structured_relational_contract"][
             "upstream_valid"
@@ -138,6 +166,8 @@ def divergence_for(manifest, stage, call, reference, candidate):
 def scoring_contract(manifest):
     if manifest.get("workload") is None:
         return "unchanged_normalized_raw_answer_EM_F1"
+    if manifest["workload"] == "typed_relational_v1":
+        return "strict_typed_application_scalar_exact_v1"
     if manifest["workload"] != "structured_relational_v1":
         raise PilotError("unknown workload scoring contract")
     return "strict_application_scalar_exact_v1"
@@ -183,11 +213,25 @@ def payload_for(call, manifest):
         or params.get("temperature") != 0
     ):
         raise PilotError("workflow request exceeds frozen model/parameter coverage")
+    response_format = params.get("extra", {}).get("response_format")
+    if manifest.get("workload") == "typed_relational_v1":
+        adapter = workload_adapter(manifest)
+        stage = call["call_site_id"].rsplit("/", 1)[-1]
+        if (
+            stage not in STAGES
+            or response_format != adapter.schema_for(stage)
+            or params["extra"]["agentc_route_context"].get("structured_outputs") is not True
+            or not all(t["capabilities"].get("structured_outputs") is True for t in manifest["catalog"]["targets"])
+        ):
+            raise PilotError("typed schema or routing capability changed")
+    elif response_format is not None:
+        raise PilotError("legacy workload cannot silently enable a typed schema")
     return make_request(
         call["model"],
         [manifest["endpoints"][call["model"]]["tag"]],
         call["messages"],
         max_tokens=cap,
+        response_format=response_format,
     )
 
 
@@ -417,10 +461,10 @@ def static_selection(decisions, calls, tasks, manifest):
         f1 = sum(
             score_for(
                 manifest,
-                by_id[d["primary_id"]]["answer"],
+                application_answer(manifest, by_id[d["primary_id"]]),
                 tasks[d["task_id"]]["expected"],
                 history={
-                    r["workflow_stage"]: by_id[r["primary_id"]]["answer"]
+                    r["workflow_stage"]: application_answer(manifest, by_id[r["primary_id"]])
                     for r in rows
                     if r["task_id"] == d["task_id"]
                 },
@@ -477,10 +521,10 @@ def summarize(decisions, calls, manifest, tasks):
                 "development_mean_f1": sum(
                     score_for(
                         manifest,
-                        by_id[d["primary_id"]]["answer"],
+                        application_answer(manifest, by_id[d["primary_id"]]),
                         tasks[d["task_id"]]["expected"],
                         history={
-                            r["workflow_stage"]: by_id[r["primary_id"]]["answer"]
+                            r["workflow_stage"]: application_answer(manifest, by_id[r["primary_id"]])
                             for r in selected
                             if r["task_id"] == d["task_id"]
                         },
@@ -818,6 +862,8 @@ class Acquisition:
 
 def run(args, key):
     manifest = json.loads((args.output / "manifest.json").read_text())
+    if manifest.get("workload") == "typed_relational_v1":
+        raise PilotError("typed native routing awaits a reviewed provider context contract")
     study = manifest.get("kind") == "prospective_joint_input_rules_v1"
     if study:
         from bench.openrouter_joint_study import validate_manifest
@@ -974,8 +1020,8 @@ def run(args, key):
                                     manifest,
                                     stage,
                                     call,
-                                    primary["answer"],
-                                    candidate["answer"],
+                                    application_answer(manifest, primary),
+                                    application_answer(manifest, candidate),
                                 )
                                 if not native.optimize_complete_exploration(
                                     exploration["lease_token"],
@@ -1003,8 +1049,8 @@ def run(args, key):
                                     manifest,
                                     stage,
                                     call,
-                                    primary["answer"],
-                                    reference["answer"],
+                                    application_answer(manifest, primary),
+                                    application_answer(manifest, reference),
                                 )
                                 native.optimize_record_divergence(token, divergence)
                         active = activation(call, plan)
@@ -1020,7 +1066,7 @@ def run(args, key):
                                 "divergence_feedback": divergence,
                             }
                         )
-                        history[stage] = primary["answer"]
+                        history[stage] = application_answer(manifest, primary)
                 finally:
                     if not is_calibration:
                         native.optimize_flush()

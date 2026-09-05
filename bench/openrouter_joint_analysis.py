@@ -23,7 +23,7 @@ from bench import openrouter_joint_study as study
 from bench import openrouter_rules_live as live
 from bench.openrouter_attempts import accounting
 from bench.openrouter_matrix import ROOT, file_hash, load_module, write_json
-from bench.openrouter_pilot import PilotError, digest, money, text_choice
+from bench.openrouter_pilot import PilotError, digest, money, schema_text_choice, text_choice
 from bench.openrouter_rules_comparison import load_tasks
 from bench.openrouter_rules_diagnostics import analyze as plan_diagnostics
 
@@ -237,7 +237,7 @@ def validate_journals(manifest, decisions, calls, intents, tasks, attention):
             ]
         )
         if primary_id in by_id:
-            history[stage] = by_id[primary_id]["answer"]
+            history[stage] = live.application_answer(manifest, by_id[primary_id])
         if index < len(decisions):
             decision = decisions[index]
             if (
@@ -262,8 +262,8 @@ def validate_journals(manifest, decisions, calls, intents, tasks, attention):
                     manifest,
                     stage,
                     original,
-                    by_id[ids[0]]["answer"],
-                    by_id[ids[1]]["answer"],
+                    live.application_answer(manifest, by_id[ids[0]]),
+                    live.application_answer(manifest, by_id[ids[1]]),
                 ):
                     raise PilotError("paired feedback differs from returned answers")
             elif feedback is not None:
@@ -351,7 +351,7 @@ def ledger_report(events, stage_id, calls, expected):
             raise PilotError("stage result lacks one durable response")
         body = bodies[0]["response"]
         try:
-            choice = text_choice(body)
+            choice = (schema_text_choice if "response_format" in payload else text_choice)(body)
             if (
                 choice["message"]["content"] != result["answer"]
                 or choice["finish_reason"] != result["finish_reason"]
@@ -693,10 +693,10 @@ def analyze(
                 arms[arm] = {
                     **live.score_for(
                         manifest,
-                        by_id[stages["answer"]["primary_id"]]["answer"],
+                        live.application_answer(manifest, by_id[stages["answer"]["primary_id"]]),
                         tasks[task]["expected"],
                         history={
-                            s: by_id[d["primary_id"]]["answer"]
+                            s: live.application_answer(manifest, by_id[d["primary_id"]])
                             for s, d in stages.items()
                         },
                     ),

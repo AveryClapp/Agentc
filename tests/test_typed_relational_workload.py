@@ -2,18 +2,22 @@
 
 from copy import deepcopy
 import importlib.util
+from itertools import permutations
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
 from bench import structured_relational_workload as legacy
 from bench import typed_relational_workload as workload
+from bench import openrouter_rules_live as live
+from bench import openrouter_structured_study as driver
 from bench.openrouter_joint_study import restrict_call
-from bench.openrouter_pilot import PilotError
+from bench.openrouter_pilot import PilotError, digest
 
 ROOT = Path(__file__).resolve().parents[1]
 SYNTHESIS = {
@@ -115,6 +119,7 @@ def test_generator_is_unchanged_and_public_solution_is_evaluator_only():
     "stage,value",
     [
         ("filter", ["D01", "D03", "D20"]),
+        ("filter", ["D20", "D01", "D03"]),
         ("synthesize", SYNTHESIS),
         ("answer", "M01"),
         ("answer", "M99"),
@@ -123,7 +128,7 @@ def test_generator_is_unchanged_and_public_solution_is_evaluator_only():
 def test_valid_envelopes_and_json_whitespace(stage, value):
     raw = " \n" + envelope(value) + "\t\r\n"
     parsed = workload.parse(stage, raw)
-    assert parsed == (tuple(value) if stage == "filter" else value)
+    assert parsed == (tuple(sorted(value)) if stage == "filter" else value)
     canonical = workload.application_text(raw, stage=stage)
     assert canonical == workload.application_text(raw)
     assert canonical == workload.application_text(canonical)
@@ -216,7 +221,6 @@ def test_non_normal_finish_is_invalid_even_when_content_parses(stage, value, rea
     [
         ["D01", "D03"],
         ["D01", "D02", "D03", "D04"],
-        ["D03", "D01", "D02"],
         ["D01", "D01", "D03"],
         ["D00", "D01", "D03"],
         ["D01", "D03", "D21"],
@@ -225,8 +229,59 @@ def test_non_normal_finish_is_invalid_even_when_content_parses(stage, value, rea
         ["D01", "D03", []],
     ],
 )
-def test_filter_exact_public_grammar_length_and_order(value):
+def test_filter_exact_public_grammar_length_distinctness_and_domain(value):
     assert workload.parse_filter(envelope(value)) is None
+    assert workload.application_text(envelope(value)) == workload.ERROR
+    assert workload.application_disagreement("filter", envelope(value), envelope(value)) == 1.0
+
+
+def test_all_filter_permutations_share_set_state_and_disagreement():
+    orders = list(permutations(["D07", "D15", "D18"]))
+    canonical = '{"result":["D07","D15","D18"]}'
+    for order in orders:
+        raw = " \n" + envelope(order) + "\t"
+        before = raw
+        assert workload.parse_filter(raw) == ("D07", "D15", "D18")
+        assert workload.application_text(raw, stage="filter") == canonical
+        assert workload.application_text(raw) == canonical
+        assert raw == before  # Canonical state never replaces the raw receipt.
+        for other in orders:
+            assert workload.application_disagreement("filter", raw, envelope(other)) == 0.0
+            assert workload.normalized_disagreement(raw, envelope(other)) == 0.0
+        assert workload.application_disagreement(
+            "filter", raw, raw, upstream_valid=False
+        ) == 1.0
+    assert workload.application_disagreement(
+        "filter", canonical, envelope(["D07", "D15", "D19"])
+    ) == 1.0
+
+
+@pytest.mark.parametrize("model", [live.SOURCE_MODEL, live.TARGET_MODEL])
+def test_all_filter_permutations_preserve_downstream_calls_and_provider_payloads(model):
+    # Public pilot tasks only; six permutations x six tasks x two stages x two
+    # models. The renderer consumes membership in public paragraph order.
+    manifest = {
+        "workload": workload.WORKLOAD,
+        "endpoints": {model: {"tag": "anthropic"}},
+        "catalog": {"targets": [{"capabilities": {"structured_outputs": True}}]},
+    }
+    for task in workload.make_tasks(2026090501, 6):
+        selected = workload.parse_filter(reference(task)["filter"])
+        for stage in ("synthesize", "answer"):
+            calls, payloads = [], []
+            for order in permutations(selected):
+                history = {"filter": envelope(order)}
+                if stage == "answer":
+                    history["synthesize"] = envelope(SYNTHESIS)
+                before = deepcopy(history)
+                call = restrict_call(build(task, stage, history, model=model), stage)
+                calls.append(call)
+                payloads.append(live.payload_for(call, manifest))
+                assert history == before
+                assert call["parameters"]["extra"]["typed_relational_contract"]["upstream_valid"]
+            assert len(calls) == 6
+            assert all(call == calls[0] for call in calls)
+            assert all(payload == payloads[0] for payload in payloads)
 
 
 @pytest.mark.parametrize(
@@ -307,6 +362,13 @@ def test_public_only_call_seam_and_wrong_selection_remain_label_blind():
         else ["D04", "D05", "D06"]
     )
     assert workload.history_valid(task, "synthesize", {"filter": envelope(wrong)})
+    for order in permutations(wrong):
+        # Wrong selections remain valid sets: no gold predicate was introduced.
+        assert workload.parse_filter(envelope(order)) == tuple(sorted(wrong))
+        assert workload.history_valid(task, "synthesize", {"filter": envelope(order)})
+    assert workload.application_disagreement(
+        "filter", history["filter"], envelope(wrong)
+    ) == 1.0
 
 
 def test_invalid_upstream_is_contagious_and_lucky_answer_gets_no_credit():
@@ -487,9 +549,33 @@ def test_contract_identity_binds_actual_prompts_schema_comparator_and_sources(
         scoped.setattr(workload, "FEEDBACK_CONTRACT", "changed")
         assert workload.contract_hash() != base
     with monkeypatch.context() as scoped:
+        scoped.setattr(workload, "FORMAT_VARIANT", "json-schema-result-v1")
+        assert workload.contract_hash() != base
+    with monkeypatch.context() as scoped:
         scoped.setitem(workload._RESULT_SCHEMAS, "answer", {"type": "string"})
         assert workload.contract_hash() != base
     assert workload.contract_hash() == base
+
+
+def test_set_contract_is_prospective_and_old_frozen_manifest_is_rejected(monkeypatch):
+    archive = ROOT / "bench/repro/openrouter-typed-schema-v3-pilot-2026-09-05"
+    old = json.loads((archive / "manifest.json").read_text())
+    assert old["format_variant"] == "json-schema-result-v1"
+    assert old["feedback_contract"] == "valid-typed-value-equality=0;otherwise=1-v1"
+    assert workload.FORMAT_VARIANT == "json-schema-filter-set-result-v2"
+    assert workload.FEEDBACK_CONTRACT == "valid-filter-set-or-exact-typed-value-equality=0;otherwise=1-v2"
+    assert old["prompts"]["FILTER_SYSTEM"] != workload.prompts()["FILTER_SYSTEM"]
+    for key in ("SYNTH_SYSTEM", "ANSWER_SYSTEM"):
+        assert old["prompts"][key] == workload.prompts()[key]
+    assert old["response_formats"] == {s: workload.schema_for(s) for s in workload.STAGES}
+
+    def no_ledger(*args, **kwargs):
+        raise AssertionError("old source must be rejected before ledger access")
+
+    monkeypatch.setattr(driver, "typed_ledger_snapshot", no_ledger)
+    args = SimpleNamespace(manifest_sha256=digest(old), fixture=archive / "fixture.json", ledger=None)
+    with pytest.raises(PilotError, match="source, fixture, contract"):
+        driver.validate(args, old)
 
 
 def test_history_and_stage_interface_errors_are_explicit():

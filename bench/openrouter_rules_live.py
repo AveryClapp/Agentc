@@ -157,8 +157,12 @@ def semantic_plan(call, plan, manifest):
     candidate = plan.get("agentc_exploration_context", {}).get("candidate_plan")
     if candidate and plan["kind"] != "pass_through":
         raise PilotError("exploration must accompany the reference primary")
+    def identity(value):
+        context = value.get("agentc_observation_context", {})
+        return {k: context[k] for k in ("key", "divergence_threshold", "runtime_version", "call_site_id") if k in context}
     return {"kind": plan["kind"], "primary": payload_for(plan.get("call", call), manifest),
         "primary_rules": activation(call, plan)["selected_rules"],
+        "primary_identity": identity(plan), "candidate_identity": identity(candidate) if candidate else None,
         "candidate": payload_for(candidate["call"], manifest) if candidate else None,
         "candidate_rules": activation(call, candidate)["selected_rules"] if candidate else []}
 

@@ -1,0 +1,31 @@
+{
+  "kind": "hotpot-train-typed-fixture-v1",
+  "labels_contract": "offline-evaluator-only-v1",
+  "labels_sha256": "96b2a1d6f4b03462f51aa99870fbf2d411ddcc9bd1bc99506eb4e4e32526a9e8",
+  "public_contract": "question+all-ordered-context-only-v1",
+  "public_sha256": "bac1fb01e4f132904648b873436ef1aed2e2766e01e3b8ac2ab0b6b15c0e0dc5",
+  "selection_checkpoint": "1024a1a2190fb9e818c01f2d0dd7ec8c134db556",
+  "selection_file_sha256": "a79998810f5abc3a0637a9f75b4f5c16c25d08355d6dd5aac033c06cd358d8dc",
+  "selection_sha256": "140f40b49c0c80170337a610d4e00ed7adbf29cb693b7bcfc2ab7cdbea86c1b3",
+  "source": {
+    "builder_sha256": "33f1dd2eb2666e7526229d431d2de8f4f01f2ee40a3a875af97a22debef53968",
+    "config": "distractor",
+    "license": "CC-BY-SA-4.0",
+    "repo": "hotpotqa/hotpot_qa",
+    "revision": "1908d6afbbead072334abe2965f91bd2709910ab",
+    "rows": 90447,
+    "shards": [
+      {
+        "bytes": 165624177,
+        "path": "distractor/train-00000-of-00002.parquet",
+        "sha256": "76d3bb3048a7cc73c1958107c0c5872a00d7e7d00c105b81e92f6769e7822e68"
+      },
+      {
+        "bytes": 166162479,
+        "path": "distractor/train-00001-of-00002.parquet",
+        "sha256": "713661628434fbb19fff7392e2e321e4ed107e3c7c7784d0690946e5f722763f"
+      }
+    ],
+    "split": "train"
+  }
+}

@@ -16,6 +16,10 @@ from bench.openrouter_pilot import PilotError, canonical, digest
 @pytest.fixture(scope="module")
 def full_data(tmp_path_factory):
     directory = tmp_path_factory.mktemp("joint-analysis-synthetic")
+    return make_full_data(directory)
+
+
+def make_full_data(directory, *, structured_error=False):
     tasks = [
         {
             "task_id": str(i),
@@ -27,6 +31,11 @@ def full_data(tmp_path_factory):
         }
         for i in range(150)
     ]
+    if structured_error:
+        from bench import structured_relational_workload as workload
+        from test_structured_relational_workload import reference
+
+        tasks = workload.make_tasks(2026090588, 150)
     fixture = directory / "fixture.json"
     write_json(fixture, tasks)
     endpoints = {
@@ -58,6 +67,13 @@ def full_data(tmp_path_factory):
         },
         {},
     )
+    if structured_error:
+        manifest.update(
+            workload="structured_relational_v1",
+            source_files=live.sources("structured_relational_v1"),
+            prompts=workload.prompts(),
+            scoring="strict_application_scalar_exact_v1",
+        )
     by_task = {t["task_id"]: t for t in tasks}
     attention = load_module(
         "joint_analysis_test_attention", ROOT / "python/agentc/_attention.py"
@@ -66,6 +82,8 @@ def full_data(tmp_path_factory):
     calls, decisions, intents, ledger = [], [], [], []
     pairs = 0
     for workflow in manifest["schedule"]:
+        if structured_error and pairs:
+            break  # exercise the full analyzer on a valid stopped training prefix
         history = {}
         arm, phase, task_id = (workflow[k] for k in ("arm", "phase", "task_id"))
         model = (
@@ -78,7 +96,8 @@ def full_data(tmp_path_factory):
         for stage in live.STAGES:
             item = {**workflow, "workflow_stage": stage}
             call = study.restrict_call(
-                live.workflow_call(
+                live.workflow_for(
+                    manifest,
                     by_task[task_id],
                     stage,
                     history,
@@ -184,6 +203,12 @@ def full_data(tmp_path_factory):
                     if stage == "answer"
                     else arm + "/" + task_id + "/" + stage
                 )
+                if structured_error:
+                    answer = (
+                        "ERROR"
+                        if signature["candidate"] is not None
+                        else reference(by_task[task_id])[stage]
+                    )
                 result = {
                     "event": "result",
                     "id": call_id,
@@ -257,15 +282,21 @@ def full_data(tmp_path_factory):
                     "primary_id": ids[0],
                     "incurred_ids": ids,
                     "activation": active,
-                    "divergence_feedback": 0.0 if len(ids) == 2 else None,
+                    "divergence_feedback": live.divergence_for(
+                        manifest, stage, call, calls[-2]["answer"], calls[-1]["answer"]
+                    )
+                    if len(ids) == 2
+                    else None,
                 }
             )
             history[stage] = calls[-len(ids)]["answer"]
-    gate = study.admission_gate(manifest, decisions, calls)
-    assert gate["proceed_to_heldout"]
+    gate = (
+        None if structured_error else study.admission_gate(manifest, decisions, calls)
+    )
+    assert structured_error or gate["proceed_to_heldout"]
     static = live.static_selection(decisions, calls, by_task, manifest)
     summary = {
-        "schedule_complete": True,
+        "schedule_complete": not structured_error,
         "manifest_sha256": digest(manifest),
         "calls_sha256": digest(calls),
         "decisions_sha256": digest(decisions),
@@ -289,6 +320,19 @@ def full_data(tmp_path_factory):
 
 def run(data):
     return analysis.analyze(**data)
+
+
+def test_full_analyzer_accepts_strict_error_feedback_without_rewarding_error_agreement(
+    tmp_path,
+):
+    data = make_full_data(tmp_path, structured_error=True)
+    report = run(data)
+    assert not report["comparison_available"]
+    plan = report["exact_plan_feedback"][0]
+    assert plan["mean_divergence"] == 1.0
+    assert plan["identical_whitespace_token_sets"] == 1
+    assert plan["zero_contract_disagreement"] == 0
+    assert plan["observations"][0]["raw_lexical_divergence"] == 0
 
 
 def test_complete_all48_all6_with_paired_intervals_and_calibration_once(full_data):

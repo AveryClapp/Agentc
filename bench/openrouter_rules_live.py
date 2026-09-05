@@ -63,7 +63,7 @@ class CallLimit(Exception):
     """A requested prefix completed; no new dispatch is allowed."""
 
 
-def sources():
+def sources(workload=None):
     paths = (
         "bench/openrouter_rules_live.py",
         "bench/openrouter_rules_protocol.py",
@@ -78,7 +78,69 @@ def sources():
         "bench/openrouter_transport.py",
         "bench/openrouter_joint_study.py",
     )
+    if workload is not None:
+        if workload != "structured_relational_v1":
+            raise PilotError("unknown workload adapter")
+        paths += (
+            "bench/structured_relational_workload.py",
+            "bench/openrouter_structured_study.py",
+            "bench/openrouter_joint_analysis.py",
+            "bench/openrouter_rules_comparison.py",
+            "bench/openrouter_rules_diagnostics.py",
+            "bench/openrouter_rules_validity.py",
+        )
     return {p: file_hash(ROOT / p) for p in paths}
+
+
+def workflow_for(manifest, *args, **kwargs):
+    """One workload seam shared by acquisition and own-history validation."""
+    workload = manifest.get("workload")
+    if workload is None:
+        return workflow_call(*args, **kwargs)
+    if workload != "structured_relational_v1":
+        raise PilotError("unknown workload adapter")
+    from bench import structured_relational_workload as structured
+
+    if manifest["prompts"] != structured.prompts():
+        raise PilotError("structured application prompts changed")
+    return structured.call(*args, **kwargs)
+
+
+def score_for(manifest, answer, expected, *, history=None):
+    if manifest.get("workload") is None:
+        return score(answer, expected)
+    if manifest["workload"] != "structured_relational_v1":
+        raise PilotError("unknown workload scoring contract")
+    from bench import structured_relational_workload as structured
+
+    return structured.score_answer(answer, expected, history=history)
+
+
+def divergence_for(manifest, stage, call, reference, candidate):
+    """Invalid application output cannot earn evidence by agreeing on an error."""
+    if manifest.get("workload") is not None:
+        if manifest["workload"] != "structured_relational_v1":
+            raise PilotError("unknown workload divergence contract")
+        from bench import structured_relational_workload as structured
+
+        upstream = call["parameters"]["extra"]["structured_relational_contract"][
+            "upstream_valid"
+        ]
+        if (
+            not upstream
+            or structured.parse(stage, reference) is None
+            or structured.parse(stage, candidate) is None
+        ):
+            return 1.0
+    return lexical_divergence(reference, candidate)
+
+
+def scoring_contract(manifest):
+    if manifest.get("workload") is None:
+        return "unchanged_normalized_raw_answer_EM_F1"
+    if manifest["workload"] != "structured_relational_v1":
+        raise PilotError("unknown workload scoring contract")
+    return "strict_application_scalar_exact_v1"
 
 
 def runtime_sources(runtime_commit=RUNTIME_COMMIT):
@@ -353,9 +415,16 @@ def static_selection(decisions, calls, tasks, manifest):
         ):
             raise PilotError("static router requires complete independent calibration")
         f1 = sum(
-            score(by_id[d["primary_id"]]["answer"], tasks[d["task_id"]]["expected"])[
-                "f1"
-            ]
+            score_for(
+                manifest,
+                by_id[d["primary_id"]]["answer"],
+                tasks[d["task_id"]]["expected"],
+                history={
+                    r["workflow_stage"]: by_id[r["primary_id"]]["answer"]
+                    for r in rows
+                    if r["task_id"] == d["task_id"]
+                },
+            )["f1"]
             for d in answers
         ) / len(answers)
         cost = sum(
@@ -406,9 +475,15 @@ def summarize(decisions, calls, manifest, tasks):
                 "completed_decisions": len(selected),
                 "development_workflows": len(answers),
                 "development_mean_f1": sum(
-                    score(
+                    score_for(
+                        manifest,
                         by_id[d["primary_id"]]["answer"],
                         tasks[d["task_id"]]["expected"],
+                        history={
+                            r["workflow_stage"]: by_id[r["primary_id"]]["answer"]
+                            for r in selected
+                            if r["task_id"] == d["task_id"]
+                        },
                     )["f1"]
                     for d in answers
                 )
@@ -752,7 +827,8 @@ def run(args, key):
         runtime_sources(manifest["runtime"]["commit"]) if study else runtime_sources()
     )
     if (
-        manifest["source_files"] != sources()
+        manifest["source_files"]
+        != (sources(manifest["workload"]) if manifest.get("workload") else sources())
         or manifest["native_sha256"] != file_hash(args.native)
         or manifest["runtime"] != runtime
         or manifest["fixture_sha256"] != file_hash(args.fixture)
@@ -845,7 +921,8 @@ def run(args, key):
                 try:
                     for stage in STAGES:
                         item = {**workflow, "workflow_stage": stage}
-                        call = workflow_call(
+                        call = workflow_for(
+                            manifest,
                             public[workflow["task_id"]],
                             stage,
                             history,
@@ -893,8 +970,12 @@ def run(args, key):
                                     signature,
                                 )
                                 incurred.append(candidate["id"])
-                                divergence = lexical_divergence(
-                                    primary["answer"], candidate["answer"]
+                                divergence = divergence_for(
+                                    manifest,
+                                    stage,
+                                    call,
+                                    primary["answer"],
+                                    candidate["answer"],
                                 )
                                 if not native.optimize_complete_exploration(
                                     exploration["lease_token"],
@@ -918,8 +999,12 @@ def run(args, key):
                                     item, "shadow", call, signature
                                 )
                                 incurred.append(reference["id"])
-                                divergence = lexical_divergence(
-                                    primary["answer"], reference["answer"]
+                                divergence = divergence_for(
+                                    manifest,
+                                    stage,
+                                    call,
+                                    primary["answer"],
+                                    reference["answer"],
                                 )
                                 native.optimize_record_divergence(token, divergence)
                         active = activation(call, plan)

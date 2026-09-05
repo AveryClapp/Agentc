@@ -22,9 +22,8 @@ from types import SimpleNamespace
 from bench import openrouter_joint_study as study
 from bench import openrouter_rules_live as live
 from bench.openrouter_attempts import accounting
-from bench.openrouter_matrix import ROOT, file_hash, load_module, score, write_json
+from bench.openrouter_matrix import ROOT, file_hash, load_module, write_json
 from bench.openrouter_pilot import PilotError, digest, money, text_choice
-from bench.openrouter_replay import lexical_divergence
 from bench.openrouter_rules_comparison import load_tasks
 from bench.openrouter_rules_diagnostics import analyze as plan_diagnostics
 
@@ -139,7 +138,7 @@ def validate_journals(manifest, decisions, calls, intents, tasks, attention):
     )
     selector = (
         live.static_selection(decisions, calls, tasks, manifest)
-        if len(decisions) >= calibration_steps
+        if calibration_steps and len(decisions) >= calibration_steps
         else None
     )
     histories, expected = {}, {}
@@ -149,7 +148,7 @@ def validate_journals(manifest, decisions, calls, intents, tasks, attention):
         arm, phase, task, stage = (
             item[k] for k in ("arm", "phase", "task_id", "workflow_stage")
         )
-        model = (
+        model = manifest.get("pilot_arm_models", {}).get(arm) or (
             arm.removeprefix("calibration/")
             if phase == "calibration"
             else selector["model"]
@@ -158,7 +157,8 @@ def validate_journals(manifest, decisions, calls, intents, tasks, attention):
         )
         history = histories.setdefault((task, arm), {})
         original = study.restrict_call(
-            live.workflow_call(
+            live.workflow_for(
+                manifest,
                 tasks[task],
                 stage,
                 history,
@@ -258,8 +258,12 @@ def validate_journals(manifest, decisions, calls, intents, tasks, attention):
                     "calibration or heldout contains optimizer feedback/probes"
                 )
             if len(ids) == 2:
-                if feedback != lexical_divergence(
-                    by_id[ids[0]]["answer"], by_id[ids[1]]["answer"]
+                if feedback != live.divergence_for(
+                    manifest,
+                    stage,
+                    original,
+                    by_id[ids[0]]["answer"],
+                    by_id[ids[1]]["answer"],
                 ):
                     raise PilotError("paired feedback differs from returned answers")
             elif feedback is not None:
@@ -589,9 +593,14 @@ def analyze(
     if digest(manifest) != expected_manifest_sha256:
         raise PilotError("manifest differs from externally frozen hash")
     study.validate_manifest(manifest)
-    if manifest.get("scoring") != "unchanged_normalized_raw_answer_EM_F1":
+    if manifest.get("scoring") != live.scoring_contract(manifest):
         raise PilotError("scoring contract changed")
-    if manifest["source_files"] != live.sources():
+    expected_sources = (
+        live.sources(manifest["workload"])
+        if manifest.get("workload")
+        else live.sources()
+    )
+    if manifest["source_files"] != expected_sources:
         raise PilotError("imported acquisition dependencies differ from frozen source")
     for path, expected_hash in manifest["source_files"].items():
         if file_hash(Path(source_root) / path) != expected_hash:
@@ -682,9 +691,14 @@ def analyze(
                     )
                 rows = [by_id[d["primary_id"]] for d in stages.values()]
                 arms[arm] = {
-                    **score(
+                    **live.score_for(
+                        manifest,
                         by_id[stages["answer"]["primary_id"]]["answer"],
                         tasks[task]["expected"],
+                        history={
+                            s: by_id[d["primary_id"]]["answer"]
+                            for s, d in stages.items()
+                        },
                     ),
                     "primary_billed_usd": float(
                         sum((money(r["cost_usd"]) for r in rows), Decimal(0))

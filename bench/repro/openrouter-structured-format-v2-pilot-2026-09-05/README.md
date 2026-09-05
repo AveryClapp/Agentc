@@ -1,5 +1,19 @@
 # Final-user schema reinforcement: development pilot v2
 
+**STOPPED_PROVIDER_FILTER — permanently closed, no native promotion.** Five of
+54 calls completed. The initial Haiku workflow was valid; Sonnet again narrated
+record selection and exhausted 512 output tokens. The following `ERROR` correctly
+propagated invalid state. The answer-stage provider refusal had no text or usage;
+its cause is unknown. Reinforcement did not fix the observed format failure.
+
+Measured pilot charges: $0.034690; full filtered-attempt hold: $0.034470;
+conservative commitment: $0.069160. Independently reviewed exact-reservation
+abandonment retains that entire hold and forbids retry. Reserve SHA-256:
+`c75c50bfe6252cff56178c17d73b7e6db8de9b7479d1ad945a55e967f2eee957`.
+Campaign known charges are $17.50893847 plus $0.213774 retained uncertainty.
+The original partial summary remains a stop-time snapshot, not a completed
+comparison. No parser or guard was relaxed and no native state was trained.
+
 This controlled procurement feasibility pilot changes only instruction placement:
 each final user question repeats its stage's required output grammar. It retains
 the system instructions, strict raw-byte parser, invalid-state propagation,

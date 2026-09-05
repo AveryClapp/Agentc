@@ -1,5 +1,12 @@
 # Typed JSON procurement feasibility pilot
 
+Status: **SUPERSEDED_BEFORE_ACQUISITION — zero paid calls.** Independent review
+required an authoritative whole-prefix ledger check and a permanent stop after
+provider failure before any live dispatch. Subsequent implementation also fixes
+the frozen-rate long-context counterfactual. This manifest remains an unacquired
+protocol record; it must not be resumed or promoted. A new source-bound freeze is
+required to test those fixes, with the application, tasks and 54-call gate unchanged.
+
 Prospective, development-only screen. Source `bd325e7`; canonical manifest
 SHA-256 `4b19a54de565efea193de90cee4708ac963efa42f7ffa68bef26553248d4c64c`.
 No native execution is enabled by this pilot, and no efficacy claim is implied.

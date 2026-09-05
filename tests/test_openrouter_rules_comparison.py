@@ -39,7 +39,7 @@ def artifact():
                 call_id = paid_stage + "-" + digest([item, scope])[:24]
                 ids.append(call_id)
                 calls.append({**item, "id": call_id, "stage": paid_stage, "generation_id": "gen-" + call_id,
-                    "scope": scope, "answer": "wrong" if workflow["arm"] == "joint" and scope == "primary" else "Entity",
+                    "scope": scope, "finish_reason": "stop", "answer": "wrong" if workflow["arm"] == "joint" and scope == "primary" else "Entity",
                     "request_sha256": digest(payload), "decision_sha256": digest(signature),
                     "cost_usd": ".01", "nominal_uncached_cost_usd": ".02"})
             decisions.append({**item, "semantic_plan": signature, "primary_id": ids[0], "incurred_ids": ids})
@@ -98,6 +98,25 @@ def test_comparison_validates_journal_prefix():
     values[2][-1]["request_sha256"] = "corrupt"
     with pytest.raises(PilotError, match="intent prefix"):
         compare(*values)
+
+
+@pytest.mark.parametrize("finish", ["error", "content_filter", "tool_calls", None])
+def test_failed_provider_completion_suppresses_all_quality_not_accounting(finish):
+    values = artifact()
+    values[2][0]["finish_reason"] = finish
+    report = compare(*values)
+    assert report["analysis_eligible"] is False and report["comparison_available"] is False
+    assert report["structurally_complete_common_task_ids"] == ["q1", "q2"]
+    assert report["matched_task_ids"] == report["paired_questions"] == []
+    assert all(row["matched_mean_f1"] is None for row in report["reports"])
+    assert sum(Decimal(row["all_artifact_billed_usd"]) for row in report["reports"]) == Decimal(".60")
+    assert report["failed_provider_calls"][0]["id"] == values[2][0]["id"]
+
+
+def test_length_stops_are_retained_not_selectively_removed():
+    values = artifact()
+    values[2][-1]["finish_reason"] = "length"
+    assert compare(*values)["analysis_eligible"] is True
 
 
 def test_fixture_is_bound_and_unique(tmp_path):

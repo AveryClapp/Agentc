@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 from bench.openrouter_matrix import file_hash, write_json
 from bench.openrouter_pilot import PilotError, digest, money
+from bench.openrouter_rules_validity import provider_failures
 
 
 def repeated_source_requests(decisions, by_id):
@@ -114,12 +115,15 @@ def analyze(manifest, decisions, calls, intents):
             "mean_input_token_difference": sum(v["input_token_difference"] for v in values)/n,
             "mean_output_token_difference": sum(v["output_token_difference"] for v in values)/n,
             "observations": values})
+    failures = provider_failures(calls)
     return {"paper_evidence": False, "kind": "development_exact_plan_feedback_diagnostics",
+        "analysis_eligible": not failures, "failed_provider_calls": failures,
         "manifest_sha256": digest(manifest), "decisions_sha256": digest(decisions), "calls_sha256": digest(calls),
         "exact_plans_with_feedback": len(reports), "paired_decisions": sum(r["observed_pairs"] for r in reports),
         "intents_sha256": digest(intents),
         "repeated_source_requests": repeated_source_requests(decisions, by_id),
         "plans": reports, "limitations": [
+            "If analysis_eligible is false, feedback includes potentially contaminated controller state and is only a raw incident diagnostic, not valid evidence.",
             "This is observed feedback, not native eligibility/disable state or a quality guarantee.",
             "Descriptive p95 uses nearest rank over all recorded pairs, not native rolling-window interpolation.",
             "Positive excess is an observed sum, not reconstructed time-window guard state.",

@@ -37,7 +37,7 @@ def artifact(specs=((64, "plan"),)):
                 call_id = paid_stage + "-" + digest([item, scope])[:24]
                 incurred.append(call_id)
                 calls.append({**item, "id": call_id, "stage": paid_stage, "generation_id": "gen-" + call_id,
-                    "scope": scope, "answer": answer, "request_sha256": digest(payload), "decision_sha256": digest(signature),
+                    "scope": scope, "finish_reason": "stop", "answer": answer, "request_sha256": digest(payload), "decision_sha256": digest(signature),
                     "usage": {"prompt_tokens": 10, "completion_tokens": tokens}, "nominal_uncached_cost_usd": cost})
             decisions.append({**item, "native_plan": plan, "semantic_plan": signature,
                 "primary_id": incurred[0], "incurred_ids": incurred,
@@ -60,6 +60,15 @@ def test_feedback_is_proxy_not_damage_or_native_guard_state():
     assert plan["mean_output_token_difference"] == -10
     assert "damage" not in plan and "disabled" not in plan and "false_positive" not in plan
     assert report["paper_evidence"] is False
+
+
+def test_provider_error_marks_all_diagnostics_as_incident_only():
+    values = artifact()
+    values[2][0]["finish_reason"] = "error"
+    report = analyze(*values)
+    assert report["analysis_eligible"] is False
+    assert report["failed_provider_calls"][0]["id"] == values[2][0]["id"]
+    assert report["paired_decisions"] == 1  # raw trace retained, not certified
 
 
 def test_inconsistent_exact_plan_dispatch_rejected():

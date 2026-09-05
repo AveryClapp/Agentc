@@ -11,6 +11,7 @@ from bench.openrouter_matrix import file_hash, score, write_json
 from bench.openrouter_pilot import PilotError, digest, money
 from bench.openrouter_rules_live import ARMS, Acquisition
 from bench.openrouter_rules_protocol import STAGES
+from bench.openrouter_rules_validity import provider_failures
 
 
 def load_tasks(manifest, fixture):
@@ -33,7 +34,11 @@ def compare(manifest, decisions, calls, intents, tasks):
             grouped[decision["arm"]].setdefault(decision["task_id"], {})[decision["workflow_stage"]] = decision
     complete = {arm: {task for task, stages in groups.items() if set(stages) == set(STAGES)}
                 for arm, groups in grouped.items()}
-    common = sorted(set.intersection(*complete.values()))
+    structural_common = sorted(set.intersection(*complete.values()))
+    failures = provider_failures(calls)
+    # A provider failure has already contaminated the live controller. Do not
+    # remove just that row or question and present the rest as a clean study.
+    common = [] if failures else structural_common
     paired, reports = [], []
     for task in common:
         scores = {arm: score(by_id[grouped[arm][task]["answer"]["primary_id"]]["answer"],
@@ -62,8 +67,11 @@ def compare(manifest, decisions, calls, intents, tasks):
             "unmatched_or_partial_development_billed_usd": cost(unmatched), "matched_call_ids": sorted(matched_ids)})
     return {"paper_evidence": False, "kind": "matched_complete_development_workflows", "manifest_sha256": digest(manifest),
         "calls_sha256": digest(calls), "decisions_sha256": digest(decisions), "intents_sha256": digest(intents),
+        "analysis_eligible": not failures, "failed_provider_calls": failures,
+        "structurally_complete_common_task_ids": structural_common,
         "comparison_available": bool(common), "matched_task_ids": common, "paired_questions": paired, "reports": reports,
         "limitations": ["Post-hoc development intersection, not a holdout or an unbiased estimate under cost-dependent stopping.",
+            "Any failed provider completion suppresses the entire quality comparison; dropping failed rows cannot repair contaminated controller state.",
             "No significance, non-inferiority, safety, or joint-system-benefit claim follows from this small screen.",
             "Known artifact costs only: authoritative ledger-only charges and unresolved failure allowances must be reported separately.",
             "Setup includes warmup and, for sequential, all global-router calibration calls; do not treat matched costs as setup-inclusive.",

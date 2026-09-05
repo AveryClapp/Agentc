@@ -161,3 +161,12 @@ def test_changed_retry_payload_is_rejected_before_dispatch(tmp_path, monkeypatch
     payload = {**events[-1]["request"], "max_tokens": 17}
     with pytest.raises(PilotError, match="exact failed request"):
         overlay.call("fake-key", recovery.CALL_ID, recovery.STAGE, Decimal("1"), payload, {})
+
+
+def test_audited_retry_must_precede_other_fresh_calls(tmp_path, monkeypatch):
+    base, overlay, events, r = prepare_ledger(tmp_path)
+    def forbidden(*args, **kwargs):
+        pytest.fail("unrelated fresh call must never reach underlying dispatcher")
+    monkeypatch.setattr(Ledger, "call", forbidden)
+    with pytest.raises(PilotError, match="must precede"):
+        overlay.call("fake-key", "unissued", recovery.STAGE, Decimal("1"), events[-1]["request"], {})

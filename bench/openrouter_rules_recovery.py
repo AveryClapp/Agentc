@@ -96,6 +96,9 @@ class RecoveryLedger(Ledger):
             receipt = receipt_from(events)
         if stage != STAGE:
             raise PilotError("recovery overlay cannot dispatch an unrelated stage")
+        completed_ids = {e["id"] for e in events if e["event"] == "result"}
+        if CALL_ID not in completed_ids and call_id not in completed_ids and call_id != CALL_ID:
+            raise PilotError("the audited retry must precede any other fresh dispatch")
         if call_id == CALL_ID:
             original = next(e for e in events if e["event"] == "reserve" and digest(e) == receipt["reserve_sha256"])
             if original["fingerprint"] != digest({"payload": payload, "metadata": metadata, "stage": stage}):

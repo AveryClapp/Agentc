@@ -2,8 +2,30 @@
 
 Source `e825051`. Canonical manifest SHA-256:
 `1f86bf8b229c57fd9b74272f1e4498841ed3a1c0bb7bd7630243830920ba936a`.
-Development-only fixed-model feasibility screen; no native execution or efficacy
-claim. Independent source and frozen-manifest review is required before dispatch.
+Status: **STOPPED_METADATA_POLICY — 14/54 recorded calls; feasibility gate failed
+as incomplete.** Development-only fixed-model screen; no native execution or
+efficacy claim. Independent source/freeze review preceded acquisition; independent
+result and retirement reviews are recorded in Beads `.20.7` and `.20.8` under
+`bd-323l.6.13.8.6`.
+
+All 14 recorded calls were typed-valid normal completions. Four complete
+own-history workflows had exact final answers (target two, source one, repeat one),
+but this selected prefix is not a feasibility pass. The fifteenth response was
+valid typed JSON with a normal stop and no refusal; its singleton passed-moderation
+pipeline diagnostic violated this source's frozen rejection of any nonempty
+pipeline. The response was therefore not incorporated into quality observations.
+The narrowly scoped prospective metadata-policy fix is tracked in `bd-cjta` and
+requires a fresh source/manifest; this run must not be resumed or reclassified.
+
+Recorded results cost USD0.093288; the failed receipt reported USD0.003945.
+Total stage known charges are USD0.097233. Exact reviewed retirement on
+2026-09-05 at 22:32:41 UTC preserved the failed attempt's full USD6.015360
+allowance (USD0.003945 known plus USD6.011415 uncertainty). Thus this stage's
+conservative commitment is USD6.108648. No hold was released or call retried.
+Campaign totals afterward: USD17.86669147 known plus USD6.259659 retained
+uncertainty, zero pending/unresolved calls, USD25.87364953 remaining of the
+original USD50. The saved summary is the original stop-time snapshot, before
+retirement; its unresolved call is historical. Raw journals are unchanged.
 
 The [earlier typed freeze](../openrouter-typed-schema-pilot-2026-09-05/README.md)
 was superseded **before any paid call**, after review found resume-ledger hazards.

@@ -255,7 +255,10 @@ def test_shape_and_plan_identity_stable_across_cases_models_and_histories():
                 len(call["messages"])
                 == {"filter": 22, "synthesize": 3, "answer": 4}[stage]
             )
-            assert call["messages"][-1]["content"] == "Question: " + task["prompt"]
+            assert call["messages"][-1]["content"] == (
+                "Question: " + task["prompt"] + "\nOutput requirement: "
+                + workload._FINAL_OUTPUT_RULES[stage] + workload._BYTE_RULE
+            )
             assert call["input_deps"] == call["parameters"]["extra"]["message_deps"]
             assert call["parameters"]["max_output_tokens"] == 512
             assert (
@@ -306,6 +309,16 @@ def test_namespace_binds_actual_prompt_source_and_feedback_contract(monkeypatch)
     with pytest.raises(PilotError):
         workload.contract_hash({"FILTER_SYSTEM": "missing"})
     assert len(hashlib.sha256(original_bytes).hexdigest()) == 64
+
+
+def test_format_reinforcement_preserves_exposed_development_cases():
+    frozen = Path(__file__).resolve().parents[1] / (
+        "bench/repro/openrouter-structured-pilot-2026-09-05/fixture.json"
+    )
+    assert workload.make_tasks(2026090501, 6) == json.loads(frozen.read_text())
+    for stage in workload.STAGES:
+        # Do not introduce example record IDs that can bias attention protection.
+        assert not re.search(r"[DM][0-9]{2}", workload._FINAL_OUTPUT_RULES[stage])
 
 
 def test_real_attention_has_context_compression_opportunity_without_support_labels():

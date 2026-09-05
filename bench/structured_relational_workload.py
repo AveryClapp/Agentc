@@ -20,6 +20,7 @@ from bench.openrouter_pilot import PilotError
 
 STAGES = ("filter", "synthesize", "answer")
 VERSION = "structured-procurement-v1"
+FORMAT_VARIANT = "final-user-schema-reinforcement-v2"
 ERROR = "ERROR"
 ERROR_INPUT = "ERROR_INPUT: preceding application output failed its strict contract."
 DOCUMENTS = 20
@@ -63,6 +64,21 @@ _PROMPTS = {
         "ID, M01 through M99, with exactly two digits. " + _BYTE_RULE
     ),
 }
+_FINAL_OUTPUT_RULES = {
+    "filter": (
+        "Perform only record selection for this tenant. Return exactly three "
+        "distinct document IDs in ascending order, separated by vertical bars. "
+    ),
+    "synthesize": (
+        "Perform only the requested relational join. Return the fields sku, "
+        "vendor, qty, unit, total, region in exactly that order, as key=value "
+        "pairs separated by vertical bars. "
+    ),
+    "answer": (
+        "Apply the approval table to the synthesis. Return only the approver "
+        "ID: the letter M followed by exactly two digits. "
+    ),
+}
 _FILTER = re.compile(r"D(?:0[1-9]|1[0-9]|20)(?:\|D(?:0[1-9]|1[0-9]|20)){2}")
 _SYNTH = re.compile(
     r"sku=(K[0-9]{3})\|vendor=(V[0-9]{3})\|qty=([1-9][0-9]{0,2})"
@@ -92,6 +108,7 @@ def contract_hash(prompt_values=None):
     return _digest(
         {
             "version": VERSION,
+            "format_variant": FORMAT_VARIANT,
             "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "prompts": values,
             "feedback": FEEDBACK_CONTRACT,
@@ -333,7 +350,10 @@ def call(task, stage, history, attention, *, model, run_identity, prompts=None):
             "role": "user",
             "content": "Question: "
             + task["prompt"]
-            + ("\n" + ERROR_INPUT if not valid else ""),
+            + ("\n" + ERROR_INPUT if not valid else "")
+            + "\nOutput requirement: "
+            + _FINAL_OUTPUT_RULES[stage]
+            + _BYTE_RULE,
         }
     )
     deps.append({"kind": "user_input", "span_id": span_id})

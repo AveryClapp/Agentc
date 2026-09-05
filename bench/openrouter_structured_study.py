@@ -249,6 +249,7 @@ def prepare(args, key, *, pilot):
         created_at=datetime.now(timezone.utc).isoformat(),
         generator_seed=seed,
         generator_count=count,
+        format_variant=workload().FORMAT_VARIANT,
         prompts=workload().prompts(),
         template_manifest_sha256=TEMPLATE_SHA,
         endpoints=selected,
@@ -259,6 +260,7 @@ def prepare(args, key, *, pilot):
         scoring="strict_application_scalar_exact_v1",
         bounded_transport_retry=True,
         limitations=[
+            "Final-user schema reinforcement v2 reuses the same six development cases as the stopped v1 pilot; this is adaptive instruction-placement development, not an independent replication.",
             "Controlled generated procurement microbenchmark, not public real-workload or MLSys main-track efficacy evidence.",
             "Raw lexical comparison for valid outputs; invalid schema or upstream state receives maximal disagreement. Native evidence/risk thresholds remain unchanged, with no gold comparator.",
             "Exact byte output grammar is an application requirement; schema failures and shared wrong answers are not successful quality.",
@@ -321,6 +323,7 @@ def validate(args, manifest):
         digest(manifest) != args.manifest_sha256
         or manifest["source_files"] != live.sources(WORKLOAD)
         or manifest["workload"] != WORKLOAD
+        or manifest.get("format_variant") != workload().FORMAT_VARIANT
         or manifest["prompts"] != workload().prompts()
         or manifest["scoring"] != live.scoring_contract(manifest)
         or file_hash(args.fixture) != manifest["fixture_sha256"]

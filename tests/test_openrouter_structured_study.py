@@ -38,6 +38,7 @@ def experiment(tmp_path, monkeypatch):
     manifest = {
         "kind": driver.PILOT_KIND,
         "workload": driver.WORKLOAD,
+        "format_variant": workload.FORMAT_VARIANT,
         "source_files": live.sources(driver.WORKLOAD),
         "prompts": workload.prompts(),
         "generator_seed": driver.PILOT_SEED,

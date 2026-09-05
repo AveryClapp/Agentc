@@ -128,7 +128,8 @@ def make_schedule(tasks: list[dict[str, Any]], count: int, calibration: int) -> 
 
 def source_hashes() -> dict[str, str]:
     paths = [ROOT / "Cargo.toml", ROOT / "Cargo.lock", Path(__file__),
-             ROOT / "bench/openrouter_pilot.py", ROOT / "python/agentc/_attention.py"]
+             ROOT / "bench/openrouter_pilot.py", ROOT / "bench/openrouter_groups.py",
+             ROOT / "python/agentc/_attention.py"]
     paths += sorted((ROOT / "crates").rglob("*.rs"))
     paths += sorted((ROOT / "crates").rglob("Cargo.toml"))
     return {str(path.relative_to(ROOT)): file_hash(path) for path in paths}

@@ -195,3 +195,27 @@ def test_plot_cli_reconstructs_before_loading_cached_analysis(monkeypatch, tmp_p
     )
     assert figures.main() == 1
     assert not (tmp_path / "figures").exists()
+
+
+@pytest.mark.parametrize("zero_cost_tasks", [0, 1, 32])
+def test_interaction_svg_discloses_degenerate_intervals_and_subset_n(
+    tmp_path, zero_cost_tasks
+):
+    pytest.importorskip("matplotlib")
+    manifest, report = inputs()
+    for index, row in enumerate(report["paired_tasks"]):
+        for cell in row["cells"].values():
+            cell["em"] = 1.0
+        if index < zero_cost_tasks:
+            row["cells"]["H0"]["cost_usd"] = "0"
+        row.update(study.contrasts(row["cells"]))
+    data = figures.build_data(manifest, report)
+    assert data["quality_interval"]["descriptive_95_percentile_interval"] == [0, 0]
+    figures.render(data, tmp_path)
+    text = (tmp_path / "02-paired-interactions.svg").read_text()
+    assert "n = 32 tasks" in text
+    assert f"n = {32 - zero_cost_tasks} tasks" in text
+    assert f"zero-cost tasks excluded = {zero_cost_tasks}" in text
+    assert "One observed realization per cell" in text
+    assert "zero-width intervals do not imply certainty" in text
+    assert "not an adaptive-policy or safety certificate" in text

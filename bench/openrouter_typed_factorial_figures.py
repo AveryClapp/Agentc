@@ -212,7 +212,7 @@ def render(data, directory):
     )
     save(fig, "01-cost-quality")
 
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), layout="constrained")
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.7), layout="constrained")
     configs = [
         (
             "quality_interaction",
@@ -231,6 +231,15 @@ def render(data, directory):
         values = [
             r[field] * scale for r in data["paired_tasks"] if r[field] is not None
         ]
+        ax.set_title(
+            f"n = {len(values)} tasks"
+            + (
+                f"; zero-cost tasks excluded = {data['zero_cost_tasks']}"
+                if field == "log_cost_ratio_interaction"
+                else ""
+            ),
+            fontsize=9,
+        )
         if values:
             jitter = np.linspace(-0.16, 0.16, len(values))
             ax.scatter(values, jitter, color="#5378a8", s=22, alpha=0.6, linewidths=0)
@@ -275,7 +284,7 @@ def render(data, directory):
         ax.grid(axis="x", color="#e3e8e9", lw=0.6)
     fig.suptitle("Does rewriting affect the two models differently?", fontsize=14)
     fig.supxlabel(
-        "Each dot is one task; diamond is the mean with a paired descriptive bootstrap interval\n(HR − H0) − (SR − S0) for quality; log(HR/H0) − log(SR/S0) for cost · zero is no interaction\nMultiplicative token-price savings alone are not learned synergy",
+        "Each dot is one task; diamond is the mean with a paired descriptive bootstrap interval\n(HR − H0) − (SR − S0) for quality; log(HR/H0) − log(SR/S0) for cost · zero is no interaction\nOne observed realization per cell: zero-width intervals do not imply certainty\nGenerated development tasks, not an adaptive-policy or safety certificate · price multiplication alone is not learned synergy",
         fontsize=8,
     )
     save(fig, "02-paired-interactions")

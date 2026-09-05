@@ -266,6 +266,12 @@ def acquire(args, manifest, data, ledger, key, attention):
     saved = json.loads(path.read_text()) if path.exists() else []
     if not isinstance(saved, list) or len(saved) > len(manifest["schedule"]):
         raise PilotError("invalid diagnostic journal length")
+    if args.max_calls is not None and (
+        type(args.max_calls) is not int
+        or args.max_calls < 1
+        or args.max_calls < len(saved)
+    ):
+        raise PilotError("requested call cap precedes saved evidence or is invalid")
     tasks = {
         t["task_id"]: public_task(t)
         for t in json.loads(args.fixture.read_text())

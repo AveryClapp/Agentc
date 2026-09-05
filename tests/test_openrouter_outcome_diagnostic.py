@@ -221,6 +221,26 @@ def test_corrupted_saved_answer_stops_before_next_dispatch(example):
     assert len(requests) == 2
 
 
+def test_shorter_replay_preserves_completed_summary(example):
+    args, manifest, data, ledger, attention, requests = example
+    diag.acquire(args, manifest, data, ledger, "fake-not-a-key", attention)
+    path = args.output / "summary.json"
+    completed = path.read_bytes()
+    args.max_calls = 1
+    with pytest.raises(pilot.PilotError, match="precedes saved evidence"):
+        diag.acquire(args, manifest, data, ledger, "fake-not-a-key", attention)
+    assert len(requests) == 12 and path.read_bytes() == completed
+
+
+@pytest.mark.parametrize("cap", [0, -1, True, 1.5])
+def test_invalid_prefix_cap_rejected_before_dispatch(example, cap):
+    args, manifest, data, ledger, attention, requests = example
+    args.max_calls = cap
+    with pytest.raises(pilot.PilotError, match="cap"):
+        diag.acquire(args, manifest, data, ledger, "fake-not-a-key", attention)
+    assert requests == []
+
+
 @pytest.mark.parametrize(
     "field",
     [

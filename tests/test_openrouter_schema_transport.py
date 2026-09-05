@@ -18,7 +18,7 @@ FORMAT = {
         "schema": {
             "type": "object", "additionalProperties": False, "required": ["result"],
             "properties": {"result": {"anyOf": [
-                {"type": "string", "pattern": "^M[0-9]{2}$"}, {"type": "null"}
+                {"type": "string", "pattern": "^M(0[1-9]|[1-9][0-9])$"}, {"type": "null"}
             ]}},
         },
     },
@@ -71,7 +71,9 @@ def dispatch(ledger, payload=None, cap="8", metadata=None):
 def test_legacy_request_and_bound_are_byte_identical():
     payload = pilot.make_request(MODEL, ["anthropic"], [{"role": "user", "content": "A"}], max_tokens=512)
     assert "response_format" not in payload
-    assert payload == {k: v for k, v in request().items() if k != "response_format"}
+    typed = request()
+    assert typed["provider"]["max_price"].pop("request") == 0
+    assert payload == {k: v for k, v in typed.items() if k != "response_format"}
     expected = (Decimal(len(pilot.canonical(payload)) + 1024 + 64) * 6 + 512 * 30) / 1_000_000
     assert pilot.upper_cost(payload) == expected
 
@@ -110,6 +112,8 @@ def test_schema_has_no_router_or_other_provider(model, providers, pool):
     {"type": "integer", "minimum": 1},
     {"type": "array", "items": {"type": "string"}, "minItems": 3},
     {"type": "string", "pattern": "not-anchored"},
+    {"type": "string", "pattern": "^(?=M)M[0-9]{2}$"},
+    {"type": "string", "pattern": r"^(M)\1$"},
     {"type": "string", "enum": ["A", "A"]},
     {"anyOf": [{"type": "string"}, {"type": "integer"}]},
     {"type": "object", "properties": {"a": {"type": "string"}}, "required": [], "additionalProperties": False},
@@ -121,11 +125,39 @@ def test_unsupported_schema_rejected(node):
         pilot.validate_response_format(value)
 
 
+def test_provider_union_parameter_limit():
+    value = deepcopy(FORMAT)
+    schema = value["json_schema"]["schema"]
+    schema["properties"] = {"field_" + chr(97 + i): deepcopy(schema["properties"]["result"]) for i in range(17)}
+    schema["required"] = list(schema["properties"])
+    with pytest.raises(pilot.PilotError, match="union parameter"):
+        pilot.validate_response_format(value)
+    schema["properties"].pop(schema["required"].pop())
+    pilot.validate_response_format(value)
+
+
+def test_all_active_price_tiers_must_fit_reservation():
+    value = endpoint()
+    value["pricing"].update(input_cache_write="0.00000375", web_search="0.01", overrides=[
+        {"min_prompt_tokens": 200000, "prompt": "0.000006", "completion": "0.0000225", "input_cache_write": "0.0000075"}
+    ])
+    pilot.validate_schema_endpoint(MODEL, value)
+    value["pricing"]["overrides"][0]["prompt"] = "0.000007"
+    with pytest.raises(pilot.PilotError, match="price tier"):
+        pilot.validate_schema_endpoint(MODEL, value)
+    value = endpoint()
+    value["pricing"]["unknown_fee"] = "1"
+    with pytest.raises(pilot.PilotError, match="unknown pricing"):
+        pilot.validate_schema_endpoint(MODEL, value)
+
+
 @pytest.mark.parametrize("change", [
     {"context_length": 1_000_001}, {"context_length": True},
     {"name": "Anthropic | changed"}, {"tag": "other"},
     {"supported_parameters": ["max_tokens", "temperature"]},
     {"pricing": {"prompt": "0.000007", "completion": "0.000015"}},
+    {"pricing": {"prompt": "0.000003", "completion": "0.000015", "request": "10"}},
+    {"pricing": {"prompt": "0.000003", "completion": "0.000015", "request": None}},
 ])
 def test_endpoint_drift_rejected(change):
     with pytest.raises(pilot.PilotError):
@@ -208,3 +240,6 @@ def test_length_is_financial_receipt_not_an_application_success():
     body = response()
     body["choices"][0].update(finish_reason="length", native_finish_reason="max_tokens")
     assert pilot.schema_text_choice(body)["finish_reason"] == "length"
+    body["choices"][0]["finish_reason"] = "stop"
+    with pytest.raises(pilot.PilotError):
+        pilot.schema_text_choice(body)

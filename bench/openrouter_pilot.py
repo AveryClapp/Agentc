@@ -42,6 +42,10 @@ SCHEMA_ENDPOINTS = {
         "anthropic/claude-4.5-haiku-20251001", 200_000
     ),
 }
+SCHEMA_PATTERNS = frozenset({
+    r"^D(0[1-9]|1[0-9]|20)$", r"^M(0[1-9]|[1-9][0-9])$",
+    r"^K[0-9]{3}$", r"^V[0-9]{3}$",
+})
 Json = dict[str, Any]
 
 
@@ -216,14 +220,17 @@ def validate_response_format(value: Json) -> None:
         or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", spec["name"])
     ):
         raise PilotError("invalid strict JSON schema wrapper")
-    nodes = 0
+    nodes = unions = 0
 
     def visit(node, depth=0):
-        nonlocal nodes
+        nonlocal nodes, unions
         nodes += 1
         if not isinstance(node, dict) or depth > 12 or nodes > 128:
             raise PilotError("schema exceeds bounded structure")
         if "anyOf" in node:
+            unions += 1
+            if unions > 16:
+                raise PilotError("schema exceeds provider union parameter limit")
             alternatives = node["anyOf"]
             if (
                 set(node) != {"anyOf"}
@@ -261,14 +268,8 @@ def validate_response_format(value: Json) -> None:
                 raise PilotError("unsupported string schema constraint")
             if "pattern" in node:
                 pattern = node["pattern"]
-                if not isinstance(pattern, str) or len(pattern) > 128 or not (
-                    pattern.startswith("^") and pattern.endswith("$")
-                ):
-                    raise PilotError("schema pattern must be bounded and anchored")
-                try:
-                    re.compile(pattern)
-                except re.error:
-                    raise PilotError("invalid schema pattern") from None
+                if not isinstance(pattern, str) or pattern not in SCHEMA_PATTERNS:
+                    raise PilotError("schema pattern is outside the reviewed workload allowlist")
             if "enum" in node:
                 values = node["enum"]
                 if (
@@ -293,6 +294,38 @@ def validate_schema_endpoint(model: str, endpoint: Json) -> None:
     """Fail closed if the current serving capacity exceeds the reserve basis."""
     identity, ceiling = SCHEMA_ENDPOINTS[model]
     context = endpoint.get("context_length")
+    pricing = endpoint.get("pricing", {})
+    inactive = {"input_cache_read", "input_cache_write", "input_cache_write_1h", "web_search"}
+    # No cache_control, tools, search or plugins can survive reconstruction.
+    # Their published prices therefore do not apply to this request. Prompt /
+    # completion tiers DO apply and must all fit the price bound.
+    if not isinstance(pricing, dict) or set(pricing) - {
+        "prompt", "completion", "request", "discount", "overrides", *inactive
+    }:
+        raise PilotError("schema endpoint has an unknown pricing dimension")
+    overrides = pricing.get("overrides", [])
+    if not isinstance(overrides, list):
+        raise PilotError("invalid schema price overrides")
+    for rates in [pricing, *overrides]:
+        if not isinstance(rates, dict) or set(rates) - {
+            "prompt", "completion", "request", "discount", "overrides", "min_prompt_tokens", *inactive
+        }:
+            raise PilotError("unsupported schema price tier")
+        if rates is not pricing and (
+            type(rates.get("min_prompt_tokens")) is not int
+            or rates["min_prompt_tokens"] < 0
+            or "overrides" in rates
+        ):
+            raise PilotError("invalid schema price tier threshold")
+        if (
+            money(rates.get("prompt", pricing.get("prompt"))) > Decimal("0.000006")
+            or money(rates.get("completion", pricing.get("completion"))) > Decimal("0.000030")
+            or money(rates.get("request", "0")) != 0
+        ):
+            raise PilotError("schema endpoint changed a price tier or request charge")
+        for name in inactive | {"discount"}:
+            if name in rates:
+                money(rates[name])
     if (
         endpoint.get("tag") != "anthropic"
         or endpoint.get("provider_name") != "Anthropic"
@@ -302,8 +335,6 @@ def validate_schema_endpoint(model: str, endpoint: Json) -> None:
         or not {"max_tokens", "temperature", "response_format", "structured_outputs"}.issubset(
             endpoint.get("supported_parameters", [])
         )
-        or money(endpoint.get("pricing", {}).get("prompt")) > Decimal("0.000006")
-        or money(endpoint.get("pricing", {}).get("completion")) > Decimal("0.000030")
     ):
         raise PilotError("schema endpoint changed capability, identity or cost bound")
 
@@ -371,6 +402,7 @@ def make_request(
             raise PilotError("schema requests require a pinned fixed Anthropic endpoint")
         validate_response_format(response_format)
         payload["response_format"] = json.loads(canonical(response_format))
+        payload["provider"]["max_price"]["request"] = 0
     if len(canonical(payload)) > 65536:
         raise PilotError("pilot request exceeds 64 KiB")
     return payload
@@ -442,6 +474,8 @@ def schema_text_choice(response: Json) -> Json:
         or choice.get("native_finish_reason") not in (
             None, "end_turn", "stop_sequence", "max_tokens", "stop", "length"
         )
+        or (choice.get("native_finish_reason") in {"max_tokens", "length"}
+            and choice["finish_reason"] != "length")
         or (response.get("openrouter_metadata") or {}).get("pipeline", []) != []
     ):
         raise PilotError("schema response has refusal, unknown finish or material pipeline changes")

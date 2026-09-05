@@ -32,6 +32,9 @@ def experiment(tmp_path, monkeypatch):
         template=ROOT / "bench/repro/openrouter-joint-input-rules-2026-09-05/manifest.json",
         workload=driver.TYPED_WORKLOAD,
     )
+    ledger = pilot.Ledger(args.ledger, "fake-key")
+    with ledger.locked() as handle:
+        ledger.append(handle, {"event": "origin", "usage_usd": "0"})
     monkeypatch.setattr(driver, "endpoints", lambda key: {m: endpoint(m) for m in driver.PILOT_ARMS.values()})
     report = driver.prepare(args, "fake-key", pilot=True)
     manifest = json.loads((args.output / "manifest.json").read_text())
@@ -195,3 +198,225 @@ def test_finance_rechecks_schema_native_refusal_in_raw_body(experiment):
     body["choices"][0]["native_finish_reason"] = "refusal"
     finance = analysis.ledger_report(events, "rules-live-dev-v1-" + pilot.digest(manifest)[:20], data["calls.json"], expected)
     assert finance["failed_provider_results"]
+
+
+def ledger_events(path):
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def replace_ledger(path, events):
+    """Deliberately corrupt only this test's synthetic, temporary ledger."""
+    path.write_text("".join(json.dumps(event) + "\n" for event in events))
+
+
+def reject_before_ledger_call(args, manifest, state, monkeypatch, *, key="fake-key", match=None):
+    before_requests = len(state["requests"])
+    before_reads = state["endpoint_reads"]
+    before = args.ledger.read_bytes() if args.ledger.exists() else None
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("preflight reached Ledger.call, even if it might have been cached")
+
+    monkeypatch.setattr(pilot.Ledger, "call", forbidden)
+    with pytest.raises(pilot.PilotError, match=match):
+        driver.run_pilot(args, key, manifest)
+    assert len(state["requests"]) == before_requests
+    assert state["endpoint_reads"] == before_reads
+    assert (args.ledger.read_bytes() if args.ledger.exists() else None) == before
+
+
+def test_manifest_freezes_existing_campaign_origin_without_writing(experiment):
+    args, manifest, _, _ = experiment
+    events = ledger_events(args.ledger)
+    assert len(events) == 1
+    assert manifest["campaign_ledger"] == {
+        "resolved_path": str(args.ledger.resolve()),
+        "origin_event_sha256": pilot.digest(events[0]),
+    }
+    before = args.ledger.read_bytes()
+    driver.validate(args, manifest, "fake-key")
+    assert args.ledger.read_bytes() == before
+
+
+@pytest.mark.parametrize("prefix", [0, 4])
+@pytest.mark.parametrize("kind", ["missing", "copied", "foreign-origin"])
+def test_wrong_ledger_rejected_even_for_zero_saved_rows(experiment, monkeypatch, prefix, kind):
+    args, manifest, _, state = experiment
+    if prefix:
+        args.max_calls = prefix
+        driver.run_pilot(args, "fake-key", manifest)
+    original = args.ledger
+    args.ledger = original.with_name("wrong-ledger.jsonl")
+    if kind != "missing":
+        events = ledger_events(original)
+        if kind == "foreign-origin":
+            events = [{**events[0], "at": "different-campaign"}]
+        replace_ledger(args.ledger, events)
+    original_bytes = original.read_bytes()
+    args.max_calls = None
+    reject_before_ledger_call(args, manifest, state, monkeypatch)
+    assert original.read_bytes() == original_bytes
+
+
+@pytest.mark.parametrize("prefix", [0, 4])
+def test_wrong_dispatch_key_rejected_before_any_ledger_call(experiment, monkeypatch, prefix):
+    args, manifest, _, state = experiment
+    if prefix:
+        args.max_calls = prefix
+        driver.run_pilot(args, "fake-key", manifest)
+    args.max_calls = None
+    reject_before_ledger_call(args, manifest, state, monkeypatch, key="other-key", match="different API key")
+
+
+@pytest.mark.parametrize("mutation", ["missing-origin", "duplicate-origin", "changed-origin", "empty", "missing-binding"])
+def test_origin_binding_is_not_optional_on_run(experiment, monkeypatch, mutation):
+    args, manifest, _, state = experiment
+    events = ledger_events(args.ledger)
+    if mutation in {"missing-origin", "empty"}:
+        events = []
+    elif mutation == "duplicate-origin":
+        events.append(events[0])
+    elif mutation == "changed-origin":
+        events[0]["usage_usd"] = "1"
+    else:
+        del manifest["campaign_ledger"]
+        args.manifest_sha256 = pilot.digest(manifest)
+        write_json(args.output / "manifest.json", manifest)
+    replace_ledger(args.ledger, events)
+    reject_before_ledger_call(args, manifest, state, monkeypatch)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "empty", "wrong-key", "duplicate-origin"])
+def test_prepare_requires_existing_key_bound_origin(experiment, mutation):
+    args, _, _, state = experiment
+    args.output = args.output.parent / "new-pilot"
+    events = ledger_events(args.ledger)
+    if mutation == "missing":
+        args.ledger = args.ledger.with_name("not-created.jsonl")
+    elif mutation == "empty":
+        replace_ledger(args.ledger, [])
+    elif mutation == "duplicate-origin":
+        replace_ledger(args.ledger, events + events)
+    key = "other-key" if mutation == "wrong-key" else "fake-key"
+    before = args.ledger.read_bytes() if args.ledger.exists() else None
+    with pytest.raises(pilot.PilotError):
+        driver.prepare(args, key, pilot=True)
+    assert (args.ledger.read_bytes() if args.ledger.exists() else None) == before
+    assert not args.output.exists()
+    assert not state["requests"]
+
+
+@pytest.mark.parametrize("index", range(4))
+@pytest.mark.parametrize("mutation", ["answer", "status", "cost", "extra-field"])
+def test_entire_saved_prefix_reconstructed_before_any_ledger_call(experiment, monkeypatch, index, mutation):
+    args, manifest, _, state = experiment
+    args.max_calls = 4
+    driver.run_pilot(args, "fake-key", manifest)
+    path = args.output / "calls.json"
+    rows = json.loads(path.read_text())
+    row = rows[index]
+    if mutation == "answer":
+        row["answer"] = workload.application_text(row["answer"])
+    elif mutation == "status":
+        row["finish_reason"] = "length"
+    elif mutation == "cost":
+        row["cost_usd"] = "0.002"
+    else:
+        row["invented"] = True
+    write_json(path, rows)
+    args.max_calls = None
+    reject_before_ledger_call(args, manifest, state, monkeypatch)
+
+
+@pytest.mark.parametrize("mutation", [
+    "missing-result", "missing-stage", "raw-response", "request", "metadata",
+    "reserve-bound", "endpoint-observation", "response-timing", "orphan-response",
+])
+def test_authoritative_evidence_reconstructed_before_dispatch(experiment, monkeypatch, mutation):
+    args, manifest, _, state = experiment
+    args.max_calls = 1
+    driver.run_pilot(args, "fake-key", manifest)
+    events = ledger_events(args.ledger)
+    if mutation == "missing-result":
+        events = [event for event in events if event["event"] != "result"]
+    elif mutation == "missing-stage":
+        events = events[:1]
+    elif mutation == "raw-response":
+        next(event for event in events if event["event"] == "response")["response"]["choices"][0]["message"]["content"] += " "
+    elif mutation == "response-timing":
+        next(event for event in events if event["event"] == "response")["latency_ms"] += 1
+    elif mutation == "orphan-response":
+        orphan = deepcopy(next(event for event in events if event["event"] == "response"))
+        orphan["id"] += "-orphan"
+        events.append(orphan)
+    else:
+        reserve = next(event for event in events if event["event"] == "reserve")
+        if mutation == "request":
+            reserve["request"]["messages"][0]["content"] += " "
+        elif mutation == "metadata":
+            reserve["metadata"]["scope"] = "shadow"
+        elif mutation == "endpoint-observation":
+            reserve["schema_endpoint_observation"]["context_length"] *= 2
+        else:
+            reserve["upper_cost_usd"] = "0.1"
+    replace_ledger(args.ledger, events)
+    args.max_calls = None
+    reject_before_ledger_call(args, manifest, state, monkeypatch)
+
+
+@pytest.mark.parametrize("journal", ["calls.json", "decisions.json", "intents.json"])
+def test_missing_journal_never_means_unspent(experiment, monkeypatch, journal):
+    args, manifest, _, state = experiment
+    args.max_calls = 1
+    driver.run_pilot(args, "fake-key", manifest)
+    (args.output / journal).unlink()
+    args.max_calls = None
+    reject_before_ledger_call(args, manifest, state, monkeypatch)
+
+
+def test_completed_result_before_calls_write_halts_for_review(experiment, monkeypatch):
+    args, manifest, _, state = experiment
+    original_write = live.write_json
+
+    def crash_before_calls(path, value, **kwargs):
+        if path.name == "calls.json":
+            raise OSError("synthetic crash before application result persistence")
+        return original_write(path, value, **kwargs)
+
+    with monkeypatch.context() as crash:
+        crash.setattr(live, "write_json", crash_before_calls)
+        with pytest.raises(OSError, match="synthetic crash"):
+            driver.run_pilot(args, "fake-key", manifest)
+    assert len(state["requests"]) == 1
+    assert not (args.output / "calls.json").exists()
+    assert sum(event["event"] == "result" for event in ledger_events(args.ledger)) == 1
+    reject_before_ledger_call(args, manifest, state, monkeypatch, match="review required")
+
+
+@pytest.mark.parametrize("terminal", ["attempt_failure", "attempt_abandoned", "pending"])
+def test_first_provider_failure_permanently_stops_frozen_pilot(experiment, monkeypatch, terminal):
+    args, manifest, _, state = experiment
+    transport = pilot.request_json
+
+    def fail_request(path, key, payload=None):
+        if payload is None:
+            return transport(path, key, payload)
+        state["requests"].append(deepcopy(payload))
+        raise pilot.ProviderFailure("synthetic 503", {"kind": "http_503", "retryable": True})
+
+    monkeypatch.setattr(pilot, "request_json", fail_request)
+    with pytest.raises(pilot.ProviderFailure):
+        driver.run_pilot(args, "fake-key", manifest)
+    events = ledger_events(args.ledger)
+    reserve = next(event for event in events if event["event"] == "reserve")
+    failed = next(event for event in events if event["event"] == "attempt_failure")
+    assert failed["budget_hold_usd"] == reserve["upper_cost_usd"]
+    monkeypatch.setattr(pilot.time, "time", lambda: failed["retry_not_before_epoch"] + 100)
+    if terminal == "attempt_abandoned":
+        ledger = pilot.Ledger(args.ledger, "fake-key")
+        with ledger.locked() as handle:
+            ledger.append(handle, {**failed, "event": "attempt_abandoned", "reason": "synthetic reviewed abandonment"})
+    elif terminal == "pending":
+        replace_ledger(args.ledger, [event for event in events if event["event"] != "attempt_failure"])
+    reject_before_ledger_call(args, manifest, state, monkeypatch)
+    assert len(state["requests"]) == 1

@@ -1,0 +1,3 @@
+# Preserve the full local JSON; publish its lossless deterministic gzip sibling.
+/complete.json
+/complete-restart.json

@@ -71,3 +71,61 @@ Matrix acquisition warms caches, so replayed observed charges cannot establish
 causal deployed-policy savings. Shared-host latency is diagnostic only.
 Bootstrap intervals are paired within question, descriptive and unadjusted;
 they do not account for calibration selection or repeated-provider uncertainty.
+
+## Complete heldout results
+
+All 2,904 requests completed for $7.95189111. At this checkpoint the cumulative
+campaign ledger contained 3,175 completed calls, $9.13035507 spent, and no
+unresolved requests. The complete results digest is
+`c1ed9f8c1ff8131d9257bf71b86d50bc6b1756311e20060b4ff4566b772999fc`.
+
+Long-context compression, 160 paired heldout questions per model:
+
+| Model | Nominal cost reduction | F1 change, percentage points | Descriptive paired 95% interval |
+| --- | ---: | ---: | ---: |
+| Sonnet 4.5 | 32.34% | +1.88 | [−1.31, +5.20] |
+| Haiku 4.5 | 32.28% | +0.22 | [−2.69, +3.07] |
+| Gemini 2.5 Flash Lite | 32.49% | −1.18 | [−5.97, +3.57] |
+| Qwen3 30B A3B Instruct | 32.44% | +1.94 | [−2.61, +6.53] |
+
+All extended prompts were rewritten. Unlike calibration, 28/160 natural
+prompts per model crossed the rule's applicability threshold; 132/160 were
+identical-payload repeats. Natural-arm differences therefore mix actual
+rewrites and provider variability. Supporting paragraphs were removed on five
+extended and four natural questions, identically across models. Retention is
+not a correctness guarantee, and the rule is not proven semantically safe.
+Sonnet still produced more than 20 words on 21 extended/full and 14
+extended/compressed heldout answers; all remain in the frozen scorer.
+
+The six native policies, each in both contexts, retained source Sonnet for
+every one of their 2,196 decisions (including setup). They incurred 2,447
+primary/exploration/shadow events. Setup-inclusive nominal overhead was
+0.94–7.44% depending on policy/context, with no primary-quality change because
+the selected request never changed. This is a negative result for the current
+guarded controller, not evidence of successful adaptive routing.
+
+The calibration-frozen fixed Haiku control saved 54.41% including setup on
+extended contexts; its heldout F1 change was +2.85 points, with a wide paired
+interval [−2.09, +8.12]. The static Qwen-plus-compression choice saved 71.43%
+including all candidate calibration costs but lost 6.97 F1 points
+([−13.27, −0.63]). Neither result establishes a certified risk contract. In
+natural contexts, the fixed and static-joint controls lost 4.56 and 6.85 F1
+points respectively.
+
+Four-outcome interaction intervals are reported in `mechanisms.json`. The
+extended-context intervals all cross zero: this study does not establish a
+model-specific compression interaction. The natural Gemini contrast is only
+an unadjusted exploratory result and mixes no-op repeats with exercised rules.
+
+`replay-complete-restart.json` exactly reproduces the original replay's
+selected outcomes, feedback and costs after a calibration-boundary restart.
+The sensitivity grid's 0.05 cells likewise reproduce all 12 primary
+trajectories. The separately reviewed refresh runtime generates eight extra
+comparisons for expanded-budget extended rewrite-only, costing a nominal
+$0.069141, but still changes no primary outcome. The other 11 trajectories
+are unchanged. These tests do not establish adaptation to deployment drift.
+
+The figure bundle is in
+`../openrouter-frontier-figures-2026-09-05-v2/`; it labels this experiment
+ContextCompress-only. The broader live multi-rule factorial is not measured
+by this matrix. No other inactive rule is assigned a measured zero effect.

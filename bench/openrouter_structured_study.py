@@ -10,6 +10,7 @@ import argparse
 from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timezone
+import fcntl
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,9 +18,10 @@ from types import SimpleNamespace
 from bench import openrouter_joint_analysis as analysis
 from bench import openrouter_joint_study as study
 from bench import openrouter_rules_live as live
+from bench.openrouter_attempts import accounting
 from bench.openrouter_contract import endpoints
 from bench.openrouter_matrix import ROOT, file_hash, load_module, write_json
-from bench.openrouter_pilot import Ledger, PilotError, digest, load_key, money, validate_schema_endpoint
+from bench.openrouter_pilot import Ledger, PilotError, digest, load_key, money, upper_cost, validate_schema_endpoint
 from bench.openrouter_replay import public_task
 
 WORKLOAD = "structured_relational_v1"
@@ -51,6 +53,100 @@ def pilot_kind(manifest):
 
 def pilot_cap(manifest):
     return TYPED_PILOT_CAP if manifest.get("workload") == TYPED_WORKLOAD else PILOT_CAP
+
+
+def typed_ledger_snapshot(path, key=None):
+    """Read the existing campaign without creating a ledger or taking a write lock.
+
+    The origin binds even an unpaid manifest to its original campaign. A provided
+    dispatch key must match every event, not merely the frozen origin's key ID.
+    """
+    try:
+        path = Path(path).resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise PilotError("typed campaign ledger must already exist") from exc
+    with path.open() as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise PilotError("typed campaign ledger is busy; retry preflight later") from exc
+        try:
+            events = (
+                Ledger(path, key).read(handle)
+                if key is not None
+                else [json.loads(line) for line in handle if line.strip()]
+            )
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+    origins = [event for event in events if event.get("event") == "origin"]
+    if (
+        len(origins) != 1
+        or events[0] != origins[0]
+        or not isinstance(origins[0].get("key_id"), str)
+        or not origins[0]["key_id"]
+        or any(event.get("key_id") != origins[0]["key_id"] for event in events)
+    ):
+        raise PilotError("typed campaign requires one existing key-bound ledger origin")
+    money(origins[0]["usage_usd"])
+    state = accounting(events)
+    binding = {"resolved_path": str(path), "origin_event_sha256": digest(origins[0])}
+    return binding, events, state
+
+
+def typed_pilot_preflight(acquisition, tasks, attention, events, state):
+    """Reconstruct the entire saved prefix before even a cached Ledger.call.
+
+    Crash-left results missing from the application journal require review; this
+    pilot deliberately has no automatic recovery or provider-failure retry path.
+    """
+    _, expected, failures = analysis.validate_journals(
+        acquisition.manifest, acquisition.decisions, acquisition.calls,
+        acquisition.intents, tasks, attention,
+    )
+    finance = analysis.ledger_report(events, acquisition.stage, acquisition.calls, expected)
+    stage_attempts = {}
+    for reserve in state["reserves"].values():
+        if reserve["stage"] == acquisition.stage:
+            stage_attempts[(reserve["id"], reserve.get("attempt_id"))] = reserve
+            payload, _ = expected[reserve["id"]]
+            if money(reserve["upper_cost_usd"]) != upper_cost(payload):
+                raise PilotError("typed reservation differs from the exact request allowance")
+            validate_schema_endpoint(payload["model"], reserve.get("schema_endpoint_observation", {}))
+            result = state["results"].get(reserve["id"])
+            if result and money(result["cost_usd"]) > upper_cost(payload):
+                raise PilotError("typed result exceeds its reserved allowance")
+    for event in events:
+        if event["event"] != "response" or not event.get("id", "").startswith(acquisition.stage + "-"):
+            continue
+        if (event["id"], event.get("attempt_id")) not in stage_attempts:
+            raise PilotError("typed durable response lacks its exact reservation")
+        result = state["results"].get(event["id"])
+        if result and event.get("latency_ms") != result["latency_ms"]:
+            raise PilotError("typed durable response timing differs from its result")
+    if any(event["stage"] == acquisition.stage for event in state["terminals"].values()):
+        raise PilotError("typed pilot stopped after a provider failure or abandonment; review required")
+    if any(reserve["stage"] == acquisition.stage for reserve in state["reserves"].values()) and any(
+        not (acquisition.args.output / name).is_file()
+        for name in ("calls.json", "decisions.json", "intents.json")
+    ):
+        raise PilotError("typed paid prefix has a missing journal; review required")
+    if (
+        failures or finance["failed_provider_results"]
+        or not finance["snapshot_financially_complete"]
+    ):
+        raise PilotError("typed journals lack complete authoritative ledger evidence; review required")
+    artifact_fields = {
+        "task_id", "phase", "arm", "workflow_stage", "scope", "request_sha256",
+        "decision_sha256", "cached_input_tokens", "nominal_uncached_cost_usd",
+    }
+    for row in acquisition.calls:
+        public_fields = set(state["results"][row["id"]]) - {"key_id", "at", "metadata"}
+        if set(row) != public_fields | artifact_fields:
+            raise PilotError("typed saved result fields differ from ledger reconstruction")
+        if workload(acquisition.manifest).parse(
+            row["workflow_stage"], live.application_answer(acquisition.manifest, row)
+        ) is None:
+            raise PilotError("typed feasibility failed at an invalid application completion")
 
 
 def catalog_for(template, selected):
@@ -178,6 +274,7 @@ def verified_pilot(args):
         SimpleNamespace(
             manifest_sha256=args.pilot_manifest_sha256,
             fixture=args.pilot / "fixture.json",
+            ledger=args.ledger,
         ),
         manifest,
     )
@@ -238,6 +335,8 @@ def prepare(args, key, *, pilot):
     typed = requested["workload"] == TYPED_WORKLOAD
     if typed and not pilot:
         raise PilotError("typed native study awaits independently reviewed context contract")
+    if typed:
+        ledger_binding, _, _ = typed_ledger_snapshot(args.ledger, key)
     if not pilot:
         pilot_data, pilot_finance = verified_pilot(args)
         pilot_manifest, pilot_calls, pilot_summary = (
@@ -296,6 +395,7 @@ def prepare(args, key, *, pilot):
         for target in manifest["catalog"]["targets"]:
             target["capabilities"]["structured_outputs"] = True
         manifest.update(
+            campaign_ledger=ledger_binding,
             response_formats={s: adapter.schema_for(s) for s in live.STAGES},
             feedback_contract=adapter.FEEDBACK_CONTRACT,
             stop_on_invalid_application=True,
@@ -361,7 +461,7 @@ def prepare(args, key, *, pilot):
     }
 
 
-def validate(args, manifest):
+def validate(args, manifest, key=None):
     adapter = workload(manifest)
     if (
         digest(manifest) != args.manifest_sha256
@@ -379,6 +479,9 @@ def validate(args, manifest):
             "structured source, fixture, contract or external manifest identity changed"
         )
     if manifest["workload"] == TYPED_WORKLOAD:
+        binding, _, _ = typed_ledger_snapshot(args.ledger, key)
+        if manifest.get("campaign_ledger") != binding:
+            raise PilotError("typed pilot campaign ledger path or origin changed")
         if (
             manifest["kind"] != TYPED_PILOT_KIND
             or manifest.get("response_formats") != {s: adapter.schema_for(s) for s in live.STAGES}
@@ -410,11 +513,20 @@ def validate(args, manifest):
 
 
 def run_pilot(args, key, manifest):
+    if manifest.get("workload") == TYPED_WORKLOAD:
+        validate(args, manifest, key)
+        if json.loads((args.output / "manifest.json").read_text()) != manifest:
+            raise PilotError("typed on-disk manifest differs from validated identity")
     tasks = {t["task_id"]: t for t in json.loads(args.fixture.read_text())}
     attention = load_module(
         "schema_pilot_attention", ROOT / "python/agentc/_attention.py"
     )
     acquisition = live.Acquisition(args, manifest, Ledger(args.ledger, key), key)
+    if manifest.get("workload") == TYPED_WORKLOAD:
+        binding, events, state = typed_ledger_snapshot(args.ledger, key)
+        if binding != manifest["campaign_ledger"]:
+            raise PilotError("typed pilot campaign ledger changed during preflight")
+        typed_pilot_preflight(acquisition, tasks, attention, events, state)
     if args.max_calls is not None and (
         args.max_calls < len(acquisition.calls) or args.max_calls < 1
     ):

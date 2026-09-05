@@ -155,7 +155,9 @@ def full_data(tmp_path_factory):
                 call_id = stage_id + "-" + digest([item, scope])[:24]
                 ids.append(call_id)
                 meta = analysis.metadata(item, scope, signature, payload, manifest)
-                fingerprint = digest([payload, meta, stage_id])
+                fingerprint = digest(
+                    {"payload": payload, "metadata": meta, "stage": stage_id}
+                )
                 tokens = {
                     "prompt_tokens": 20,
                     "completion_tokens": 10,
@@ -585,3 +587,53 @@ def test_ledger_byte_reader_fails_instead_of_waiting_for_writer(tmp_path):
         fcntl.flock(writer, fcntl.LOCK_EX | fcntl.LOCK_NB)
         with pytest.raises(PilotError, match="busy"):
             analysis.read_ledger_snapshot(path)
+
+
+def test_real_ledger_and_acquisition_dispatch_round_trip_into_analyzer(
+    full_data, tmp_path, monkeypatch
+):
+    """Exercise production fingerprint/persistence, mocking only network calls."""
+    from types import SimpleNamespace
+    from bench import openrouter_pilot as pilot
+
+    data = deepcopy(full_data)
+    args = SimpleNamespace(output=tmp_path / "artifacts", max_calls=None)
+    ledger_path = tmp_path / "real-ledger-with-fake-provider.jsonl"
+    key = "synthetic-test-string-not-a-provider-key"
+    ledger = pilot.Ledger(ledger_path, key)
+    monkeypatch.setattr(pilot, "account", lambda _: {"usage": 0})
+    requests = []
+
+    def fake_request(path, supplied_key, payload):
+        assert path == "/chat/completions" and supplied_key == key
+        requests.append(payload)
+        return deepcopy(data["ledger_events"][1]["response"])
+
+    monkeypatch.setattr(pilot, "request_json", fake_request)
+    acquisition = live.Acquisition(args, data["manifest"], ledger, key)
+    first = data["intents"][0]
+    item = {k: first[k] for k in analysis.ITEM_KEYS}
+    signature = acquisition.intent(item, first["original_call"], first["native_plan"])
+    row = acquisition.dispatch(item, "calibration", first["original_call"], signature)
+    acquisition.record(deepcopy(data["decisions"][0]))
+    events, byte_hash = analysis.read_ledger_snapshot(ledger_path)
+    reserve = next(event for event in events if event["event"] == "reserve")
+    result = next(event for event in events if event["event"] == "result")
+    assert row["fingerprint"] == reserve["fingerprint"] == result["fingerprint"]
+    assert len(requests) == 1
+    data.update(
+        calls=acquisition.calls,
+        decisions=acquisition.decisions,
+        intents=acquisition.intents,
+        ledger_events=events,
+        ledger_sha256=byte_hash,
+        gate=None,
+        static=None,
+        summary=None,
+    )
+    report = run(data)
+    assert report["recorded_calls"] == 1
+    assert report["financial_snapshot"]["snapshot_financially_complete"]
+    assert Decimal(report["financial_snapshot"]["known_stage_usd"]) == Decimal(".001")
+    assert report["financial_snapshot"]["ledger_sha256"] == byte_hash
+    assert report["comparisons"] == []  # correctly incomplete, not rejected provenance

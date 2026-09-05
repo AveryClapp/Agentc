@@ -299,6 +299,10 @@ class Acquisition:
                 "provider_name": e["provider_name"], "endpoint_model": e["name"].split(" | ", 1)[1]}}
         call_id = self.stage + "-" + digest([item, scope])[:24]
         result = self.ledger.call(self.key, call_id, self.stage, money(self.manifest["stage_cap_usd"]), payload, metadata)
+        generation = result.get("generation_id")
+        if (not isinstance(generation, str) or not generation
+                or any(row["generation_id"] == generation and row["id"] != call_id for row in self.calls)):
+            raise PilotError("workflow generation is missing or duplicated")
         cached = result["usage"].get("prompt_tokens_details", {}).get("cached_tokens")
         if cached is not None and (type(cached) is not int or not 0 <= cached <= result["usage"]["prompt_tokens"]):
             raise PilotError("invalid cached-token accounting")

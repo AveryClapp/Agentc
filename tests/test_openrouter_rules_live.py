@@ -279,3 +279,17 @@ def test_short_prefix_on_complete_journal_is_not_labeled_reconstructed(experimen
     assert not prefix["schedule_complete"]
     assert prefix["reconstructed_calls"] == 1
     assert prefix["completed_calls"] == full["completed_calls"]
+
+
+@pytest.mark.parametrize("generation", [None, "", "duplicated-generation"])
+def test_new_invalid_generation_stops_before_native_feedback(experiment, monkeypatch, generation):
+    args, manifest, tasks, ledger, native = experiment
+    original = ledger.call
+    def invalid(*pos, **kwargs):
+        row = original(*pos, **kwargs)
+        return {**row, "generation_id": generation}
+    monkeypatch.setattr(ledger, "call", invalid)
+    with pytest.raises(PilotError, match="generation"):
+        live.run(args, "fake-key")
+    assert not native.observations
+    assert len(ledger.requests) == (2 if generation else 1)

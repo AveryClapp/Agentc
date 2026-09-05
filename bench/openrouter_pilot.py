@@ -934,6 +934,10 @@ class Ledger:
             "metadata": metadata,
             "paper_evidence": False,
         }
+        if reservation.get("group_sha256"):
+            from bench.openrouter_groups import validate_completion
+
+            validate_completion(reservation, response, result)
         self.append(handle, result)
         return result
 

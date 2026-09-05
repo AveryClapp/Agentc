@@ -50,6 +50,71 @@ def _request(payload):
         raise pilot.PilotError("protected groups require exact fixed models")
 
 
+def validate_completion(claim, body, result):
+    """Revalidate the exact source receipt before it can authorize its partner.
+
+    Legacy result rows remain billing records under their existing rules. Only
+    grouped completions have this stronger dispatch/replay contract.
+    """
+    choice = pilot.schema_text_choice(body)
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        raise pilot.PilotError("group response lacks provider token accounting")
+    cost = pilot.money(usage.get("cost"))
+    if cost > pilot.money(claim["upper_cost_usd"]) or usage.get("is_byok"):
+        raise pilot.PilotError("group response violates its billing contract")
+    for field in ("prompt_tokens", "completion_tokens"):
+        if type(usage.get(field)) is not int or usage[field] < 0:
+            raise pilot.PilotError(
+                "group response has invalid provider token accounting"
+            )
+    if (
+        body.get("model") != claim["request"]["model"]
+        or not isinstance(body.get("provider"), str)
+        or not body["provider"]
+    ):
+        raise pilot.PilotError("group response differs from its fixed model/provider")
+    contract = claim["metadata"].get("dispatch_contract")
+    if contract is not None:
+        router = body.get("openrouter_metadata") or {}
+        selected = [
+            e
+            for e in router.get("endpoints", {}).get("available", [])
+            if e.get("selected") is True
+        ]
+        if (
+            body["provider"] != contract["provider_name"]
+            or len(selected) != 1
+            or selected[0].get("provider") != contract["provider_name"]
+            or selected[0].get("model") != contract["endpoint_model"]
+            or router.get("requested") != claim["request"]["model"]
+            or type(router.get("attempt")) is not int
+            or router["attempt"] != 1
+            or router.get("is_byok") is not False
+        ):
+            raise pilot.PilotError("group response differs from its frozen endpoint")
+    expected = {
+        "id": claim["id"],
+        "stage": claim["stage"],
+        "attempt_id": claim["attempt_id"],
+        "fingerprint": claim["fingerprint"],
+        "metadata": claim["metadata"],
+        "answer": choice["message"]["content"],
+        "finish_reason": choice["finish_reason"],
+        "usage": usage,
+        "model": body["model"],
+        "provider": body["provider"],
+        "generation_id": body.get("id"),
+        "router_metadata": body.get("openrouter_metadata"),
+    }
+    if (
+        pilot.canonical({k: result.get(k) for k in expected})
+        != pilot.canonical(expected)
+        or pilot.money(result["cost_usd"]) != cost
+    ):
+        raise pilot.PilotError("group result differs from its durable response")
+
+
 def replay(events):
     """Validate transitions in order and return only still-unclaimed liabilities."""
     groups, call_ids, used_ids = {}, {}, set()
@@ -107,15 +172,15 @@ def replay(events):
             if (
                 not event.get("attempt_id")
                 or event["stage"] != state["reservation"]["stage"]
-                or any(
-                    event.get(k) != spec[k]
-                    for k in (
-                        "id",
-                        "request",
-                        "metadata",
-                        "fingerprint",
-                        "upper_cost_usd",
-                    )
+                or pilot.canonical({k: event.get(k) for k in spec})
+                != pilot.canonical(spec)
+                or event["fingerprint"]
+                != pilot.digest(
+                    {
+                        "payload": event["request"],
+                        "metadata": event["metadata"],
+                        "stage": event["stage"],
+                    }
                 )
             ):
                 raise pilot.PilotError(
@@ -159,21 +224,7 @@ def replay(events):
                 body = responses.get(event["id"])
                 if body is None:
                     raise pilot.PilotError("group result lacks a durable response")
-                choice = pilot.schema_text_choice(body)
-                if (
-                    event.get("answer") != choice["message"]["content"]
-                    or event.get("finish_reason") != choice["finish_reason"]
-                    or event.get("usage") != body.get("usage")
-                    or event.get("metadata") != claim["metadata"]
-                    or pilot.money(event["cost_usd"])
-                    != pilot.money(body["usage"]["cost"])
-                    or pilot.money(event["cost_usd"])
-                    > pilot.money(claim["upper_cost_usd"])
-                    or body["usage"].get("is_byok")
-                ):
-                    raise pilot.PilotError(
-                        "group result differs from its durable response"
-                    )
+                validate_completion(claim, body, event)
                 completed.add(event["id"])
         else:
             if event.get("group_sha256") or event.get("group_slot"):

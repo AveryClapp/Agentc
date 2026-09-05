@@ -1,0 +1,1 @@
+{"all_candidate_calibration_costs_charged":true,"calibration_only":true,"cells":[{"mean_final_f1":0.7058823529411764,"model":"anthropic/claude-sonnet-4.5","nominal_cost_usd":"0.067653","workflows":4},{"mean_final_f1":0.6764705882352942,"model":"anthropic/claude-haiku-4.5","nominal_cost_usd":"0.021222","workflows":4}],"model":"anthropic/claude-sonnet-4.5","safety_guarantee":false}

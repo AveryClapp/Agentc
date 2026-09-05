@@ -52,6 +52,7 @@ def make_full_data(directory, *, structured_error=False):
     }
     manifest = study.finalize_manifest(
         {
+            **({"workload": "structured_relational_v1"} if structured_error else {}),
             "schedule": live.schedule_for(
                 [t["task_id"] for t in tasks], {"0"}, 16, 115
             ),

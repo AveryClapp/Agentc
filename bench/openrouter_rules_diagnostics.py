@@ -84,7 +84,7 @@ def analyze(manifest, decisions, calls, intents):
     # Reuse the frozen acquisition's side-effect-free journal validator. Its
     # required state is explicit; no constructor, credential, ledger, native
     # runtime or dispatch is invoked by this read-only report.
-    from bench.openrouter_rules_live import Acquisition, divergence_for
+    from bench.openrouter_rules_live import Acquisition, application_answer, divergence_for
 
     state = SimpleNamespace(
         manifest=manifest,
@@ -132,8 +132,8 @@ def analyze(manifest, decisions, calls, intents):
             manifest,
             decision["workflow_stage"],
             intents[index]["original_call"],
-            primary["answer"],
-            comparison["answer"],
+            application_answer(manifest, primary),
+            application_answer(manifest, comparison),
         ):
             raise PilotError("divergence differs from observed response texts")
         selected, reference = (

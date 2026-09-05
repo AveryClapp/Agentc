@@ -19,7 +19,7 @@ from bench import openrouter_joint_study as study
 from bench import openrouter_rules_live as live
 from bench.openrouter_contract import endpoints
 from bench.openrouter_matrix import ROOT, file_hash, load_module, write_json
-from bench.openrouter_pilot import Ledger, PilotError, digest, load_key, money
+from bench.openrouter_pilot import Ledger, PilotError, digest, load_key, money, validate_schema_endpoint
 from bench.openrouter_replay import public_task
 
 WORKLOAD = "structured_relational_v1"
@@ -27,6 +27,11 @@ PILOT_KIND = "structured_schema_development_v1"
 PILOT_SEED = 2026090501
 STUDY_SEED = 2026090502
 PILOT_CAP = "1"
+TYPED_WORKLOAD = "typed_relational_v1"
+TYPED_PILOT_KIND = "typed_schema_development_v1"
+# Includes headroom for one $6.01536 Sonnet context reservation; not a spend
+# target. Together with a possible future $24 native envelope this is <$31.98.
+TYPED_PILOT_CAP = "7.9"
 NATIVE_SHA = "84f9ecb542b5cb42c075a5ad8c536461dd48e3e45c9be25bc386ba7ce5e28501"
 TEMPLATE_SHA = "dcb703739e460810825f0966c06371d2848a4d17346afbfea4e77c52a0548ace"
 PILOT_ARMS = {
@@ -36,10 +41,16 @@ PILOT_ARMS = {
 }
 
 
-def workload():
-    from bench import structured_relational_workload
+def workload(manifest=None):
+    return live.workload_adapter(manifest or {"workload": WORKLOAD})
 
-    return structured_relational_workload
+
+def pilot_kind(manifest):
+    return TYPED_PILOT_KIND if manifest.get("workload") == TYPED_WORKLOAD else PILOT_KIND
+
+
+def pilot_cap(manifest):
+    return TYPED_PILOT_CAP if manifest.get("workload") == TYPED_WORKLOAD else PILOT_CAP
 
 
 def catalog_for(template, selected):
@@ -135,14 +146,14 @@ def pilot_comparisons(manifest, calls, decisions, tasks):
             {
                 **item,
                 "valid_by_site": {
-                    s: workload().parse(s, r["answer"]) is not None
+                    s: workload(manifest).parse(s, live.application_answer(manifest, r)) is not None
                     for s, r in rows.items()
                 },
                 "score": live.score_for(
                     manifest,
-                    rows["answer"]["answer"],
+                    live.application_answer(manifest, rows["answer"]),
                     tasks[item["task_id"]]["expected"],
-                    history={s: r["answer"] for s, r in rows.items()},
+                    history={s: live.application_answer(manifest, r) for s, r in rows.items()},
                 ),
             }
         )
@@ -170,7 +181,7 @@ def verified_pilot(args):
         ),
         manifest,
     )
-    if manifest["kind"] != PILOT_KIND:
+    if manifest["kind"] != pilot_kind(manifest):
         raise PilotError("native study requires a schema pilot")
     tasks = {t["task_id"]: t for t in data["fixture.json"]}
     attention = load_module(
@@ -222,6 +233,11 @@ def prepare(args, key, *, pilot):
     template = json.loads(args.template.read_text())
     if digest(template) != TEMPLATE_SHA:
         raise PilotError("unreviewed protocol template")
+    requested = {"workload": getattr(args, "workload", WORKLOAD)}
+    adapter = workload(requested)
+    typed = requested["workload"] == TYPED_WORKLOAD
+    if typed and not pilot:
+        raise PilotError("typed native study awaits independently reviewed context contract")
     if not pilot:
         pilot_data, pilot_finance = verified_pilot(args)
         pilot_manifest, pilot_calls, pilot_summary = (
@@ -237,28 +253,31 @@ def prepare(args, key, *, pilot):
         else study.CALIBRATION + study.WARMUP + study.TRAINING + study.HELDOUT
     )
     seed = PILOT_SEED if pilot else STUDY_SEED
-    tasks = workload().make_tasks(seed, count)
+    tasks = adapter.make_tasks(seed, count)
     if len(tasks) != count or len({t["task_id"] for t in tasks}) != count:
         raise PilotError("generated fixture is not unique and complete")
     selected = endpoints(key)
     selected = {m: selected[m] for m in (live.SOURCE_MODEL, live.TARGET_MODEL)}
+    if typed:
+        for model, endpoint in selected.items():
+            validate_schema_endpoint(model, endpoint)
     manifest = deepcopy(template)
     manifest.update(
-        workload=WORKLOAD,
-        source_files=live.sources(WORKLOAD),
+        workload=requested["workload"],
+        source_files=live.sources(requested["workload"]),
         created_at=datetime.now(timezone.utc).isoformat(),
         generator_seed=seed,
         generator_count=count,
-        format_variant=workload().FORMAT_VARIANT,
-        prompts=workload().prompts(),
+        format_variant=adapter.FORMAT_VARIANT,
+        prompts=adapter.prompts(),
         template_manifest_sha256=TEMPLATE_SHA,
         endpoints=selected,
         catalog=catalog_for(template, selected),
         source_model=live.SOURCE_MODEL,
         target_model=live.TARGET_MODEL,
         excluded_question_ids=[],
-        scoring="strict_application_scalar_exact_v1",
-        bounded_transport_retry=True,
+        scoring=live.scoring_contract(requested),
+        bounded_transport_retry=not typed,
         limitations=[
             "Stage-local questions v3 reuse the same six exposed development cases after failed v1/v2 pilots and a one-case formatting diagnostic; this is adaptive prompt development, not independent replication.",
             "Filter asks only for tenant document selection; synthesis asks only for tenant and requisition. The ten-cell diagnostic tested filter scope only; applying stage-local scope to synthesis is an additional unverified hypothesis screened by this pilot.",
@@ -273,19 +292,41 @@ def prepare(args, key, *, pilot):
             "The original public-QA failed-admission study and its48unopened questions remain unchanged.",
         ],
     )
+    if typed:
+        for target in manifest["catalog"]["targets"]:
+            target["capabilities"]["structured_outputs"] = True
+        manifest.update(
+            response_formats={s: adapter.schema_for(s) for s in live.STAGES},
+            feedback_contract=adapter.FEEDBACK_CONTRACT,
+            stop_on_invalid_application=True,
+            native_execution_allowed=False,
+            reservation_basis="entire_fresh_verified_endpoint_context_at_max_price_plus_output_v1",
+            limitations=[
+                "New typed-JSON application contract on the same six exposed development tasks, not a reinterpretation of the failed lexical pilots.",
+                "Consume complete type-validated JSON values; reject duplicate keys, invalid types, null error, upstream-invalid state, refusal and truncation. No extraction, repair, coercion, case-folding or hidden-label oracle.",
+                "Exact application-value agreement is distinct from raw-string similarity and from task correctness. No numerical native risk setting is changed.",
+                "All 54 calls and 18 valid own-history workflows are required for the unchanged feasibility gate. Stop at the first application-invalid completion or provider failure; no automatic retry.",
+                "Every stage uses the same fixed schema across source/repeat/target. Schemas are public domain types, not correct task answers.",
+                "Provider-injected schema overhead has no documented numeric bound; reserve entire verified context at capped prices. A missing-cost failure keeps its full allowance.",
+                "Native routing is not authorized by this pilot: client-byte context estimates do not prove bounds on opaque provider schema instructions. Resolve that separate contract before a native study.",
+                "Compilation latency and grammar warmth are uncontrolled; charge all calls and describe latency observationally only. No healing or material router pipeline transformations are accepted.",
+                "Generated adaptive feasibility screen, not joint-system efficacy, safety certification, generalization or MLSys main-track evidence.",
+                "Original campaign $50 cap and all permanent uncertainty holds remain authoritative; stage cap is reservation headroom, not a target to spend.",
+            ],
+        )
     fixture = args.output / "fixture.json"
     write_json(fixture, tasks, immutable=True)
     manifest["fixture_sha256"] = file_hash(fixture)
     if pilot:
         manifest.update(
-            kind=PILOT_KIND,
+            kind=pilot_kind(manifest),
             schedule=pilot_schedule(tasks),
-            stage_cap_usd=PILOT_CAP,
+            stage_cap_usd=pilot_cap(manifest),
             pilot_arm_models=PILOT_ARMS,
             policies={
                 a: deepcopy(manifest["policies"]["original"]) for a in PILOT_ARMS
             },
-            training_cap_usd=PILOT_CAP,
+            training_cap_usd=pilot_cap(manifest),
             pilot_feasibility="all54calls; strict-valid all18workflows; source/repeat>=5of6 exact each; target>=4of6 exact",
         )
     else:
@@ -321,30 +362,44 @@ def prepare(args, key, *, pilot):
 
 
 def validate(args, manifest):
+    adapter = workload(manifest)
     if (
         digest(manifest) != args.manifest_sha256
-        or manifest["source_files"] != live.sources(WORKLOAD)
-        or manifest["workload"] != WORKLOAD
-        or manifest.get("format_variant") != workload().FORMAT_VARIANT
-        or manifest["prompts"] != workload().prompts()
+        or manifest["source_files"] != live.sources(manifest["workload"])
+        or manifest.get("format_variant") != adapter.FORMAT_VARIANT
+        or manifest["prompts"] != adapter.prompts()
         or manifest["scoring"] != live.scoring_contract(manifest)
         or file_hash(args.fixture) != manifest["fixture_sha256"]
         or json.loads(args.fixture.read_text())
-        != workload().make_tasks(
+        != adapter.make_tasks(
             manifest["generator_seed"], manifest["generator_count"]
         )
     ):
         raise PilotError(
             "structured source, fixture, contract or external manifest identity changed"
         )
-    if manifest["kind"] == PILOT_KIND:
+    if manifest["workload"] == TYPED_WORKLOAD:
+        if (
+            manifest["kind"] != TYPED_PILOT_KIND
+            or manifest.get("response_formats") != {s: adapter.schema_for(s) for s in live.STAGES}
+            or manifest.get("feedback_contract") != adapter.FEEDBACK_CONTRACT
+            or manifest.get("bounded_transport_retry") is not False
+            or manifest.get("stop_on_invalid_application") is not True
+            or manifest.get("native_execution_allowed") is not False
+            or manifest.get("reservation_basis") != "entire_fresh_verified_endpoint_context_at_max_price_plus_output_v1"
+            or not all(t["capabilities"].get("structured_outputs") is True for t in manifest["catalog"]["targets"])
+        ):
+            raise PilotError("typed pilot application, capability or failure contract changed")
+        for model, endpoint in manifest["endpoints"].items():
+            validate_schema_endpoint(model, endpoint)
+    if manifest["kind"] == pilot_kind(manifest):
         tasks = json.loads(args.fixture.read_text())
         if (
             manifest["generator_seed"] != PILOT_SEED
             or manifest["generator_count"] != 6
             or manifest["schedule"] != pilot_schedule(tasks)
-            or manifest["stage_cap_usd"] != PILOT_CAP
-            or manifest["training_cap_usd"] != PILOT_CAP
+            or manifest["stage_cap_usd"] != pilot_cap(manifest)
+            or manifest["training_cap_usd"] != pilot_cap(manifest)
             or manifest["pilot_arm_models"] != PILOT_ARMS
         ):
             raise PilotError("schema pilot allocation or cap changed")
@@ -397,7 +452,9 @@ def run_pilot(args, key, manifest):
                         "divergence_feedback": None,
                     }
                 )
-                history[stage] = primary["answer"]
+                history[stage] = live.application_answer(manifest, primary)
+                if manifest.get("stop_on_invalid_application") and workload(manifest).parse(stage, history[stage]) is None:
+                    raise PilotError("typed feasibility failed at an invalid application completion")
         complete = True
     except live.CallLimit:
         pass
@@ -408,7 +465,7 @@ def run_pilot(args, key, manifest):
             else []
         )
         summary = {
-            "kind": PILOT_KIND,
+            "kind": pilot_kind(manifest),
             "paper_evidence": False,
             "efficacy_claim": False,
             "manifest_sha256": digest(manifest),
@@ -440,6 +497,7 @@ def main():
     parser.add_argument("--native", type=Path)
     parser.add_argument("--manifest-sha256")
     parser.add_argument("--max-calls", type=int)
+    parser.add_argument("--workload", choices=(WORKLOAD, TYPED_WORKLOAD), default=WORKLOAD)
     args = parser.parse_args()
     args.fixture = args.output / "fixture.json"
     try:
@@ -449,7 +507,7 @@ def main():
         else:
             manifest = json.loads((args.output / "manifest.json").read_text())
             validate(args, manifest)
-            if (args.command == "run-pilot") != (manifest["kind"] == PILOT_KIND):
+            if (args.command == "run-pilot") != (manifest["kind"] == pilot_kind(manifest)):
                 raise PilotError("runner and manifest disagree")
             report = (
                 run_pilot(args, key, manifest)

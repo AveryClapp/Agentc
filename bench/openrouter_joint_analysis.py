@@ -75,7 +75,8 @@ def validate_row(row, payload, meta, manifest):
     if (
         row["model"] != payload["model"]
         or row["provider"] != endpoint["provider_name"]
-        or row["fingerprint"] != digest([payload, meta, row["stage"]])
+        or row["fingerprint"]
+        != digest({"payload": payload, "metadata": meta, "stage": row["stage"]})
         or not isinstance(row["answer"], str)
     ):
         raise PilotError("call dispatch, fingerprint, or answer attribution changed")
@@ -286,7 +287,8 @@ def ledger_report(events, stage_id, calls, expected):
         if (
             reserve["request"] != payload
             or reserve["metadata"] != meta
-            or reserve["fingerprint"] != digest([payload, meta, stage_id])
+            or reserve["fingerprint"]
+            != digest({"payload": payload, "metadata": meta, "stage": stage_id})
         ):
             raise PilotError("ledger attempt differs from its frozen request")
         terminal = state["terminals"].get(key)

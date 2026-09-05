@@ -311,6 +311,6 @@ def test_new_invalid_generation_stops_before_native_feedback(experiment, monkeyp
 def test_stage_accounting_does_not_hide_unresolved_calls(experiment, monkeypatch):
     args, manifest, tasks, ledger, native = experiment
     monkeypatch.setattr(ledger, "read", lambda _: [
-        {"stage": "test", "event": "reserve", "id": "lost"},
-        {"stage": "other", "event": "reserve", "id": "unrelated"}])
+        {"stage": "test", "event": "reserve", "id": "lost", "upper_cost_usd": ".01"},
+        {"stage": "other", "event": "reserve", "id": "unrelated", "upper_cost_usd": ".02"}])
     assert live.stage_accounting(ledger, "test", [])["unresolved_stage_calls"] == ["lost"]

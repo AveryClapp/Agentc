@@ -20,7 +20,7 @@ from bench.openrouter_pilot import PilotError
 
 STAGES = ("filter", "synthesize", "answer")
 VERSION = "structured-procurement-v1"
-FORMAT_VARIANT = "final-user-schema-reinforcement-v2"
+FORMAT_VARIANT = "stage-local-questions-v3"
 ERROR = "ERROR"
 ERROR_INPUT = "ERROR_INPUT: preceding application output failed its strict contract."
 DOCUMENTS = 20
@@ -293,6 +293,24 @@ def make_tasks(seed, count):
     return tasks
 
 
+def stage_question(task, stage):
+    """Expose only the public question needed by this application operation."""
+    if stage == "answer":
+        return task["prompt"]
+    match = re.match(
+        r"Tenant (T[A-Z0-9]+); requisition (R[0-9]{3})\.", task["prompt"]
+    )
+    if not match or stage not in {"filter", "synthesize"}:
+        raise PilotError("invalid structured stage question")
+    tenant, requisition = match.groups()
+    if stage == "filter":
+        # Table kinds are already defined by the system instruction. Repeating
+        # every kind here makes the union-based follow-on guard protect all
+        # tenants' records, eliminating the compression opportunity.
+        return f"Tenant {tenant}. Select its three documents."
+    return f"Tenant {tenant}; requisition {requisition}."
+
+
 def call(task, stage, history, attention, *, model, run_identity, prompts=None):
     """Build native IR from this arm's raw outputs and explicit application reads.
 
@@ -349,7 +367,7 @@ def call(task, stage, history, attention, *, model, run_identity, prompts=None):
         {
             "role": "user",
             "content": "Question: "
-            + task["prompt"]
+            + stage_question(task, stage)
             + ("\n" + ERROR_INPUT if not valid else "")
             + "\nOutput requirement: "
             + _FINAL_OUTPUT_RULES[stage]

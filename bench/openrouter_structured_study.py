@@ -260,7 +260,9 @@ def prepare(args, key, *, pilot):
         scoring="strict_application_scalar_exact_v1",
         bounded_transport_retry=True,
         limitations=[
-            "Final-user schema reinforcement v2 reuses the same six development cases as the stopped v1 pilot; this is adaptive instruction-placement development, not an independent replication.",
+            "Stage-local questions v3 reuse the same six exposed development cases after failed v1/v2 pilots and a one-case formatting diagnostic; this is adaptive prompt development, not independent replication.",
+            "Filter asks only for tenant document selection; synthesis asks only for tenant and requisition. The ten-cell diagnostic tested filter scope only; applying stage-local scope to synthesis is an additional unverified hypothesis screened by this pilot.",
+            "The filter question omits redundant table-kind names already defined in the system prompt: listing every kind protected all distractors in the unchanged union-based attention guard. This wording differs from the successful one-case control and requires new feasibility evidence.",
             "Controlled generated procurement microbenchmark, not public real-workload or MLSys main-track efficacy evidence.",
             "Raw lexical comparison for valid outputs; invalid schema or upstream state receives maximal disagreement. Native evidence/risk thresholds remain unchanged, with no gold comparator.",
             "Exact byte output grammar is an application requirement; schema failures and shared wrong answers are not successful quality.",

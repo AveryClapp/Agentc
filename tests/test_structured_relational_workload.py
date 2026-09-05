@@ -256,7 +256,7 @@ def test_shape_and_plan_identity_stable_across_cases_models_and_histories():
                 == {"filter": 22, "synthesize": 3, "answer": 4}[stage]
             )
             assert call["messages"][-1]["content"] == (
-                "Question: " + task["prompt"] + "\nOutput requirement: "
+                "Question: " + workload.stage_question(task, stage) + "\nOutput requirement: "
                 + workload._FINAL_OUTPUT_RULES[stage] + workload._BYTE_RULE
             )
             assert call["input_deps"] == call["parameters"]["extra"]["message_deps"]
@@ -319,6 +319,23 @@ def test_format_reinforcement_preserves_exposed_development_cases():
     for stage in workload.STAGES:
         # Do not introduce example record IDs that can bias attention protection.
         assert not re.search(r"[DM][0-9]{2}", workload._FINAL_OUTPUT_RULES[stage])
+
+
+def test_stage_local_queries_preserve_only_required_public_information():
+    task = workload.make_tasks(2026090501, 1)[0]
+    tenant, req = re.search(r"Tenant (\w+); requisition (R\d{3})", task["prompt"]).groups()
+    assert workload.stage_question(task, "filter") == (
+        f"Tenant {tenant}. Select its three documents."
+    )
+    assert workload.stage_question(task, "synthesize") == f"Tenant {tenant}; requisition {req}."
+    assert workload.stage_question(task, "answer") == task["prompt"]
+    assert "Approval table" not in workload.stage_question(task, "synthesize")
+    history = reference(task)
+    for i, stage in enumerate(workload.STAGES):
+        prior = {s: history[s] for s in workload.STAGES[:i]}
+        assert build(task, stage, prior)["messages"][0]["content"] == workload.prompts()[
+            {"filter": "FILTER_SYSTEM", "synthesize": "SYNTH_SYSTEM", "answer": "ANSWER_SYSTEM"}[stage]
+        ]
 
 
 def test_real_attention_has_context_compression_opportunity_without_support_labels():

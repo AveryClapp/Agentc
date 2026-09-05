@@ -1,5 +1,28 @@
 # Stage-local procurement feasibility pilot v3
 
+Status: **STOPPED_FAILED_FEASIBILITY — permanently closed, no native promotion.**
+
+Acquisition stopped at 20/54 completed calls. Normal `stop` completions still
+violated the application format: source/repeat answers used 179/176 tokens of
+prose, followed on the next task by a 446-token source filter and an `ERROR`
+synthesis. The next source answer was provider-filtered/refused with no returned
+usage. This is not merely a 512-token truncation problem. The full pilot gate is
+false; the incomplete comparisons array must not be treated as a passing score.
+
+Completed calls cost $0.144615. The failed attempt retains its entire $0.034470
+allowance, so this pilot's conservative commitment is $0.179085. Independent
+review verified the sole refused attempt, no result or unsafe/BYOK flag, and
+182 seconds elapsed. It was permanently abandoned using exact reserve hash
+`3a919445a2b3a66d8b5b00daf9121118e4ff7e983bbadc1601f9fb5037192923`;
+abandonment does not release any uncertainty or permit retry. The saved summary
+is the immutable stop-time snapshot and still lists that then-unresolved call.
+Current shared ledger state has no unresolved calls after retirement.
+
+Across the original campaign: known charges $17.76945847 plus retained
+uncertainty $0.248244, conservative commitment $18.01770247 and $31.98229753
+remaining. Future typed-JSON work is a different prospective application
+contract, not a repair or re-scoring of this failed lexical pilot.
+
 This is adaptive development on the same six exposed seed `2026090501` cases,
 not an independent replication. V1 and final-user-reinforced v2 stopped with
 source format failures and provider refusals; their full failed-call allowances
@@ -24,7 +47,7 @@ guard, evidence floor, or feedback comparator is relaxed.
 Source: `10e33d3`, including the separately reviewed prospective native budget
 patch `6fb9bc6`. Manifest SHA-256:
 `de967da4d5df2b5b647c70cfece72057cb1cf700aa3c354abc3ca51fb774277b`.
-There are 54 calls: six tasks × source/repeat/target × three own-history stages.
+There were 54 scheduled calls: six tasks × source/repeat/target × three own-history stages.
 The unchanged gate requires every workflow strictly valid, source and repeat
 each at least 5/6 exact, and target at least 4/6 exact. Incomplete or failed
 pilots cannot promote a native study. This pilot contains no native execution.

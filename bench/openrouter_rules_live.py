@@ -80,7 +80,7 @@ def sources(workload=None):
         "bench/openrouter_joint_study.py",
     )
     if workload is not None:
-        if workload not in {"structured_relational_v1", "typed_relational_v1"}:
+        if workload not in {"structured_relational_v1", "typed_relational_v1", "typed_public_research_v1"}:
             raise PilotError("unknown workload adapter")
         paths += (
             "bench/structured_relational_workload.py",
@@ -92,6 +92,8 @@ def sources(workload=None):
         )
         if workload == "typed_relational_v1":
             paths += ("bench/typed_relational_workload.py",)
+        if workload == "typed_public_research_v1":
+            paths += ("bench/typed_public_workload.py", "bench/build_typed_hotpot_fixture.py")
     return {p: file_hash(ROOT / p) for p in paths}
 
 
@@ -105,6 +107,10 @@ def workload_adapter(manifest):
         from bench import typed_relational_workload
 
         return typed_relational_workload
+    if name == "typed_public_research_v1":
+        from bench import typed_public_workload
+
+        return typed_public_workload
     raise PilotError("unknown workload adapter")
 
 
@@ -115,7 +121,7 @@ def application_answer(manifest, row):
     length completion maps to invalid state even if its JSON happens to parse.
     Legacy applications keep exactly their original raw-string semantics.
     """
-    if manifest.get("workload") == "typed_relational_v1":
+    if manifest.get("workload") in {"typed_relational_v1", "typed_public_research_v1"}:
         return workload_adapter(manifest).application_text(
             row["answer"], row["finish_reason"], stage=row["workflow_stage"]
         )
@@ -132,7 +138,7 @@ def nominal_uncached_cost(manifest, model, usage):
     """
     pricing = manifest["endpoints"][model]["pricing"]
     rates = {k: money(pricing[k]) for k in ("prompt", "completion")}
-    if manifest.get("workload") == "typed_relational_v1":
+    if manifest.get("workload") in {"typed_relational_v1", "typed_public_research_v1"}:
         for tier in pricing.get("overrides", []):
             if usage["prompt_tokens"] > tier["min_prompt_tokens"]:
                 rates.update({k: money(tier[k]) for k in rates if k in tier})
@@ -161,6 +167,8 @@ def score_for(manifest, answer, expected, *, history=None):
 
 def divergence_for(manifest, stage, call, reference, candidate):
     """Invalid application output cannot earn evidence by agreeing on an error."""
+    if manifest.get("workload") == "typed_public_research_v1":
+        raise PilotError("public research has no native semantic feedback contract")
     if manifest.get("workload") is not None:
         structured = workload_adapter(manifest)
         if manifest["workload"] == "typed_relational_v1":
@@ -232,7 +240,7 @@ def payload_for(call, manifest):
     ):
         raise PilotError("workflow request exceeds frozen model/parameter coverage")
     response_format = params.get("extra", {}).get("response_format")
-    if manifest.get("workload") == "typed_relational_v1":
+    if manifest.get("workload") in {"typed_relational_v1", "typed_public_research_v1"}:
         adapter = workload_adapter(manifest)
         stage = call["call_site_id"].rsplit("/", 1)[-1]
         if (

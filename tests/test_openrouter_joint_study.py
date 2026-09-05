@@ -238,7 +238,8 @@ def test_heldout_freezes_native_feedback_and_charges_only_primaries(
     assert result["schedule_complete"]
     assert len(native.observations) == (3 + 2) * 6 * 3
     assert all(
-        s["AGENTC_OPTIMIZE_EXPLORATION"] == "0" and s["AGENTC_OPTIMIZE_SHADOW"] == "0"
+        s["AGENTC_OPTIMIZE_EXPLORATION"] == "0"
+        and s["AGENTC_OPTIMIZE_SHADOW"] == "0.02"
         for s in settings[-12:]
     )
     heldout = [meta for _, meta in ledger.requests if meta["phase"] == "heldout"]
@@ -247,12 +248,17 @@ def test_heldout_freezes_native_feedback_and_charges_only_primaries(
 
 def test_heldout_candidate_is_rejected_before_paid_dispatch(small_study, monkeypatch):
     args, _, _, ledger, native = small_study
-    monkeypatch.setattr(
-        study, "admission_gate", lambda *_: {"proceed_to_heldout": True}
-    )
+    at_heldout = False
+
+    def gate(*_):
+        nonlocal at_heldout
+        at_heldout = True
+        return {"proceed_to_heldout": True}
+
+    monkeypatch.setattr(study, "admission_gate", gate)
 
     def plan(encoded):
-        if os.environ["AGENTC_OPTIMIZE_SHADOW"] == "0":
+        if at_heldout:
             return json.dumps(
                 {
                     "kind": "pass_through",
@@ -265,6 +271,35 @@ def test_heldout_candidate_is_rejected_before_paid_dispatch(small_study, monkeyp
     with pytest.raises(PilotError, match="heldout must not"):
         live.run(args, "fake-key")
     assert all(meta["phase"] != "heldout" for _, meta in ledger.requests)
+
+
+def test_heldout_rewritten_journals_do_not_expect_suppressed_shadows(
+    small_study, monkeypatch
+):
+    args, manifest, _, ledger, native = small_study
+
+    def plan(encoded):
+        call = json.loads(encoded)
+        rules = os.environ["AGENTC_ENABLED_RULES"]
+        if "ModelDowngrade" not in rules:
+            return json.dumps({"kind": "pass_through"})
+        selected = deepcopy(call)
+        selected["model"] = live.TARGET_MODEL
+        return json.dumps(
+            {"kind": "rewritten", "rule": "ModelDowngrade", "call": selected}
+        )
+
+    monkeypatch.setattr(native, "optimize_plan", plan)
+    monkeypatch.setattr(
+        study, "admission_gate", lambda *_: {"proceed_to_heldout": True}
+    )
+    monkeypatch.setattr(live, "shadow_sample", lambda *_: True)
+    live.run(args, "fake-key")
+    heldout = [meta for _, meta in ledger.requests if meta["phase"] == "heldout"]
+    assert heldout and all(meta["scope"] == "primary" for meta in heldout)
+    count = len(ledger.requests)
+    result = live.run(args, "fake-key")
+    assert result["schedule_complete"] and len(ledger.requests) == count
 
 
 def test_training_and_total_caps_are_applied_before_dispatch(small_study, monkeypatch):

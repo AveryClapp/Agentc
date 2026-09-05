@@ -298,7 +298,9 @@ def prepare(args, key):
 def phase_settings(manifest, arm, phase):
     settings = deepcopy(manifest["policies"][arm])
     if phase == "heldout":
-        settings.update(AGENTC_OPTIMIZE_EXPLORATION="0", AGENTC_OPTIMIZE_SHADOW="0")
+        # Native shadow configuration is identity-bearing. Suppress actual
+        # heldout shadow calls at the harness seam, preserving learned IDs.
+        settings.update(AGENTC_OPTIMIZE_EXPLORATION="0")
     return settings
 
 
@@ -540,15 +542,19 @@ class Acquisition:
             ]
             if signature["candidate"] is not None:
                 scopes.append(("exploration", signature["candidate"]))
-            elif signature["kind"] != "pass_through" and shadow_sample(
-                self.manifest["shadow_seed"],
-                item["arm"] + "/" + item["workflow_stage"],
-                item["task_id"],
-                float(
-                    phase_settings(self.manifest, item["arm"], item["phase"])[
-                        "AGENTC_OPTIMIZE_SHADOW"
-                    ]
-                ),
+            elif (
+                item["phase"] != "heldout"
+                and signature["kind"] != "pass_through"
+                and shadow_sample(
+                    self.manifest["shadow_seed"],
+                    item["arm"] + "/" + item["workflow_stage"],
+                    item["task_id"],
+                    float(
+                        phase_settings(self.manifest, item["arm"], item["phase"])[
+                            "AGENTC_OPTIMIZE_SHADOW"
+                        ]
+                    ),
+                )
             ):
                 scopes.append(
                     ("shadow", payload_for(intent["original_call"], self.manifest))

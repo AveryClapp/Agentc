@@ -138,6 +138,25 @@ def upper_cost(payload: Json) -> Decimal:
             Decimal(payload["max_tokens"]) * Decimal("30")) / Decimal(1_000_000)
 
 
+def text_choice(response: Json) -> Json:
+    """Accept completed text, not partial output attached to a provider error.
+
+    A length stop remains an observed, potentially damaging cap outcome. It is
+    not discarded to improve quality scores. This is not a quality validator.
+    """
+    choices = response.get("choices")
+    if (not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict)):
+        raise PilotError("missing model/provider/choice attribution")
+    choice = choices[0]
+    if (response.get("error") is not None or choice.get("error") is not None
+            or choice.get("finish_reason") not in {"stop", "length"}):
+        raise PilotError("provider did not complete a text response; preserve reservation and reconcile")
+    message = choice.get("message")
+    if not isinstance(message, dict) or not isinstance(message.get("content"), str):
+        raise PilotError("provider returned no text answer")
+    return choice
+
+
 class Ledger:
     def __init__(self, path: Path, key: str):
         self.path = path
@@ -203,6 +222,14 @@ class Ledger:
             if call_id in done:
                 if done[call_id]["fingerprint"] != fingerprint:
                     raise PilotError("cannot resume a call with changed inputs")
+                # Older drivers may have recorded an errored partial completion
+                # as a result. Reject both its summary and any retained raw body
+                # before it can be replayed into a fresh optimizer store.
+                if done[call_id].get("finish_reason") not in {"stop", "length"}:
+                    raise PilotError("cached result is not a completed text response")
+                for event in events:
+                    if event["event"] == "response" and event.get("id") == call_id:
+                        text_choice(event["response"])
                 return done[call_id]
             pending = [e for e in events if e["event"] == "reserve" and e["id"] not in done]
             if pending:
@@ -233,10 +260,11 @@ class Ledger:
             started = time.perf_counter()
             response = request_json("/chat/completions", key, payload)
             latency = (time.perf_counter() - started) * 1000
-            # Preserve the successful body before validating it; malformed
-            # accounting must remain recoverable without repeating inference.
+            # Preserve the returned body before validating it, including partial
+            # provider errors; never feed one into optimizer success feedback.
             self.append(handle, {"event": "response", "id": call_id,
                                  "response": response, "latency_ms": latency})
+            choice = text_choice(response)
             usage_data = response.get("usage", {})
             cost = money(usage_data.get("cost"))
             if cost > reserve:
@@ -247,15 +275,12 @@ class Ledger:
                     raise PilotError("missing or invalid provider token accounting")
             returned = response.get("model")
             provider = response.get("provider")
-            choices = response.get("choices", [])
             if (not isinstance(returned, str) or not returned or
-                    not isinstance(provider, str) or not provider or len(choices) != 1):
+                    not isinstance(provider, str) or not provider):
                 raise PilotError("missing model/provider/choice attribution")
             if usage_data.get("is_byok"):
                 raise PilotError("unexpected BYOK request; reconcile provider spend")
-            answer = choices[0].get("message", {}).get("content")
-            if not isinstance(answer, str):
-                raise PilotError("provider returned no text answer")
+            answer = choice["message"]["content"]
             if payload["model"] == "openrouter/auto":
                 pool = payload["plugins"][0]["allowed_models"]
                 if returned not in pool:
@@ -277,7 +302,7 @@ class Ledger:
             result = {"event": "result", "id": call_id, "stage": stage,
                       "fingerprint": fingerprint, "cost_usd": str(cost),
                       "latency_ms": latency, "model": returned, "provider": provider,
-                      "answer": answer, "finish_reason": choices[0].get("finish_reason"),
+                      "answer": answer, "finish_reason": choice["finish_reason"],
                       "usage": usage_data, "generation_id": response.get("id"),
                       "router_metadata": response.get("openrouter_metadata"),
                       "metadata": metadata, "paper_evidence": False}

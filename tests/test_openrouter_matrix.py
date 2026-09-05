@@ -127,6 +127,22 @@ def fake_run(*, real_ledger=False):
 
 
 class ResumeEvidenceTests(unittest.TestCase):
+    def test_provider_error_stops_before_native_observation_and_downstream_dispatch(self):
+        with fake_run(real_ledger=True) as (args, native, plan):
+            original = args.test_transport.side_effect
+            def failed_response(*call_args):
+                value = original(*call_args)
+                value["choices"][0].update(finish_reason="error", error={"code": 503})
+                value["usage"]["cost"] = 0
+                return value
+            args.test_transport.side_effect = failed_response
+            with self.assertRaisesRegex(PilotError, "did not complete"):
+                run(args, "fake-key")
+            native.optimize_observe.assert_not_called()
+            self.assertEqual(args.test_transport.call_count, 1)
+            events = [json.loads(line) for line in args.ledger.read_text().splitlines()]
+            self.assertEqual([e["event"] for e in events], ["origin", "reserve", "response"])
+
     def test_complete_replay_repairs_summary_after_interrupted_checkpoint(self):
         with fake_run(real_ledger=True) as (args, native, plan):
             def interrupted_write(path, value, **kwargs):

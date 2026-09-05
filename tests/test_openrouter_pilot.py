@@ -88,6 +88,66 @@ class PilotTests(unittest.TestCase):
             self.call(call_id="another")
         self.assertEqual(request.call_count, 1)
 
+    @patch("bench.openrouter_pilot.account", return_value={"usage": 0})
+    @patch("bench.openrouter_pilot.request_json")
+    def test_partial_provider_error_is_preserved_but_never_a_success(self, request, account):
+        bad = response()
+        bad["usage"]["cost"] = 0
+        bad["choices"][0].update(finish_reason="error", native_finish_reason="overloaded_error",
+                                error={"code": 503, "message": "sensitive provider details"})
+        request.return_value = bad
+        with self.assertRaisesRegex(PilotError, "did not complete") as error:
+            self.call()
+        self.assertNotIn("sensitive", str(error.exception))
+        events = [json.loads(line) for line in self.ledger.path.read_text().splitlines()]
+        self.assertEqual([e["event"] for e in events], ["origin", "reserve", "response"])
+        self.assertEqual(events[-1]["response"], bad)
+        self.assertEqual(self.ledger.summary()["completed_calls"], 0)
+        self.assertEqual(self.ledger.summary()["unresolved_calls"], ["call-1"])
+        with self.assertRaisesRegex(PilotError, "unresolved"):
+            self.call(call_id="another")
+        self.assertEqual(request.call_count, 1)
+
+    @patch("bench.openrouter_pilot.account", return_value={"usage": 0})
+    @patch("bench.openrouter_pilot.request_json")
+    def test_choice_error_cannot_hide_behind_stop_finish_reason(self, request, account):
+        bad = response()
+        bad["choices"][0]["error"] = {"code": 503}
+        request.return_value = bad
+        with self.assertRaisesRegex(PilotError, "did not complete"):
+            self.call()
+
+    @patch("bench.openrouter_pilot.account", return_value={"usage": 0})
+    @patch("bench.openrouter_pilot.request_json")
+    def test_length_stop_is_retained_for_truncation_evaluation(self, request, account):
+        value = response()
+        value["choices"][0]["finish_reason"] = "length"
+        request.return_value = value
+        self.assertEqual(self.call()["finish_reason"], "length")
+
+    @patch("bench.openrouter_pilot.account", return_value={"usage": 0})
+    @patch("bench.openrouter_pilot.request_json", return_value=response())
+    def test_legacy_error_result_cannot_be_replayed(self, request, account):
+        result = self.call()
+        result["finish_reason"] = "error"
+        with self.ledger.locked() as handle:
+            self.ledger.append(handle, result)
+        with self.assertRaisesRegex(PilotError, "cached result"):
+            self.call()
+        self.assertEqual(request.call_count, 1)
+
+    @patch("bench.openrouter_pilot.account", return_value={"usage": 0})
+    @patch("bench.openrouter_pilot.request_json", return_value=response())
+    def test_legacy_raw_error_cannot_be_hidden_by_result_summary(self, request, account):
+        self.call()
+        bad = response()
+        bad["choices"][0]["error"] = {"code": 503}
+        with self.ledger.locked() as handle:
+            self.ledger.append(handle, {"event": "response", "id": "call-1", "response": bad})
+        with self.assertRaisesRegex(PilotError, "did not complete"):
+            self.call()
+        self.assertEqual(request.call_count, 1)
+
     @patch("bench.openrouter_pilot.account")
     @patch("bench.openrouter_pilot.request_json")
     def test_reserve_checks_stage_limit_before_network(self, request, account):

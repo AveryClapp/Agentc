@@ -4,7 +4,7 @@ import pytest
 
 from bench.openrouter_pilot import PilotError, digest
 from bench.openrouter_replay import lexical_divergence
-from bench.openrouter_rules_diagnostics import analyze
+from bench.openrouter_rules_diagnostics import analyze, repeated_source_requests
 from bench.openrouter_rules_live import semantic_plan
 from bench.openrouter_rules_protocol import STAGES
 
@@ -88,3 +88,21 @@ def test_invalid_attribution_rejected(mutation):
         decisions *= 20
     with pytest.raises(PilotError):
         analyze(manifest, decisions, calls, intents)
+
+
+def test_warmup_self_consistency_uses_disjoint_exact_payload_pairs():
+    decisions, rows = [], {}
+    for i in range(5):
+        row_id = str(i)
+        decisions.append({"phase": "warmup", "native_plan": {"kind": "pass_through"}, "task_id": "q",
+            "workflow_stage": "filter", "primary_id": row_id})
+        rows[row_id] = {"id": row_id, "model": "source", "provider": "provider", "request_sha256": "same",
+            "answer": "Entity" if i % 2 else "entity", "usage": {"completion_tokens": 10}}
+    report = repeated_source_requests(decisions, rows)
+    assert len(report["pairs"]) == 2  # not ten dependent all-pairs comparisons
+    assert len({r for p in report["pairs"] for r in p["row_ids"]}) == 4
+    assert report["by_stage"][0]["pairs_exceeding_0_03"] == 2
+    rows["1"]["request_sha256"] = "different"
+    assert len(repeated_source_requests(decisions, rows)["pairs"]) == 2
+    rows["3"]["request_sha256"] = "third"
+    assert len(repeated_source_requests(decisions, rows)["pairs"]) == 1

@@ -16,6 +16,38 @@ from bench.openrouter_matrix import file_hash, write_json
 from bench.openrouter_pilot import PilotError, digest, money
 
 
+def repeated_source_requests(decisions, by_id):
+    """Disjoint adjacent repeats of exact warmup payloads, not all-pairs n²."""
+    from bench.openrouter_replay import lexical_divergence
+    groups = defaultdict(list)
+    for d in decisions:
+        if d["phase"] != "warmup" or d["native_plan"]["kind"] != "pass_through":
+            continue
+        row = by_id[d["primary_id"]]
+        key = (d["task_id"], d["workflow_stage"], row["model"], row["provider"], row["request_sha256"])
+        groups[key].append(row)
+    pairs = []
+    for (task_id, stage, model, provider, request_hash), rows in sorted(groups.items()):
+        for left, right in zip(rows[::2], rows[1::2]):
+            pairs.append({"task_id": task_id, "workflow_stage": stage, "model": model, "provider": provider,
+                "request_sha256": request_hash, "row_ids": [left["id"], right["id"]],
+                "lexical_divergence": lexical_divergence(left["answer"], right["answer"]),
+                "output_token_difference": right["usage"]["completion_tokens"] - left["usage"]["completion_tokens"]})
+    reports = []
+    for stage in sorted({p["workflow_stage"] for p in pairs}):
+        values = [p["lexical_divergence"] for p in pairs if p["workflow_stage"] == stage]
+        reports.append({"workflow_stage": stage, "disjoint_pairs": len(values),
+            "mean_lexical_divergence": sum(values)/len(values),
+            "pairs_exceeding_0_01": sum(v > .01 for v in values),
+            "pairs_exceeding_0_02": sum(v > .02 for v in values),
+            "pairs_exceeding_0_03": sum(v > .03 for v in values)})
+    return {"pairing": "adjacent disjoint pairs in acquisition order within exact task/stage/model/provider/payload warmup groups",
+        "pairs": pairs, "by_stage": reports, "limitations": [
+            "Post-hoc development diagnostic; no guard setting is selected from these values.",
+            "Several pairs share a question; pair count is not independent question count.",
+            "Output variation without optimization is not proof of semantic equivalence or guard false positives."]}
+
+
 def analyze(manifest, decisions, calls, intents):
     # Reuse the frozen acquisition's side-effect-free journal validator. Its
     # required state is explicit; no constructor, credential, ledger, native
@@ -86,6 +118,7 @@ def analyze(manifest, decisions, calls, intents):
         "manifest_sha256": digest(manifest), "decisions_sha256": digest(decisions), "calls_sha256": digest(calls),
         "exact_plans_with_feedback": len(reports), "paired_decisions": sum(r["observed_pairs"] for r in reports),
         "intents_sha256": digest(intents),
+        "repeated_source_requests": repeated_source_requests(decisions, by_id),
         "plans": reports, "limitations": [
             "This is observed feedback, not native eligibility/disable state or a quality guarantee.",
             "Descriptive p95 uses nearest rank over all recorded pairs, not native rolling-window interpolation.",

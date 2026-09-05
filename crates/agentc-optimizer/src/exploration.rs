@@ -1047,6 +1047,32 @@ mod tests {
     }
 
     #[test]
+    fn json_roundtrip_preserves_default_rule_lease_thresholds() {
+        // Rule budgets are f32 promoted to f64 before the opaque JSON token.
+        // A one-ULP parser change must not invalidate a genuinely issued lease.
+        for budget in [0.01_f32, 0.02, 0.03, 0.05] {
+            let call_site = site(20);
+            let mut candidate = candidate(&call_site, 1);
+            candidate.divergence_threshold = f64::from(budget);
+            let mut conn = connection();
+            let controller = ExplorationController::with_policy(policy()).unwrap();
+            let lease = controller.decide_and_reserve(&mut conn, &call_site,
+                &reference_plan_id(), &[candidate], NOW_US).counterfactual.unwrap();
+            let encoded = serde_json::to_string(&lease).unwrap();
+            let decoded: ExplorationLease = serde_json::from_str(&encoded).unwrap();
+            assert_eq!(decoded.divergence_threshold.to_bits(), lease.divergence_threshold.to_bits(),
+                "opaque token changed the exact threshold for rule budget {budget}");
+            // Keep exact validation: even a one-ULP deliberate change is rejected.
+            let mut tampered = decoded.clone();
+            tampered.divergence_threshold = f64::from_bits(decoded.divergence_threshold.to_bits() + 1);
+            assert!(matches!(controller.complete(&mut conn, &tampered, &observation_feedback(0.0), NOW_US + 1),
+                Err(ExplorationError::LeaseMismatch)));
+            assert_eq!(controller.complete(&mut conn, &decoded, &observation_feedback(0.0), NOW_US + 1).unwrap(),
+                ExplorationCompletion::Recorded);
+        }
+    }
+
+    #[test]
     fn selection_is_seeded_and_candidate_order_independent() {
         let call_site = site(1);
         let candidates = vec![

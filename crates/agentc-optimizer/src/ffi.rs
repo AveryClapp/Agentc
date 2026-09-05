@@ -1373,6 +1373,61 @@ mod tests {
         assert_eq!(snapshot.active_leases, 1);
     }
 
+    #[test]
+    fn model_routing_default_threshold_survives_opaque_json_tokens() {
+        let site = "routing-float-roundtrip";
+        let catalog = Arc::new(default_model_catalog().unwrap());
+        let cost_model = Arc::new(CostModel::new());
+        for observed_at_us in 1..=3 {
+            cost_model.observe(CostModelUpdate {
+                call_site_id: site.to_string(), input_tokens: 100, output_tokens: 50,
+                latency_ms: 100.0, cost_usd: 0.01, output_is_structured: false,
+                output_is_short: true, now_us: Some(observed_at_us),
+            });
+        }
+        let budget = Arc::new(Budget::new());
+        let optimizer = Optimizer::with_budget(cost_model.clone(),
+            vec![Box::new(ModelDowngradeRule::from_catalog(catalog.clone(), budget.clone()))],
+            OptimizerConfig::default(), budget);
+        let call_json = serde_json::to_string(&observable_call(site, "public request")).unwrap();
+        let profiles = PlanProfiles::new();
+        let guard = PlanGuard::new();
+        let controller = ExplorationController::new();
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        let now_us = 2_000_000;
+        let primary = optimize_profiled_plan(&optimizer, Some(&catalog), &profiles,
+            &guard, &call_json, now_us);
+        let planned = reserve_profiled_exploration(&optimizer, Some(&catalog), &profiles,
+            &guard, &controller, &mut connection, &call_json, &primary, now_us);
+        let value: serde_json::Value = serde_json::from_str(&planned).unwrap();
+        let exploration: EmbeddedExplorationContext = serde_json::from_value(
+            value.get(EXPLORATION_CONTEXT_KEY).expect("routing candidate lease").clone()).unwrap();
+        let token = decode_exploration_token(&exploration.lease_token).unwrap();
+        let expected = f64::from(0.03_f32).to_bits();
+        let durable: f64 = connection.query_row("SELECT divergence_threshold FROM execution_plan_exploration",
+            [], |row| row.get(0)).unwrap();
+        let candidate_json = serde_json::to_string(&exploration.candidate_plan).unwrap();
+        let candidate_context = embedded_observation_context(&candidate_json).unwrap().unwrap();
+        for threshold in [durable, token.lease.divergence_threshold,
+            token.context.divergence_threshold, candidate_context.divergence_threshold] {
+            assert_eq!(threshold.to_bits(), expected);
+        }
+        let outcome_json = serde_json::to_string(&outcome(site)).unwrap();
+        // An actual mutation still fails: round-trip correctness does not relax validation.
+        let mut tampered = token.clone();
+        tampered.lease.divergence_threshold = f64::from_bits(expected + 1);
+        assert!(complete_profiled_exploration(&profiles, &controller, &mut connection,
+            &serde_json::to_string(&tampered).unwrap(), &outcome_json, 0.0, now_us + 1).is_err());
+        assert!(complete_profiled_exploration(&profiles, &controller, &mut connection,
+            &exploration.lease_token, &outcome_json, 0.0, now_us + 1).unwrap().is_some());
+        assert!(complete_profiled_exploration(&profiles, &controller, &mut connection,
+            &exploration.lease_token, &outcome_json, 0.0, now_us + 1).unwrap().is_none());
+        let observed = optimize_observe(&cost_model, &PlanProfiles::new(), &candidate_json, &outcome_json).unwrap();
+        let observed: OpaqueObservationToken = serde_json::from_str(&observed).unwrap();
+        assert_eq!(observed.divergence_threshold.unwrap().to_bits(), expected);
+    }
+
     fn seed_refresh_profiles(
         profiles: &PlanProfiles,
         catalog: &ModelCatalog,

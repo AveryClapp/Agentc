@@ -1,7 +1,7 @@
 ---
 title: Results, Experiments, and Repro
 status: active
-last-updated: 2026-09-04
+last-updated: 2026-09-05
 owner: paper-intelligence
 ---
 
@@ -29,6 +29,41 @@ Supersedes:
 - `experiments/README.md`
 
 ## Evidence Verdict
+
+The newest verified evidence is a **fixed model × rewrite diagnostic**, not adaptive joint-policy success. Its complete paired matrix and provenance are summarized immediately below. Historical warmup-corrected rule-level results retain their existing scope and caveats; they are not substitutes for the missing native admission and learned-policy comparison. The original USD50 campaign and all failed-attempt uncertainty remain authoritative.
+
+### Verified typed fixed factorial: opportunity, not adaptive proof
+
+The [acquisition archive](../bench/repro/openrouter-typed-factorial-2026-09-05/README.md) contains all 384 calls, 384 intents, 32 generated development tasks, and a complete financial reconstruction. Native rule materialization performs ContextCompress at filter and StateDrop at answer, without invoking optimizer selection/admission. Each configuration executes its own three-stage history. No output is selected by the evaluator or repaired from gold.
+
+| Fixed configuration | Exact final answers | Paid cost for all 32 workflows |
+|---|---:|---:|
+| Sonnet original (S0) | 30/32 | USD0.847623 |
+| Sonnet + CC/SD (SR) | 29/32 | USD0.329367 |
+| Haiku original (H0) | 25/32 | USD0.282515 |
+| Haiku + CC/SD (HR) | 31/32 | USD0.109783 |
+
+All 128 workflows are application-valid; there are no failed provider calls, extra attempts, new uncertainty holds, or reported cached tokens. Actual materialization counts are 64 CC, 64 SD, and 256 stages without a rule. Total stage cost is USD1.569288. Application validity is not task correctness.
+
+Within-model rewriting gives Sonnet 0 gains/1 loss/31 ties and Haiku 7 gains/1 loss/24 ties. The mean paired quality interaction `(HR−H0)−(SR−S0)` is +21.875 percentage points, with descriptive 95% whole-task bootstrap interval [3.125, 43.75]. There are **32 task clusters**, one generation per cell, not 128 independent tasks. No confirmatory test or damage certificate follows from this interval.
+
+HR costs 87.048% less than S0. The mean log-cost-ratio interaction is about 0.0000368262, essentially zero at the observed scale. Thus the cost reduction does not establish extra joint cost synergy beyond input reduction and model prices. The best observed aggregate configuration is already fixed HR; the result does not show that learning or adaptive selection improves on it. Latency is observational.
+
+Provenance: acquisition source `7f65733`, archive `acd3334`, manifest `4e30338f35205059a2b3d5b32fe41ee2b771b4f35eeea18bc194b5730b2ac148`, frozen native materializer `b260a39b1baedbe0a4cc45895c6041ec5bfcfdbddb3c7f342c38ed3879fe0122`. Independent review `bd-323l.6.13.8.6.20.11.3` reconstructed every request, own-history path, native deletion, response, and bill. The completion analysis digest is `962b12a8e2f1f27ab9322c42e19f5758986875df777cb79ebf5b5d6d2f5adc74`; its whole-campaign snapshot may change on later analysis, while the manifest, fixture, calls, intents, and completion summary remain fixed.
+
+The [verified v2 figures](../bench/repro/openrouter-typed-factorial-figures-v2-2026-09-05/README.md) retain all 32 task values and use the canonical bootstrap seed. The initial render is preserved as superseded provenance because it used a different seed; do not mix its interval with the canonical analysis.
+
+The [post-hoc error trace](../bench/repro/openrouter-typed-factorial-error-trace-2026-09-05/README.md), source `f0a41c3`, derives stage answers from public records and preserves all cells. All 128 filters are correct. Both Haiku cells make the same incorrect join on T19; twelve other final errors occur with correct upstream facts. H0's T19 final answer happens to match gold while violating its own synthesis policy; HR follows that incorrect synthesis faithfully and is wrong at the final metric. Original final scores are unchanged. The trace localizes observed differences, but is not a randomized stage intervention or evidence about hidden model reasoning.
+
+A single complete matched repeat was predeclared at primary call 195/384 before quality inspection (`bd-323l.6.13.8.6.20.13`). It uses the same tasks/order and fresh own histories in a later provider time block. Its results must be separately reconstructed; combining realizations does not create 64 independent questions or measure intrinsic randomness at fixed identical inputs. Public-data generalization and independent CC/SD controls have a [separate prospective design](research-inbox/2026-09-05-public-hotpot-typed-followup.md); no result is implied by that plan.
+
+### Earlier admission failure and accounting scope
+
+The closed native QA study at archive `48e6358` (`exp/joint-input-rules`, manifest `dcb703739e460810825f0966c06371d2848a4d17346afbfea4e77c52a0548ace`) completed 1,372 paid calls at USD7.048348 but did not satisfy its frozen admission gate: no actually selected joint plan had 20 exact source-paired observations. None of its 48 protected QA questions was dispatched. This is an admission/learning-feasibility limitation, not a held-out quality failure or success, and the fixed typed factorial does not supersede it.
+
+Earlier formatting/provider-metadata pilots remain failed or partial under their original contracts. Their charges and uncertainty are not erased when a prospective adapter changes. Immediately after the first factorial, the original campaign contained USD20.04927147 known charges plus USD6.259659 retained historical uncertainty, with zero pending: USD26.30893047 conservatively committed. This is a dated accounting snapshot, **not the current available balance**. Subsequent runs must reconcile the original ledger, never start a new USD50 allowance.
+
+### Historical rule-level evidence
 
 The evidence base is substantially stronger after the warmup-corrected campaign. The core headline pair (`RES-001`, `RES-002`) remains the cleanest per-rule savings story. The campaign also adds the LLMLingua-2 comparison with exact paired statistics (`RES-007`), a natural-prose generalization that confirms ContextCompress correctly abstains when the structural precondition is absent (`RES-008`), additive CC+SD composition (`RES-009`), and a controlled planner ablation in which first-match and composition modes have identical accuracy (`RES-010`). The historical 1,818-decision overhead result is now correctly scoped as an internal pre-audit clock. The complete-call Stage E0 diagnostics under `RES-013` supersede it for systems debugging and now include a clean progression from synchronous audit, to off-path persistence, to thread-CPU attribution, to non-blocking planner admission. The mechanism has exact post-flush row and fallback conservation, while C=8/C=32 p99 remains above the frozen target on the measured host.
 
@@ -177,6 +212,8 @@ coverage policy decision remain necessary.
 
 ## Experiment Queue
 
+The following table is historical provenance using retired IDs. Current tasks, dependencies, and follow-ups are authoritative in Beads; do not mint new `EXP` IDs or maintain a parallel task queue here.
+
 | ID | Status | Gap closed | Experiment | Result | Remaining work |
 |---|---|---|---|---|---|
 | `EXP-001` | ✅ done | `GAP-002` | StateDrop n=50 full paired ablation. | `RES-012`: 11/11 configs, all McNemar fail to reject. Cost data contaminated; accuracy clean. | None. Use RES-003 for cost numbers. |
@@ -210,13 +247,15 @@ coverage policy decision remain necessary.
 
 ## Negative Results
 
+Current negative/limiting evidence includes the native admission failure above, earlier schema/format acquisition failures with retained cost, the essentially zero relative cost interaction in the fixed factorial, and the historical greedy-versus-composed non-difference. They must accompany positive results rather than be treated as unrecorded or discarded experiments.
+
 | ID | Status | Type | Item | Decision |
 |---|---|---|---|---|
-| `NEG-001` | not populated yet | none | No negative results recorded yet. | Future failed searches, rejected angles, and undercutting results should land here. |
+| `NEG-001` | retired placeholder | historical | No substantive result was assigned to this legacy identifier. | Preserve the identifier; new failure evidence uses artifacts and Beads, not new `NEG` IDs. |
 
 ## Reproduction Commands
 
-These commands may spend API money when real keys are configured. Before running any command, identify the `EXP-###`, expected output path, git SHA, dirty-tree state, model/provider, pricing assumptions, and stop condition.
+These are historical workload commands, not permission to resume a closed campaign or rebuild a protected fixture. They may spend API money when real keys are configured. Before running any command, identify its Bead, frozen protocol/source hashes, expected output path, git SHA, dirty-tree state, model/provider, original campaign ledger, pricing assumptions, and stop condition. Paid one-shot studies may only be analyzed after completion or failure; follow their own reviewed reproduction instructions.
 
 ```bash
 python -m bench.build_hotpot_fixture
@@ -235,14 +274,14 @@ BENCH_MAX_TASKS=300 python -m bench.run_oracle_baseline bench.agents.hotpot_orac
 
 Every new result starts as `quarantined`. Promote only after:
 
-- source artifact and `RES-###` are assigned;
+- immutable source artifacts, canonical hashes, and a Bead are identified; do not mint a retired `RES` identifier;
 - git SHA and dirty state are recorded;
 - command, env vars, model, temperature/seed, dataset/fixture, and expected row count are recorded;
 - CSV headers and row counts pass validation;
 - partial matrices are explicitly labeled `partial`;
 - accuracy deltas include sample size and caveat;
 - cost savings and token savings are reported separately;
-- linked `CLM`, `GAP`, and `STAT` entries are updated.
+- interpretation is linked to the evidence and current Beads; historical `CLM`, `GAP`, and `STAT` references may be preserved but not newly minted.
 
 Allowed result statuses:
 

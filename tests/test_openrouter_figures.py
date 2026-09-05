@@ -46,8 +46,16 @@ def test_native_cost_counts_exploration_and_static_counts_all_training_arms():
         assert group["Joint model+CC · 20"]["net_cost_reduction"] == -.25
 
 
-def test_render_exports_all_numeric_panels_and_refuses_overwrite(tmp_path):
+def test_render_exports_all_numeric_panels_and_refuses_overwrite(tmp_path, monkeypatch):
     pytest.importorskip("matplotlib")
+    from matplotlib.figure import Figure
+    savefig = Figure.savefig
+    row_limits = []
+    def checked_savefig(figure, path, *args, **kwargs):
+        if path.name == "02-policy-cost-quality-ablation.svg":
+            row_limits.extend(ax.get_ylim() for ax in figure.axes)
+        return savefig(figure, path, *args, **kwargs)
+    monkeypatch.setattr(Figure, "savefig", checked_savefig)
     models = [SOURCE_MODEL, "anthropic/claude-haiku-4.5", "google/gemini-2.5-flash-lite", "qwen/qwen3-30b-a3b-instruct-2507"]
     data = {"opportunity": [], "policies": [], "interactions": []}
     for context in CONTEXTS:
@@ -65,5 +73,6 @@ def test_render_exports_all_numeric_panels_and_refuses_overwrite(tmp_path):
     assert len(list(tmp_path.glob("*.svg"))) == 3
     assert len(list(tmp_path.glob("*.png"))) == 3
     assert all(p.stat().st_size > 1000 for p in tmp_path.iterdir())
+    assert row_limits == [(2.5, -.5)] * 4
     with pytest.raises(PilotError, match="overwrite"):
         render(data, tmp_path)

@@ -169,7 +169,9 @@ def render(data, directory):
         for col, ax in enumerate(axes[row]):
             ax.axvline(0, color="#667a7e", lw=.8)
             ax.set_yticks(range(len(records)), [r["name"] for r in records] if col == 0 else [])
-            ax.invert_yaxis()
+            # Bar extents and point-only autoscaling differ; identical explicit
+            # row limits keep every quality interval aligned with its method.
+            ax.set_ylim(len(records) - .5, -.5)
             ax.grid(axis="x", color="#e3e8e9", lw=.6)
             ax.set_title(context.capitalize() + (" · net savings" if col == 0 else " · quality change"), loc="left", fontweight="bold")
         axes[row, 1].axvline(-2, color="#a56636", lw=.8, ls=":")

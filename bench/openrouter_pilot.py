@@ -462,6 +462,36 @@ def text_choice(response: Json) -> Json:
     return choice
 
 
+def _schema_pipeline_allowed(pipeline: Any) -> bool:
+    """Allow only no stages or the exact observed passed-moderation diagnostic.
+
+    Router metadata documents moderation verdicts separately from healing and
+    compression: https://openrouter.ai/docs/guides/features/router-metadata
+    Its engine-specific data is open-ended, not a no-mutation guarantee. This is
+    a narrow prospective policy exception for one observed shape, not permission
+    for arbitrary guardrails. Extra fields/stages require independent review.
+    """
+    if not isinstance(pipeline, list):
+        return False
+    if not pipeline:
+        return True
+    if len(pipeline) != 1 or not isinstance(pipeline[0], dict):
+        return False
+    stage = pipeline[0]
+    data = stage.get("data")
+    # Python equality treats numeric zero as False; the verdict must be boolean.
+    return isinstance(data, dict) and data.get("flagged") is False and stage == {
+        "type": "guardrail",
+        "name": "moderation",
+        "summary": "Content passed OpenAI moderation",
+        "data": {
+            "engine": "openai-moderations",
+            "flagged": False,
+            "moderator_ids": ["OpenAIOmniModerator"],
+        },
+    }
+
+
 def schema_text_choice(response: Json) -> Json:
     """Keep billed truncations, but never accept refusal/healing as valid text.
 
@@ -476,7 +506,9 @@ def schema_text_choice(response: Json) -> Json:
         )
         or (choice.get("native_finish_reason") in {"max_tokens", "length"}
             and choice["finish_reason"] != "length")
-        or (response.get("openrouter_metadata") or {}).get("pipeline", []) != []
+        or not _schema_pipeline_allowed(
+            (response.get("openrouter_metadata") or {}).get("pipeline", [])
+        )
     ):
         raise PilotError("schema response has refusal, unknown finish or material pipeline changes")
     return choice

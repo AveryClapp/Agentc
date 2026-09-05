@@ -100,3 +100,26 @@ The driver is `python -m bench.openrouter_joint_study prepare` followed by
 requires the reviewed `--runtime-commit` and `--native-sha256` above. The ledger
 must be the shared authoritative campaign ledger, never an empty replacement.
 Credentials and the private raw provider ledger do not belong in Git.
+
+## Read-only analysis
+
+`python -m bench.openrouter_joint_analysis` is separate from acquisition. Use
+`PYTHONHASHSEED=0`, the frozen fixture, a stable artifact snapshot, and the
+externally recorded manifest hash:
+`dcb703739e460810825f0966c06371d2848a4d17346afbfea4e77c52a0548ace`.
+Arguments are `--artifacts`, `--fixture`, `--manifest-sha256`, and a new immutable
+`--output` path. Supply `--ledger` for financial completeness; this opens the
+existing ledger read-only with a nonblocking shared lock, never creates one,
+and needs no API credential. A busy writer causes a refusal, not a wait.
+
+The analyzer checks source bindings, own-arm histories, actual provider
+attribution, complete question pairing, chronological exact-plan evidence, and
+known costs plus retained failed-attempt bounds. It provides descriptive paired
+bootstrap differences only after complete, valid heldout acquisition with a
+consistent financial snapshot. No automatic efficacy claim is made.
+
+`prefix-173-analysis.json` analyzes the immutable 173-call/165-decision prefix
+from acquisition commit `4174aa7`. It verifies the frozen calibration choice
+and seven exact feedback groups. It contains **no paired quality comparisons**:
+training and heldout are incomplete and no financial snapshot was supplied.
+This is a production-format validation artifact, not the experiment's result.

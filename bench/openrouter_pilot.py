@@ -32,6 +32,16 @@ API = "https://openrouter.ai/api/v1"
 HARD_CAP = Decimal("50")
 REQUEST_DEADLINE_SECONDS = 120.0
 MAX_ATTEMPTS = 2
+# Entire advertised contexts, not estimated schema-injection overhead. These
+# ceilings and dated endpoints are rechecked before every new schema dispatch.
+SCHEMA_ENDPOINTS = {
+    "anthropic/claude-sonnet-4.5": (
+        "anthropic/claude-4.5-sonnet-20250929", 1_000_000
+    ),
+    "anthropic/claude-haiku-4.5": (
+        "anthropic/claude-4.5-haiku-20251001", 200_000
+    ),
+}
 Json = dict[str, Any]
 
 
@@ -185,6 +195,133 @@ def account(key: str) -> Json:
     }
 
 
+def validate_response_format(value: Json) -> None:
+    """Accept only the small provider-supported schema subset this pilot uses.
+
+    This validates request structure, not application values. No SDK schema
+    rewriting, external references, coercion, or response-healing plugin runs.
+    """
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"type", "json_schema"}
+        or value["type"] != "json_schema"
+        or not isinstance(value["json_schema"], dict)
+    ):
+        raise PilotError("strict named JSON schema is required")
+    spec = value["json_schema"]
+    if (
+        set(spec) != {"name", "strict", "schema"}
+        or spec["strict"] is not True
+        or not isinstance(spec["name"], str)
+        or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", spec["name"])
+    ):
+        raise PilotError("invalid strict JSON schema wrapper")
+    nodes = 0
+
+    def visit(node, depth=0):
+        nonlocal nodes
+        nodes += 1
+        if not isinstance(node, dict) or depth > 12 or nodes > 128:
+            raise PilotError("schema exceeds bounded structure")
+        if "anyOf" in node:
+            alternatives = node["anyOf"]
+            if (
+                set(node) != {"anyOf"}
+                or not isinstance(alternatives, list)
+                or len(alternatives) != 2
+                or sum(item == {"type": "null"} for item in alternatives) != 1
+            ):
+                raise PilotError("only nullable schema unions are supported")
+            for item in alternatives:
+                visit(item, depth + 1)
+            return
+        kind = node.get("type")
+        if kind == "object":
+            props, required = node.get("properties"), node.get("required")
+            if (
+                set(node) != {"type", "properties", "required", "additionalProperties"}
+                or node["additionalProperties"] is not False
+                or not isinstance(props, dict)
+                or not 1 <= len(props) <= 32
+                or not all(isinstance(k, str) and re.fullmatch(r"[a-z_]{1,32}", k) for k in props)
+                or not isinstance(required, list)
+                or not all(isinstance(k, str) for k in required)
+                or len(required) != len(props)
+                or set(required) != set(props)
+            ):
+                raise PilotError("schema objects require exact closed properties")
+            for child in props.values():
+                visit(child, depth + 1)
+        elif kind == "array":
+            if set(node) != {"type", "items"}:
+                raise PilotError("unsupported array schema constraint")
+            visit(node["items"], depth + 1)
+        elif kind == "string":
+            if set(node) - {"type", "pattern", "enum"}:
+                raise PilotError("unsupported string schema constraint")
+            if "pattern" in node:
+                pattern = node["pattern"]
+                if not isinstance(pattern, str) or len(pattern) > 128 or not (
+                    pattern.startswith("^") and pattern.endswith("$")
+                ):
+                    raise PilotError("schema pattern must be bounded and anchored")
+                try:
+                    re.compile(pattern)
+                except re.error:
+                    raise PilotError("invalid schema pattern") from None
+            if "enum" in node:
+                values = node["enum"]
+                if (
+                    not isinstance(values, list)
+                    or not 1 <= len(values) <= 32
+                    or not all(isinstance(v, str) and len(v) <= 64 for v in values)
+                    or len(set(values)) != len(values)
+                ):
+                    raise PilotError("invalid bounded string enum")
+        elif kind in ("integer", "boolean", "null"):
+            if set(node) != {"type"}:
+                raise PilotError("unsupported scalar schema constraint")
+        else:
+            raise PilotError("unsupported schema type")
+
+    visit(spec["schema"])
+    if spec["schema"].get("type") != "object" or len(canonical(value)) > 8192:
+        raise PilotError("schema requires a bounded root object")
+
+
+def validate_schema_endpoint(model: str, endpoint: Json) -> None:
+    """Fail closed if the current serving capacity exceeds the reserve basis."""
+    identity, ceiling = SCHEMA_ENDPOINTS[model]
+    context = endpoint.get("context_length")
+    if (
+        endpoint.get("tag") != "anthropic"
+        or endpoint.get("provider_name") != "Anthropic"
+        or endpoint.get("name", "").split(" | ")[-1] != identity
+        or type(context) is not int
+        or not 0 < context <= ceiling
+        or not {"max_tokens", "temperature", "response_format", "structured_outputs"}.issubset(
+            endpoint.get("supported_parameters", [])
+        )
+        or money(endpoint.get("pricing", {}).get("prompt")) > Decimal("0.000006")
+        or money(endpoint.get("pricing", {}).get("completion")) > Decimal("0.000030")
+    ):
+        raise PilotError("schema endpoint changed capability, identity or cost bound")
+
+
+def schema_endpoint_before_dispatch(key: str, payload: Json, metadata: Json) -> Json:
+    model = payload["model"]
+    if metadata.get("dispatch_contract") != {
+        "provider_name": "Anthropic", "endpoint_model": SCHEMA_ENDPOINTS[model][0]
+    }:
+        raise PilotError("schema dispatch requires the pinned endpoint contract")
+    available = request_json("/models/" + model + "/endpoints", key)["data"]["endpoints"]
+    selected = [e for e in available if e.get("tag") == "anthropic"]
+    if len(selected) != 1:
+        raise PilotError("schema endpoint is not uniquely available")
+    validate_schema_endpoint(model, selected[0])
+    return selected[0]
+
+
 def make_request(
     model: str,
     providers: list[str],
@@ -192,8 +329,9 @@ def make_request(
     *,
     max_tokens: int = 128,
     allowed_models: list[str] | None = None,
+    response_format: Json | None = None,
 ) -> Json:
-    if not model or not providers or not 1 <= max_tokens <= 2048:
+    if not model or not providers or type(max_tokens) is not int or not 1 <= max_tokens <= 2048:
         raise PilotError("model, providers and bounded max_tokens are required")
     if (
         not messages
@@ -228,6 +366,11 @@ def make_request(
         payload["plugins"] = [{"id": "auto-router", "allowed_models": allowed_models}]
     elif len(providers) != 1 or allowed_models:
         raise PilotError("fixed arms require exactly one provider and no router plugin")
+    if response_format is not None:
+        if model not in SCHEMA_ENDPOINTS or providers != ["anthropic"] or allowed_models:
+            raise PilotError("schema requests require a pinned fixed Anthropic endpoint")
+        validate_response_format(response_format)
+        payload["response_format"] = json.loads(canonical(response_format))
     if len(canonical(payload)) > 65536:
         raise PilotError("pilot request exceeds 64 KiB")
     return payload
@@ -236,7 +379,11 @@ def make_request(
 def upper_cost(payload: Json) -> Decimal:
     # Text-only UTF-8 bytes upper-bound byte-fallback tokenization. Add ample
     # per-message/template overhead. API price caps are dollars per million.
-    tokens = len(canonical(payload)) + 1024 + 64 * len(payload["messages"])
+    tokens = (
+        SCHEMA_ENDPOINTS[payload["model"]][1]
+        if "response_format" in payload
+        else len(canonical(payload)) + 1024 + 64 * len(payload["messages"])
+    )
     return (
         Decimal(tokens) * Decimal("6") + Decimal(payload["max_tokens"]) * Decimal("30")
     ) / Decimal(1_000_000)
@@ -280,6 +427,24 @@ def text_choice(response: Json) -> Json:
     message = choice.get("message")
     if not isinstance(message, dict) or not isinstance(message.get("content"), str):
         raise PilotError("provider returned no text answer")
+    return choice
+
+
+def schema_text_choice(response: Json) -> Json:
+    """Keep billed truncations, but never accept refusal/healing as valid text.
+
+    The typed application adapter treats every length completion as invalid;
+    retaining its raw receipt here is necessary for complete cost accounting.
+    """
+    choice = text_choice(response)
+    if (
+        choice["message"].get("refusal") is not None
+        or choice.get("native_finish_reason") not in (
+            None, "end_turn", "stop_sequence", "max_tokens", "stop", "length"
+        )
+        or (response.get("openrouter_metadata") or {}).get("pipeline", []) != []
+    ):
+        raise PilotError("schema response has refusal, unknown finish or material pipeline changes")
     return choice
 
 
@@ -436,6 +601,7 @@ class Ledger:
                 if payload["model"] == "openrouter/auto"
                 else None
             ),
+            response_format=payload.get("response_format"),
         )
         if canonical(payload) != canonical(expected):
             raise PilotError("request changed the frozen price or dispatch controls")
@@ -458,7 +624,9 @@ class Ledger:
                         and event.get("attempt_id")
                         in (None, done[call_id].get("attempt_id"))
                     ):
-                        text_choice(event["response"])
+                        (schema_text_choice if "response_format" in payload else text_choice)(
+                            event["response"]
+                        )
                 accounting(events)
                 return done[call_id]
             state = accounting(events)
@@ -520,6 +688,10 @@ class Ledger:
             remaining = before.get("limit_remaining")
             if remaining is not None and money(remaining) < reserve:
                 raise PilotError("provider key budget is below the next reservation")
+            schema_endpoint = (
+                schema_endpoint_before_dispatch(key, payload, metadata)
+                if "response_format" in payload else None
+            )
             reservation = self.append(
                 handle,
                 {
@@ -532,6 +704,8 @@ class Ledger:
                     "request": payload,
                     "metadata": metadata,
                     "account_usage_before_usd": str(usage),
+                    **({"schema_endpoint_observation": schema_endpoint}
+                       if schema_endpoint is not None else {}),
                 },
             )
             context = {}
@@ -598,7 +772,7 @@ class Ledger:
             },
         )
         context["response"] = response
-        choice = text_choice(response)
+        choice = (schema_text_choice if "response_format" in payload else text_choice)(response)
         usage_data = response.get("usage", {})
         cost = money(usage_data.get("cost"))
         if cost > reserve:

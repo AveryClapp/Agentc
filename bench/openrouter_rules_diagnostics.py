@@ -10,16 +10,25 @@ import json
 import math
 from collections import defaultdict
 from pathlib import Path
+from types import SimpleNamespace
 
 from bench.openrouter_matrix import file_hash, write_json
 from bench.openrouter_pilot import PilotError, digest, money
 
 
-def analyze(manifest, decisions, calls):
+def analyze(manifest, decisions, calls, intents):
+    # Reuse the frozen acquisition's side-effect-free journal validator. Its
+    # required state is explicit; no constructor, credential, ledger, native
+    # runtime or dispatch is invoked by this read-only report.
+    from bench.openrouter_rules_live import Acquisition
+    state = SimpleNamespace(manifest=manifest, decisions=decisions, calls=calls, intents=intents,
+                            stage="rules-live-dev-v1-" + digest(manifest)[:20])
+    Acquisition.validate_journals(state)
     by_id = {row["id"]: row for row in calls}
     if len(by_id) != len(calls):
         raise PilotError("duplicate paid call identity")
     groups = defaultdict(list)
+    used_feedback = set()
     for decision in decisions:
         feedback = decision["divergence_feedback"]
         if feedback is None:
@@ -34,6 +43,9 @@ def analyze(manifest, decisions, calls):
         ids = decision["incurred_ids"]
         if len(ids) != 2 or ids[0] != decision["primary_id"]:
             raise PilotError("paired decision needs exactly primary and comparison")
+        if any(row_id in used_feedback for row_id in ids):
+            raise PilotError("feedback call reused across decisions")
+        used_feedback.update(ids)
         primary, comparison = (by_id[row_id] for row_id in ids)
         expected_scope = "exploration" if is_candidate else "shadow"
         if primary["scope"] != "primary" or comparison["scope"] != expected_scope:
@@ -73,6 +85,7 @@ def analyze(manifest, decisions, calls):
     return {"paper_evidence": False, "kind": "development_exact_plan_feedback_diagnostics",
         "manifest_sha256": digest(manifest), "decisions_sha256": digest(decisions), "calls_sha256": digest(calls),
         "exact_plans_with_feedback": len(reports), "paired_decisions": sum(r["observed_pairs"] for r in reports),
+        "intents_sha256": digest(intents),
         "plans": reports, "limitations": [
             "This is observed feedback, not native eligibility/disable state or a quality guarantee.",
             "Descriptive p95 uses nearest rank over all recorded pairs, not native rolling-window interpolation.",
@@ -87,7 +100,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
-        values = [json.loads((args.artifacts / name).read_text()) for name in ("manifest.json", "decisions.json", "calls.json")]
+        values = [json.loads((args.artifacts / name).read_text()) for name in ("manifest.json", "decisions.json", "calls.json", "intents.json")]
         result = analyze(*values)
         result["analysis_source_sha256"] = file_hash(Path(__file__))
         write_json(args.output, result, immutable=True)

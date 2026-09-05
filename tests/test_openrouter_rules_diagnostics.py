@@ -2,36 +2,58 @@ from copy import deepcopy
 
 import pytest
 
-from bench.openrouter_pilot import PilotError
+from bench.openrouter_pilot import PilotError, digest
 from bench.openrouter_replay import lexical_divergence
 from bench.openrouter_rules_diagnostics import analyze
+from bench.openrouter_rules_live import semantic_plan
+from bench.openrouter_rules_protocol import STAGES
 
 
-def pair(index=0, cap=64, plan_id="plan", primary="Entity", candidate="entity"):
-    identity = {"key": {"call_site_version": "site", "execution_plan_id": plan_id}, "divergence_threshold": .01}
-    calls = [{"id": str(index) + scope, "scope": scope, "answer": answer,
-        "usage": {"prompt_tokens": 10, "completion_tokens": tokens}, "nominal_uncached_cost_usd": cost}
-        for scope, answer, tokens, cost in (("primary", primary, 20, ".01"), ("exploration", candidate, 10, ".005"))]
-    decision = {"arm": "joint", "workflow_stage": "answer", "task_id": str(index),
-        "divergence_feedback": lexical_divergence(primary, candidate), "primary_id": calls[0]["id"],
-        "incurred_ids": [r["id"] for r in calls], "semantic_plan": {"candidate": {"model": "cheap", "max_tokens": cap},
-            "candidate_identity": identity, "candidate_rules": ["ModelDowngrade", "OutputBudget"]}}
-    manifest = {"policies": {"joint": {"AGENTC_OPTIMIZE_MIN_PLAN_EVIDENCE": "20"}}}
-    return manifest, decision, calls
+def artifact(specs=((64, "plan"),)):
+    schedule = [{"arm": "joint", "task_id": str(i), "phase": "development"} for i in range(len(specs))]
+    manifest = {"schedule": schedule, "endpoints": {m: {"tag": "provider"} for m in ("source", "cheap")},
+        "shadow_seed": "test", "policies": {"joint": {"AGENTC_OPTIMIZE_MIN_PLAN_EVIDENCE": "20", "AGENTC_OPTIMIZE_SHADOW": "0"}}}
+    paid_stage = "rules-live-dev-v1-" + digest(manifest)[:20]
+    decisions, calls, intents = [], [], []
+    for workflow, (cap, plan_id) in zip(schedule, specs):
+        for stage in STAGES:
+            item = {**workflow, "workflow_stage": stage}
+            original = {"model": "source", "parameters": {"max_output_tokens": 512, "temperature": 0},
+                "messages": [{"role": "user", "content": "Question"}], "tools": []}
+            plan = {"kind": "pass_through"}
+            if stage == "answer":
+                candidate = deepcopy(original)
+                candidate["model"] = "cheap"
+                candidate["parameters"]["max_output_tokens"] = cap
+                plan["agentc_exploration_context"] = {"candidate_plan": {"kind": "rewritten", "rule": "OutputBudget", "call": candidate,
+                    "agentc_observation_context": {"key": {"call_site_version": "site", "execution_plan_id": plan_id}, "divergence_threshold": .01}}}
+            signature = semantic_plan(original, plan, manifest)
+            intents.append({**item, "original_call": original, "native_plan": plan, "semantic_plan": signature})
+            scopes = [("primary", signature["primary"], "Entity", 20, ".01")]
+            if stage == "answer":
+                scopes.append(("exploration", signature["candidate"], "entity", 10, ".005"))
+            incurred = []
+            for scope, payload, answer, tokens, cost in scopes:
+                call_id = paid_stage + "-" + digest([item, scope])[:24]
+                incurred.append(call_id)
+                calls.append({**item, "id": call_id, "stage": paid_stage, "generation_id": "gen-" + call_id,
+                    "scope": scope, "answer": answer, "request_sha256": digest(payload), "decision_sha256": digest(signature),
+                    "usage": {"prompt_tokens": 10, "completion_tokens": tokens}, "nominal_uncached_cost_usd": cost})
+            decisions.append({**item, "native_plan": plan, "semantic_plan": signature,
+                "primary_id": incurred[0], "incurred_ids": incurred,
+                "divergence_feedback": lexical_divergence("Entity", "entity") if stage == "answer" else None})
+    return manifest, decisions, calls, intents
 
 
 def test_exact_cap_identities_are_not_pooled():
-    manifest, a, rows_a = pair()
-    _, b, rows_b = pair(1, 96, "other-plan")
-    report = analyze(manifest, [a, b], rows_a + rows_b)
+    report = analyze(*artifact(((64, "plan"), (96, "other-plan"))))
     assert report["exact_plans_with_feedback"] == 2 and report["paired_decisions"] == 2
     assert {p["max_tokens"] for p in report["plans"]} == {64, 96}
     assert all(p["observed_pairs"] == 1 and p["below_minimum_pair_count"] for p in report["plans"])
 
 
 def test_feedback_is_proxy_not_damage_or_native_guard_state():
-    manifest, decision, calls = pair()
-    report = analyze(manifest, [decision], calls)
+    report = analyze(*artifact())
     plan = report["plans"][0]
     assert plan["mean_divergence"] == 1
     assert plan["observed_positive_excess_sum"] == .99
@@ -41,22 +63,28 @@ def test_feedback_is_proxy_not_damage_or_native_guard_state():
 
 
 def test_inconsistent_exact_plan_dispatch_rejected():
-    manifest, a, rows_a = pair()
-    _, b, rows_b = pair(1, 96)
     with pytest.raises(PilotError, match="inconsistent"):
-        analyze(manifest, [a, b], rows_a + rows_b)
+        analyze(*artifact(((64, "plan"), (96, "plan"))))
 
 
-@pytest.mark.parametrize("mutation", ["duplicate", "feedback", "identity", "scope"])
+@pytest.mark.parametrize("mutation", ["duplicate", "feedback", "identity", "scope", "request", "task", "stage", "decisions"])
 def test_invalid_attribution_rejected(mutation):
-    manifest, decision, calls = pair()
+    manifest, decisions, calls, intents = artifact()
     if mutation == "duplicate":
         calls.append(deepcopy(calls[0]))
     elif mutation == "feedback":
-        decision["divergence_feedback"] = 0
+        decisions[-1]["divergence_feedback"] = 0
     elif mutation == "identity":
-        decision["semantic_plan"]["candidate_identity"] = {}
+        decisions[-1]["semantic_plan"]["candidate_identity"] = {}
+    elif mutation == "scope":
+        calls[-1]["scope"] = "shadow"
+    elif mutation == "request":
+        calls[-1]["request_sha256"] = "different"
+    elif mutation == "task":
+        calls[-1]["task_id"] = "different"
+    elif mutation == "stage":
+        calls[-1]["workflow_stage"] = "filter"
     else:
-        calls[1]["scope"] = "shadow"
+        decisions *= 20
     with pytest.raises(PilotError):
-        analyze(manifest, [decision], calls)
+        analyze(manifest, decisions, calls, intents)

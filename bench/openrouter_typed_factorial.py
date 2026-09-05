@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import json
 import math
+import os
 from pathlib import Path
 import subprocess
 
@@ -53,10 +54,10 @@ def sources():
     result = live.sources(typed.WORKLOAD)
     paths = [
         ROOT / "bench/openrouter_typed_factorial.py",
-        ROOT / "crates/Cargo.toml",
-        ROOT / "crates/Cargo.lock",
+        ROOT / "Cargo.toml",
+        ROOT / "Cargo.lock",
     ]
-    for crate in ("agentc-core", "agentc-memo", "agentc-optimizer"):
+    for crate in ("agentc-core", "agentc-embed", "agentc-memo", "agentc-optimizer"):
         base = ROOT / "crates" / crate
         paths.append(base / "Cargo.toml")
         paths.extend((base / "src").rglob("*.rs"))
@@ -330,8 +331,20 @@ def run(args, key, manifest):
         raise PilotError(
             "one-shot factorial has prior evidence; audit only, never resume"
         )
-    # Atomic local claim prevents simultaneous starters from both passing the
-    # read-only preflight. The claim is permanent even if the process crashes.
+    # The claim must be campaign/stage-wide, not local to an output directory:
+    # copied unacquired outputs can otherwise both pass a stale preflight.
+    # Keep it permanently, including a crash before the first paid attempt.
+    campaign_path = args.ledger.resolve(strict=True)
+    claim = campaign_path.with_name(campaign_path.name + "." + sid + ".claim")
+    try:
+        with claim.open("x") as handle:
+            handle.write(digest(manifest) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+    except FileExistsError:
+        raise PilotError(
+            "one-shot campaign/stage already claimed; audit only"
+        ) from None
     with (args.output / "acquisition.claim").open("x") as handle:
         handle.write(digest(manifest) + "\n")
     ledger, indexed = Ledger(args.ledger, key), {t["task_id"]: t for t in tasks}

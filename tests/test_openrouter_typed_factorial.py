@@ -3,13 +3,88 @@
 from copy import deepcopy
 from decimal import Decimal
 import json
+import os
 from pathlib import Path
+import shutil
 from types import SimpleNamespace
 
 import pytest
 
 from bench import openrouter_typed_factorial as f
 from bench import openrouter_pilot as p
+
+
+def test_source_freeze_uses_real_workspace_and_transitive_native_dependencies():
+    frozen = f.sources()
+    assert "Cargo.toml" in frozen and "Cargo.lock" in frozen
+    assert f.BRIDGE_SOURCE in frozen
+    assert "crates/agentc-embed/Cargo.toml" in frozen
+    assert "crates/agentc-embed/src/lib.rs" in frozen
+    assert all((f.ROOT / name).is_file() for name in frozen)
+
+
+def test_existing_real_native_bridge_across_all_factorial_inputs():
+    path = os.environ.get("AGENTC_TYPED_MATERIALIZER")
+    if not path:
+        pytest.skip(
+            "supply the existing materializer; this test never builds or calls a provider"
+        )
+    bridge = Path(path)
+    attention = f.load_module(
+        "factorial_actual_bridge_attention", f.ROOT / "python/agentc/_attention.py"
+    )
+    synth = {
+        "sku": "K100",
+        "vendor": "V200",
+        "qty": 1,
+        "unit": 2,
+        "total": 2,
+        "region": "EU",
+    }
+    for task in f.typed.make_tasks(f.SEED, 32):
+        for arm, (model, rewrites) in f.ARMS.items():
+            history = {}
+            for stage in f.live.STAGES:
+                call = f.restrict_call(
+                    f.typed.call(
+                        task,
+                        stage,
+                        history,
+                        attention,
+                        model=model,
+                        run_identity="offline-" + arm,
+                    ),
+                    stage,
+                )
+                rule = f.RULES.get(stage) if rewrites else None
+                selected, report = f.materialize(call, rule, bridge)
+                assert selected["messages"] == [
+                    call["messages"][i] for i in report["retained_indices"]
+                ]
+                assert len(selected["messages"]) == (
+                    5
+                    if rule == "ContextCompress"
+                    else 3
+                    if rule == "StateDrop"
+                    else len(call["messages"])
+                )
+                assert selected["model"] == model
+                assert (
+                    selected["parameters"]["extra"]["response_format"]
+                    == call["parameters"]["extra"]["response_format"]
+                )
+                assert (
+                    "input_tokens_upper_bound"
+                    not in selected["parameters"]["extra"]["agentc_route_context"]
+                )
+                value = (
+                    ["D01", "D02", "D03"]
+                    if stage == "filter"
+                    else synth
+                    if stage == "synthesize"
+                    else "M01"
+                )
+                history[stage] = json.dumps({"result": value})
 
 
 def endpoint(model):
@@ -394,3 +469,42 @@ def test_provider_failure_never_retried_retains_full_allowance(experiment, monke
     with pytest.raises(p.PilotError, match="one-shot"):
         f.run(args, "fake", manifest)
     assert len(dispatched) == 1
+
+
+@pytest.mark.parametrize("failed_first_runner", [False, True])
+def test_copied_output_with_stale_preflight_cannot_claim_campaign_twice(
+    experiment, monkeypatch, tmp_path, failed_first_runner
+):
+    args, manifest, ledger, dispatched = experiment
+    copied = deepcopy(args)
+    copied.output = tmp_path / "copied-output"
+    shutil.copytree(args.output, copied.output)
+    # B genuinely preflights before A starts, then is descheduled. Its output
+    # directory and journals cannot reveal A's later provider failure.
+    stale = f.validate(copied, manifest, "fake")
+    if failed_first_runner:
+        original = p.request_json
+
+        def failure(path, key, payload=None):
+            if payload is not None:
+                dispatched.append(payload)
+                raise p.PilotError("first runner failed")
+            return original(path, key, payload)
+
+        monkeypatch.setattr(p, "request_json", failure)
+        with pytest.raises(p.PilotError):
+            f.run(args, "fake", manifest)
+    else:
+        f.run(args, "fake", manifest)
+    before = ledger.path.read_bytes()
+    previous_calls = len(dispatched)
+    monkeypatch.setattr(f, "validate", lambda *a, **k: stale)
+    monkeypatch.setattr(
+        p.Ledger,
+        "call",
+        lambda *a, **k: pytest.fail("copied runner entered paid boundary"),
+    )
+    with pytest.raises(p.PilotError, match="campaign/stage already claimed"):
+        f.run(copied, "fake", manifest)
+    assert len(dispatched) == previous_calls and ledger.path.read_bytes() == before
+    assert not (copied.output / "intents.json").exists()

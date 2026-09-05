@@ -6,6 +6,49 @@ No acquisition before independent integrated-code and manifest review.
 This experiment measures fixed configurations, **not adaptive native admission,
 joint-planner efficacy, a safety certificate or MLSys main-track readiness**.
 
+## Acquired development result
+
+Completed all 384 calls on 2026-09-05. Independent review
+`bd-323l.6.13.8.6.20.11.3` reconstructed every own-history path, native deletion,
+request, receipt and bill from the original campaign. All 128 workflows were
+application-valid; validity did not imply correctness. No calls failed, no
+additional attempts occurred, and no new uncertainty allowance was incurred.
+
+| Fixed cell | Exact workflows | Paid cost, all 32 workflows |
+| --- | ---: | ---: |
+| Sonnet original (S0) | 30/32 | USD0.847623 |
+| Sonnet + CC/SD (SR) | 29/32 | USD0.329367 |
+| Haiku original (H0) | 25/32 | USD0.282515 |
+| Haiku + CC/SD (HR) | 31/32 | USD0.109783 |
+
+Rewriting changed Sonnet by 0 gains/1 loss/31 ties and Haiku by
+7 gains/1 loss/24 ties. The paired quality interaction was +21.875 percentage
+points, with canonical descriptive task-bootstrap interval [3.125, 43.75].
+There is one realization per cell on 32 generated development tasks; the interval
+is not a damage certificate, and this is not a trained-policy evaluation.
+
+HR cost 87.048% less than S0 in this realization. The mean relative log-cost
+interaction was approximately 0.0000368262: these dollar savings are explained
+by token reduction multiplied by model price, not extra learned cost synergy.
+Both factors matter to the observed quality pattern, but a fixed HR configuration
+has the best observed aggregate quality and cost. This does not establish that
+an adaptive joint planner improves on that static choice. A single prospective
+full matched repeat was declared at 195/384 calls, before quality inspection,
+under `bd-323l.6.13.8.6.20.13`.
+
+The actual native bridge applied 64 ContextCompress and 64 StateDrop rewrites;
+256 stages had no rule. There were no materializer abstentions. All responses
+had normal stop/end-turn status, and all reported cached-token counts were zero.
+Latency remains observational.
+
+Stage cost was USD1.569288. The campaign snapshot is USD20.04927147 known plus
+USD6.259659 retained historical uncertainty, zero pending: USD26.30893047
+committed and USD23.69106953 remaining under the original USD50 ceiling.
+The canonical analysis digest at acquisition completion is
+`962b12a8e2f1f27ab9322c42e19f5758986875df777cb79ebf5b5d6d2f5adc74`.
+Its whole-ledger snapshot hash can change when later stages append evidence;
+the primary manifest, fixtures, calls, intents and completion summary are fixed.
+
 The [set-valued feasibility pilot](../openrouter-typed-set-pilot-2026-09-05/README.md)
 completed 54/54 calls, all 18 workflows valid, source/repeat 6/6 exact each and
 target 5/6. Its complete journals, schema, scoring and ledger evidence are bound

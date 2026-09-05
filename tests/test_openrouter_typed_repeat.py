@@ -1,6 +1,7 @@
 """No-network matched-repeat protocol and real-Ledger integration checks."""
 
-from copy import copy
+from copy import copy, deepcopy
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import json
 import shutil
@@ -127,19 +128,15 @@ def test_comparison_rejects_invalid_or_partial_evidence(change):
 
 
 @pytest.mark.parametrize(
-    "field", ["schema", "endpoints", "source_files", "arms", "schedule", "created_at"]
+    "field",
+    ["response_formats", "endpoints", "source_files", "arms", "schedule", "created_at"],
 )
 def test_same_setup_requires_every_field_except_later_time(field):
-    first = {
-        "created_at": "2026-09-05T01:00:00Z",
-        "catalog": {"observed_at_utc": "2026-09-05T00:59:59Z", "targets": []},
-        "schema": {},
-        "endpoints": {},
-        "source_files": {},
-        "arms": {},
-        "schedule": [],
-    }
-    second = {**first, "created_at": "2026-09-05T02:00:00Z"}
+    first = frozen_primary()
+    second = deepcopy(first)
+    second["created_at"] = (
+        datetime.fromisoformat(first["created_at"]) + timedelta(seconds=1)
+    ).isoformat()
     repeat.same_setup(first, second)
     second[field] = first[field] if field == "created_at" else "changed"
     with pytest.raises(PilotError):
@@ -319,11 +316,162 @@ def test_catalog_refresh_allows_only_declared_consistent_observation_times(
     repeated = repeat.read(args.output / "manifest.json")
     repeat.same_setup(primary, repeated)
     repeated["catalog"]["targets"][0]["price"]["input_per_million_tokens_usd"] += 1
-    with pytest.raises(PilotError, match="setup"):
+    with pytest.raises(PilotError, match="inconsistent"):
         repeat.same_setup(primary, repeated)
     repeated = repeat.read(args.output / "manifest.json")
     repeated["catalog"]["targets"][0]["provenance"]["observed_at_utc"] = (
         "2026-01-01T00:00:00Z"
     )
     with pytest.raises(PilotError, match="inconsistent"):
+        repeat.same_setup(primary, repeated)
+
+
+def frozen_primary():
+    return repeat.read(
+        study.ROOT / "bench/repro/openrouter-typed-factorial-2026-09-05/manifest.json"
+    )
+
+
+def refreshed_observation(primary):
+    result = deepcopy(primary)
+    for endpoint in result["endpoints"].values():
+        for field in repeat.ROLLING_TELEMETRY:
+            if isinstance(endpoint[field], dict):
+                endpoint[field] = {"synthetic_rolling_observation": 123}
+            else:
+                endpoint[field] = 99.5
+    result["catalog"] = study.feasibility.catalog_for(result, result["endpoints"])
+    result["created_at"] = (
+        datetime.now(timezone.utc) + timedelta(seconds=1)
+    ).isoformat()
+    return result
+
+
+def test_real_snapshot_telemetry_refresh_preserves_raw_observations():
+    primary = frozen_primary()
+    repeated = refreshed_observation(primary)
+    before = deepcopy((primary, repeated))
+    repeat.same_setup(primary, repeated)
+    assert (primary, repeated) == before
+    versions = repeat.observation_versions(primary, repeated)
+    assert versions["primary"] != versions["repeat"]
+    assert versions["repeat"]["endpoint_snapshot_sha256"] == digest(
+        repeated["endpoints"]
+    )
+    assert "not immutable-weight identities" in " ".join(repeat.LIMITATIONS)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "pricing",
+        "status",
+        "model_id",
+        "name",
+        "tag",
+        "supported_parameters",
+        "supports_implicit_caching",
+        "unknown_field",
+        "context_length",
+    ],
+)
+def test_stable_endpoint_changes_rejected_even_with_valid_derived_catalog(field):
+    primary = frozen_primary()
+    repeated = refreshed_observation(primary)
+    endpoint = repeated["endpoints"][study.live.SOURCE_MODEL]
+    if field == "pricing":
+        endpoint[field]["prompt"] = "0.000004"
+    elif field == "status":
+        endpoint[field] = 1
+    elif field == "supported_parameters":
+        endpoint[field].append("invented")
+    elif field == "supports_implicit_caching":
+        endpoint[field] = True
+    elif field == "context_length":
+        endpoint[field] += 1
+    else:
+        endpoint[field] = "changed"
+    repeated["catalog"] = study.feasibility.catalog_for(repeated, repeated["endpoints"])
+    repeated["created_at"] = (
+        datetime.now(timezone.utc) + timedelta(seconds=1)
+    ).isoformat()
+    with pytest.raises(PilotError):
+        repeat.same_setup(primary, repeated)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("catalog_version",),
+        ("price_table_version",),
+        ("targets", 0, "model_version"),
+        ("targets", 0, "price", "table_version"),
+        ("targets", 0, "provenance", "catalog_version"),
+        ("targets", 0, "context_window_tokens"),
+        ("targets", 0, "max_output_tokens"),
+        ("targets", 0, "price", "source_url"),
+        ("targets", 0, "provenance", "source_url"),
+    ],
+)
+def test_forged_catalog_derivations_rejected(path):
+    primary = frozen_primary()
+    repeated = refreshed_observation(primary)
+    value = repeated["catalog"]
+    for part in path[:-1]:
+        value = value[part]
+    value[path[-1]] = "forged"
+    with pytest.raises(PilotError, match="inconsistent"):
+        repeat.same_setup(primary, repeated)
+
+
+@pytest.mark.parametrize("field", ["capabilities", "adapter_protocol", "revision_kind"])
+def test_template_derived_catalog_facts_stay_exact(field):
+    primary = frozen_primary()
+    repeated = refreshed_observation(primary)
+    target = repeated["catalog"]["targets"][0]
+    if field == "capabilities":
+        target[field]["structured_outputs"] = False
+    else:
+        target[field] = "changed"
+    # Constructor preserves these template fields; normalization must not erase them.
+    repeated["catalog"] = study.feasibility.catalog_for(repeated, repeated["endpoints"])
+    repeated["created_at"] = (
+        datetime.now(timezone.utc) + timedelta(seconds=1)
+    ).isoformat()
+    with pytest.raises(PilotError):
+        repeat.same_setup(primary, repeated)
+
+
+def test_unknown_endpoint_field_rejected_even_if_present_in_both_snapshots():
+    primary = frozen_primary()
+    primary["endpoints"][study.live.SOURCE_MODEL]["unknown_field"] = "unreviewed"
+    primary["catalog"] = study.feasibility.catalog_for(primary, primary["endpoints"])
+    primary["created_at"] = datetime.now(timezone.utc).isoformat()
+    repeated = refreshed_observation(primary)
+    with pytest.raises(PilotError, match="unknown"):
+        repeat.same_setup(primary, repeated)
+
+
+@pytest.mark.parametrize("field", ["status", "capability", "catalog_price"])
+def test_boolean_numeric_substitution_is_not_exact_setup(field):
+    primary = frozen_primary()
+    repeated = refreshed_observation(primary)
+    if field == "status":
+        repeated["endpoints"][study.live.SOURCE_MODEL]["status"] = False
+        repeated["catalog"] = study.feasibility.catalog_for(
+            repeated, repeated["endpoints"]
+        )
+    elif field == "capability":
+        repeated["catalog"]["targets"][0]["capabilities"]["streaming"] = 0
+    else:
+        target = next(
+            t
+            for t in repeated["catalog"]["targets"]
+            if t["model_id"] == study.live.TARGET_MODEL
+        )
+        target["price"]["input_per_million_tokens_usd"] = True
+    repeated["created_at"] = (
+        datetime.now(timezone.utc) + timedelta(seconds=1)
+    ).isoformat()
+    with pytest.raises(PilotError):
         repeat.same_setup(primary, repeated)

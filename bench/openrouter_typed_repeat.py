@@ -27,11 +27,39 @@ PRIMARY_FILES = (
     "intents.json",
     "summary.json",
 )
+ROLLING_TELEMETRY = frozenset(
+    {
+        "latency_last_30m",
+        "throughput_last_30m",
+        "perf_last_30m_by_workload",
+        "uptime_last_1d",
+        "uptime_last_30m",
+        "uptime_last_5m",
+    }
+)
+ENDPOINT_FIELDS = ROLLING_TELEMETRY | {
+    "context_length",
+    "max_completion_tokens",
+    "max_prompt_tokens",
+    "model_id",
+    "model_name",
+    "name",
+    "pricing",
+    "provider_name",
+    "quantization",
+    "status",
+    "supported_parameters",
+    "supports_implicit_caching",
+    "supports_tool_choice",
+    "supports_voice_cloning",
+    "tag",
+}
 LIMITATIONS = [
     "Exactly one full repeat of the same32 generated development tasks; not fresh confirmation or a heldout evaluation.",
     "All four cells repeat in the original order in a later time block; provider/time effects are not separated from stochastic variation.",
     "Each cell uses its own newly produced history; no original outputs or gold answers are fed into repeated calls.",
     "Workflow reproducibility is not fixed-request model repeatability: earlier output differences can change downstream payloads.",
+    "Six declared rolling endpoint telemetry fields may refresh; raw snapshots and their verified derived catalog/model observation IDs remain distinct, not immutable-weight identities or pooled native evidence.",
     "Resampling units are the32 tasks, retaining both realizations and all four cells together; not64 independent tasks.",
     "No adaptive policy, native admission, risk certificate or control-loop amortization is tested.",
     "All costs remain charged, including the original feasibility pilot and every historical uncertainty hold.",
@@ -79,9 +107,25 @@ def primary_hashes(args):
     return {name: file_hash(args.primary / name) for name in PRIMARY_FILES}
 
 
+def observation_versions(primary, repeated):
+    """Record raw observation identities, never reinterpret them as model weights."""
+    return {
+        name: {
+            "endpoint_snapshot_sha256": digest(manifest["endpoints"]),
+            "catalog_version": manifest["catalog"]["catalog_version"],
+            "price_table_version": manifest["catalog"]["price_table_version"],
+            "model_versions": {
+                target["model_id"]: target["model_version"]
+                for target in manifest["catalog"]["targets"]
+            },
+        }
+        for name, manifest in (("primary", primary), ("repeat", repeated))
+    }
+
+
 def same_setup(primary, repeated):
-    # Only freeze/catalog observation times may refresh, not model versions,
-    # actual endpoint facts, prices, capabilities, policy or request semantics.
+    # Only observation times/telemetry may refresh. Derived observation IDs must
+    # first match their own raw snapshot; all stable setup facts remain exact.
     def timestamp(value):
         parsed = datetime.fromisoformat(value)
         if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
@@ -92,20 +136,48 @@ def same_setup(primary, repeated):
         value = deepcopy(manifest)
         created = timestamp(value.pop("created_at"))
         catalog = value["catalog"]
-        observed_text = catalog.pop("observed_at_utc")
+        endpoints = value["endpoints"]
+        if not isinstance(endpoints, dict) or any(
+            not isinstance(endpoint, dict) or set(endpoint) - ENDPOINT_FIELDS
+            for endpoint in endpoints.values()
+        ):
+            raise PilotError("unknown repeat endpoint fields require review")
+        models = [target["model_id"] for target in catalog["targets"]]
+        if len(models) != len(set(models)) or set(models) != set(endpoints):
+            raise PilotError("catalog target coverage differs from endpoint snapshot")
+        observed_text = catalog["observed_at_utc"]
         observed = timestamp(observed_text)
         if observed > created:
             raise PilotError("catalog observation follows its freeze")
-        for target in catalog["targets"]:
+        # Reuse the unchanged constructor: no copied formula and no network.
+        # Only its clock value is replaced with the validated frozen timestamp.
+        expected = study.feasibility.catalog_for(value, endpoints)
+        expected["observed_at_utc"] = observed_text
+        for target in expected["targets"]:
             for field in ("price", "provenance"):
-                if target[field].pop("observed_at_utc") != observed_text:
-                    raise PilotError("catalog observation timestamps are inconsistent")
+                target[field]["observed_at_utc"] = observed_text
+        if digest(catalog) != digest(expected):
+            raise PilotError("catalog is inconsistent with its raw endpoint snapshot")
+        catalog.pop("observed_at_utc")
+        catalog.pop("catalog_version")
+        catalog.pop("price_table_version")
+        for target in catalog["targets"]:
+            if target["revision_kind"] != "catalog_observation":
+                raise PilotError("repeat requires catalog-observation identity")
+            target.pop("model_version")
+            target["price"].pop("table_version")
+            target["provenance"].pop("catalog_version")
+            for field in ("price", "provenance"):
+                target[field].pop("observed_at_utc")
+        for endpoint in endpoints.values():
+            for field in ROLLING_TELEMETRY:
+                endpoint.pop(field, None)
         return value, created, observed
 
     left, created_left, observed_left = normalized(primary)
     right, created_right, observed_right = normalized(repeated)
     if (
-        left != right
+        digest(left) != digest(right)
         or created_right <= created_left
         or observed_right < observed_left
         or study.stage_id(primary) == study.stage_id(repeated)
@@ -133,6 +205,7 @@ def prepare(args, key):
         "primary_manifest_sha256": digest(primary),
         "primary_files": primary_hashes(args),
         "repeat_manifest_sha256": digest(manifest),
+        "observation_versions": observation_versions(primary, manifest),
         "source_sha256": file_hash(Path(__file__)),
         "repeats": 1,
         "declared_before_primary_quality_inspection": "bd-323l.6.13.8.6.20.13; primary195/384calls",
@@ -151,6 +224,9 @@ def validate(args, key):
         "primary_manifest_sha256": args.primary_manifest_sha256,
         "primary_files": primary_hashes(args),
         "repeat_manifest_sha256": args.manifest_sha256,
+        "observation_versions": observation_versions(
+            read(args.primary / "manifest.json"), manifest
+        ),
         "source_sha256": file_hash(Path(__file__)),
         "repeats": 1,
         "declared_before_primary_quality_inspection": "bd-323l.6.13.8.6.20.13; primary195/384calls",
@@ -313,6 +389,9 @@ def analyze(args, key):
             "repeat_protocol_sha256": args.repeat_protocol_sha256,
             "primary_analysis_sha256": digest(primary),
             "repeat_analysis_sha256": digest(repeated),
+            "observation_versions": observation_versions(
+                read(args.primary / "manifest.json"), manifest
+            ),
         }
     )
     write_json(args.output / "repeat_analysis.json", report)

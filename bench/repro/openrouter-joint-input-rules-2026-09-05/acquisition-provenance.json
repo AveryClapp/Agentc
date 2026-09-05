@@ -1,0 +1,20 @@
+{
+  "paper_evidence": false,
+  "manifest_sha256": "dcb703739e460810825f0966c06371d2848a4d17346afbfea4e77c52a0548ace",
+  "acquisition_source_commit": "d8d88eb",
+  "reviewed_acquisition_code_commit": "b7d29be",
+  "subsequent_change": "test fixture import only",
+  "runtime_source_commit": "4052d6d3da3ed0b36e7b2a87e04f0b5efcd4f0ce",
+  "runtime_binary_sha256": "84f9ecb542b5cb42c075a5ad8c536461dd48e3e45c9be25bc386ba7ce5e28501",
+  "independent_reviews": ["bd-323l.6.13.9.1", "bd-vz65.1", "bd-323l.6.13.8.5.2"],
+  "ledger_before_known_cost_usd": "9.89259047",
+  "ledger_before_retained_uncertainty_usd": "0.147306",
+  "ledger_before_pending_upper_bound_usd": "0",
+  "account_usage_before_usd": "9.89396747",
+  "account_byok_usage_before_usd": "0",
+  "new_training_ceiling_usd": "9",
+  "new_total_stage_ceiling_usd": "15",
+  "campaign_ceiling_usd": "50",
+  "previous_workflow_status": "aborted permanently; never resume or reuse controller state",
+  "billing_caveat": "Account-versus-result difference is not attributed as free or resolved; full failed-attempt allowances remain held."
+}

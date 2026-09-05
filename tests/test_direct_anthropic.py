@@ -1,4 +1,5 @@
 from copy import deepcopy
+from argparse import Namespace
 from decimal import Decimal
 import json
 
@@ -158,3 +159,37 @@ def test_subset_is_first32_frozen_question_ids_without_outcome_access():
     assert len(schedule) == 128
     assert set(r["task_id"] for r in schedule) == set(ids)
     assert all(r["arm"] == "full" and r["model"] in direct.MODELS for r in schedule)
+
+
+def test_run_rejects_missing_resume_ledger_before_any_duplicate_dispatch(tmp_path, monkeypatch):
+    frontier = json.loads((direct.ROOT / "bench/repro/openrouter-frontier-2026-09-04/manifest.json").read_text())
+    natural, extended = tmp_path / "natural.json", tmp_path / "extended.json"
+    natural.write_text("[]")
+    extended.write_text("[]")
+    frontier["fixtures"] = {"natural": direct.file_hash(natural), "extended": direct.file_hash(extended)}
+    directory = tmp_path / "frontier"
+    directory.mkdir()
+    (directory / "manifest.json").write_text(json.dumps(frontier))
+    ids = {r["task_id"] for r in direct.schedule_for(frontier)}
+    tasks = {c: {i: {"task_id": i, "prompt": "Who?", "expected": "Ada", "meta": {"paragraphs": [
+        {"title": "P", "sentences": ["Ada is here."]}]}} for i in ids} for c in ("natural", "extended")}
+    monkeypatch.setattr(direct, "load_tasks", lambda *args: tasks)
+    calls = []
+    def fake_send(key, payload):
+        calls.append(payload)
+        r = response()
+        r["model"] = payload["model"]
+        return r, {"request_id": "req_test", "http_status": 200}
+    monkeypatch.setattr(direct, "send", fake_send)
+    env_file = tmp_path / "dotenv"
+    env_file.write_text(f"ANTHROPIC_API_KEY={KEY}\nOPENROUTER_API_KEY={KEY}\n")
+    args = Namespace(frontier=directory, natural=natural, extended=extended, output=tmp_path / "direct",
+        env_file=env_file, ledger=tmp_path / "original.jsonl", openrouter_ledger=tmp_path / "or.jsonl", max_calls=1)
+    direct.prepare(args)
+    direct.run(args)
+    direct.run(args)
+    assert len(calls) == 1
+    args.ledger = tmp_path / "missing.jsonl"
+    with pytest.raises(PilotError, match="no matching completed"):
+        direct.run(args)
+    assert len(calls) == 1

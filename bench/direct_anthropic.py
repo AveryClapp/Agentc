@@ -220,6 +220,34 @@ def prepare(args):
     return {"scheduled_calls": len(schedule), "stage_cap_usd": str(STAGE_CAP), "manifest_sha256": digest(manifest)}
 
 
+def result_row(result, item, task, contract):
+    original = messages(task, contract)
+    return {**{k: v for k, v in result.items() if k not in {"metadata", "at", "key_id"}},
+        **item, "returned_model": result["model"], "request_sha256": digest(request_for(item["model"], original)),
+        "original_messages_sha256": digest(original), "expected": task["expected"], **score(result["answer"], task["expected"])}
+
+
+def validate_existing(manifest, existing, ledger, tasks):
+    """Reject a missing/replaced ledger before any saved provider call can repeat."""
+    if len(existing) > len(manifest["schedule"]):
+        raise PilotError("direct artifact exceeds frozen schedule")
+    with ledger.locked() as handle:
+        done = {e["id"]: e for e in ledger.read(handle) if e["event"] == "result"}
+    stage = "direct-claude-v1-" + digest(manifest)[:20]
+    for i, saved in enumerate(existing):
+        item = manifest["schedule"][i]
+        task = tasks[item["context"]][item["task_id"]]
+        call_id = stage + f"-{i:05d}"
+        if call_id not in done:
+            raise PilotError("direct saved artifact has no matching completed ledger event; no redispatch")
+        result = done[call_id]
+        payload = request_for(item["model"], messages(task, manifest["contract"]))
+        fingerprint = digest({"payload": payload, "metadata": {"manifest_sha256": digest(manifest), **item},
+            "stage": stage, "model": item["model"]})
+        if result["fingerprint"] != fingerprint or result_row(result, item, task, manifest["contract"]) != saved:
+            raise PilotError("direct saved artifact and ledger differ; no redispatch")
+
+
 def run(args):
     manifest = json.loads((args.output / "manifest.json").read_text())
     frontier = json.loads((args.frontier / "manifest.json").read_text())
@@ -237,6 +265,7 @@ def run(args):
     stop = min(args.max_calls or len(manifest["schedule"]), len(manifest["schedule"]))
     if stop < len(existing):
         raise PilotError("direct prefix resume cannot truncate acquired results")
+    validate_existing(manifest, existing, ledger, tasks)
     rows = []
     stage = "direct-claude-v1-" + digest(manifest)[:20]
     for i, item in enumerate(manifest["schedule"][:stop]):
@@ -245,9 +274,7 @@ def run(args):
         payload = request_for(item["model"], original)
         result = ledger.call(key, stage + f"-{i:05d}", stage, item["model"], payload,
             {"manifest_sha256": digest(manifest), **item})
-        row = {**{k: v for k, v in result.items() if k not in {"metadata", "at", "key_id"}},
-            **item, "returned_model": result["model"], "request_sha256": digest(payload),
-            "original_messages_sha256": digest(original), "expected": task["expected"], **score(result["answer"], task["expected"])}
+        row = result_row(result, item, task, manifest["contract"])
         if i < len(existing) and row != existing[i]:
             raise PilotError("direct cached row differs from existing artifact")
         rows.append(row)

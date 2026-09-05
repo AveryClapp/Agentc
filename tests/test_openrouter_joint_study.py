@@ -44,6 +44,29 @@ def test_allocation_disjoint_counterbalanced_and_untouched():
     assert manifest["stage_cap_usd"] == "15" and manifest["training_cap_usd"] == "9"
 
 
+def test_structured_budget_is_prospective_and_does_not_change_evidence():
+    original = full_manifest()
+    qa = study.finalize_manifest(original, {})
+    structured_input = {**original, "workload": "structured_relational_v1"}
+    structured = study.finalize_manifest(structured_input, {})
+    assert "training_cap_usd" not in original
+    assert "stage_cap_usd" not in structured_input
+    assert study.budget_caps(qa) == ("9", "15")
+    assert study.budget_caps(structured) == ("12", "18")
+    assert structured["training_cap_usd"] == "12"
+    assert structured["stage_cap_usd"] == "18"
+    for field in ("schedule", "policies", "site_rule_menu", "allocation",
+                  "heldout_feedback", "training_gate", "candidate_identity"):
+        assert structured[field] == qa[field]
+    study.validate_manifest(qa)
+    study.validate_manifest(structured)
+    for field, value in (("training_cap_usd", "9"), ("stage_cap_usd", "15"),
+                         ("training_cap_usd", "13"), ("stage_cap_usd", "19")):
+        changed = {**structured, field: value}
+        with pytest.raises(PilotError):
+            study.validate_manifest(changed)
+
+
 @pytest.mark.parametrize(
     "mutation", ["overlap", "order", "arm", "guard", "cap", "menu"]
 )

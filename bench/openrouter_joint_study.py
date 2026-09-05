@@ -26,6 +26,20 @@ SITE_RULES = {
 }
 
 
+def budget_caps(manifest):
+    """Prospective training/total caps; never amend an acquired manifest.
+
+    Generated procurement has substantially larger measured requests than the
+    original QA study. This envelope changes money, not allocation or evidence.
+    The shared Ledger still enforces the original USD50 campaign including holds.
+    """
+    return (
+        ("12", "18")
+        if manifest.get("workload") == "structured_relational_v1"
+        else ("9", "15")
+    )
+
+
 def restrict_call(call, stage):
     """Make the candidate bound structural, not an output-length assumption.
 
@@ -87,6 +101,7 @@ def validate_plan(call, plan):
 
 def finalize_manifest(manifest, aborted):
     manifest = deepcopy(manifest)
+    training_cap, stage_cap = budget_caps(manifest)
     grouped = {}
     for row in manifest["schedule"]:
         grouped.setdefault(row["task_id"], []).append(row)
@@ -113,8 +128,8 @@ def finalize_manifest(manifest, aborted):
     manifest.update(
         kind=KIND,
         policies=policies(),
-        stage_cap_usd="15",
-        training_cap_usd="9",
+        stage_cap_usd=stage_cap,
+        training_cap_usd=training_cap,
         maximum_reconstruction_age_seconds=28800,
         aborted_manifest_sha256=digest(aborted),
         bounded_transport_retry=True,
@@ -151,19 +166,20 @@ def finalize_manifest(manifest, aborted):
         "All training/probe/shadow/calibration costs and failed-attempt allowances are reported; cached provider charges and nominal uncached costs differ.",
         "Temperature0 does not guarantee deterministic providers; interleaving and implicit caches make latency diagnostic.",
         "Fresh stores replay paid journals on restart under an8h source-bound window; this is not evidence of native crash recovery.",
-        "A15USD total envelope and9USD training ceiling may stop acquisition; no favorable partial intersection is promoted to efficacy.",
+        f"A{stage_cap}USD total envelope and{training_cap}USD training ceiling may stop acquisition; no favorable partial intersection is promoted to efficacy.",
     ]
     validate_manifest(manifest)
     return manifest
 
 
 def validate_manifest(manifest):
+    training_cap, stage_cap = budget_caps(manifest)
     if (
         manifest["kind"] != KIND
         or manifest["policies"] != policies()
         or manifest["site_rule_menu"] != SITE_RULES
-        or manifest["stage_cap_usd"] != "15"
-        or manifest["training_cap_usd"] != "9"
+        or manifest["stage_cap_usd"] != stage_cap
+        or manifest["training_cap_usd"] != training_cap
         or manifest["maximum_reconstruction_age_seconds"] != 28800
         or manifest.get("bounded_transport_retry") is not True
     ):

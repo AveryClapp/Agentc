@@ -191,6 +191,21 @@ def test_original_natural_workflow_topology_and_public_attention():
         assert call["messages"][-1]["content"] == "Question: " + task()["prompt"]
 
 
+def test_blank_input_sentences_preserve_exact_order_and_legacy_rendering():
+    item = task()
+    sentences = ["", "  \t", "Original sentence.", "\n", "", "Last sentence."]
+    item["meta"]["paragraphs"][0]["sentences"] = sentences
+    original = deepcopy(item)
+    assert w.public_task(item) == original
+    call = build(item=item)
+    legacy = workflow_call(item, "filter", {}, attention(), run_identity="unit")
+    assert item == original
+    assert len(call["messages"]) == 12
+    assert call["messages"][1:] == legacy["messages"][1:]
+    assert call["messages"][1]["content"] == "Document 0\n" + " ".join(sentences)
+    assert w.parse_stage("filter", envelope("  \t\n")) is None
+
+
 def test_invalid_history_contagious_even_when_later_answer_is_plausible():
     history = {"filter": w.ERROR, "synthesize": envelope("plausible rescue")}
     assert not w.history_valid(task(), "answer", history)
@@ -350,7 +365,10 @@ def test_actual_native_context_compress_preserves_schema_when_supplied():
             )
             * 80
         ]
+    item["meta"]["paragraphs"][0]["sentences"].extend(["", " \t\n"])
     call = build(item=item)
+    legacy = workflow_call(item, "filter", {}, attention(), run_identity="unit")
+    assert call["messages"][1:] == legacy["messages"][1:]
     result = subprocess.run(
         [binary],
         input=json.dumps({"rule": "ContextCompress", "call": call}),

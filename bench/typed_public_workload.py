@@ -133,9 +133,16 @@ def public_task(task: dict) -> dict:
                 not _text(title)
                 or not isinstance(sentences, list)
                 or not sentences
-                or not all(isinstance(s, str) and _text(s) for s in sentences)
+                or not all(isinstance(s, str) for s in sentences)
             ):
                 raise PilotError("invalid public paragraph")
+            # Blank input sentence entries are valid corpus data, not invalid
+            # model outputs. Preserve every string exactly, including whitespace.
+            try:
+                for sentence in sentences:
+                    sentence.encode("utf-8")
+            except UnicodeEncodeError as exc:
+                raise PilotError("invalid public sentence UTF-8") from exc
             result.append({"title": title, "sentences": deepcopy(sentences)})
         return {"task_id": task_id, "prompt": question, "meta": {"paragraphs": result}}
     except (KeyError, TypeError) as exc:

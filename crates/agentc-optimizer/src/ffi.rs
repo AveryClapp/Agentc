@@ -23,7 +23,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::cost_model::{CostModel, CostModelUpdate};
 use crate::dag::{Call, DepSource, Outcome};
-use crate::diagnostics::{attach_planner_diagnostics, PlannerDecisionDiagnostics};
+use crate::diagnostics::{
+    attach_planner_diagnostics, extract_planner_diagnostics, PlannerDecisionDiagnostics,
+};
 use crate::execution_plan::{
     rejection_reason, select_candidate, CachePolicy, CandidatePlan, CandidateRejectionReason,
     ExecutionPlanSpec, PlanAdmission, PlanEstimate,
@@ -333,10 +335,14 @@ pub fn optimize_profiled_plan(
     .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
 }
 
-/// Attach at most one durably reserved cold/refresh-plan counterfactual to a
-/// user-visible reference plan.
+/// Attach at most one durably reserved cold/refresh-plan counterfactual.
 ///
-/// The returned top-level Plan remains `pass_through`. Python sees the
+/// A successful lease deliberately selects the immutable reference primary,
+/// even when an incumbent rewrite was admissible. This keeps another cold
+/// plan from being stranded behind that incumbent and compares both outcomes
+/// against the same original request. There are still at most two calls:
+/// reference plus candidate, never incumbent plus reference plus candidate.
+/// Without a lease, the admitted primary is returned unchanged. Python sees the
 /// candidate only through `agentc_exploration_context`, executes it through
 /// the same provider adapter after the reference response has been observed,
 /// and reports completion with the opaque token. Tool-bearing and streaming
@@ -358,7 +364,9 @@ pub fn reserve_profiled_exploration(
         let Ok(primary_plan) = serde_json::from_str::<Plan>(primary_plan_json) else {
             return primary_plan_json.to_string();
         };
-        if !matches!(primary_plan, Plan::PassThrough) || !opt.config().compose {
+        if !opt.config().enabled || !opt.config().exploration_enabled || !opt.config().compose
+            || matches!(primary_plan, Plan::Cached { .. } | Plan::Parallel { .. })
+        {
             return primary_plan_json.to_string();
         }
         let Some(catalog) = catalog else {
@@ -375,7 +383,21 @@ pub fn reserve_profiled_exploration(
         if requirements.streaming || requirements.tool_calling || !call.tools.is_empty() {
             return primary_plan_json.to_string();
         }
-        let Ok(Some(reference_context)) = embedded_observation_context(primary_plan_json) else {
+        let Ok(Some(primary_context)) = embedded_observation_context(primary_plan_json) else {
+            return primary_plan_json.to_string();
+        };
+        let expected_primary_context = build_observation_context(
+            catalog, &call, &primary_plan, opt.divergence_threshold_for_plan(&primary_plan),
+        );
+        if expected_primary_context.as_ref() != Some(&primary_context) {
+            return primary_plan_json.to_string();
+        }
+        // An incumbent's context belongs to its rewritten target/cap. It must
+        // never become the reference identity for candidate evidence.
+        let Some(reference_context) = build_observation_context(
+            catalog, &call, &Plan::PassThrough,
+            opt.divergence_threshold_for_plan(&Plan::PassThrough),
+        ) else {
             return primary_plan_json.to_string();
         };
 
@@ -486,7 +508,21 @@ pub fn reserve_profiled_exploration(
             lease_token,
             candidate_plan: candidate_plan_value,
         };
-        encode_exploration_context(primary_plan_json, &context).unwrap_or_else(|| {
+        let reference_plan_json = if matches!(primary_plan, Plan::PassThrough) {
+            primary_plan_json.to_string()
+        } else {
+            let reference_json = encode_observation_context(
+                PASS_THROUGH_JSON.to_string(), &reference_context,
+            );
+            if let Some(mut diagnostics) = extract_planner_diagnostics(primary_plan_json) {
+                diagnostics.force_fallback("bounded_exploration_reference");
+                diagnostics.selection_reason = "bounded_exploration_reference".to_string();
+                attach_planner_diagnostics(reference_json, &diagnostics)
+            } else {
+                reference_json
+            }
+        };
+        encode_exploration_context(&reference_plan_json, &context).unwrap_or_else(|| {
             let _ = controller.cancel_unstarted(conn, &lease);
             primary_plan_json.to_string()
         })
@@ -1462,6 +1498,222 @@ mod tests {
             }
         }
         candidate.context.key
+    }
+
+    struct IncumbentFixture {
+        catalog: Arc<ModelCatalog>,
+        cost_model: Arc<CostModel>,
+        optimizer: Optimizer,
+        call: Call,
+        profiles: PlanProfiles,
+        joint_key: PlanProfileKey,
+        reference_key: PlanProfileKey,
+    }
+
+    fn incumbent_fixture(exploration_enabled: bool) -> IncumbentFixture {
+        let site = "incumbent-exploration-site";
+        let catalog = Arc::new(default_model_catalog().unwrap());
+        let cost_model = Arc::new(CostModel::new());
+        for now_us in 1..=3 {
+            cost_model.observe(CostModelUpdate {
+                call_site_id: site.to_string(), input_tokens: 100, output_tokens: 50,
+                latency_ms: 100.0, cost_usd: 0.01, output_is_structured: false,
+                output_is_short: true, now_us: Some(now_us),
+            });
+        }
+        let budget = Arc::new(Budget::new());
+        let optimizer = Optimizer::with_budget(
+            cost_model.clone(),
+            vec![Box::new(AlwaysCapsOutput), Box::new(ModelDowngradeRule::from_catalog(
+                catalog.clone(), budget.clone(),
+            ))],
+            OptimizerConfig {
+                exploration_enabled,
+                max_overhead_ms: 100.0,
+                ..OptimizerConfig::default()
+            },
+            budget,
+        );
+        let call = observable_call(site, "private immutable original");
+        let profiles = PlanProfiles::new();
+        let mut joint_key = None;
+        let mut reference_key = None;
+        for plan in optimizer.candidate_plans(&call, &catalog) {
+            let descriptor = describe_plan(&catalog, &call, &plan,
+                optimizer.divergence_threshold_for_plan(&plan)).unwrap();
+            let is_joint = matches!(&plan, Plan::Composed { call, .. }
+                if call.model == "gpt-4o-mini-2024-07-18");
+            let cost = match &plan {
+                Plan::PassThrough => {
+                    reference_key = Some(descriptor.context.key.clone());
+                    0.01
+                }
+                Plan::Rewritten { rule, .. } if rule == "OutputBudget" => 0.005,
+                _ if is_joint => {
+                    joint_key = Some(descriptor.context.key.clone());
+                    0.001
+                }
+                _ => 0.02,
+            };
+            for sequence in 0..if is_joint { 19 } else { 20 } {
+                profiles.observe(PlanProfileUpdate {
+                    key: descriptor.context.key.clone(),
+                    runtime_version: descriptor.context.runtime_version.clone(),
+                    input_tokens: 100, output_tokens: 50, latency_ms: 25.0,
+                    cost_usd: cost, output_is_structured: false, output_is_short: true,
+                    divergence: if matches!(plan, Plan::PassThrough) { None } else { Some(0.0) },
+                    dispatch_fallback: false, observed_at_us: Some(2_000_000 + sequence),
+                }).unwrap();
+            }
+        }
+        IncumbentFixture { catalog, cost_model, optimizer, call, profiles,
+            joint_key: joint_key.unwrap(), reference_key: reference_key.unwrap() }
+    }
+
+    #[test]
+    fn admitted_incumbent_does_not_strand_joint_candidate_at_nineteen_pairs() {
+        let f = incumbent_fixture(true);
+        let guard = PlanGuard::new();
+        let controller = ExplorationController::new();
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        let call_json = serde_json::to_string(&f.call).unwrap();
+        let primary = optimize_profiled_plan(&f.optimizer, Some(&f.catalog), &f.profiles,
+            &guard, &call_json, 3_000_000);
+        assert!(matches!(serde_json::from_str::<Plan>(&primary).unwrap(),
+            Plan::Rewritten { rule, .. } if rule == "OutputBudget"));
+        let planned = reserve_profiled_exploration(&f.optimizer, Some(&f.catalog), &f.profiles,
+            &guard, &controller, &mut connection, &call_json, &primary, 3_000_000);
+        assert!(matches!(serde_json::from_str::<Plan>(&planned).unwrap(), Plan::PassThrough),
+            "a leased comparison must expose the original, not the incumbent");
+        let reference = embedded_observation_context(&planned).unwrap().unwrap();
+        assert_eq!(reference.key, f.reference_key);
+        let diagnostics = crate::diagnostics::extract_planner_diagnostics(&planned).unwrap();
+        assert!(diagnostics.selected_reference);
+        assert_eq!(diagnostics.selected_plan_id, f.reference_key.execution_plan_id);
+        assert_eq!(diagnostics.selection_reason, "bounded_exploration_reference");
+        assert!(diagnostics.candidates.iter().all(|candidate| !candidate.selected));
+        let value: serde_json::Value = serde_json::from_str(&planned).unwrap();
+        let exploration: EmbeddedExplorationContext = serde_json::from_value(
+            value[EXPLORATION_CONTEXT_KEY].clone()).unwrap();
+        let lease = decode_exploration_token(&exploration.lease_token).unwrap();
+        assert_eq!(lease.lease.key, f.joint_key);
+        assert_ne!(lease.lease.key, f.reference_key);
+        assert_eq!(lease.context.divergence_threshold.to_bits(), f64::from(0.03_f32).to_bits());
+
+        // A live lease must not replace another admitted primary or add a call.
+        assert_eq!(reserve_profiled_exploration(&f.optimizer, Some(&f.catalog), &f.profiles,
+            &guard, &controller, &mut connection, &call_json, &primary, 3_000_001), primary);
+        let mut reference_outcome = outcome(&f.call.call_site_id);
+        reference_outcome.cost_usd = 0.01;
+        let observation = optimize_observe(&f.cost_model, &f.profiles, &planned,
+            &serde_json::to_string(&reference_outcome).unwrap()).unwrap();
+        let observation: OpaqueObservationToken = serde_json::from_str(&observation).unwrap();
+        assert!(observation.rules.is_empty());
+        assert!(!observation.guard_eligible);
+        complete_profiled_exploration(&f.profiles, &controller, &mut connection,
+            &exploration.lease_token, &serde_json::to_string(&outcome(&f.call.call_site_id)).unwrap(),
+            0.0, 3_000_002).unwrap();
+        assert_eq!(f.profiles.get_for_reporting(&f.joint_key).unwrap().paired_observations, 20);
+        let selected = optimize_profiled_plan(&f.optimizer, Some(&f.catalog), &f.profiles,
+            &guard, &call_json, 3_000_003);
+        assert!(matches!(serde_json::from_str::<Plan>(&selected).unwrap(), Plan::Composed { .. }));
+        assert_eq!(embedded_observation_context(&selected).unwrap().unwrap().key, f.joint_key);
+        assert_eq!(reserve_profiled_exploration(&f.optimizer, Some(&f.catalog), &f.profiles,
+            &guard, &controller, &mut connection, &call_json, &selected, 3_000_003), selected,
+            "no eligible cold plan means the admitted joint primary remains selected");
+        let snapshot = controller.snapshot(&connection, &f.joint_key.call_site_version, 3_000_003).unwrap();
+        assert_eq!(snapshot.calls_in_window, 1);
+        assert_eq!(snapshot.active_leases, 0);
+        assert!((snapshot.counterfactual_cost_usd - 0.001).abs() < 1e-12);
+    }
+
+    #[test]
+    fn disabled_exploration_preserves_admitted_incumbent_without_reservation() {
+        let f = incumbent_fixture(false);
+        let guard = PlanGuard::new();
+        let controller = ExplorationController::new();
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        let call_json = serde_json::to_string(&f.call).unwrap();
+        let primary = optimize_profiled_plan(&f.optimizer, Some(&f.catalog), &f.profiles,
+            &guard, &call_json, 3_000_000);
+        assert!(matches!(serde_json::from_str::<Plan>(&primary).unwrap(), Plan::Rewritten { .. }));
+        assert_eq!(reserve_profiled_exploration(&f.optimizer, Some(&f.catalog), &f.profiles,
+            &guard, &controller, &mut connection, &call_json, &primary, 3_000_000), primary);
+        let snapshot = controller.snapshot(&connection, &f.joint_key.call_site_version, 3_000_000).unwrap();
+        assert_eq!(snapshot.calls_in_window, 0);
+    }
+
+    #[test]
+    fn incumbent_exploration_cancellation_and_failed_cap_survive_profile_reload() {
+        let f = incumbent_fixture(true);
+        let guard = PlanGuard::new();
+        let policy = ExplorationPolicy { max_calls_per_site: 1, ..ExplorationPolicy::default() };
+        let controller = ExplorationController::with_policy(policy.clone()).unwrap();
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        let call_json = serde_json::to_string(&f.call).unwrap();
+        let primary = optimize_profiled_plan(&f.optimizer, Some(&f.catalog), &f.profiles,
+            &guard, &call_json, 3_000_000);
+        let first = reserve_profiled_exploration(&f.optimizer, Some(&f.catalog), &f.profiles,
+            &guard, &controller, &mut connection, &call_json, &primary, 3_000_000);
+        assert_ne!(first, primary);
+        cancel_embedded_exploration(&controller, &mut connection, &first).unwrap();
+        assert_eq!(controller.snapshot(&connection, &f.joint_key.call_site_version,
+            3_000_001).unwrap().calls_in_window, 0);
+        let retry = reserve_profiled_exploration(&f.optimizer, Some(&f.catalog), &f.profiles,
+            &guard, &controller, &mut connection, &call_json, &primary, 3_000_002);
+        let value: serde_json::Value = serde_json::from_str(&retry).unwrap();
+        let exploration: EmbeddedExplorationContext = serde_json::from_value(
+            value[EXPLORATION_CONTEXT_KEY].clone()).unwrap();
+        let token = decode_exploration_token(&exploration.lease_token).unwrap();
+        assert_eq!(token.lease.sequence, 2, "cancellation must not reuse an issuance sequence");
+        fail_profiled_exploration(&controller, &mut connection,
+            &exploration.lease_token, 3_000_003).unwrap();
+        f.profiles.flush_dirty(&mut connection).unwrap();
+        let reloaded = PlanProfiles::new();
+        reloaded.warm_from_db(&connection).unwrap();
+        let restarted = ExplorationController::with_policy(policy).unwrap();
+        let selected = optimize_profiled_plan(&f.optimizer, Some(&f.catalog), &reloaded,
+            &guard, &call_json, 3_000_004);
+        assert_eq!(selected, primary);
+        assert_eq!(reserve_profiled_exploration(&f.optimizer, Some(&f.catalog), &reloaded,
+            &guard, &restarted, &mut connection, &call_json, &selected, 3_000_004), selected);
+        let snapshot = restarted.snapshot(&connection, &f.joint_key.call_site_version, 3_000_004).unwrap();
+        assert_eq!(snapshot.calls_in_window, 1);
+        assert_eq!(snapshot.failed_calls, 1);
+        assert_eq!(snapshot.active_leases, 0);
+        assert_eq!(reloaded.get_for_reporting(&f.joint_key).unwrap().paired_observations, 19);
+    }
+
+    #[test]
+    fn incumbent_does_not_override_a_disabled_cold_candidate_guard() {
+        let f = incumbent_fixture(true);
+        let guard = PlanGuard::new();
+        let profile = f.profiles.get_for_reporting(&f.joint_key).unwrap();
+        for i in 0..2 {
+            let token = f.profiles.observe(PlanProfileUpdate {
+                key: f.joint_key.clone(), runtime_version: profile.runtime_version.clone(),
+                input_tokens: 100, output_tokens: 50, latency_ms: 25.0, cost_usd: 0.001,
+                output_is_structured: false, output_is_short: true, divergence: None,
+                dispatch_fallback: false, observed_at_us: Some(3_000_000 + i),
+            }).unwrap();
+            guard.record_sample(&token, 1.0, f64::from(0.03_f32), Some(3_000_000 + i)).unwrap();
+        }
+        assert!(guard.decision(&f.joint_key, 3_000_002).blocks_user_visible());
+        assert_eq!(f.profiles.get_for_reporting(&f.joint_key).unwrap().paired_observations, 19);
+        let controller = ExplorationController::new();
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        let call_json = serde_json::to_string(&f.call).unwrap();
+        let primary = optimize_profiled_plan(&f.optimizer, Some(&f.catalog), &f.profiles,
+            &guard, &call_json, 3_000_002);
+        assert!(matches!(serde_json::from_str::<Plan>(&primary).unwrap(), Plan::Rewritten { .. }));
+        assert_eq!(reserve_profiled_exploration(&f.optimizer, Some(&f.catalog), &f.profiles,
+            &guard, &controller, &mut connection, &call_json, &primary, 3_000_002), primary);
+        assert_eq!(controller.snapshot(&connection, &f.joint_key.call_site_version,
+            3_000_002).unwrap().calls_in_window, 0);
     }
 
     #[test]

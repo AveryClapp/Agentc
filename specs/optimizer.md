@@ -389,6 +389,8 @@ def optimize_plan(call_json: str) -> str:
     Output: JSON-serialized Plan. "pass_through" for cold or no-fire cases.
     A pass-through result may carry one opaque, durably leased exploration
     candidate for provider-adapter execution after the reference completes.
+    Acquiring that lease may replace an admitted primary with the original
+    reference; without a lease, the previously selected primary is retained.
     """
 
 def optimize_model_catalog() -> str:
@@ -705,16 +707,23 @@ divergence samples per `(call-site version, execution-plan ID)`. A plan needs at
 least 20 paired observations and a one-sided conformal upper 95th-percentile at
 or below its threshold before it becomes user-visible.
 
-Initial exploration returns the reference result and executes at most one
+Exploration returns the original reference result and executes at most one
 candidate counterfactual in the background. It is capped at 20 candidate calls
-per call site in 24 hours and one concurrent counterfactual. After admission,
-the selected result is returned and the reference is sampled at `shadow_rate`
-(default 2%) for drift detection.
+per call site in 24 hours and one concurrent counterfactual. An admitted primary
+does not prevent another eligible candidate from collecting evidence. Only after
+a lease is acquired does the runtime replace that primary with the original
+reference, preserving the original observation identity and marking diagnostics
+with `bounded_exploration_reference`. The comparison uses at most two calls:
+original plus candidate, never an incumbent labeled as the original and never
+incumbent plus original plus candidate. Disabled exploration or failure to
+acquire a lease leaves the selected primary unchanged. On optimized calls
+without an exploration lease, the selected result is returned and the reference
+is sampled at `shadow_rate` (default 2%) for drift detection.
 
 Reaching the paired-observation floor does not permanently end exploration.
-When the primary selection returns the reference, an evidence-complete plan
-rejected for stale evidence or an excessive divergence bound may request a
-refresh counterfactual. The selector and explorer share the same rejection
+An evidence-complete plan rejected for stale evidence or an excessive divergence
+bound may request a refresh counterfactual, including when another plan is
+already admitted. The selector and explorer share the same rejection
 classification. Refresh preserves the actual paired count and uses the same
 rolling call cap, concurrency, compatibility, disable, divergence-exposure,
 and optional evaluation-only task-damage checks as initial exploration. An
@@ -741,10 +750,10 @@ concurrency slot. Candidate allocation prefers the smallest exact-plan paired-
 evidence count, then the fewest attempts in the active window, then a seeded
 stable hash. Reordering the candidate list therefore does not change a seeded
 run. SQLite transaction serialization enforces the concurrency cap across
-controller instances and process restart; a storage failure returns only the
-reference and creates no lease. The controller receives the immutable reference
-plan ID separately and excludes it even if candidate generation returns it by
-mistake.
+controller instances and process restart; a storage failure creates no lease
+and leaves the previously selected primary unchanged. The controller receives
+the immutable reference plan ID separately and excludes it even if candidate
+generation returns it by mistake.
 
 The controller tracks sampled divergence exposure:
 
@@ -806,8 +815,9 @@ exploration reservation. Exploration uses a non-blocking cost-DB lock, so a
 background completion never stalls the user path. If total planning work
 crosses the budget after a lease was persisted, the runtime transactionally
 cancels the still-unstarted lease, strips the candidate envelope, and returns
-`Plan::PassThrough`. The call remains reference-only and does not consume the
-provider-call exploration cap. A crash before cancellation remains conservative:
+the pre-exploration primary, which may be an admitted alternative. The call has
+no exploration candidate and does not consume the provider-call exploration
+cap. A crash before cancellation remains conservative:
 the lease eventually becomes abandoned and charged. This protects against
 pathological cases while keeping provider dispatch outside an over-budget
 decision.
@@ -1396,6 +1406,10 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | Divergence observations remain distinct from evaluation-only task-quality labels | `exploration::tests::observation_and_task_quality_feedback_remain_distinct` |
 | Canceling a provably unstarted lease releases call and concurrency capacity without reusing its sequence | `exploration::tests::cancelling_unstarted_lease_releases_call_and_concurrency_caps` |
 | A cold live candidate is durably leased without replacing the reference response | `ffi::tests::cold_candidate_is_leased_without_replacing_the_reference_plan` |
+| An admitted incumbent cannot strand a joint candidate at 19 pairs; its twentieth comparison uses the original identity and permits later joint selection | `ffi::tests::admitted_incumbent_does_not_strand_joint_candidate_at_nineteen_pairs` |
+| Disabled exploration retains the admitted incumbent without reserving a candidate | `ffi::tests::disabled_exploration_preserves_admitted_incumbent_without_reservation` |
+| Incumbent exploration preserves cancellation, monotonic sequence, and failed-attempt caps across reload | `ffi::tests::incumbent_exploration_cancellation_and_failed_cap_survive_profile_reload` |
+| An admitted incumbent does not bypass a cold candidate's disabled guard | `ffi::tests::incumbent_does_not_override_a_disabled_cold_candidate_guard` |
 | A completed lease updates its exact paired plan profile once across replay | `ffi::tests::completed_counterfactual_updates_only_its_exact_paired_profile_once` |
 | Tool-bearing requests never receive the text-only exploration comparator | `ffi::tests::tool_bearing_request_never_receives_a_text_only_counterfactual` |
 | An over-budget envelope is canceled before candidate dispatch without spending call capacity | `ffi::tests::over_budget_envelope_can_be_cancelled_before_candidate_dispatch`, `tests/test_live_exploration_preflight.py::test_zero_total_overhead_budget_never_dispatches_counterfactual` |
@@ -1663,6 +1677,17 @@ a composed comparison to every constituent rule.** It fabricates causal evidence
 and can disable an innocent transformation. **Rejected: a global budget.** It
 muddles which plan consumed exposure. **Rejected: calling the divergence meter
 an accuracy oracle.** Task damage is available only in labeled evaluation.
+
+### Reference-visible exploration after admission
+
+Acquire a bounded lease before replacing an admitted primary with the original
+reference. This lets other exact plans finish calibration while retaining the
+same two-call comparison and all exploration caps. **Rejected: stop exploration
+after any plan is admitted.** A cheaper joint plan can remain permanently one
+sample short of admission. **Rejected: compare against the incumbent under the
+original identity.** That corrupts the reference contract. **Rejected: execute
+incumbent, reference, and candidate.** It adds a third provider call and its cost
+without being necessary to collect valid paired evidence.
 
 ### `CacheHit` as a rewrite rule, not a bypass
 

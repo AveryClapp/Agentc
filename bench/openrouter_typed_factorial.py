@@ -89,6 +89,7 @@ def materialize(call, rule, bridge):
             "applied": False,
             "retained_indices": indices,
             "materialization_only": True,
+            "abstention_reason": "no_rule",
         }
     if rule not in RULES.values():
         raise PilotError("uncovered diagnostic rule")
@@ -108,6 +109,7 @@ def materialize(call, rule, bridge):
         "call",
         "retained_indices",
         "materialization_only",
+        "abstention_reason",
     }:
         raise PilotError("materializer response shape changed")
     native = report.pop("call")
@@ -116,6 +118,17 @@ def materialize(call, rule, bridge):
         report["rule"] != rule
         or report["materialization_only"] is not True
         or type(report["applied"]) is not bool
+        or (
+            report["abstention_reason"] is not None
+            if report["applied"]
+            else report["abstention_reason"]
+            not in {
+                "ambiguous_provenance",
+                "not_applicable",
+                "no_proposal",
+                "safety_check_failed",
+            }
+        )
         or not isinstance(kept, list)
         or not kept
         or any(type(i) is not int or not 0 <= i < len(indices) for i in kept)
@@ -377,8 +390,13 @@ def run(args, key, manifest):
                     intent["payload"],
                     intent["metadata"],
                 )
-                if any(r["generation_id"] == result["generation_id"] for r in calls):
-                    raise PilotError("duplicated provider generation")
+                generation = result.get("generation_id")
+                if (
+                    not isinstance(generation, str)
+                    or not generation
+                    or any(r["generation_id"] == generation for r in calls)
+                ):
+                    raise PilotError("missing or duplicated provider generation")
                 calls.append(public_row(item, result, manifest))
                 write_json(args.output / "calls.json", calls)
                 history[stage] = typed.application_text(
@@ -453,8 +471,12 @@ def reconstruct(manifest, tasks, intents, calls, events, bridge):
             analysis.validate_row(
                 calls[i], intent["payload"], intent["metadata"], manifest
             )
-            if result["generation_id"] in seen:
-                raise PilotError("duplicate factorial generation")
+            if (
+                not isinstance(result.get("generation_id"), str)
+                or not result["generation_id"]
+                or result["generation_id"] in seen
+            ):
+                raise PilotError("missing or duplicate factorial generation")
             seen.add(result["generation_id"])
             history[item["workflow_stage"]] = typed.application_text(
                 result["answer"], result["finish_reason"], stage=item["workflow_stage"]
@@ -589,6 +611,13 @@ def analyze(args, key, manifest):
                 (i["materialization"]["rule"] or "none")
                 for i in intents
                 if i["materialization"]["applied"]
+            )
+        ),
+        "materialization_abstentions": dict(
+            Counter(
+                i["materialization"]["abstention_reason"]
+                for i in intents
+                if not i["materialization"]["applied"]
             )
         ),
         "descriptive_quality_interval": analysis.paired_bootstrap(

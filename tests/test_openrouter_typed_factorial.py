@@ -13,6 +13,8 @@ import pytest
 from bench import openrouter_typed_factorial as f
 from bench import openrouter_pilot as p
 
+REAL_MATERIALIZE = f.materialize
+
 
 def test_source_freeze_uses_real_workspace_and_transitive_native_dependencies():
     frozen = f.sources()
@@ -130,6 +132,9 @@ def bridge_response(call, indices):
         "call": native,
         "retained_indices": indices,
         "materialization_only": True,
+        "abstention_reason": None
+        if len(indices) != len(call["messages"])
+        else "not_applicable",
     }
 
 
@@ -275,6 +280,7 @@ def experiment(tmp_path, monkeypatch):
                 "applied": False,
                 "retained_indices": list(range(len(call["messages"]))),
                 "materialization_only": True,
+                "abstention_reason": "not_applicable" if rule else "no_rule",
             },
         ),
     )
@@ -508,3 +514,87 @@ def test_copied_output_with_stale_preflight_cannot_claim_campaign_twice(
         f.run(copied, "fake", manifest)
     assert len(dispatched) == previous_calls and ledger.path.read_bytes() == before
     assert not (copied.output / "intents.json").exists()
+
+
+def test_real_bridge_invalid_error_history_is_safe_noop():
+    path = os.environ.get("AGENTC_TYPED_MATERIALIZER")
+    if not path:
+        pytest.skip("supply an existing compatible materializer; no provider or build")
+    task = f.typed.make_tasks(f.SEED, 1)[0]
+    attention = f.load_module(
+        "factorial_invalid_attention", f.ROOT / "python/agentc/_attention.py"
+    )
+    synth = '{"result":{"sku":"K100","vendor":"V200","qty":1,"unit":2,"total":2,"region":"EU"}}'
+    for model in (f.live.SOURCE_MODEL, f.live.TARGET_MODEL):
+        for history in (
+            {"filter": f.typed.ERROR, "synthesize": synth},
+            {"filter": '{"result":["D01","D02","D03"]}', "synthesize": f.typed.ERROR},
+            {"filter": f.typed.ERROR, "synthesize": f.typed.ERROR},
+        ):
+            call = f.restrict_call(
+                f.typed.call(
+                    task,
+                    "answer",
+                    history,
+                    attention,
+                    model=model,
+                    run_identity="invalid-offline",
+                ),
+                "answer",
+            )
+            selected, report = f.materialize(call, "StateDrop", Path(path))
+            assert selected == call
+            assert report["applied"] is False
+            assert report["abstention_reason"] == "ambiguous_provenance"
+
+
+def test_actual_native_and_ledger_invalid_rewritten_cell_completes(
+    experiment, monkeypatch
+):
+    path = os.environ.get("AGENTC_TYPED_MATERIALIZER")
+    if not path:
+        pytest.skip("supply the real existing native materializer")
+    args, manifest, ledger, dispatched = experiment
+    args.bridge = Path(path)
+    manifest["bridge_sha256"] = f.file_hash(args.bridge)
+    args.manifest_sha256 = f.digest(manifest)
+    (args.output / "manifest.json").write_text(json.dumps(manifest))
+    monkeypatch.setattr(f, "materialize", REAL_MATERIALIZE)
+    original = p.request_json
+
+    def invalid_filters(path, key, payload=None):
+        response = original(path, key, payload)
+        if payload and "filter" in payload["response_format"]["json_schema"]["name"]:
+            response["choices"][0]["message"]["content"] = f.typed.ERROR
+        return response
+
+    monkeypatch.setattr(p, "request_json", invalid_filters)
+    assert f.run(args, "fake", manifest)["completed_calls"] == 12
+    assert f.analyze(args, "fake", manifest)["schedule_complete"]
+    report = json.loads((args.output / "analysis.json").read_text())
+    assert report["materialization_abstentions"]["ambiguous_provenance"] == 2
+    assert all(cell["em"] == 0 for cell in report["paired_tasks"][0]["cells"].values())
+    assert ledger.summary()["spent_usd"] == "0.012" and len(dispatched) == 12
+
+
+@pytest.mark.parametrize("generation", [None, "", 42, False])
+def test_missing_generation_stops_before_another_paid_call(
+    experiment, monkeypatch, generation
+):
+    args, manifest, ledger, dispatched = experiment
+    original = p.request_json
+
+    def missing(path, key, payload=None):
+        response = original(path, key, payload)
+        if payload:
+            response["id"] = generation
+        return response
+
+    monkeypatch.setattr(p, "request_json", missing)
+    with pytest.raises(p.PilotError, match="missing or duplicated"):
+        f.run(args, "fake", manifest)
+    assert len(dispatched) == 1
+    assert ledger.summary()["spent_usd"] == "0.001"
+    summary = json.loads((args.output / "summary.json").read_text())
+    assert not summary["schedule_complete"] and summary["completed_calls"] == 0
+    assert len(summary["stage_accounting"]["unincorporated_completed_ids"]) == 1

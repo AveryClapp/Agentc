@@ -214,6 +214,17 @@ def summarize(decisions, calls, manifest, tasks):
         "reports": reports, "limitations": manifest["limitations"]}
 
 
+def stage_accounting(ledger, stage, calls):
+    with ledger.locked() as handle:
+        events = [e for e in ledger.read(handle) if e.get("stage") == stage]
+    done = {e["id"]: e for e in events if e["event"] == "result"}
+    artifact_ids = {r["id"] for r in calls}
+    return {"paid_stage_cost_usd": str(sum((money(e["cost_usd"]) for e in done.values()), Decimal(0))),
+        "ledger_completed_calls": len(done), "unincorporated_completed_ids": sorted(set(done) - artifact_ids),
+        "artifact_ids_missing_from_ledger": sorted(artifact_ids - set(done)),
+        "unresolved_stage_calls": [e["id"] for e in events if e["event"] == "reserve" and e["id"] not in done]}
+
+
 class Acquisition:
     def __init__(self, args, manifest, ledger, key):
         self.args, self.manifest, self.ledger, self.key = args, manifest, ledger, key
@@ -426,6 +437,9 @@ def run(args, key):
         report = summarize(acquisition.decisions, acquisition.calls, manifest, tasks)
         report.update(schedule_complete=schedule_complete, reconstructed_calls=acquisition.call_index,
                       reconstructed_decisions=acquisition.decision_index)
+        report["stage_accounting"] = stage_accounting(acquisition.ledger, acquisition.stage, acquisition.calls)
+        report["artifact_cost_usd"] = report["cost_usd"]
+        report["cost_usd"] = report["stage_accounting"]["paid_stage_cost_usd"]
         write_json(args.output / "summary.json", report)
     return {**report, "ledger": acquisition.ledger.summary()}
 

@@ -1,6 +1,7 @@
 import json
 import os
 from copy import deepcopy
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -37,6 +38,13 @@ class FakeLedger:
 
     def summary(self):
         return {"completed_calls": len(self.results), "unresolved_calls": []}
+
+    @contextmanager
+    def locked(self):
+        yield None
+
+    def read(self, handle):
+        return [{**r, "event": "result"} for r in self.results.values()]
 
 
 class FakeNative:
@@ -293,3 +301,16 @@ def test_new_invalid_generation_stops_before_native_feedback(experiment, monkeyp
         live.run(args, "fake-key")
     assert not native.observations
     assert len(ledger.requests) == (2 if generation else 1)
+    summary = json.loads((args.output / "summary.json").read_text())
+    accounting = summary["stage_accounting"]
+    assert accounting["ledger_completed_calls"] == len(ledger.requests)
+    assert len(accounting["unincorporated_completed_ids"]) == 1
+    assert float(summary["cost_usd"]) > float(summary["artifact_cost_usd"])
+
+
+def test_stage_accounting_does_not_hide_unresolved_calls(experiment, monkeypatch):
+    args, manifest, tasks, ledger, native = experiment
+    monkeypatch.setattr(ledger, "read", lambda _: [
+        {"stage": "test", "event": "reserve", "id": "lost"},
+        {"stage": "other", "event": "reserve", "id": "unrelated"}])
+    assert live.stage_accounting(ledger, "test", [])["unresolved_stage_calls"] == ["lost"]

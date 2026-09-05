@@ -141,7 +141,7 @@ class ResumeEvidenceTests(unittest.TestCase):
             native.optimize_observe.assert_not_called()
             self.assertEqual(args.test_transport.call_count, 1)
             events = [json.loads(line) for line in args.ledger.read_text().splitlines()]
-            self.assertEqual([e["event"] for e in events], ["origin", "reserve", "response"])
+            self.assertEqual([e["event"] for e in events], ["origin", "reserve", "response", "attempt_failure"])
 
     def test_complete_replay_repairs_summary_after_interrupted_checkpoint(self):
         with fake_run(real_ledger=True) as (args, native, plan):

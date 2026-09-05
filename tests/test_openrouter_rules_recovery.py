@@ -107,9 +107,10 @@ def prepare_ledger(tmp_path):
     return ledger, recovery.RecoveryLedger(path, "fake-key"), events, r
 
 
-def test_overlay_preserves_raw_reserve_and_retries_identical_payload_once(tmp_path, monkeypatch):
+def test_hardened_dispatch_retains_legacy_hold_without_reauthorizing_aborted_retry(tmp_path, monkeypatch):
     base, overlay, events, r = prepare_ledger(tmp_path)
-    assert base.summary()["unresolved_calls"] == [recovery.CALL_ID]
+    assert base.summary()["unresolved_calls"] == []
+    assert Decimal(base.summary()["retained_uncertainty_usd"]) == Decimal(r["budget_hold_usd"])
     assert overlay.summary()["unresolved_calls"] == []
     monkeypatch.setattr(pilot, "account", lambda _: {"usage": ".3", "limit_remaining": None})
     requests = []
@@ -120,15 +121,16 @@ def test_overlay_preserves_raw_reserve_and_retries_identical_payload_once(tmp_pa
             "choices": [{"message": {"content": "reply"}, "finish_reason": "stop"}]}
     monkeypatch.setattr(pilot, "request_json", respond)
     args = ("fake-key", recovery.CALL_ID, recovery.STAGE, Decimal("1"), events[-1]["request"], {})
-    result = overlay.call(*args)
-    replayed = overlay.call(*args)
-    assert {k: v for k, v in replayed.items() if k not in {"at", "key_id"}} == result
-    assert requests == [events[-1]["request"]]
+    # This historical overlay stays reproducible on its frozen branch. The new
+    # dispatcher cannot turn its old receipt into fresh retry authorization.
+    with pytest.raises(PilotError, match="explicit review"):
+        overlay.call(*args)
+    assert requests == []
     assert pilot.HARD_CAP == Decimal("50")
     with base.locked() as handle:
         raw = base.read(handle)
-    assert sum(e["event"] == "reserve" and e["id"] == recovery.CALL_ID for e in raw) == 2
-    assert sum(e["event"] == "result" and e["id"] == recovery.CALL_ID for e in raw) == 1
+    assert sum(e["event"] == "reserve" and e["id"] == recovery.CALL_ID for e in raw) == 1
+    assert sum(e["event"] == "result" and e["id"] == recovery.CALL_ID for e in raw) == 0
     assert recovery.receipt_from(raw)["budget_hold_usd"] == r["budget_hold_usd"]
 
 

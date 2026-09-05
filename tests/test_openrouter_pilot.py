@@ -101,8 +101,8 @@ class PilotTests(unittest.TestCase):
             self.call()
         self.assertNotIn("sensitive", str(error.exception))
         events = [json.loads(line) for line in self.ledger.path.read_text().splitlines()]
-        self.assertEqual([e["event"] for e in events], ["origin", "reserve", "response"])
-        self.assertEqual(events[-1]["response"], bad)
+        self.assertEqual([e["event"] for e in events], ["origin", "reserve", "response", "attempt_failure"])
+        self.assertEqual(events[-2]["response"], bad)
         self.assertEqual(self.ledger.summary()["completed_calls"], 0)
         self.assertEqual(self.ledger.summary()["unresolved_calls"], ["call-1"])
         with self.assertRaisesRegex(PilotError, "unresolved"):
@@ -128,8 +128,8 @@ class PilotTests(unittest.TestCase):
             self.call()
         self.assertNotIn("private provider", str(failure.exception))
         events = [json.loads(line) for line in self.ledger.path.read_text().splitlines()]
-        self.assertEqual([e["event"] for e in events], ["origin", "reserve", "response"])
-        self.assertEqual(events[-1]["response"], bad)
+        self.assertEqual([e["event"] for e in events], ["origin", "reserve", "response", "attempt_failure"])
+        self.assertEqual(events[-2]["response"], bad)
         with self.assertRaisesRegex(PilotError, "unresolved"):
             self.call(call_id="another")
         self.assertEqual(opener.return_value.open.call_count, 1)

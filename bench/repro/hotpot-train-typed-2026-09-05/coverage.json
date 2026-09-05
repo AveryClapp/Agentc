@@ -1,0 +1,4475 @@
+{
+  "bridge_sha256": "b260a39b1baedbe0a4cc45895c6041ec5bfcfdbddb3c7f342c38ed3879fe0122",
+  "call_hash_basis": "bench.openrouter_pilot.digest canonical JSON SHA256",
+  "cohorts": {
+    "CC_actual_public": {
+      "history": {},
+      "history_kind": "actual-public-input-no-upstream",
+      "rule": "ContextCompress",
+      "stage": "filter"
+    },
+    "SD_invalid_synthetic_history": {
+      "history": {
+        "filter": "{\"result\":null}",
+        "synthesize": "{\"result\":null}"
+      },
+      "history_kind": "synthetic-invalid-not-model-output",
+      "rule": "StateDrop",
+      "stage": "answer"
+    },
+    "SD_synthetic_history": {
+      "history": {
+        "filter": "{\"result\": \"SYNTHETIC selected passage; mechanics only\"}",
+        "synthesize": "{\"result\": \"SYNTHETIC draft; mechanics only\"}"
+      },
+      "history_kind": "synthetic-valid-not-model-output",
+      "rule": "StateDrop",
+      "stage": "answer"
+    }
+  },
+  "contract_sha256": "922c38de61b2caffb4a4b84a5a158a39b306219e4bc1b4cd0777be11b8d5f0b2",
+  "feedback_provided": false,
+  "gold_access": false,
+  "kind": "hotpot-public-rule-mechanics-v1",
+  "models": [
+    "anthropic/claude-sonnet-4.5",
+    "anthropic/claude-haiku-4.5"
+  ],
+  "native_admission": false,
+  "provider_calls": 0,
+  "public_sha256": "bac1fb01e4f132904648b873436ef1aed2e2766e01e3b8ac2ab0b6b15c0e0dc5",
+  "quality_evaluations": 0,
+  "records": [
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "28eda7a7169bb5e1364ecd96996870c47692aec06f23b0b74cbeeb27d4107045",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "28eda7a7169bb5e1364ecd96996870c47692aec06f23b0b74cbeeb27d4107045",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ae1416f5542997b2ef7d188"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "b0242a1decff2844764ef2c15306fdcd42cf49cbfdcac1d83cc4158ebbe4fd2b",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "9a3f68d575bee596e45dc9348ada89708afa0dd7ee05960e2bd1946eab6d81b8",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae1416f5542997b2ef7d188"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "af6a4c5ef12d008e27a339c149164e796d9c7ba362a2cf12512b91eabb303e7a",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "af6a4c5ef12d008e27a339c149164e796d9c7ba362a2cf12512b91eabb303e7a",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae1416f5542997b2ef7d188"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "ff7fbd834fe2f7592682f09d8f5036de53bf990e05fb06117b65c4e4ad85114e",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "ff7fbd834fe2f7592682f09d8f5036de53bf990e05fb06117b65c4e4ad85114e",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ade3be65542992fa25da70b"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "d360d6d929cbb83962411b25f9f3294253a6e13a0801a741987144b8a66ab05e",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "ac18626b0d2aa75bddc900f84b3dc8627ef6c987eb56be845db23719d09cce72",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ade3be65542992fa25da70b"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "31aa8ac04dfbd958e41f8ca5889e1eafa1f54ddc1619c9e10d6511ebcb230185",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "31aa8ac04dfbd958e41f8ca5889e1eafa1f54ddc1619c9e10d6511ebcb230185",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ade3be65542992fa25da70b"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "96146f6be4ee482a63b8c3242a82862a225ec432d93880fb12bc446130c3c29b",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "96146f6be4ee482a63b8c3242a82862a225ec432d93880fb12bc446130c3c29b",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5adda55c5542997545bbbd9a"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "19b43eacc4c638a7674e1387a1d8d06b380235745b56edbc947bb83e42b4b0a3",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "7d8efa833982c4e32dd0188ef347e1bbef52af03fb1e4b31de763926c12cb00f",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adda55c5542997545bbbd9a"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "f212ae4b793b30794cc70b8010edb2de5f02d8059050f097006fc83466fce396",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "f212ae4b793b30794cc70b8010edb2de5f02d8059050f097006fc83466fce396",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adda55c5542997545bbbd9a"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "a5d67eb9bfc2362f23b55cd8972c5fd865db0689fcc8f20bb7f7bbe72cf9183a",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "a5d67eb9bfc2362f23b55cd8972c5fd865db0689fcc8f20bb7f7bbe72cf9183a",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ac3e9bb554299204fd21ec7"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "628beac1c5c22db07846948ab7f73951596ef016a75d77fe36aa10d5be56bdf5",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "1255dc1f83ca3cdf1624b2195248d4fa7cc77df303935a276d6b60ee7e002f58",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac3e9bb554299204fd21ec7"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "38fa15c638881cfabbb643ae9d67c2c8db7e092802761512af7a650bb7b868b3",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "38fa15c638881cfabbb643ae9d67c2c8db7e092802761512af7a650bb7b868b3",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac3e9bb554299204fd21ec7"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "c9e8c13d5612d3e9d00f2060c8aac4ead68b2f365e0deb70463a5f0c485f658c",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "c9e8c13d5612d3e9d00f2060c8aac4ead68b2f365e0deb70463a5f0c485f658c",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5adec4ea55429975fa854f85"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "c2390fe188f6b8f6df5c6143a322aff932665a89db1c814414b6f82b4096442f",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "640fc978eb58218d7e6536e30e79e6baabcea003371cb99f5e2d9a9771a64798",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adec4ea55429975fa854f85"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "135187a165a7c0de7044a2d3a0d9d178b07c1b8c5d2c2e6c779bb7e98cdce9ed",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "135187a165a7c0de7044a2d3a0d9d178b07c1b8c5d2c2e6c779bb7e98cdce9ed",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adec4ea55429975fa854f85"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "5636a32de751bc37ff4c16aec0a719d76fab602b8c2c50d83a4a2544af0ff4a8",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "5636a32de751bc37ff4c16aec0a719d76fab602b8c2c50d83a4a2544af0ff4a8",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a771cfd5542994aec3b71f3"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "0fc2789f38b7b8ff05d75bf65c7f8da1d2adeba21687ff91d5f2cbc3ac8663a0",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "e1490f5758eff85f0dc8878f21ab0a9250543ecf14bebbd170125a768ad2807c",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a771cfd5542994aec3b71f3"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "09b26cbcb8c6ef93c9c9a3e3250d3df157867830e9acf511551b91321299cf5c",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "09b26cbcb8c6ef93c9c9a3e3250d3df157867830e9acf511551b91321299cf5c",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a771cfd5542994aec3b71f3"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "453fbdbb52a2f58ea60d1b0883c832a934a97e2b92f089e9f4dd8d943b48db87",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "453fbdbb52a2f58ea60d1b0883c832a934a97e2b92f089e9f4dd8d943b48db87",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a8b05e855429971feec4616"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "8f40ab67a1a5005fb14b052b048b26212776c7455c7564d8484253a6a04186aa",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "3c0ab1c75d26a7d80f53970e259148756dbebb29537c8e42913ec2c4c03b9c12",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8b05e855429971feec4616"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "1eca02279d8c7edc44783a3872e34f7e3b2b4200ee87170b72e99f2122df4dd7",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "1eca02279d8c7edc44783a3872e34f7e3b2b4200ee87170b72e99f2122df4dd7",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8b05e855429971feec4616"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "a1dfee2031c0763dfb6700ceef1a9129d395031cb7be3a8a97292868cff230a1",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "a1dfee2031c0763dfb6700ceef1a9129d395031cb7be3a8a97292868cff230a1",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ab3cf4c5542992ade7c6eb1"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "815f8cf26cf2e25c284cd39e85b443d3d3991665106624c671524ed30da20830",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "f36ed4f743ab55aa76dbeccef46a03663922571679f665b7e0015eaaecf68d7e",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab3cf4c5542992ade7c6eb1"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "a4225950cd464f5eb263cba57dd1753d4e8b61c4075cb031694850414f1a54ea",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "a4225950cd464f5eb263cba57dd1753d4e8b61c4075cb031694850414f1a54ea",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab3cf4c5542992ade7c6eb1"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "86f4df8d2af73d513d5ca05f04b720b01f7377fdc920fe76212a98e9c3705b4c",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "86f4df8d2af73d513d5ca05f04b720b01f7377fdc920fe76212a98e9c3705b4c",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5abfd1cf5542993fe9a41e85"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "d222de22575e54e824c63528c743e5f93d2098d1ecbaa8764d5e55589a7cf55c",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "2a57d98d59618feeec5aac2f48b3cf0191d7b2cef3d3c5207c88c6a82610fa6f",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5abfd1cf5542993fe9a41e85"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "46b4c5bde4d4d21334429bc5eefadeb8ecbe304d02f4da73a27210c7ebad13d9",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "46b4c5bde4d4d21334429bc5eefadeb8ecbe304d02f4da73a27210c7ebad13d9",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5abfd1cf5542993fe9a41e85"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "fb68b3c630196c153763097610d170443e759a308d0180f5e723f71546afae63",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "fb68b3c630196c153763097610d170443e759a308d0180f5e723f71546afae63",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5added7b5542997dc79070b9"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "0870128339233cbddabdfe8b1c667827e4440c06947bd44f1fd537ecca8ab2ce",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "c27f5335b354e196dcf430a4339d26bca1377f1ee066386c4285a8d97c5c71ee",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5added7b5542997dc79070b9"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "663f160b3a1ada1e43990aa73af0f69d3f6bd52c5b7a00ff47a53bdd96332663",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "663f160b3a1ada1e43990aa73af0f69d3f6bd52c5b7a00ff47a53bdd96332663",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5added7b5542997dc79070b9"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "c06f95f30a3fc1c3bd05ad72a1ead467bba5ac426b08d483500b8c80a15070fd",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "c06f95f30a3fc1c3bd05ad72a1ead467bba5ac426b08d483500b8c80a15070fd",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a8f1740554299458435d562"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "5291071a0d21574de767aee28dd3900f61ce4b955da9da2493e5837d0014edb5",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "e646c9fce6bc7163b4f0e9a7d5318437f5768543837e5418b6d6c529f0f4bbc4",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8f1740554299458435d562"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "1ab4dcf6c91f90453924dde6dd784628028fa9a75d0960b689c6bd447c38b0f8",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "1ab4dcf6c91f90453924dde6dd784628028fa9a75d0960b689c6bd447c38b0f8",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8f1740554299458435d562"
+    },
+    {
+      "abstention_reason": "no_proposal",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "4cf9ed8ba07df0496c096ca10caff24779c678b041b008fbee640eaa6ff58d1a",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "4cf9ed8ba07df0496c096ca10caff24779c678b041b008fbee640eaa6ff58d1a",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a72fd895542994cef4bc417"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "f2328b4903fba29aa5e33cd23fe2bafe289ee086596817f78933f7fb50182562",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "9c5b6b93a2928b0be2ef3f6b89831da7a3fef9c9a9a6859803cd074f4049987a",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a72fd895542994cef4bc417"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "56d3bad33a2180f41a5f22ac9ed8052b4ec4fc73fdcadd81f49c4cfb0214f724",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "56d3bad33a2180f41a5f22ac9ed8052b4ec4fc73fdcadd81f49c4cfb0214f724",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a72fd895542994cef4bc417"
+    },
+    {
+      "abstention_reason": "no_proposal",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "1efe8db220e3906761788f9f29dffac8aab532f2b816f2cb0a3c0d5b0a9159f4",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "1efe8db220e3906761788f9f29dffac8aab532f2b816f2cb0a3c0d5b0a9159f4",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a80b799554299485f5986db"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "5938b52746752418524d54ff4f5dcc9411b1859f232bf27680d55878b6b23514",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "f6e8337693d52dce5fed28a0afdca13f35436f4defb72cdd89f7f9e66c190d66",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a80b799554299485f5986db"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "55ff0df881c362fe0e76b5958ff7ff52243f55683eb5dbf85f0803b6466fb8dd",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "55ff0df881c362fe0e76b5958ff7ff52243f55683eb5dbf85f0803b6466fb8dd",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a80b799554299485f5986db"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "00915e05fad2a032a7dbceb066c5067caeae171faf664d18f9a308f5df8d5c05",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "00915e05fad2a032a7dbceb066c5067caeae171faf664d18f9a308f5df8d5c05",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a7724ea55429972597f1448"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "7230a07b15b11a28ed875341af8547fd1c7a2ce52bdd9f7a644ad5ae29b0dc02",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "c914d22cc44070845481110ed1a370a1d3360efe7e8bf3476e33e2c34be3047a",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a7724ea55429972597f1448"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "d78d9687d5732a7013f01a5623b4b17b7c44b7c15cad2396501213b47f0f54e0",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "d78d9687d5732a7013f01a5623b4b17b7c44b7c15cad2396501213b47f0f54e0",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a7724ea55429972597f1448"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "f541406f292659f8ddb114f72a56a43ecb7a0044bd647a031d5217e330f32fff",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "f541406f292659f8ddb114f72a56a43ecb7a0044bd647a031d5217e330f32fff",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5adcf1615542992c1e3a24c9"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "148829f3f9d0bfab780b7a0a1b0444578db3ebd4dce205a721b8e51fd870a6da",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "219642874fa5fa75ee65cffa322c277494380da0b73fcb4befa32fbab89a106d",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adcf1615542992c1e3a24c9"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "c34b31f9e7a5201d62348246f61cc164efba08b51d2acbb871183e9db54d09fe",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "c34b31f9e7a5201d62348246f61cc164efba08b51d2acbb871183e9db54d09fe",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adcf1615542992c1e3a24c9"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "fcb4d4ec19a38c53e86d981cca0dd5fce7ae908d7299db144e1b09bd0faba36a",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "fcb4d4ec19a38c53e86d981cca0dd5fce7ae908d7299db144e1b09bd0faba36a",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5adf47455542993a75d26478"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "1a34e9a2c017ce0ddf55e23a8258cfa6a6a8fe5ad091463064225d81e0891b20",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "228b0fcfefef63050f6c8b5f0bb181359b35a0c613713e0ef3d9163748b1cc9b",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adf47455542993a75d26478"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "dbfca6bcd60917c112ced2400fcd6e0d49faa374a410067fce8a92db8a4fd46d",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "dbfca6bcd60917c112ced2400fcd6e0d49faa374a410067fce8a92db8a4fd46d",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adf47455542993a75d26478"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "daa98552ada33747d1c3f6cda138e58c0adb3f2a56c0d0f91b01b0f87c73c619",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "daa98552ada33747d1c3f6cda138e58c0adb3f2a56c0d0f91b01b0f87c73c619",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ac2969f5542990b17b1541f"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "23f4e9a962b9d035558c90edf287278af4ea34ec55db279e68aa74b272830b80",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "5047a04bc6022ef98b894f133d8a3058c91531438baf51a6332b2c3c406eb0d9",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac2969f5542990b17b1541f"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "b6f0e0f631a87954a9debf394a50cd9f990abb38575aa06a2defc57bf5602302",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "b6f0e0f631a87954a9debf394a50cd9f990abb38575aa06a2defc57bf5602302",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac2969f5542990b17b1541f"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "e439c7fb60fbaf67541fe37803065e9cdfb61c12bb3c3ab036dd3c36f8dd5790",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "e439c7fb60fbaf67541fe37803065e9cdfb61c12bb3c3ab036dd3c36f8dd5790",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a78de3f55429974737f78e4"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "2bfd36e7db1985e7063ca73cc02cbaf37813e4261f01756ca4f3acd550bce647",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "bde58057365820f132624b92140fa5c3f198b5cc7fb3e8c864a0eb8bffd7fa53",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a78de3f55429974737f78e4"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "ec169bee9638feebd9a29af5576c694ae85744d51674253e93700667a88c0c6d",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "ec169bee9638feebd9a29af5576c694ae85744d51674253e93700667a88c0c6d",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a78de3f55429974737f78e4"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "1f232e80cd93d64de70fb993eba08b441875245f687480c418c0c77b871608bc",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "1f232e80cd93d64de70fb993eba08b441875245f687480c418c0c77b871608bc",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ae69d895542991bbc976151"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "0d7cdf371ddfadaf3400750445fde9b255b7080a8a825951dad0f5d446648960",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "9e7bf5450da6a3694c06b6bfbb26877385c30567a9d4ba822f520b45a0e79d31",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae69d895542991bbc976151"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "109098c99aa899c7692c786d088c37df53c224cecdecfaa437e62b1f386daf5a",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "109098c99aa899c7692c786d088c37df53c224cecdecfaa437e62b1f386daf5a",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae69d895542991bbc976151"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "58806b1c34155e0f4c26663b05dbb50da3afdb498d5d596381c1d0768e3e01a6",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "58806b1c34155e0f4c26663b05dbb50da3afdb498d5d596381c1d0768e3e01a6",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ac14bf85542991316484add"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "18ec52b371f004f7ce687b44a50bf6ebd33db78707804650233667196cfaf2ac",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "e0bbb5461dc737754514f66ec07e7bcb716e5b49f9558ea28fb9e510506897f0",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac14bf85542991316484add"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "86a0adee3f5325a939d8f73eb99b46157d43ecf2eb0f50e02a78cb16a63baab7",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "86a0adee3f5325a939d8f73eb99b46157d43ecf2eb0f50e02a78cb16a63baab7",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac14bf85542991316484add"
+    },
+    {
+      "abstention_reason": "no_proposal",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "e55d899b1c5f13b53d8acdff73ae0693ff2d6e7cc85c1a0636af3503fa491598",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "e55d899b1c5f13b53d8acdff73ae0693ff2d6e7cc85c1a0636af3503fa491598",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ade01e15542997545bbbe03"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "3bab806f964d0d8fff128399fad4f5bcc818687d9ca0ee7f0f16f7d0cdddb93d",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "24e63e55c7b8628c92451056c906b675b6f11d30caf857fa9b356445ec88d7e6",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ade01e15542997545bbbe03"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "dc8ea164347d875bfb54d64b232778c584724be1859e31520be5c606d3e8e5a0",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "dc8ea164347d875bfb54d64b232778c584724be1859e31520be5c606d3e8e5a0",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ade01e15542997545bbbe03"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "f859278f424aaf9e7b728da3d00a64dbea4ccb3658d14a34a2f4aee3e9b3f1e1",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "f859278f424aaf9e7b728da3d00a64dbea4ccb3658d14a34a2f4aee3e9b3f1e1",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ab42ee65542992339550048"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "baf9b3ee97c4da3fc4c4966a27f06855b8f69f0a913885b384a71fac7a0b4e7d",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "02bf37e52b9cf941173c4af6fe808ff9c0481e571813c2a4ecce3175caf898ea",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab42ee65542992339550048"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "e00f20da64b442ff57b0229d266248f267c18914f68e5a12cd097be988d75ee0",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "e00f20da64b442ff57b0229d266248f267c18914f68e5a12cd097be988d75ee0",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab42ee65542992339550048"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "e24416e856253747d3ceea6f4e861a4a65d9639e5b16d3507898bf7db6a1ea8e",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "e24416e856253747d3ceea6f4e861a4a65d9639e5b16d3507898bf7db6a1ea8e",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ae67ba255429908198fa5eb"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "3591c3effa4047151248d440a3c390188feaf7ae72e2b9498fb87d0c58a76d27",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "39aa8bc32176911357ad61244678c07de0392c4591f9899e4fe22501232468b9",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae67ba255429908198fa5eb"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "9bc2be98f1388b512fd9923d76a2b5e75fec6d104250c62411d569e23640ded8",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "9bc2be98f1388b512fd9923d76a2b5e75fec6d104250c62411d569e23640ded8",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae67ba255429908198fa5eb"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "248dd37fe78cddd0a9764783444b7ac56cdf81d438d55b62701a3db6acf9c1bf",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "248dd37fe78cddd0a9764783444b7ac56cdf81d438d55b62701a3db6acf9c1bf",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ae7361f5542991e8301cbdf"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "b9b7901b68a30ced989a50245cf94b96fba6ac6bfff499c1b33802c63f25426b",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "6eccf2746101ead205e3aa618bd363c26bd25bf7322008a53cb0d4d8eeba791e",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae7361f5542991e8301cbdf"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "90923ff624399cc2dc2e5a07b11e44f28cb139a9532bcdf928101246224ab052",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "90923ff624399cc2dc2e5a07b11e44f28cb139a9532bcdf928101246224ab052",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae7361f5542991e8301cbdf"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "e67391cafe604959760c99f73e3fbe82b2934d6b9ed75b544f28f6b2c0151e96",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "e67391cafe604959760c99f73e3fbe82b2934d6b9ed75b544f28f6b2c0151e96",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a82f36a55429966c78a6aae"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "8bf5167f4612263f5b9541853d9a4988ff061ed240f01b783b5d711816825b8b",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "f91b64f58dfb4928bcb210e9483c41d82dd2ef1742093dc669649b6a646469db",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a82f36a55429966c78a6aae"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "03ba517db016e947d3786c3640cbd00390c4d1890b53fa1813a69cd1b74c66df",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "03ba517db016e947d3786c3640cbd00390c4d1890b53fa1813a69cd1b74c66df",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a82f36a55429966c78a6aae"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "bfe83b738cfcb09a5d33e8abe354a6f5bb39bc816920d0bb531952e232306240",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "bfe83b738cfcb09a5d33e8abe354a6f5bb39bc816920d0bb531952e232306240",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ac2d102554299657fa29080"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "7d75ed95a602803e69ca53184a0c309c06bf5ca0e059ffe175b831cb03375433",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "ff55a0679e82d0d0b80c16f21f1ee0fe87cb9c5426251e157b5fdefbfbcb84a2",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac2d102554299657fa29080"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "c63d74c9f577f46f2806b699221cdae5f4e424a8bf5d532d491f0cad9242189a",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "c63d74c9f577f46f2806b699221cdae5f4e424a8bf5d532d491f0cad9242189a",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac2d102554299657fa29080"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "7455e3ac8a008a08a526dee7af0e7dc181468f7372fe3cb563422e66be75c4ab",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "7455e3ac8a008a08a526dee7af0e7dc181468f7372fe3cb563422e66be75c4ab",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5adfb92755429942ec259b15"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "48820bafc0df098efa1ffff7d098a59dcf8b03b107703081bc486c11baf429c6",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "61239133dd7239e3e109f74b22090a72d2dc5a40962f5c33d0ba9660485b029e",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adfb92755429942ec259b15"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "a6b45046b4d6495c7067dd67a72714f0fd997d30e99c52e48dfd4c7a7e99fbc9",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "a6b45046b4d6495c7067dd67a72714f0fd997d30e99c52e48dfd4c7a7e99fbc9",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adfb92755429942ec259b15"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "7e68c62891b0f897d60336e616449ce31ba80b6d131cf4bbf1cb4b255a14ce83",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "7e68c62891b0f897d60336e616449ce31ba80b6d131cf4bbf1cb4b255a14ce83",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ac31be3554299741d48a1fb"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "440f9b8b57ccfc3d0356fd4dca635c5a3514550abd8a8a37a29506720b7e3510",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "c4b0334bc6be2e62f9a41fcab7c2fbeab5bf2e3e5f07976adc7a9ce69e75dcf1",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac31be3554299741d48a1fb"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "fc96b3ff7df4d8315fe4c709fe9ea2a47fa86505df4b1a2b85915ef11e83d40c",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "fc96b3ff7df4d8315fe4c709fe9ea2a47fa86505df4b1a2b85915ef11e83d40c",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac31be3554299741d48a1fb"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "5e0f19f3b20141d1f309bd8b98027461116dd179466a77107512c666cc513af9",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "5e0f19f3b20141d1f309bd8b98027461116dd179466a77107512c666cc513af9",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a8d88f4554299441c6b9ff9"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "e83d655a2a119cfb10fbfad4e829383ed9d8c6349e2d8941c8afbe8a16aa8db3",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "3068bcc74013307c21dc09d983c436bcc439cea0637d5c941459d67d3f7d1c2d",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8d88f4554299441c6b9ff9"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "28368560afde28f4cf4a51d2442bd4e9552e10df8453ceb51a37b4ae26bfb0fa",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "28368560afde28f4cf4a51d2442bd4e9552e10df8453ceb51a37b4ae26bfb0fa",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8d88f4554299441c6b9ff9"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "00e7cb0985c1f8a91ab663d2d3fdff07ed9658d766af251254b9e89cb406e268",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "00e7cb0985c1f8a91ab663d2d3fdff07ed9658d766af251254b9e89cb406e268",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a7103395542994082a3e4bc"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "4fbdfc12f4df5fc264d5b0201019cc4b14f561000209e20fca3fe2bc125b31e2",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "1993c4fb19c11a204e974254a96fc07cf3c272267a09a26c256650064ccc5525",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a7103395542994082a3e4bc"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "93548f44c0ab74627ec2f11379b653b5dd9d95133eae6a6395e0435ead2ff2c8",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "93548f44c0ab74627ec2f11379b653b5dd9d95133eae6a6395e0435ead2ff2c8",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a7103395542994082a3e4bc"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "cd5fd2df851c9887782975320e99d954297382ea33485a69b320272e0f3b0065",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "cd5fd2df851c9887782975320e99d954297382ea33485a69b320272e0f3b0065",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ab31a0e5542991669774197"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "d053e811bac3a0780f75885cf1d343ae0ff97c80e26884f14343bc649fdd9c98",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "98680cf7d7314e0dd69458ea1b88fc91d3bc043bf847d9204a91a794978befc7",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab31a0e5542991669774197"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "9147eb8d900cc3a67529fac3f30f50de7e3cc534e1993cc72b3c8d9b9de868d3",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "9147eb8d900cc3a67529fac3f30f50de7e3cc534e1993cc72b3c8d9b9de868d3",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab31a0e5542991669774197"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "6f34142dc6a5b28d8ce9f3c238b70837deb87d6b67f56b2843aa3c34b6ca53a1",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "6f34142dc6a5b28d8ce9f3c238b70837deb87d6b67f56b2843aa3c34b6ca53a1",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ae768b75542997b22f6a738"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "d6cf4983773d8244af33f160c1fdcc1c62c9c574c288d68e570a816401572577",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "5e1f7da21c571f6a3943c9e958495700d6bd0e76202cf8ce64aeb90917baa65b",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae768b75542997b22f6a738"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "928a27b14fad7a408450c66c118b1deb0678054194c44a556f22474681f4e151",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "928a27b14fad7a408450c66c118b1deb0678054194c44a556f22474681f4e151",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae768b75542997b22f6a738"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "158d4136b58a68a2a27d51deeb2b6eee4a576bc3b3233757b5bf285818e6f379",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "158d4136b58a68a2a27d51deeb2b6eee4a576bc3b3233757b5bf285818e6f379",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ac24c37554299636651995f"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "09ed54ea1d72ceb14261f6dce40764025a272f7ccc3e637e678f8513918e05cd",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "6fcf8ba37f549b3579dc25d525f7cfc43ddfaaffeb15818dd4d841fdf7fb4e3b",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac24c37554299636651995f"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "6449e723d7219e54e887ef5b7715228657b7360c51a5ebaeed4ae4b0f336d736",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "6449e723d7219e54e887ef5b7715228657b7360c51a5ebaeed4ae4b0f336d736",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac24c37554299636651995f"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "45cc5a89af1783e3282eaf057ff1a2f4f1fc1b562ce06ffe3323434e2a9b3b9a",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "45cc5a89af1783e3282eaf057ff1a2f4f1fc1b562ce06ffe3323434e2a9b3b9a",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5adda3025542997545bbbd97"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "960e7bb3aecdd3a8bcd73e268b7b374ded5575b141ad38ef4adcc900ea78b0f3",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "7b559256d960f755579d54330b502df30d6b442ecb7192d65a8fff1ed23beb7c",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adda3025542997545bbbd97"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "8008cfd439966b5f70639622c393ceb0fcdec39c7fff1bd5abb267905ecfd834",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "8008cfd439966b5f70639622c393ceb0fcdec39c7fff1bd5abb267905ecfd834",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adda3025542997545bbbd97"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "bea544216b60cab808da52600eaa753653422d2648f5e3e5ed28706fae427995",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "bea544216b60cab808da52600eaa753653422d2648f5e3e5ed28706fae427995",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5addadfb5542997545bbbda6"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "da732f659ef1cb28e235dfabbe028981edfc4977d28267bc3d9617e000ed382c",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "79b2db398f65d52b21afea7f2c5f14e2853099162c9f34b479baeae588bef2bc",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5addadfb5542997545bbbda6"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "501ce7da33ab3d9482bc3220ffbf7efa6a37987c827188fc88649475d234c225",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "501ce7da33ab3d9482bc3220ffbf7efa6a37987c827188fc88649475d234c225",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5addadfb5542997545bbbda6"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "f5696b9cf469007ef25372d655bf456a18d5e3f4e0d0749a21c42acdda42d61b",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "f5696b9cf469007ef25372d655bf456a18d5e3f4e0d0749a21c42acdda42d61b",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ab53a625542997d4ad1f0d9"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "9cfc30a651099583f37a4f663470ad3537371886fe530230e2a406a644e00c88",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "d7cdb121fe8fb633122578b718dd06e664c8e6b75a8f18d572c85901a8496b78",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab53a625542997d4ad1f0d9"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "5fbd238b2c97e5df0a9a867f66e23cc03d89ff07565c3823e8cdd3bc59cb0a12",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "5fbd238b2c97e5df0a9a867f66e23cc03d89ff07565c3823e8cdd3bc59cb0a12",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab53a625542997d4ad1f0d9"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "7f5210f05b840c5a307c58edcf4a5ab188ff4c7557789cc219863815e7f59e48",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "7f5210f05b840c5a307c58edcf4a5ab188ff4c7557789cc219863815e7f59e48",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a8c4b43554299653c1aa028"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "82a008a9d8a9e3ff98c14589c141e1b1fc8cf94c3f46b8239094a299454ce0fa",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "ccfd3d1a9c5216de92c25a4bf377af397cf9d2521e946ac791eb5b17c87df537",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8c4b43554299653c1aa028"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "1069403e9979a00c33f1ae022d2b3af0f26c34ef6980b5e39bc4b3552a5268bd",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "1069403e9979a00c33f1ae022d2b3af0f26c34ef6980b5e39bc4b3552a5268bd",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8c4b43554299653c1aa028"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "8946bde12850ae47d8d6b072c524e0477c04f90a393df0d75ba2f083f5c920e4",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "8946bde12850ae47d8d6b072c524e0477c04f90a393df0d75ba2f083f5c920e4",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a7b2f0655429931da12ca1c"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "b5a2f176c3a0c46f931f3667414549d0e2a1838c34ab1991a1bbd09b3b0f9940",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "bf26bed84cf471e0c907093af019112379da91201093edb4f348786c7f0d8457",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a7b2f0655429931da12ca1c"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "7835251e2f822162fbb05415b0a2512f275c8ff5d37b7e5d7622c90a8ecba505",
+      "model": "anthropic/claude-sonnet-4.5",
+      "original_call_sha256": "7835251e2f822162fbb05415b0a2512f275c8ff5d37b7e5d7622c90a8ecba505",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a7b2f0655429931da12ca1c"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "4811aaa613342391117984610980929e2cd6fbd4759903a3d1ae737387cf57fc",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "4811aaa613342391117984610980929e2cd6fbd4759903a3d1ae737387cf57fc",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ae1416f5542997b2ef7d188"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "e1a03096f783b1dc6588fac1e6107643588c1fdc4ed5ca31e1b7192975b6127f",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "10a12afabdc3514ae0905ac332dff14603a14aeb27db8006b4a1dbaf3d9dd67a",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae1416f5542997b2ef7d188"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "55c4a79b4e57a4c6b79d5bd6a4171af06c8a449f794bf77f66bb0fcb691ed257",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "55c4a79b4e57a4c6b79d5bd6a4171af06c8a449f794bf77f66bb0fcb691ed257",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae1416f5542997b2ef7d188"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "ae174ea83221b6e4e1f345e366dc498b89557b119468633d192df2bd53402378",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "ae174ea83221b6e4e1f345e366dc498b89557b119468633d192df2bd53402378",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ade3be65542992fa25da70b"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "1e8b91154b6e155686f586acbd0d2ab3c53e01156cc6829f19de3c8d57aaa37b",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "1a042e2e822f3bf476ecfd8056b1cfa8b18a1e80b78166603e54fd6c2ea69035",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ade3be65542992fa25da70b"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "f66d4e5e75a85d9b2f6301214d54bf5e2f8e5412d81f2fe9528e58fd7519e0e5",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "f66d4e5e75a85d9b2f6301214d54bf5e2f8e5412d81f2fe9528e58fd7519e0e5",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ade3be65542992fa25da70b"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "b24a5a63705f988291cf8254cabcea9f04346acc4b46805635139556b6d55011",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "b24a5a63705f988291cf8254cabcea9f04346acc4b46805635139556b6d55011",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5adda55c5542997545bbbd9a"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "955049675695f7fe0f2883190d19fe9db98c0ead316b4aacf4b309d1583b246e",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "1cb03553491c4ccece401674a4e7f473fbcdd1d05b09698c3784e55548c492e3",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adda55c5542997545bbbd9a"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "ae4ac511b0006df67b5e1120007e9a8f5f980df1ca14fab1d8d3e1d777c7e23d",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "ae4ac511b0006df67b5e1120007e9a8f5f980df1ca14fab1d8d3e1d777c7e23d",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adda55c5542997545bbbd9a"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "8c97780f53ae0b39d211b28860d6b0dfb2af26e958918f7a62827a31cfec794f",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "8c97780f53ae0b39d211b28860d6b0dfb2af26e958918f7a62827a31cfec794f",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ac3e9bb554299204fd21ec7"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "5bbe06386f95698dabbc2489d1d1336c48b028b06bebd0ca2d4603765316f8d8",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "a39d9018c992046669267231d499899740a56ad35312ac3efd73f4f7ee78a77b",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac3e9bb554299204fd21ec7"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "08e1610d66ef1c0694f16d7a53b7b801606b567078084d5639bf3682176bf46f",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "08e1610d66ef1c0694f16d7a53b7b801606b567078084d5639bf3682176bf46f",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac3e9bb554299204fd21ec7"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "662a4872138470c90714b22a8bb74d4188e28d30c5e01114a6148869afd7c6ac",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "662a4872138470c90714b22a8bb74d4188e28d30c5e01114a6148869afd7c6ac",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5adec4ea55429975fa854f85"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "149ee02433624e65c8b4c9cab672a0eb565473673c0ec9a94beb8288dcd0c4dc",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "715987e7045fbb5cba7565bda832fcadd1056d830d1ddcd2c1237d867af8768e",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adec4ea55429975fa854f85"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "7b08086044f6145bd666dbffa388a06c218a61ca0cae8db63f6b4c8eba24b4dd",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "7b08086044f6145bd666dbffa388a06c218a61ca0cae8db63f6b4c8eba24b4dd",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adec4ea55429975fa854f85"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "4be79fafe04206b176233f631c93d8a2e2ca13e92edd8a34bbdda4558a9024e5",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "4be79fafe04206b176233f631c93d8a2e2ca13e92edd8a34bbdda4558a9024e5",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a771cfd5542994aec3b71f3"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "6bc64a00ceee34e855994a931b43bc5b4893bb053c2444136eb65070291aa72d",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "50741c82de0c037c8b7958e252b369b584055afb913645c0fe49c26bce9d1fd7",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a771cfd5542994aec3b71f3"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "8a785df166155d908acdf86785763f78af3926749fb754738edeb5bdf70eeba7",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "8a785df166155d908acdf86785763f78af3926749fb754738edeb5bdf70eeba7",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a771cfd5542994aec3b71f3"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "029425568f0479f970e965b3f717567a05968ad24718328a7da59a5c8b9cfdbc",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "029425568f0479f970e965b3f717567a05968ad24718328a7da59a5c8b9cfdbc",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a8b05e855429971feec4616"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "449ed1d52c259c704dbe6e07d954dee18baa0b0ae0f7eef04baa426e47b69299",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "0f9b02707b199f31b56568afde355cf32360b90703fe0aecd7c409bd98e51013",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8b05e855429971feec4616"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "b5292b055c9b185d65f1589af64fef019178798642ed06f179e70f82e6b87ef2",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "b5292b055c9b185d65f1589af64fef019178798642ed06f179e70f82e6b87ef2",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8b05e855429971feec4616"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "2e2de1faf2ef3ae17a65b5dba7baab134b794562ab5ef79ee3586158ff787377",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "2e2de1faf2ef3ae17a65b5dba7baab134b794562ab5ef79ee3586158ff787377",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ab3cf4c5542992ade7c6eb1"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "91455bc74059035d7ea65cb33c349e939eb7c2dd4fbd85f0d6425fa3a05b64c6",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "e0f756b5deb19f27becee84e8c0eacba71d53a39464baf229082eb4fca4fee33",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab3cf4c5542992ade7c6eb1"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "d9cda4aa1c1e24fc106251aa86617be5cf9fa35fc757797d8dbb1e6b440809e9",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "d9cda4aa1c1e24fc106251aa86617be5cf9fa35fc757797d8dbb1e6b440809e9",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab3cf4c5542992ade7c6eb1"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "1f079b67a4286fd6dc7f3f3b2bee3543245ebf7053a7ea11b376690dffeac354",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "1f079b67a4286fd6dc7f3f3b2bee3543245ebf7053a7ea11b376690dffeac354",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5abfd1cf5542993fe9a41e85"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "824a57ca5b75e4cb92370164532de79f120e82e3043bab89c68c4297eded4b56",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "bc6a54d261b1eaea245591e09b602a584adce40a0acead13e734f8a291d28a9c",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5abfd1cf5542993fe9a41e85"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "b7d8a2d38b14fc8fafad02333cce5e4c9ecafe272dbe34581b4979caa38c2c11",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "b7d8a2d38b14fc8fafad02333cce5e4c9ecafe272dbe34581b4979caa38c2c11",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5abfd1cf5542993fe9a41e85"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "42550636a902c618a5813b89633052981a7a6ec5bd42bafd55f7b2923a7b5373",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "42550636a902c618a5813b89633052981a7a6ec5bd42bafd55f7b2923a7b5373",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5added7b5542997dc79070b9"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "75f7280f3f6166a2a54b9d8e7dcc52905630bc181451a8ef8a68b16a3805a2fa",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "d97fe04be0281cc74a3147ccf4fb94f64526595ed9dd621a1587033918076b43",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5added7b5542997dc79070b9"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "adff7f789ebb8d2e49180c50798b3918ce843a5c6e09108a466c68ca05e1a628",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "adff7f789ebb8d2e49180c50798b3918ce843a5c6e09108a466c68ca05e1a628",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5added7b5542997dc79070b9"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "5131b856398d1c213b921ba650d5eec503bf82c89197fc8c9d658e8050de6284",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "5131b856398d1c213b921ba650d5eec503bf82c89197fc8c9d658e8050de6284",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a8f1740554299458435d562"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "1cece9635e6de53ca48e5a6e874c3cf429f7fee553b7e0061d60fc2eeb3c7add",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "5a9388ff31dc4207ee2dd95c2591557c56b60a642b04f4d343ef1f9b405414bd",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8f1740554299458435d562"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "d584767bc9ddb38dec8ffe73a9642f9ff6367ef35407e600f3752d97abd18623",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "d584767bc9ddb38dec8ffe73a9642f9ff6367ef35407e600f3752d97abd18623",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8f1740554299458435d562"
+    },
+    {
+      "abstention_reason": "no_proposal",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "f239c8c183067631b51c4df33a757bc65c4697d9c33272a3e40a159414b126e6",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "f239c8c183067631b51c4df33a757bc65c4697d9c33272a3e40a159414b126e6",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a72fd895542994cef4bc417"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "3478a2a6930c454c173067339ed3879cdb09e2cc7f1cdf5fb98bb0702ca61597",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "87379f6bce82bda8fb0a9c6473af2eb3b4cbb202791673d667c076e9502bde10",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a72fd895542994cef4bc417"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "ec3e3c3d2d951f7cb526a535d4dbd260a470ec2c4f884aa2875b1d55319c5118",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "ec3e3c3d2d951f7cb526a535d4dbd260a470ec2c4f884aa2875b1d55319c5118",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a72fd895542994cef4bc417"
+    },
+    {
+      "abstention_reason": "no_proposal",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "b87cddf9300a4d0691a91869a024848b19f15c367034c071780263abac0198a2",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "b87cddf9300a4d0691a91869a024848b19f15c367034c071780263abac0198a2",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a80b799554299485f5986db"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "6289f96787b79d55120c0035eaf4c209a67c77ffb75e61feff0af2101cf48536",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "5a4ceb664cfedca6d3bab05916dd0cd64638d5c4697f2fc8877f2906f91a313a",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a80b799554299485f5986db"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "610462cdafb58206a53b30af78f09af024ab2db9f15b166ddddac5ed94ffe379",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "610462cdafb58206a53b30af78f09af024ab2db9f15b166ddddac5ed94ffe379",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a80b799554299485f5986db"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "457987ee8be5b269cc6eb2fde2d8979aa867480cad3872da6c01616eff064b5a",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "457987ee8be5b269cc6eb2fde2d8979aa867480cad3872da6c01616eff064b5a",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a7724ea55429972597f1448"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "80d79f5c66e99caae28fd05dfe22b706e10d1a2c0e5768570434e3f7d5006255",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "1358adb6df077213c43d9c3ccc3870263e069201dec052680f39e2eb321de634",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a7724ea55429972597f1448"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "c1e981390655fb84f5644910a32292d01ac0cba945bfa93cddbd8d3029c9e37f",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "c1e981390655fb84f5644910a32292d01ac0cba945bfa93cddbd8d3029c9e37f",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a7724ea55429972597f1448"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "a9f139e711f27ef6808f4371f3d2448fa22c0fe9b567409ad5663bb6e169c8b6",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "a9f139e711f27ef6808f4371f3d2448fa22c0fe9b567409ad5663bb6e169c8b6",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5adcf1615542992c1e3a24c9"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "b8ac3845b6c50d5e194901dbf4f760e49b6d0d58a036925c0837cb5f409d7ece",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "7925ed36302514e6d1c362368e81de1a80beef0cf38de87a5c6a60dcbf204de5",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adcf1615542992c1e3a24c9"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "23f17a5cc4018d3da87638fdf0132d42777137aa7b49b49c8d7051122a965fdb",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "23f17a5cc4018d3da87638fdf0132d42777137aa7b49b49c8d7051122a965fdb",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adcf1615542992c1e3a24c9"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "42d99bcbec91d63ff281bf1812d0ec9208dd4d04514c035e85ae13b25240cf27",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "42d99bcbec91d63ff281bf1812d0ec9208dd4d04514c035e85ae13b25240cf27",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5adf47455542993a75d26478"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "a5644277303cc49727e59dec9f484d6d2830fb7fef477e493cb3d307a98588f5",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "8271c8a7ec13e0e58ae65ab69b10f6bb09def057ec8b04e953b33cc99fa67051",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adf47455542993a75d26478"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "2fdb6fd40732f41ffef0a2dc7473834f41f2556d44687f76cf2e2d6431b90144",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "2fdb6fd40732f41ffef0a2dc7473834f41f2556d44687f76cf2e2d6431b90144",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adf47455542993a75d26478"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "65e5626464f29489485d1a22e28fa8638c8d5c91ce0b31c3e5f8ac7d765c53eb",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "65e5626464f29489485d1a22e28fa8638c8d5c91ce0b31c3e5f8ac7d765c53eb",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ac2969f5542990b17b1541f"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "b6fab854042176ac197014da8360381e49cf87255dfcfdd1ab0ce52b346d0560",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "778131f1ec4e757106f3bcfe3659f212f4c8bf80c526f04092dc7c6d0735d0bf",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac2969f5542990b17b1541f"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "2f2af96573732ffeb1bdd2cb078d493e136383f6a6a8bde9c17d7b98a9f7d09a",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "2f2af96573732ffeb1bdd2cb078d493e136383f6a6a8bde9c17d7b98a9f7d09a",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac2969f5542990b17b1541f"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "ae57d6fdc7535890fe081ca6ab6f1fad97d1883c68687ecd2121b68ed5600eaa",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "ae57d6fdc7535890fe081ca6ab6f1fad97d1883c68687ecd2121b68ed5600eaa",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a78de3f55429974737f78e4"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "a619c0675a0434ddb655105743a8b55790fbb631071647c1afbbbca24a7f797c",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "90ef5962d767b1fc7d8cbdd8b57cb9ae51564ae12e5d4214b356023806abd95f",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a78de3f55429974737f78e4"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "e0e85aefc0fffd72edce6ab48212aaee11761fb3cc361b97d83e06e9dd53268d",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "e0e85aefc0fffd72edce6ab48212aaee11761fb3cc361b97d83e06e9dd53268d",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a78de3f55429974737f78e4"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "1e70d9cedccf3463e641bddb379654c1a7f9bc78a92eb33848caae3ead5c84d3",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "1e70d9cedccf3463e641bddb379654c1a7f9bc78a92eb33848caae3ead5c84d3",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ae69d895542991bbc976151"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "2cee10eebdbaed86a1e1e7d6813057c7da78f80f898893f98589112aa384f877",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "2d6da4ce79811fffd761e817e36f41df270494300b89dbd1b1778500a2b79e84",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae69d895542991bbc976151"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "330939091d73e77fd554818d90b656d7d1ec6c01b920ad80b527079b625266e3",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "330939091d73e77fd554818d90b656d7d1ec6c01b920ad80b527079b625266e3",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae69d895542991bbc976151"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "22cf67da6701285a43b72b1f8b797e62276e71716aa1ed811ac340861c795bc6",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "22cf67da6701285a43b72b1f8b797e62276e71716aa1ed811ac340861c795bc6",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ac14bf85542991316484add"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "dee47e4c53ef7fe753c8eca4d27b94e99eac494990f4531f8144d5fa3613d6f1",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "48d0db32226559afc71eeed5803d84923d6427572632bcd33f1a7544de3bbca2",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac14bf85542991316484add"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "e632ea4ccdb474a0c1bb4bf39dfb3e88dd1d14070656b68dff8cc578c0b914b6",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "e632ea4ccdb474a0c1bb4bf39dfb3e88dd1d14070656b68dff8cc578c0b914b6",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac14bf85542991316484add"
+    },
+    {
+      "abstention_reason": "no_proposal",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "0aabc9dd995bd4ad7dd6b95d2ab3902c9274a60b2c987db057f96fc0afb1a5e0",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "0aabc9dd995bd4ad7dd6b95d2ab3902c9274a60b2c987db057f96fc0afb1a5e0",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ade01e15542997545bbbe03"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "33301994bf3c8707a3c9cf0cf281306a6a173ba5b4bbfb04304b7b0ba42fded7",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "0858e12d4dcccf3c8db07e2232c42be94ee19e3cb318a9c045b45256343f1982",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ade01e15542997545bbbe03"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "5b2316fb737b22be0104fcae7658ac01b88483ec06bf9121364d621247974675",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "5b2316fb737b22be0104fcae7658ac01b88483ec06bf9121364d621247974675",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ade01e15542997545bbbe03"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "5cb05d4f461337fb47c1121c0b6e9468e2b1782d540c27e4e4e9104ed183ac83",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "5cb05d4f461337fb47c1121c0b6e9468e2b1782d540c27e4e4e9104ed183ac83",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ab42ee65542992339550048"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "0cd12b76b30f58dc7962b7d9b34a4c0a66b5ae22968d2a44da1fc75c47fa9265",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "d6f90d239558ab852f20a9da70406ffa19da109f15fa6582b65d8f77b299bdd7",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab42ee65542992339550048"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "3f9a8ff6817e97893ecb875587d4e72a519f2653b0dd801b24997537cf3f555e",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "3f9a8ff6817e97893ecb875587d4e72a519f2653b0dd801b24997537cf3f555e",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab42ee65542992339550048"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "9009bf33a7ea3bf1e359fabd0e17da7344b39dad62f354a62eece06d14f3d0f7",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "9009bf33a7ea3bf1e359fabd0e17da7344b39dad62f354a62eece06d14f3d0f7",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ae67ba255429908198fa5eb"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "4b171ae39d0cd26ccb43277340e091421b6377cdb842dfd93bef0b4678340b80",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "bf881ce50fb1138c06c03fd7617c4f3afa0b6cd95e66f18e253f443a29641989",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae67ba255429908198fa5eb"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "edc069c612a268c3af208ac455e08d865e936aa0424203284f827137d4b22d1f",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "edc069c612a268c3af208ac455e08d865e936aa0424203284f827137d4b22d1f",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae67ba255429908198fa5eb"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "f5a982647290582325b5c701e45ecff3eff412dab2905d90bde753174aec72c2",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "f5a982647290582325b5c701e45ecff3eff412dab2905d90bde753174aec72c2",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ae7361f5542991e8301cbdf"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "c386aad052ff58fbf838594a60c14c53e7c862da962366627b5f8f8969604713",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "47dd6e4935f2a6f0b841905c64b68e2e2bade8326607242669da5f3a8fba8988",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae7361f5542991e8301cbdf"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "ba605bafdb2a422f1f4a4bc03e15b74f5de686932737f51883677206b97d6476",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "ba605bafdb2a422f1f4a4bc03e15b74f5de686932737f51883677206b97d6476",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae7361f5542991e8301cbdf"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "9c4b9af38c3c87ad9d55926a195efbaee5a6021d17fab594c12bbfc29f358df6",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "9c4b9af38c3c87ad9d55926a195efbaee5a6021d17fab594c12bbfc29f358df6",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a82f36a55429966c78a6aae"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "28260d2f6a404f429ecc8de18873d2580ae304487ea8b2f86f4ed5d44a54e59c",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "86a46023d96c27d6ec555d57094afa3c990243cdbe6b5933edb6b9723b4bd664",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a82f36a55429966c78a6aae"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "30f01eee976739cb936106687b2fc5fb86d9f7569e3833fd07e84db712b911cc",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "30f01eee976739cb936106687b2fc5fb86d9f7569e3833fd07e84db712b911cc",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a82f36a55429966c78a6aae"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "c0bc606bb6815b7e9c02ec0f95773a4c3289bee734ee57c0c9a6613053693efe",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "c0bc606bb6815b7e9c02ec0f95773a4c3289bee734ee57c0c9a6613053693efe",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ac2d102554299657fa29080"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "291c78c70993f0472eb7a8ca5d7ab508ce6dfe5faa32f625c255df0cee252bc6",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "767ff6dccae9adf18a389b954533f3668645317c3aade0e867591faf929ad188",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac2d102554299657fa29080"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "2609ddadddaefe3996e3b8262f708ad2686ba71405c83106c8c13c926fb420db",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "2609ddadddaefe3996e3b8262f708ad2686ba71405c83106c8c13c926fb420db",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac2d102554299657fa29080"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "92e74903d59d42a53a603a9bedb9243224812faf9e7c2ceff41a5126ba74f693",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "92e74903d59d42a53a603a9bedb9243224812faf9e7c2ceff41a5126ba74f693",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5adfb92755429942ec259b15"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "23aaedae275b90be6bc6a0997cd06fe035cfa5d7079b84c4ddfc8ad4cdba9775",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "37a6e8e24d56c9cc40978e8e42f635bf9165a65a2f3173388c925b3bdaf40221",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adfb92755429942ec259b15"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "422373b0d2e0c4b19145a661e6ba12ed5a8691b35974cdc7992381665412709e",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "422373b0d2e0c4b19145a661e6ba12ed5a8691b35974cdc7992381665412709e",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adfb92755429942ec259b15"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "ff6703631e782abedcd02ed0228ae715a0a34cec9a865a1bd12177d29bcd21aa",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "ff6703631e782abedcd02ed0228ae715a0a34cec9a865a1bd12177d29bcd21aa",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ac31be3554299741d48a1fb"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "572c63bb3dec42896bea63f02e0ae54a59592e51385f829737658551db720169",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "c012888b1b23768205f63d38c7d7f508c096c521fb82a9b7bf0f4bf29d818ee9",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac31be3554299741d48a1fb"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "2bd19d33981f038d80969bad7adc2f695785f65a2bd8089b9aaddf6d20c114d4",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "2bd19d33981f038d80969bad7adc2f695785f65a2bd8089b9aaddf6d20c114d4",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac31be3554299741d48a1fb"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "5c6369b03ad53d2c44a1f7808aadfea40af78f64b4c5a033d8469db0c00ba56b",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "5c6369b03ad53d2c44a1f7808aadfea40af78f64b4c5a033d8469db0c00ba56b",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a8d88f4554299441c6b9ff9"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "28bd9538c2ff2ca190a496fc1dcc71c289c82458fba080ba5ff6f31b4b252c44",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "205f3339da3cc48aac0e996cc006325eaba9b2f91d4b9fdb8a5b2b5a0f143142",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8d88f4554299441c6b9ff9"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "ba990e0ded213c5f9034de4a3025015a5ed36bec392031d9afeee47db036088b",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "ba990e0ded213c5f9034de4a3025015a5ed36bec392031d9afeee47db036088b",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8d88f4554299441c6b9ff9"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "04b0ed4e9a631de74af0e1361f3a3a389eab1e192b53ef084ab412a67f42b1e5",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "04b0ed4e9a631de74af0e1361f3a3a389eab1e192b53ef084ab412a67f42b1e5",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a7103395542994082a3e4bc"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "d223e54d0d2d0e0dab09195f23caf64a92a6398db311782831a644bc599678ac",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "67ebe79efa2162686076a0c87fb854ea00138a6ba7db8310adb79ba36db805a7",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a7103395542994082a3e4bc"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "360748423c860ad7074f2e94c6a9ca76cd00830659136f54f30bc3ca77c77ab6",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "360748423c860ad7074f2e94c6a9ca76cd00830659136f54f30bc3ca77c77ab6",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a7103395542994082a3e4bc"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "7ee0cf1ded49540241d0256d00b78b4def3ba41ce58b2476929bf1319e1997a2",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "7ee0cf1ded49540241d0256d00b78b4def3ba41ce58b2476929bf1319e1997a2",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ab31a0e5542991669774197"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "403d16c07c7e1337ad7a77bd426e0a3ce25d69409c480ebfe27ddfcfe53ced70",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "b889489c8e736eb5c90a357a1aa0a07bc3905bd8811a0d859a1e6ef13a6a0bf1",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab31a0e5542991669774197"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "040b518809f6027cb2f69131ee6d7d6e37aaabb866c76ccf10aa92a81ae77f96",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "040b518809f6027cb2f69131ee6d7d6e37aaabb866c76ccf10aa92a81ae77f96",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab31a0e5542991669774197"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "897fd69cb22e550fa141173b585e90967602f9e32c814c570ae8d1d0fc15022f",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "897fd69cb22e550fa141173b585e90967602f9e32c814c570ae8d1d0fc15022f",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ae768b75542997b22f6a738"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "5021b1c553bebc3a7618318c53953f8c43200a4247698c588534a53c881156ee",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "29a82024252607b40a1dcf7c3e27f3b3095f33217191b180f5aeccef692e9329",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae768b75542997b22f6a738"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "299e16518416af35e75eaf2de1a2c0db58e825261708301c6f8931de3eb8eab6",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "299e16518416af35e75eaf2de1a2c0db58e825261708301c6f8931de3eb8eab6",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ae768b75542997b22f6a738"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "33e10b076370bea76efa3ce7603dff27298ebb46c486a5597eb760a241e2cc0b",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "33e10b076370bea76efa3ce7603dff27298ebb46c486a5597eb760a241e2cc0b",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ac24c37554299636651995f"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "e88d7f179567ecf1bd808e0378665f92aad85e46ee582b0766aac75921a1c5e2",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "8a15ba1a3f29647a0f428d7031f861c6fb74ed7622aeca2b67103e17f84e8128",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac24c37554299636651995f"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "2c75c423ebde6df172d2656fc7e69579718e44cc1c62dfc4977b1f0ef0843e02",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "2c75c423ebde6df172d2656fc7e69579718e44cc1c62dfc4977b1f0ef0843e02",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ac24c37554299636651995f"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "1a4ce6041f09d6d6b858c560f2e68099ffe3007f314dbb10544ad02f2a3a132d",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "1a4ce6041f09d6d6b858c560f2e68099ffe3007f314dbb10544ad02f2a3a132d",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5adda3025542997545bbbd97"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "d2c846bcb9daeac7f70976d62efb4a2c97fb761b3e602354563f87f5da7a55f4",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "0749238d7faeb2ec56ae7e618f06091580cfa42452ce24acef241f2538c14658",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adda3025542997545bbbd97"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "335a48bb520920f5063955b5245b2ae03d9b4635ed53209831eacd7d7dc5c347",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "335a48bb520920f5063955b5245b2ae03d9b4635ed53209831eacd7d7dc5c347",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5adda3025542997545bbbd97"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "78a77a61d7c99b4575f93246b852fd8d89a113b3d5b3391bc750e8f9a82cec5e",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "78a77a61d7c99b4575f93246b852fd8d89a113b3d5b3391bc750e8f9a82cec5e",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5addadfb5542997545bbbda6"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "e8cc1273ab6b00f2582b8b4d19aac10034aa2e7f8134d6818c743b73f0f2296a",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "b23d0c5fe5c7a4e7e4dfd95d3ac3e09a640bd0e26999575a3a16e22c8fed4527",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5addadfb5542997545bbbda6"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "25307ed1e75810f504ac00a6d3f751ec5e515ec008fab7efb3fbb6bedb908135",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "25307ed1e75810f504ac00a6d3f751ec5e515ec008fab7efb3fbb6bedb908135",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5addadfb5542997545bbbda6"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "15ead549f9e2ade8e5b158e5f5f757785f357f5e8f39f9aa24d381d4cb82f8cf",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "15ead549f9e2ade8e5b158e5f5f757785f357f5e8f39f9aa24d381d4cb82f8cf",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5ab53a625542997d4ad1f0d9"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "2ed5ffbdb1da263c34bc8cd8868c01c20243a280a433601ea98346ab6e318d24",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "41cea1d37b9e70861715c0aa5d0fe2889870ec676965c9b69e61843fd481dcac",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab53a625542997d4ad1f0d9"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "d4f636a2eb14155967b3e2a9e3f71f06f969960c095f732fd2a807f3472d91dc",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "d4f636a2eb14155967b3e2a9e3f71f06f969960c095f732fd2a807f3472d91dc",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5ab53a625542997d4ad1f0d9"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "097d41670e02220a3a5acc578e6d8c05abb4bf866991e11018e8e91465daef04",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "097d41670e02220a3a5acc578e6d8c05abb4bf866991e11018e8e91465daef04",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a8c4b43554299653c1aa028"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "bb902e0dca241db0279f0c9287d7992a1866f2fadd36ed17eb95659d775ee4c4",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "4312bd7161b2e1fc3ccba7776d41b984f68cb56680c7df4b01eca94b5640e5d1",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8c4b43554299653c1aa028"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "77597d188c8e7f224bf6b6ce79ffb34c42da7fe100c62dcd791b9679493081a5",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "77597d188c8e7f224bf6b6ce79ffb34c42da7fe100c62dcd791b9679493081a5",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a8c4b43554299653c1aa028"
+    },
+    {
+      "abstention_reason": "not_applicable",
+      "applied": false,
+      "cohort": "CC_actual_public",
+      "materialized_call_sha256": "dc1a16daa3b255a3ea157aa6bd9d11bd238de8f3789de5865f63e83b17028fbe",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "dc1a16daa3b255a3ea157aa6bd9d11bd238de8f3789de5865f63e83b17028fbe",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "rule": "ContextCompress",
+      "stage": "filter",
+      "task_id": "hotpot_5a7b2f0655429931da12ca1c"
+    },
+    {
+      "abstention_reason": null,
+      "applied": true,
+      "cohort": "SD_synthetic_history",
+      "materialized_call_sha256": "6fb72b7555eade225af9b1da92215c2fdf1629b68874cdb97c52666bea8fa6f1",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "77df9dd51ee259097571f187c680dc14bea460b9bc77429ea73df6db8e823591",
+      "retained_indices": [
+        0,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a7b2f0655429931da12ca1c"
+    },
+    {
+      "abstention_reason": "ambiguous_provenance",
+      "applied": false,
+      "cohort": "SD_invalid_synthetic_history",
+      "materialized_call_sha256": "3e5aa4f47605cb213e16740b2b77224c061505bb91ca79cb014ba5df5a312aef",
+      "model": "anthropic/claude-haiku-4.5",
+      "original_call_sha256": "3e5aa4f47605cb213e16740b2b77224c061505bb91ca79cb014ba5df5a312aef",
+      "retained_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "rule": "StateDrop",
+      "stage": "answer",
+      "task_id": "hotpot_5a7b2f0655429931da12ca1c"
+    }
+  ],
+  "run_identity": "no-network-public-coverage",
+  "selection_sha256": "140f40b49c0c80170337a610d4e00ed7adbf29cb693b7bcfc2ab7cdbea86c1b3",
+  "source_sha256": {
+    "adapter": "d51480935ed68f9837c1665ba3640bbd06b79439c50bc2aa9a8391ab3ddea983",
+    "attention": "e069181774b045679c56f57561c553c48baac51956636b88741ed74c6dda85d5",
+    "bridge": "806ab0ebfba5ef222607e673cf33676b82510f590f34e485c0b8b97d07a1a460",
+    "builder": "33f1dd2eb2666e7526229d431d2de8f4f01f2ee40a3a875af97a22debef53968"
+  },
+  "summary": {
+    "anthropic/claude-haiku-4.5": {
+      "CC_actual_public/no_proposal": 3,
+      "CC_actual_public/not_applicable": 35,
+      "SD_invalid_synthetic_history/ambiguous_provenance": 38,
+      "SD_synthetic_history/applied": 38
+    },
+    "anthropic/claude-sonnet-4.5": {
+      "CC_actual_public/no_proposal": 3,
+      "CC_actual_public/not_applicable": 35,
+      "SD_invalid_synthetic_history/ambiguous_provenance": 38,
+      "SD_synthetic_history/applied": 38
+    }
+  },
+  "tasks": 38
+}

@@ -2,7 +2,24 @@
 
 Frozen source `2455b40`; canonical manifest SHA-256
 `086c5ed838a0d45b5ac8aef6c8a9dff0be5fd648dba2a85ab311bcdfffef1c3a`.
-Prospective fixed-model development screen, not native admission or efficacy.
+Status: **COMPLETED — preset feasibility gate passed, 54/54 calls.** This is a
+fixed-model development screen, not native admission or efficacy.
+
+All 18 own-history workflows were typed-valid. Exact final answers: source 6/6,
+repeat 6/6, target 5/6. The target error was a genuine policy-answer error (M62
+instead of M64), despite correct filter and synthesis, not an ordering failure.
+Two nonascending ID arrays were accepted under this prospectively frozen set
+contract. Three responses had the exact permitted passed-moderation diagnostic;
+all reported cached-token counts were zero.
+
+Independent review `.20.12.1.2` under `bd-323l.6.13.8.6` reconstructed all 54
+request/response/result triples, intents, decisions, own histories and gate.
+Known stage cost: USD0.369719; no new holds, pending or unresolved calls. Campaign
+totals afterward: USD18.47998347 known plus USD6.259659 prior retained uncertainty,
+USD24.73964247 committed and USD25.26035753 remaining of the original USD50.
+No prior failed result or financial allowance was changed. These six adaptive
+development cases establish basic feasibility only; they are not a model ranking,
+safety certificate, independent replication or joint-system benefit.
 
 This changes the application contract explicitly: filter results are sets of
 exactly three distinct in-range document IDs. Validate the entire JSON value,

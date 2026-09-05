@@ -12,7 +12,7 @@ import math
 from pathlib import Path
 
 from bench import openrouter_typed_factorial as study
-from bench.openrouter_joint_analysis import paired_bootstrap
+from bench.openrouter_joint_analysis import BOOTSTRAP_SEED, paired_bootstrap
 from bench.openrouter_matrix import file_hash, write_json
 from bench.openrouter_pilot import PilotError, digest, load_key, money
 
@@ -68,7 +68,7 @@ def build_data(manifest, report):
                 {"cost_usd": float(c["cost_usd"]), "em": float(c["em"])}
                 for c in selected
             ],
-            seed=717,
+            seed=BOOTSTRAP_SEED,
         )
         cells.append(
             {
@@ -106,8 +106,13 @@ def build_data(manifest, report):
         "cells": cells,
         "paired_tasks": rows,
         "finance": finance,
-        "quality_interval": paired_bootstrap(vectors, seed=717)["quality_pp"],
-        "log_cost_interval": paired_bootstrap(log_vectors, seed=717)["log_cost_ratio"]
+        "bootstrap_seed": BOOTSTRAP_SEED,
+        "quality_interval": paired_bootstrap(vectors, seed=BOOTSTRAP_SEED)[
+            "quality_pp"
+        ],
+        "log_cost_interval": paired_bootstrap(log_vectors, seed=BOOTSTRAP_SEED)[
+            "log_cost_ratio"
+        ]
         if log_vectors
         else None,
         "log_cost_tasks": len(log_rows),
@@ -264,7 +269,9 @@ def render(data, directory):
                 ha="center",
                 fontsize=9,
             )
-            span = max(max(values) - min(values), abs(center), 0.1 if scale == 1 else 5)
+            span = max(
+                max(values) - min(values), abs(center), 1e-6 if scale == 1 else 5
+            )
             ax.set_xlim(
                 min(min(values), lo, 0) - 0.35 * span,
                 max(max(values), hi, 0) + 0.35 * span,

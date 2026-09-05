@@ -69,6 +69,17 @@ def test_derived_values_preserve_every_cell_and_task():
     assert data["paired_tasks"] == report["paired_tasks"]
     assert data["analysis_sha256"] == digest(report)
     assert data["paper_evidence"] is False
+    canonical = study.analysis.paired_bootstrap(
+        [
+            {"quality_interaction": row["quality_interaction"]}
+            for row in report["paired_tasks"]
+        ]
+    )["quality_interaction"]
+    assert data["quality_interval"][
+        "descriptive_95_percentile_interval"
+    ] == pytest.approx(
+        [100 * v for v in canonical["descriptive_95_percentile_interval"]]
+    )
 
 
 @pytest.mark.parametrize(

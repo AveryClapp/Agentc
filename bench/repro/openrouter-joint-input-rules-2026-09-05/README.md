@@ -4,6 +4,121 @@ This is a development experiment, not a confirmed joint-system advantage or a
 full-rule MLSys ablation. The previous contaminated workflow is permanently
 aborted; none of its controller state or scheduled questions is reused here.
 
+## Final status: stopped at the admission gate
+
+**STOPPED_FAILED_ADMISSION — this manifest is closed.** All scheduled calibration,
+warmup, and training workflows completed. The frozen, label-free training gate
+returned `proceed_to_heldout=false`: no joint rewrite-plus-routing plan was
+actually selected with the required 20 exact source-paired observations. The
+48 heldout questions were not dispatched. Do not resume this acquisition or
+reinterpret its training questions as an untouched evaluation set.
+
+This is a negative observation about admission under this workload and these
+unchanged controls, not an estimate of the joint system's treatment effect.
+There is no heldout quality comparison, demonstrated joint efficiency advantage,
+two-percentage-point safety guarantee, or full-rule ablation result here.
+Further work is tracked separately in `bd-323l.6.13.8.6`; this archive is not an
+authorization to extend or tune the closed study.
+
+| Completed phase | Questions | Workflows | Primary calls |
+| --- | ---: | ---: | ---: |
+| Global-router calibration | 16 | 32 (two models) | 96 |
+| Warmup | 3 | 18 (six arms) | 54 |
+| Training | 64 | 384 (six arms) | 1,152 |
+| Heldout | 0 of 48 | 0 | 0 |
+
+The final journals contain 1,302 decisions, 1,302 intents, and 1,372 provider
+results: 1,302 primary/calibration calls, 69 exploratory comparisons, and one
+shadow comparison. Every result ended with `finish_reason=stop`; no failed or
+truncated provider outcome entered the controller. The final financial snapshot
+has no missing artifact charges, unincorporated results, pending attempts, or
+new failed-attempt allowances.
+
+### What the controller did
+
+The guarded-rules, routing-only, sequential, and joint arms all retained the
+original request as their primary throughout warmup and training. The historical
+greedy arm applied ContextCompress at all 64 training filter calls and StateDrop
+at all 64 training answer calls. These activations are not evidence that the
+rewrites preserve task quality.
+
+Joint training accumulated the following exact-plan comparisons:
+
+| Call site | Candidate | Observed pairs | Required pairs |
+| --- | --- | ---: | ---: |
+| Filter | ContextCompress | 3 | 20 |
+| Filter | ModelDowngrade | 2 | 20 |
+| Filter | ContextCompress + ModelDowngrade | 3 | 20 |
+| Synthesize | ModelDowngrade | 5 | 20 |
+| Answer | StateDrop | 16 | 20 |
+| Answer | ModelDowngrade | 7 | 20 |
+| Answer | StateDrop + ModelDowngrade | 2 | 20 |
+
+No joint candidate reached the admission floor. The diagnostic report preserves
+the actual lexical comparisons and exact identities. Lexical disagreement is
+not task damage, and its aggregate positive excess is not a reconstruction of
+native rolling-window disable state. More scheduled training arrivals did not
+by themselves produce more admissible evidence in this run.
+
+Independent global calibration selected Sonnet, not Haiku. On those 16
+calibration questions, mean final-answer F1 was 0.90417 for Sonnet and 0.72411 for
+Haiku; Haiku was outside the frozen 0.02 margin. These are calibration figures,
+not heldout estimates. Thus the sequential control used the source model plus
+its own guarded-rule history; it did not test a cheaper global model downstream.
+
+### Final cost accounting
+
+| Arm | Calls charged | Billed USD | Nominal uncached USD |
+| --- | ---: | ---: | ---: |
+| Original | 201 | 1.146300 | 1.146300 |
+| Historical rules | 202 | 0.805965 | 0.805965 |
+| Guarded rules | 209 | 1.183173 | 1.183173 |
+| Routing only | 213 | 1.157035 | 1.157035 |
+| Sequential, including both calibration models | 308 | 1.549931 | 1.549931 |
+| Joint | 239 | 1.205944 | 1.205944 |
+| **Total** | **1,372** | **7.048348** | **7.048348** |
+
+These totals charge every calibration, warmup, training, exploration, and shadow
+call exactly once. Sequential includes all 96 global-router calibration calls
+($0.358832). All spending belongs to setup/training; heldout spending is zero.
+The cost differences above are descriptive incurred spending, not quality-matched
+efficiency effects or causal cache/latency results. The $9 training ceiling and
+$15 stage ceiling were not reached; the admission gate caused the stop.
+
+At the archived ledger snapshot, campaign known charges were $16.94093847 with
+$0.147306 in retained historical uncertainty and no pending upper bounds:
+$17.08824447 conservatively committed. This stage added no uncertainty. The
+historical allowances remain held; no failure was declared free or settled.
+These amounts describe the captured snapshot, not a later account balance.
+
+### Archive validation
+
+[`final-analysis.json`](final-analysis.json) was generated with the independently
+reviewed read-only analyzer and a consistent shared-ledger snapshot. It verifies
+the frozen source and fixture bindings, exact own-arm request histories,
+generation and endpoint attribution, journal prefixes, reconstructed gate,
+static selection, and complete stage accounting. Its `paired_questions` and
+`comparisons` arrays are empty, and `comparison_available=false`.
+
+The report's generic suppression labels include failed/missing gate,
+incomplete scheduled workflows, and an incomplete completion summary. Here the
+gate file **exactly matches** its reconstruction, and the summary hashes
+**match** the final journals: `schedule_complete=false` correctly records the
+intentional stop before heldout, not damaged or missing provenance.
+
+Canonical JSON SHA256 values:
+
+- Manifest: `dcb703739e460810825f0966c06371d2848a4d17346afbfea4e77c52a0548ace`
+- Calls: `9717b3a67da932155321f65621e6f5a118d7e7c87ab4a62b2e2c27a976c5af4a`
+- Decisions: `916b672c1e322f97aacd6fbcd3da64230f1e017e0fe1efacde9b67e711fb3f3b`
+- Intents: `2e1b147da367e5d5d9a8064979d26380c1a5d64400df8e623918e44ee175335f`
+- Final analysis: `0d89c89d8b10b5e5a6437f286e834fa47afa386e0b5d52bda4df037900e16bc1`
+
+The private ledger's captured **byte** SHA256 is
+`fdca8ea8e992d50494a28c5ee5b14f0de92fff6198cc47c4d225bf3720678d9b`.
+Its raw provider bodies and key bindings remain outside the repository. The
+frozen acquisition source files, manifest, and native binary are unchanged.
+
 ## Question and controls
 
 Does jointly selecting an input rewrite and a model improve a three-call QA

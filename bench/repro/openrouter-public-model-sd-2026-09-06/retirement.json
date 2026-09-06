@@ -1,0 +1,21 @@
+{
+  "kind": "public-factorial-permanent-retirement-v1",
+  "retired_at": "2026-09-06T00:33:56.133483+00:00",
+  "reserve_sha256": "12e5f6dbf8c688d02be5b1319c51dc77c16937121379e6f64a78eef5dde245eb",
+  "event_sha256": "564b9fb1235be4e5c1475362f195378bcc126efb39f6663101724201e9ed1f82",
+  "reviewed_ledger_sha256": "1ac37cab4a456971d9083f86f243eb1509c629076f2863ef6d157d15679b0f35",
+  "post_retirement_ledger_event_count": 19341,
+  "post_retirement_ledger_raw_sha256": "f71a9c4e4069f6235535273d7d8e039e4e5f100dbb7aeba9d194e891a8c06a6c",
+  "post_retirement_ledger_canonical_sha256": "7cd323552d01476469086c7301a0f3123de6c14ce2dfb05ae4904925142b17e3",
+  "retained_attempt_allowance_usd": "6.01536",
+  "reported_attempt_cost_usd": null,
+  "campaign_known_usd": "22.27594747",
+  "campaign_retained_uncertainty_usd": "12.275019",
+  "campaign_pending_upper_bound_usd": "0",
+  "campaign_conservative_commitment_usd": "34.55096647",
+  "campaign_remaining_usd": "15.44903353",
+  "campaign_unresolved_calls": 0,
+  "retry_or_resume_authorized": false,
+  "allowance_released": false,
+  "reason": "Permanently stop the one-shot study after its independently reviewed timeout, retaining the full allowance and all original evidence."
+}

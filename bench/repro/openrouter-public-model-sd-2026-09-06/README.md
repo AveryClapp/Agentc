@@ -1,7 +1,43 @@
 # Public model × StateDrop development factorial
 
-Frozen before primary acquisition on 2026-09-06 UTC; no outcomes are reported
-by this prospective archive.
+Frozen before primary acquisition on 2026-09-06 UTC. **Incomplete: acquisition
+stopped at a provider timeout; no accuracy comparison or efficacy result.**
+
+## Terminal result
+
+The one-shot run completed 229 of 384 scheduled calls, all structurally valid,
+for USD0.561710. Attempt 230 (Sonnet SR, synthesize) reached the 120-second
+request deadline at 00:28:35 UTC without a response or charge receipt. Its full
+USD6.015360 allowance remains committed. There were 230 saved intents, no
+missing or extra completed results, and no retries. The 36-call format/resource
+pilot adds USD0.095678, so family known spend is USD0.657388.
+
+Main and independent review `bd-323l.6.13.8.6.20.14.2.5` reconstructed the
+frozen source, native deletions, each own-history request, raw receipts, and
+original-ledger accounting. The incomplete diagnostic [analysis](analysis.json)
+contains no task scores or intervals; labels remained unopened, with label and
+credential access additionally prohibited during its generation. No public
+efficacy figures were rendered. This partial matrix neither confirms nor
+refutes the completed generated-workload interaction.
+
+Completed calls used 208,054 input and 14,058 output tokens, with zero reported
+cached input tokens. Across all 230 intents, CC was attempted 39 times and
+always abstained; SD applied 38 times; 153 had no rule. These are partial-prefix
+resource/activation counts, not balanced-cell treatment contrasts.
+
+The [terminal snapshot](terminal-snapshot.json) pins the original ledger prefix
+and every raw artifact. [Permanent retirement](retirement.json) was appended
+at 00:33:56 UTC after independent review and the request deadline. It removed
+retry eligibility without releasing any allowance. The original campaign then
+contained USD22.27594747 known charges plus USD12.275019 retained uncertainty,
+zero pending, leaving USD15.44903353 under the original USD50 cap. These are
+dated snapshots, not replacement budgets.
+
+`summary.json` and `analysis.json` preserve the pre-retirement snapshot exactly.
+The frozen driver's strict summary audit compares against the current ledger,
+so retirement changes its unresolved-call list (`bd-8qlq`). Historical replay
+must use the exact pinned original-ledger prefix and report current accounting
+separately; do not edit the summary, drop later holds, or create a fresh ledger.
 
 Manifest canonical SHA-256:
 `b5b1769028a2b81d509907a1097838802b65e1efb214c3bffda0238a5a8750f3`.
@@ -85,6 +121,7 @@ causal measurements.
 
 Use [the frozen driver](../../openrouter_public_factorial.py) with this output,
 the exact primary and pilot manifest hashes, the same bundle/immutable bridge,
-and the original ledger/key paths. `run` is one-shot. `audit` reconstructs the
-evidence; `analyze` produces the derived report. Do not edit any pinned source
-while acquisition or reconstruction is active.
+and the original ledger/key paths. **Do not run or resume this closed study.**
+The initial `audit` and diagnostics-only `analyze` ran before retirement, at the
+exact tip recorded above. Do not regenerate its historical report from a later
+ledger tip or edit any pinned acquisition source.

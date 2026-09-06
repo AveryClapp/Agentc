@@ -7,6 +7,7 @@ import sys
 
 import pytest
 
+import bench
 from bench import openrouter_protected_study as s
 
 KEY = "literal-fake-protected-study-key"
@@ -413,8 +414,9 @@ def test_runner_returns_terminal_summary_or_preserves_failed_claim(
     assert len([e for e in read(ledger) if e["event"] == s.CLAIM_EVENT]) == 1
 
 
+@pytest.mark.parametrize("already_imported", [False, True])
 def test_cli_audit_never_loads_credentials_or_writes_artifacts(
-    frozen_setup, tmp_path, monkeypatch, capsys
+    frozen_setup, tmp_path, monkeypatch, capsys, already_imported
 ):
     ledger, manifest, bundle, bridge, materializer = frozen_setup
     directory = tmp_path / "protocol"
@@ -431,11 +433,18 @@ def test_cli_audit_never_loads_credentials_or_writes_artifacts(
         captured.append(args)
         return {"schedule_complete": False, "efficacy_claim": False}
 
-    monkeypatch.setitem(
-        sys.modules,
-        "bench.openrouter_protected_audit",
-        SimpleNamespace(audit_phase=audit),
-    )
+    if already_imported:
+        monkeypatch.setattr(
+            bench,
+            "openrouter_protected_audit",
+            SimpleNamespace(audit_phase=lambda *args: pytest.fail("stale module")),
+            raising=False,
+        )
+    else:
+        monkeypatch.delattr(bench, "openrouter_protected_audit", raising=False)
+    audit_module = SimpleNamespace(audit_phase=audit)
+    monkeypatch.setitem(sys.modules, "bench.openrouter_protected_audit", audit_module)
+    monkeypatch.setattr(bench, "openrouter_protected_audit", audit_module, raising=False)
     monkeypatch.setattr(
         sys,
         "argv",

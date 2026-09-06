@@ -1,0 +1,35 @@
+{
+  "kind": "public-terminal-prefix-audit-verification-v1",
+  "review": "bd-8qlq.1",
+  "wrapper_source_commit": "5cf21c38e5637092fb3f2b9ddc2652efb35f7fcc",
+  "wrapper_source_sha256": "6b728ffcd66102fc94ad868f80c1b23ec2aed6df86b743a47bd4a050068473a6",
+  "manifest_sha256": "b5b1769028a2b81d509907a1097838802b65e1efb214c3bffda0238a5a8750f3",
+  "analysis_raw_sha256": "b96ee8e56ddeda88ee3acc16a15f29a72b5fd6c070e2a09fd318ff6b3ac58a3b",
+  "historical": {
+    "event_count": 19340,
+    "bytes": 85236939,
+    "raw_sha256": "e87d7ace08cf67f18281796a2fbeda99e9c0118552e40ea33fc516c87c365e73",
+    "canonical_sha256": "1ac37cab4a456971d9083f86f243eb1509c629076f2863ef6d157d15679b0f35",
+    "calls": 229,
+    "intents": 230,
+    "application_valid_calls": 229,
+    "schedule_complete": false
+  },
+  "current": {
+    "captured_at": "2026-09-06T00:46:35.725958+00:00",
+    "event_count": 19341,
+    "bytes": 85237786,
+    "raw_sha256": "f71a9c4e4069f6235535273d7d8e039e4e5f100dbb7aeba9d194e891a8c06a6c",
+    "canonical_sha256": "7cd323552d01476469086c7301a0f3123de6c14ce2dfb05ae4904925142b17e3",
+    "known_usd": "22.27594747",
+    "retained_uncertainty_usd": "12.275019",
+    "pending_upper_bound_usd": "0",
+    "conservative_commitment_usd": "34.55096647",
+    "remaining_after_all_commitments_usd": "15.44903353"
+  },
+  "labels_read": false,
+  "efficacy_claim": false,
+  "analysis_regenerated": false,
+  "provider_calls": 0,
+  "scope": "Independent actual frozen-native historical replay with separate complete current accounting; no new study or dispatch authorization."
+}

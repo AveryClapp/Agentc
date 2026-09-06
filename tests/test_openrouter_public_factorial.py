@@ -93,7 +93,7 @@ def fake_coverage(args):
         },
         "bridge_sha256": study.file_hash(args.bridge),
         "public_sha256": study.file_hash(args.bundle / "public.json"),
-        "selection_sha256": study.digest(bundle["selection"]),
+        "selection_sha256": bundle["selection"]["selection_sha256"],
         "contract_sha256": public.contract_hash(),
         "tasks": 38,
         "provider_calls": 0,
@@ -263,6 +263,14 @@ def test_complete_pilot_advances_on_format_and_finance_without_accuracy_or_label
         == checked["bundle"]["selection"]
     )
     report = frozen["forecast"]
+    assert frozen["selection_sha256"] == study.digest(checked["bundle"]["selection"])
+    assert (
+        study.read(args.bundle / "coverage.json")["selection_sha256"]
+        == checked["bundle"]["selection"]["selection_sha256"]
+    )
+    assert (
+        frozen["selection_sha256"] != checked["bundle"]["selection"]["selection_sha256"]
+    )
     assert report["selection_metric"] == "conservative_observed_usd"
     assert set(report["options"]) == {"four"}
     assert Decimal(report["options"]["four"]["conservative_observed_usd"]) <= 7

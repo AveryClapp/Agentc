@@ -10,6 +10,7 @@ use std::error::Error;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use agentc_core::storage::{canonical_json, content_hash};
 
 use crate::dag::Call;
 
@@ -19,6 +20,7 @@ pub const LITELLM_COMPLETION_PROTOCOL: &str = "litellm.completion.v1";
 
 pub const ROUTE_CONTEXT_KEY: &str = "agentc_route_context";
 pub const ROUTED_TARGET_KEY: &str = "agentc_routed_target";
+pub const PROTECTED_ATTEMPT_KEY: &str = "protected_attempt";
 
 const INPUT_BOUND_BASIS_KEY: &str = "input_tokens_upper_bound_basis";
 const JSON_UTF8_BYTES_BOUND_V1: &str = "json_utf8_bytes_v1";
@@ -140,6 +142,170 @@ impl ModelTarget {
     }
 }
 
+/// Request facts are not a provider context-fit certificate. This private
+/// parser is shared by the strict proven-bound path and the explicitly
+/// protected experiment; catalog routing stays proven-bound by default.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct RequestFacts {
+    pub provider_protocol: String,
+    pub provider_namespace: String,
+    pub max_output_tokens: u32,
+    pub image_input: bool,
+    pub tool_calling: bool,
+    pub structured_outputs: bool,
+    pub streaming: bool,
+}
+
+impl RequestFacts {
+    pub(crate) fn from_call(call: &Call) -> Option<Self> {
+        let context = call.parameters.extra.get(ROUTE_CONTEXT_KEY)?.as_object()?;
+        let protocol = context.get("provider_protocol")?.as_str()?.trim();
+        let namespace = context.get("provider_namespace")?.as_str()?.trim();
+        if protocol.is_empty() || namespace.is_empty() {
+            return None;
+        }
+        Some(Self {
+            provider_protocol: protocol.to_string(),
+            provider_namespace: namespace.to_string(),
+            max_output_tokens: call.parameters.max_output_tokens.unwrap_or(0),
+            image_input: context.get("image_input")?.as_bool()?,
+            tool_calling: context.get("tool_calling")?.as_bool()?,
+            structured_outputs: context.get("structured_outputs")?.as_bool()?,
+            streaming: context.get("streaming")?.as_bool()?,
+        })
+    }
+
+    fn supported_by(&self, target: &ModelTarget) -> bool {
+        target.capabilities.text_input
+            && (!self.image_input || target.capabilities.image_input)
+            && (!self.tool_calling || target.capabilities.tool_calling)
+            && (!self.structured_outputs || target.capabilities.structured_outputs)
+            && (!self.streaming || target.capabilities.streaming)
+            && self.max_output_tokens <= target.max_output_tokens
+    }
+}
+
+/// The entire opt-in is identity-bearing. Hashes identify the reviewed
+/// application and endpoint contracts; they are not numerical fit evidence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProtectedAttemptPolicy {
+    policy: String,
+    mode: String,
+    catalog_version: String,
+    endpoint_cohort_sha256: String,
+    application_contract_sha256: String,
+    rule_contract_sha256: String,
+    /// Serialized unified Call UTF-8 bytes, not provider input tokens.
+    max_request_json_bytes: u32,
+}
+
+/// Only this validated private permit can open exploration-only routing.
+/// It cannot be passed to the ordinary catalog or primary planner interface.
+#[derive(Debug, Clone)]
+pub(crate) struct ProtectedAttempt {
+    pub facts: RequestFacts,
+    pub identity: serde_json::Value,
+    source: ModelTarget,
+    policy: serde_json::Value,
+    schema: Option<serde_json::Value>,
+    max_request_json_bytes: u32,
+}
+
+impl ProtectedAttempt {
+    pub(crate) fn declared(call: &Call) -> bool {
+        call.parameters.extra.get(ROUTE_CONTEXT_KEY)
+            .and_then(serde_json::Value::as_object)
+            .is_some_and(|context| context.contains_key(PROTECTED_ATTEMPT_KEY))
+    }
+
+    pub(crate) fn from_call(call: &Call, catalog: &ModelCatalog) -> Option<Self> {
+        let context = call.parameters.extra.get(ROUTE_CONTEXT_KEY)?.as_object()?;
+        if context.contains_key("input_tokens_upper_bound")
+            || context.contains_key(INPUT_BOUND_BASIS_KEY)
+        {
+            return None;
+        }
+        let policy_value = context.get(PROTECTED_ATTEMPT_KEY)?;
+        let policy: ProtectedAttemptPolicy = serde_json::from_value(policy_value.clone()).ok()?;
+        let digest = |value: &str| value.len() == 64
+            && value.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c));
+        if policy.policy != "opaque-provider-attempt-v1"
+            || policy.mode != "protected-source-first-v1"
+            || policy.catalog_version != catalog.catalog_version
+            || !digest(&policy.endpoint_cohort_sha256)
+            || !digest(&policy.application_contract_sha256)
+            || !digest(&policy.rule_contract_sha256)
+            || !(1..=65_536).contains(&policy.max_request_json_bytes)
+            || serde_json::to_vec(call).ok()?.len() > policy.max_request_json_bytes as usize
+        {
+            return None;
+        }
+        // This experiment supports only the reviewed unified request fields
+        // and native annotations. Unknown provider parameters cannot silently
+        // disappear from profile identity (legacy callers are unchanged).
+        let extra = call.parameters.extra.as_object()?;
+        if extra.keys().any(|key| !matches!(key.as_str(),
+            ROUTE_CONTEXT_KEY | "response_format" | "message_deps" | "window_state_reads"
+            | "attention_scores" | "follow_on_tokens" | "dead_attention_epsilon"
+            | "typed_relational_contract" | "typed_client_size_diagnostic"
+        )) {
+            return None;
+        }
+        let facts = RequestFacts::from_call(call)?;
+        if facts.image_input || facts.tool_calling || facts.streaming || !call.tools.is_empty()
+            || facts.max_output_tokens == 0 || call.has_opaque_native_messages()
+        {
+            return None;
+        }
+        let source = catalog.resolve(&facts.provider_protocol, &facts.provider_namespace, &call.model)?;
+        if !facts.supported_by(source) {
+            return None;
+        }
+        let schema = call.parameters.extra.get("response_format").cloned();
+        // A schema-bearing payload must require structured-output capability;
+        // a false declaration cannot route it to an incapable target.
+        if facts.structured_outputs != schema.is_some()
+            || schema.as_ref().is_some_and(|value| !value.is_object())
+        {
+            return None;
+        }
+        let identity = serde_json::json!({
+            "policy": policy,
+            "provider_protocol": facts.provider_protocol,
+            "provider_namespace": facts.provider_namespace,
+            "source_model_id": call.model,
+            "source_model_version": source.model_version,
+            "source_routing_group": source.routing_group,
+            "response_schema_sha256": schema.as_ref().map(|value| content_hash(&canonical_json(value))),
+            "structured_output_schema_version": context.get("structured_output_schema_version"),
+            "dead_attention_epsilon": extra.get("dead_attention_epsilon"),
+        });
+        Some(Self {
+            facts, identity, source: source.clone(), policy: policy_value.clone(), schema,
+            max_request_json_bytes: policy.max_request_json_bytes,
+        })
+    }
+
+    pub(crate) fn permits(&self, call: &Call, target: &ModelTarget) -> bool {
+        let Some(context) = call.parameters.extra.get(ROUTE_CONTEXT_KEY).and_then(serde_json::Value::as_object) else { return false; };
+        let Some(facts) = RequestFacts::from_call(call) else { return false; };
+        let mut expected_facts = self.facts.clone();
+        expected_facts.max_output_tokens = facts.max_output_tokens;
+        !context.contains_key("input_tokens_upper_bound")
+            && !context.contains_key(INPUT_BOUND_BASIS_KEY)
+            && context.get(PROTECTED_ATTEMPT_KEY) == Some(&self.policy)
+            && call.parameters.extra.get("response_format") == self.schema.as_ref()
+            && call.tools.is_empty() && !call.has_opaque_native_messages()
+            && facts == expected_facts && facts.max_output_tokens > 0
+            && facts.supported_by(target)
+            && target.adapter_protocol == self.source.adapter_protocol
+            && target.provider_namespace == self.source.provider_namespace
+            && target.routing_group == self.source.routing_group
+            && serde_json::to_vec(call).is_ok_and(|bytes| bytes.len() <= self.max_request_json_bytes as usize)
+    }
+}
+
 /// Adapter-declared requirements used to conservatively filter targets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequestRequirements {
@@ -157,6 +323,9 @@ impl RequestRequirements {
     /// Read the provider-owned request facts attached by a Python adapter.
     /// Missing or malformed context means the catalog abstains.
     pub fn from_call(call: &Call) -> Option<Self> {
+        if ProtectedAttempt::declared(call) {
+            return None;
+        }
         let context = call
             .parameters
             .extra
@@ -411,6 +580,28 @@ impl ModelCatalog {
             .collect();
         targets.sort_by(|left, right| left.model_id.cmp(&right.model_id));
         targets
+    }
+
+    pub(crate) fn protected_targets(&self, call: &Call, permit: &ProtectedAttempt) -> Vec<&ModelTarget> {
+        let mut targets: Vec<_> = self.targets.iter().filter(|target| permit.permits(call, target)).collect();
+        targets.sort_by(|left, right| left.model_id.cmp(&right.model_id));
+        targets
+    }
+
+    pub(crate) fn protected_routed_target(&self, call: &Call, target: &ModelTarget, permit: &ProtectedAttempt) -> Option<RoutedModelTarget> {
+        self.protected_targets(call, permit).into_iter().find(|candidate| *candidate == target)?;
+        Some(RoutedModelTarget {
+            catalog_version: self.catalog_version.clone(),
+            price_table_version: self.price_table_version.clone(),
+            provider_protocol: target.adapter_protocol.clone(),
+            provider_namespace: target.provider_namespace.clone(),
+            requested_model_id: call.model.clone(),
+            resolved_requested_model_id: permit.source.model_id.clone(),
+            target_model_id: target.model_id.clone(),
+            target_model_version: target.model_version.clone(),
+            target_revision_kind: target.revision_kind,
+            output_token_parameter: target.output_token_parameter,
+        })
     }
 
     /// Return cheaper compatible alternatives ordered by conservative price

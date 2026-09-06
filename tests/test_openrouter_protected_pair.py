@@ -204,7 +204,9 @@ def setup(tmp_path, monkeypatch):
         }
 
     monkeypatch.setattr(pilot, "request_json", transport)
-    tasks = pair.typed.make_tasks(2026090601, 8)
+    # Deliberately separate from the prospective positive-seed fixture. See
+    # bd-9hjr for disclosure of the inherited test's earlier eight-ID overlap.
+    tasks = pair.typed.make_tasks(-2026090601, 8)
     return coordinator, state, tasks
 
 

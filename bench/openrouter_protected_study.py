@@ -512,8 +512,30 @@ class PinnedLedger(pilot.Ledger):
     def __init__(self, path, key, manifest, phase):
         super().__init__(path, key)
         self.manifest, self.phase = manifest, phase
+        self._phase_started = None
+
+    def start_phase(self):
+        require(self._phase_started is None, "protected phase clock cannot be reset")
+        self._phase_started = time.monotonic()
+        return self._phase_started
+
+    def check_deadline(self):
+        require(
+            self._phase_started is not None
+            and 0 <= time.monotonic() - self._phase_started < MAX_SECONDS,
+            "protected dispatch exceeded its bound six-hour phase deadline",
+        )
+
+    def _perform(self, handle, reservation, key, payload, metadata, context):
+        # Preflight and durable reservation can themselves consume time. Reject
+        # here too, retaining the normal full failed-attempt/group liability.
+        # Once sent, base receipt and failure finalization must remain allowed.
+        self.check_deadline()
+        return super()._perform(handle, reservation, key, payload, metadata, context)
 
     def append(self, handle, event):
+        if event["event"] in {"reserve", "budget_group"}:
+            self.check_deadline()
         if event["event"] == "reserve":
             model = event["request"]["model"]
             require(
@@ -773,6 +795,7 @@ def run_phase(
     gate=None,
 ):
     """Validate exact source/manifest and the pilot before claiming any work."""
+    require(isinstance(ledger, PinnedLedger), "protected runner needs a pinned ledger")
     _, initial_events, _ = finance.typed_ledger_snapshot(ledger.path, key)
     validate_manifest(
         manifest, bundle, initial_events, bridge, materializer, expected_manifest_sha256
@@ -799,7 +822,7 @@ def run_phase(
     require(not directory.exists(), "phase artifact already exists; audit only")
     claim = claim_phase(ledger, manifest, phase, gate)
     intents, complete, error = [], False, None
-    started = time.monotonic()
+    started = ledger.start_phase()
     tasks = {task["task_id"]: task for task in bundle["tasks"]}
     attention = load_module(
         "protected_study_attention", ROOT / "python/agentc/_attention.py"

@@ -77,3 +77,28 @@ credential-file path, and `--phase pilot` or `--phase study`. The same module's
 `audit` command performs read-only replay and does not load credentials. The
 runner itself refuses an already-claimed phase and refuses study acquisition
 without a complete, freshly re-audited pilot and matching resource gate.
+
+## Completed pilot checkpoint
+
+The one-shot pilot completed all 36 calls with valid application values, no new
+failure or unresolved charge, and $0.211568 in known cost. This verifies format
+and resource feasibility only: no correctness labels were opened. The original
+journal now contains 19,450 events, with $22.48751547 known, $12.275019 still held,
+and $15.23746553 available within the original campaign cap.
+
+The fresh pilot-derived resource scenario estimates $3.080928 for source plus
+probes and $0.471566 for the fixed comparison. Training plus the largest full pair
+reservation totals $15.096288, below the available remainder by $0.14117753.
+Actual reservations remain authoritative; this estimate is not a guarantee.
+
+- Pilot summary file SHA-256: `9c28ba5ff488c546eb08b5719fed49bf02920dc30a6c808fa35f66d586cf39e1`.
+- Pilot audit file SHA-256: `6a831c512f185d2e911e4118c869a66e92c7bde838305c4380cf5b8864162203`.
+- Postpilot gate canonical SHA-256: `e3d94479aa6afac2447ed06344021cbc36d1f6109ef9eb3fd1608f5d489d316a`.
+- Postpilot gate file SHA-256: `02dcf5a7df824e5ffc4a88b8309dd505568b47c8e46e0468fa5281badbee7900`.
+- Original journal checkpoint file SHA-256: `fc3c7444264e86e390ea64f53fc4328dd068ac0039c97ef0523db2f4f59f78ad`.
+- Original journal checkpoint canonical SHA-256: `470c549a72c428af2ec43653b83e1c85f107f21841ee641ab9fc87d2d70981f7`.
+
+The saved pilot summary binds its raw calls, intents, and protected-event subset.
+The study runner independently reconstructs this gate again before claiming the
+study; a changed financial snapshot or incomplete pilot cannot be bypassed using
+the saved gate's `passed` field.

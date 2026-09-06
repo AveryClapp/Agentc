@@ -1,7 +1,7 @@
 ---
 title: Current Fit And Publishability
 status: active
-last-updated: 2026-09-05
+last-updated: 2026-09-06
 owner: paper-intelligence
 ---
 
@@ -28,6 +28,14 @@ The [post-hoc error trace](../bench/repro/openrouter-typed-factorial-error-trace
 This is materially better evidence of an opportunity than routing and rule activation alone. It also raises the strongest counterargument: **the fixed Haiku-plus-rules configuration already has the best aggregate quality and cost here.** An adaptive controller must beat that baseline after paying for learning. The actual native rules were materialized directly; optimizer selection, native admission, a damage guarantee, and public-workload generalization were not tested.
 
 Separately, the earlier provider-backed native study failed its frozen admission gate after 1,372 calls: no actually selected joint plan had 20 exact source-paired observations. All 48 protected QA questions remained unused. This is a learning/admission limitation, not a held-out treatment-effect result; the successful fixed factorial does not erase it. The closed evidence is recorded in Beads `bd-323l.6.13.8.5` and archive commit `48e6358` on `exp/joint-input-rules`.
+
+## September 6: Public Follow-Up Stopped; Native Mechanism Improved
+
+The [public HotpotQA development follow-up](../bench/repro/openrouter-public-model-sd-2026-09-06/README.md) stopped after 229 of 384 calls when the next Sonnet request timed out. All 229 completions were structurally valid, but the frozen protocol forbids scoring a partial matrix. Labels remain unopened: there is **no public-data accuracy result**, favorable or unfavorable, and no efficacy figure. Known primary spend is USD0.561710; the unknown attempt retains its full USD6.015360 allowance. The separate 36-call format/resource pilot passed for USD0.095678.
+
+All selected questions retained their original ten paragraphs. ContextCompress applied to zero of the 38 pilot/primary inputs, so the four-cell scope was fixed before payment as model × answer-stage StateDrop, not a CC/SD composition test. The timeout does not justify resampling these questions, resuming the closed run, or manufacturing longer contexts. The [long-public-workload research](research-inbox/2026-09-05-naturally-long-public-qa.md) identifies QASPER as a possible later natural-length workload, with distinct contract and evaluation requirements; it is not an acquired or evaluated dataset here.
+
+The reviewed native prototype `ac436255` separates explicit protected exploration from proven context capacity. It passes 331 Rust tests and independent review, but **UNKNOWN-capacity requests still return the exact source plan as primary**, even with favorable profiles and after restart. This is a mechanism prerequisite, not native adaptive superiority. A further scheduling constraint is explicit: the default 20 probes per call site cannot supply a 20-observation floor to each of several candidate plans in one window. Any larger prospective exploration allowance must be declared and fully charged; the evidence floor and semantic guards cannot be quietly lowered to obtain admission.
 
 ## Has The Field Passed The Idea?
 
@@ -86,8 +94,8 @@ Therefore, “routing on top of JIT” is not the contribution by itself. The us
 
 The experiment priorities below are scientific requirements; Beads, not this document, owns task state.
 
-1. Test the repeated fixed-configuration effect on a [pinned public workload](research-inbox/2026-09-05-public-hotpot-typed-followup.md). Separately materialize CC-only and SD-only at both models if the prospectively defined resource gate permits the complete factorial. Keep all tasks, no-op coverage, and invalid paths.
-2. Establish a reviewed, usable native eligibility path without inventing provider context bounds. Then compare learned joint selection against the best fixed configuration, route-only, rewrite-only, both sequential orders, and current greedy on fresh evaluation tasks. Charge every source probe and failed attempt.
+1. Establish public-workload generalization in a separately designed complete study; the closed partial HotpotQA run supplies no quality evidence and cannot be resumed. Use natural workload structure, keep no-op and invalid paths, and separate CC-only/SD-only effects only where the predeclared design can identify them.
+2. Verify the native protected-learning path with real source/probe observations and its full budget, without inventing provider context bounds. Primary promotion is a separate unproved transition. Then compare learned joint selection against the best fixed configuration, route-only, rewrite-only, both sequential orders, and current greedy on fresh evaluation tasks. Charge every source probe and failed attempt.
 3. Include a credible joint optimizer such as Cognify/OPTIMAS or a faithfully scoped matched control, not only a routing baseline. Disclose label access, model pools, adaptation requirements, and tuning budgets; resolve CORAL's full-methods uncertainty.
 4. Test persistent invalidation and the advertised damage contract under declared drift and restart, with no-adaptation/nonpersistent controls. A small positive quality interval is not a risk guarantee.
 5. Repeat the frozen admission-limit sweep on a quiet second host and report latency versus lost optimization coverage. Preserve the 1.2ms target; loaded-host abstention is not a free speedup.

@@ -1,7 +1,7 @@
 ---
 title: Results, Experiments, and Repro
 status: active
-last-updated: 2026-09-05
+last-updated: 2026-09-06
 owner: paper-intelligence
 ---
 
@@ -30,7 +30,7 @@ Supersedes:
 
 ## Evidence Verdict
 
-The newest verified evidence is a **fixed model × rewrite diagnostic**, not adaptive joint-policy success. Its complete paired matrix and provenance are summarized immediately below. Historical warmup-corrected rule-level results retain their existing scope and caveats; they are not substitutes for the missing native admission and learned-policy comparison. The original USD50 campaign and all failed-attempt uncertainty remain authoritative.
+The strongest recent quality evidence is a **fixed model × rewrite diagnostic**, not adaptive joint-policy success. Its complete paired matrix and provenance are summarized immediately below. The subsequent public-workload run stopped at a timeout and remains unscored; its partial archive and full uncertainty are retained. Historical warmup-corrected rule-level results retain their existing scope and caveats; they are not substitutes for the missing native admission and learned-policy comparison. The original USD50 campaign and all failed-attempt uncertainty remain authoritative.
 
 ### Verified typed fixed factorial: opportunity, not adaptive proof
 
@@ -67,6 +67,20 @@ Stage cost is USD1.569288, both matrices USD3.138576, and both plus the feasibil
 
 Repeat acquisition freeze `351cd64`, archive `0df301b`, manifest `ea2778d363317a6d8b4cbad377cbc86d6c1fa8a38390cd6f82c55226113ffe2e`, protocol `0a931035f6a6d7f5f3858b28f7ffbc2e67712a4b463843a2709c0b9f1b99eb1c`, canonical paired report `2b80e2c2dfc599bc6d8850adad2da0fffd9f74d6d3253cccbd336f725034b607`. All one-shot claims are preserved; no third repetition is allowed. The result supports repeatability of the fixed opportunity, not adaptive-controller superiority, independent confirmation, native admission, or a damage guarantee.
 
+### Public model × StateDrop follow-up: partial, no quality result
+
+The [public archive](../bench/repro/openrouter-public-model-sd-2026-09-06/README.md), source `51a47a9`, freeze `b31d1f3`, terminal archive `b938741`, uses 32 primary and six disjoint pilot questions selected by ID before selected text or labels were read. [Dataset provenance](../bench/repro/hotpot-train-typed-2026-09-05/README.md) pins the HotpotQA training revision, full original paragraphs, exclusions, official evaluator, and separate label artifact. This is public training-set development data, not a new held-out confirmation.
+
+Native preflight found ContextCompress applicable on zero of 38 inputs, without padding or changing thresholds. The four-cell scope was frozen before any public call: S0/SR/H0/HR, operationally model × answer-stage StateDrop, with CC attempts retained as recorded no-ops. It cannot identify a CC effect or CC×SD interaction. The separately frozen 36-call format/resource pilot passed without reading labels, costing USD0.095678.
+
+The primary completed **229/384 scheduled calls and 230 intents**, all completed calls structurally valid, before attempt 230 timed out after 120 seconds at 00:28:35 UTC on September 6. It was Sonnet SR/synthesize for `hotpot_5ac2d102554299657fa29080`, with no response or charge receipt. Known primary spend is USD0.561710, plus the full unresolved-attempt allowance USD6.015360. Family known spend, including the pilot once, is USD0.657388. Completed input/output tokens are 208,054/14,058; no cached input tokens were reported. Partial-prefix materialization counts are 39 CC abstentions, 38 SD applications, and 153 no-rule intents; these are not balanced-cell efficacy contrasts.
+
+Main and independent audit `bd-323l.6.13.8.6.20.14.2.5` reconstructed every saved request, native deletion, own-history state, provider receipt, and original-ledger charge, with no missing/extra results or retry. The [diagnostic analysis](../bench/repro/openrouter-public-model-sd-2026-09-06/analysis.json) has `schedule_complete=false`, `labels_read=false`, zero scored paired tasks, no intervals, and no efficacy claim. It was generated with label/credential access forbidden. No public efficacy figures were rendered. The timeout is an operational failure, not evidence for or against the generated-workload quality interaction.
+
+Manifest canonical SHA is `b5b1769028a2b81d509907a1097838802b65e1efb214c3bffda0238a5a8750f3`; analysis raw-file SHA is `b96ee8e56ddeda88ee3acc16a15f29a72b5fd6c070e2a09fd318ff6b3ac58a3b`. [Terminal metadata](../bench/repro/openrouter-public-model-sd-2026-09-06/terminal-snapshot.json) pins the 19,340-event original-ledger prefix and raw artifacts. [Permanent retirement](../bench/repro/openrouter-public-model-sd-2026-09-06/retirement.json), appended at 00:33:56 UTC after review, preserves the full allowance and forbids retry/resume. The pre-retirement summary/report remain unchanged; historical replay needs that exact prefix, with later full-ledger accounting reported separately (`bd-8qlq`).
+
+At retirement, the original campaign contained **USD22.27594747 known charges plus USD12.275019 retained uncertainty**, zero pending or unresolved calls: USD34.55096647 committed, USD15.44903353 remaining. Retirement changes dispatch eligibility, not the financial commitment. These are dated snapshots, never a fresh USD50 allowance.
+
 ### Earlier admission failure and accounting scope
 
 The closed native QA study at archive `48e6358` (`exp/joint-input-rules`, manifest `dcb703739e460810825f0966c06371d2848a4d17346afbfea4e77c52a0548ace`) completed 1,372 paid calls at USD7.048348 but did not satisfy its frozen admission gate: no actually selected joint plan had 20 exact source-paired observations. None of its 48 protected QA questions was dispatched. This is an admission/learning-feasibility limitation, not a held-out quality failure or success, and the fixed typed factorial does not supersede it.
@@ -100,6 +114,20 @@ natural workloads, route-only and rewrite-only controls, both sequential
 orders, best static joint, current greedy, and AgentOpt/other feasible
 baselines, with exploration and shadow cost charged. Until that result exists,
 the MLSys main-track assessment remains conditional.
+
+### Protected native profiling checkpoint (not paper evidence)
+
+The separate September 6 protected-UNKNOWN prototype (`ac436255`, independent
+review `bd-323l.6.13.8.6.20.5.1.3.2.1`) passes 300 unit and 31 integration tests
+plus all-targets Clippy. It adds explicit exploration-only capability facts and
+policy-bound plan identities without supplying a numeric input-token bound.
+Warm/restarted UNKNOWN profiles never enable primary selection: the exact
+reference remains primary. The reviewed source-first budget groups (`193caf8`)
+are a separate no-network accounting prerequisite. Neither result establishes
+provider-backed learning, a context-fit certificate, a damage guarantee, or
+superiority to fixed HR. Default per-site exploration budgets and per-plan
+evidence floors must both be satisfied; probe allowance cannot be confused with
+the number of observations for a particular joint plan.
 
 ### Request-path engineering checkpoint (not paper evidence)
 
@@ -257,7 +285,7 @@ The following table is historical provenance using retired IDs. Current tasks, d
 
 ## Negative Results
 
-Current negative/limiting evidence includes the native admission failure above, earlier schema/format acquisition failures with retained cost, the essentially zero relative cost interaction in the fixed factorial, and the historical greedy-versus-composed non-difference. They must accompany positive results rather than be treated as unrecorded or discarded experiments.
+Current negative/limiting evidence includes the native admission failure above, the public factorial timeout and unscored partial matrix, earlier schema/format acquisition failures with retained cost, the essentially zero relative cost interaction in the fixed factorial, and the historical greedy-versus-composed non-difference. They must accompany positive results rather than be treated as unrecorded or discarded experiments.
 
 | ID | Status | Type | Item | Decision |
 |---|---|---|---|---|

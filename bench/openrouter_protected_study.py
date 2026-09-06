@@ -43,12 +43,44 @@ ROLLING_TELEMETRY = {
 }
 LIMITATIONS = [
     "Fresh generated development tasks; not an independent public benchmark.",
+    "Six pilot and two study inputs previously appeared in offline fake-provider unit tests; no unseen-input claim.",
     "UNKNOWN primary always uses the exact Sonnet source; no adaptive cost-win claim.",
     "Twenty exact-plan pairs are an evidence floor, not a two-percent damage certificate.",
     "Native source/probe block precedes fixed HR; timing and cache are confounded.",
     "All fees, failed attempts, probes and retained uncertainty remain charged.",
     "Only full paired workflow blocks permit descriptive source-versus-HR scoring.",
 ]
+
+
+def exposure_disclosure(selection):
+    """Additive correction; never rewrite the already frozen selection/artifacts."""
+    affected = fixture.ids_for(fixture.SEED, 8)
+    require(
+        affected == selection["pilot_ids"] + selection["study_ids"][:2],
+        "offline exposure inventory differs from preserved prospective IDs",
+    )
+    return {
+        "kind": "protected-generated-offline-exposure-disclosure-v1",
+        "bug": "bd-9hjr",
+        "selection_sha256": selection["selection_sha256"],
+        "reviewed_checkpoint": "8956a352afe71eca315876365eb80a2eec91b15e",
+        "materialization_commit": "c506794bc30a9a55b2ae3479889d861b1eeda0e5",
+        "historical_test_source": "tests/test_openrouter_protected_pair.py",
+        "first_introducing_commit": "11f0f55b00051083e981a93f51203f211998a6e1",
+        "first_introducing_commit_time": "2026-09-05T20:52:43-04:00",
+        "reviewed_historical_commit": "e20f4f52baefe90f6ffbd52238f1dbdbcfef4c89",
+        "reviewed_historical_test_sha256": "bb19243dc7ea52b8810c09d610eb8036225e4f07eb509281e42e1a0b2d25ab2c",
+        "offline_generated_ids": affected,
+        "affected_pilot_ids": selection["pilot_ids"],
+        "affected_study_ids": selection["study_ids"][:2],
+        "exposure": "Before the ID-only checkpoint, inherited unit tests generated these eight public contexts and their internal expected scalars. Fake response constants, not expected scalars, drove assertions and native feedback.",
+        "scope": "Offline tests only: real transport forbidden, constant fake responses, temporary ledger/native stores. No provider-response, gold-feedback, accuracy-selection, or production-profile exposure was found in independent source review.",
+        "corrected_claim": "One preserved development draw with prospectively acquired real-model responses; not unseen-input or held-out evidence. The earlier checkpoint is not proof that no overlapping task bodies had ever been generated.",
+        "prospective_ids_and_raw_artifacts_preserved": True,
+        "resampling": False,
+        "unseen_input_claim": False,
+        "future_test_only_seed": -2026090601,
+    }
 
 
 def require(condition, message):
@@ -264,6 +296,10 @@ def manifest_core(
         "source_files": sources(),
         "selection_sha256": bundle["selection"]["selection_sha256"],
         "public_bundle_sha256": pilot.digest(bundle),
+        "fixture_exposure": exposure_disclosure(bundle["selection"]),
+        "fixture_exposure_sha256": pilot.digest(
+            exposure_disclosure(bundle["selection"])
+        ),
         "bundle_files": {
             "selection.json": bundle["provenance"]["selection_file_sha256"],
             "public.json": bundle["provenance"]["public_sha256"],

@@ -166,9 +166,32 @@ def test_prepaid_rounding_is_not_extra_budget_or_a_weaker_reserve(setup):
         s.prepilot_gate(manifest, state)
 
 
+def test_additive_exposure_disclosure_matches_original_selection_without_labels():
+    directory = s.ROOT / "bench/repro/openrouter-protected-generated-2026-09-06"
+    selection = s.fixture.read(directory / "selection.json")
+    disclosure = s.exposure_disclosure(selection)
+    assert (directory / "exposure-disclosure.json").read_bytes() == s.pilot.canonical(
+        disclosure
+    ) + b"\n"
+    assert (
+        s.file_hash(directory / "selection.json")
+        == "7c54ef35d16d2d946e26578bbad78d0cd68b57130816bb81a69d2d4c22a9a36e"
+    )
+    assert (
+        s.file_hash(directory / "public.json")
+        == "9f6ecfcada33040dac2275b4987b4ce64cf69a2a0ab33bac6e8502b6193f1533"
+    )
+    assert (
+        s.file_hash(directory / "provenance.json")
+        == "2d969b0fbbce20926e519499117603953f65a688f84fa1f036fc55a1161e5d72"
+    )
+
+
 @pytest.fixture
 def frozen_setup(setup, tmp_path, monkeypatch):
     ledger, simple, bundle = setup
+    ids = s.fixture.ids_for(s.fixture.SEED, s.fixture.COUNT)
+    bundle["selection"].update(pilot_ids=ids[:6], study_ids=ids[6:])
     bundle.update(
         kind="synthetic",
         tasks=[],
@@ -257,6 +280,9 @@ def test_frozen_manifest_binds_original_remaining_funds(frozen_setup):
     ledger, manifest, bundle, bridge, materializer = frozen_setup
     assert manifest["family_cap_usd"] == "50"
     assert manifest["protocol"]["primary_promotion"] is False
+    assert manifest["fixture_exposure"]["unseen_input_claim"] is False
+    assert len(manifest["fixture_exposure"]["affected_pilot_ids"]) == 6
+    assert len(manifest["fixture_exposure"]["affected_study_ids"]) == 2
     s.validate_manifest(
         manifest, bundle, read(ledger), bridge, materializer, s.pilot.digest(manifest)
     )

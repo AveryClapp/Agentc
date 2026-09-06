@@ -38,7 +38,7 @@ from bench.openrouter_pilot import (
     validate_schema_endpoint,
 )
 
-KIND = "public-hotpot-fixed-factorial-v1"
+KIND = "public-hotpot-model-sd-v1"
 WORKLOAD = "typed_public_research_v1"
 PILOT_COUNT, PRIMARY_COUNT = 6, 32
 PILOT_CAP, PILOT_PROGRESS = Decimal("7"), Decimal("0.75")
@@ -48,15 +48,12 @@ ARMS = {
     for prefix, model in (("S", live.SOURCE_MODEL), ("H", live.TARGET_MODEL))
     for suffix, cc, sd in (
         ("0", False, False),
-        ("CC", True, False),
-        ("SD", False, True),
         ("R", True, True),
     )
 }
 BASELINE_ARMS = ("S0", "H0")
 FOUR_ARMS = ("S0", "SR", "H0", "HR")
-EIGHT_ARMS = tuple(ARMS)
-PUBLIC_FILES = ("selection.json", "public.json", "provenance.json")
+PUBLIC_FILES = ("selection.json", "public.json", "provenance.json", "coverage.json")
 PHASE_FILES = ("manifest.json", "intents.json", "calls.json", "summary.json")
 ROLLING_TELEMETRY = {
     "latency_last_30m",
@@ -70,6 +67,16 @@ FAILURE_POLICY = (
     "invalid=count-loss+contagious-null;provider-failure=stop;no-retry;no-resume-v1"
 )
 FORECAST_POLICY = "observed-endpoint-max-pilot-effective-rate-history-and-512-output-v1"
+SCOPE_DECISION = {
+    "reason": "Prepaid public native preflight: CC zero of 38; preserve IDs, raw contexts, and native thresholds.",
+    "primary_arms": list(FOUR_ARMS),
+    "attempted_factors": ["model", "cc_sd_bundle"],
+    "operational_intervention": "model x answer StateDrop; filter ContextCompress is a recorded no-op",
+    "individual_cc_identified": False,
+    "cc_sd_interaction_identified": False,
+    "accuracy_used": False,
+    "resampling_or_padding": False,
+}
 LIMITATIONS = [
     "Public train-split development tasks, one realization per cell; no heldout or learned-policy claim.",
     "The pilot gate uses format and resources only; no labels or answer-accuracy threshold.",
@@ -80,6 +87,7 @@ LIMITATIONS = [
     "All arms keep their own histories; invalid paths remain losses even after plausible later answers.",
     "Native CC/SD materialization is not native planning, routing, learning, or semantic guard admission.",
     "No cache savings or rewrite savings are credited in the prospective forecast.",
+    "CC has zero public preflight applicability; four cells test model x attempted bundle, operationally model x SD, not CC or CC x SD.",
     "Latency is observational; compilation, caching, provider load and generation randomness are uncontrolled.",
 ]
 
@@ -241,6 +249,91 @@ def schema_catalog(selected):
     }
 
 
+def coverage_evidence(args, bundle):
+    """Pin the reviewed, label-blind zero-CC mechanics decision, not quality."""
+    report = read(Path(args.bundle) / "coverage.json")
+    source_paths = {
+        "builder": "bench/build_typed_hotpot_fixture.py",
+        "adapter": "bench/typed_public_workload.py",
+        "attention": "python/agentc/_attention.py",
+        "bridge": materializer.BRIDGE_SOURCE,
+    }
+    expected = {
+        "kind": "hotpot-public-rule-mechanics-v1",
+        "source_sha256": {
+            key: file_hash(ROOT / path) for key, path in source_paths.items()
+        },
+        "bridge_sha256": file_hash(args.bridge),
+        "public_sha256": file_hash(Path(args.bundle) / "public.json"),
+        "selection_sha256": digest(bundle["selection"]),
+        "contract_sha256": adapter().contract_hash(),
+        "tasks": PILOT_COUNT + PRIMARY_COUNT,
+        "provider_calls": 0,
+        "quality_evaluations": 0,
+        "gold_access": False,
+        "native_admission": False,
+        "feedback_provided": False,
+    }
+    if canonical({key: report.get(key) for key in expected}) != canonical(expected):
+        raise PilotError(
+            "public coverage report source, fixture, or no-network contract changed"
+        )
+    models = {live.SOURCE_MODEL, live.TARGET_MODEL}
+    if len(report["models"]) != 2 or set(report["models"]) != models:
+        raise PilotError("public coverage model set changed")
+    cohorts = {
+        "CC_actual_public": (
+            "ContextCompress",
+            "filter",
+            False,
+            {"not_applicable", "no_proposal"},
+        ),
+        "SD_synthetic_history": ("StateDrop", "answer", True, {None}),
+        "SD_invalid_synthetic_history": (
+            "StateDrop",
+            "answer",
+            False,
+            {"ambiguous_provenance"},
+        ),
+    }
+    expected_keys = {
+        (task["task_id"], model, cohort)
+        for task in bundle["tasks"]
+        for model in models
+        for cohort in cohorts
+    }
+    seen, counts = set(), {model: Counter() for model in models}
+    for row in report["records"]:
+        key = (row["task_id"], row["model"], row["cohort"])
+        if key in seen or key not in expected_keys:
+            raise PilotError("public coverage record identity changed")
+        seen.add(key)
+        rule, stage, applied, reasons = cohorts[row["cohort"]]
+        if (
+            row["rule"] != rule
+            or row["stage"] != stage
+            or row["applied"] is not applied
+            or row["abstention_reason"] not in reasons
+            or (
+                not applied
+                and row["original_call_sha256"] != row["materialized_call_sha256"]
+            )
+        ):
+            raise PilotError(
+                "public coverage no longer supports zero CC and synthetic SD mechanics"
+            )
+        counts[row["model"]][
+            row["cohort"] + "/" + ("applied" if applied else row["abstention_reason"])
+        ] += 1
+    if seen != expected_keys or canonical(report["summary"]) != canonical(counts):
+        raise PilotError("public coverage missing records or inconsistent counts")
+    return {
+        "canonical_sha256": digest(report),
+        "summary": report["summary"],
+        "tasks": report["tasks"],
+    }
+
+
 def base_contract(args, bundle, binding, phase, arms, selected, pilot=None):
     workload = adapter()
     pilot_known = money(pilot["known_cost_usd"]) if pilot else Decimal(0)
@@ -257,6 +350,7 @@ def base_contract(args, bundle, binding, phase, arms, selected, pilot=None):
         "selection_sha256": digest(bundle["selection"]),
         "fixture_provenance": bundle["provenance"],
         "dataset_source": bundle["source"],
+        "structural_coverage": coverage_evidence(args, bundle),
         "schedule": schedule(bundle, phase, arms),
         "arms": {arm: ARMS[arm] for arm in arms},
         "prompts": workload.prompts(),
@@ -277,6 +371,7 @@ def base_contract(args, bundle, binding, phase, arms, selected, pilot=None):
         "pilot_evidence": pilot,
         "failure_policy": FAILURE_POLICY,
         "forecast_policy": FORECAST_POLICY,
+        "scope_decision": SCOPE_DECISION,
         "native_execution_allowed": False,
         "paper_evidence": False,
         "limitations": LIMITATIONS,
@@ -337,6 +432,8 @@ def freeze(args, key, phase):
 
 
 def validate(args, manifest, key=None):
+    if canonical(read(args.output / "manifest.json")) != canonical(manifest):
+        raise PilotError("on-disk public manifest differs from validated object")
     bundle = load_bundle(args.bundle)
     binding, events, state = finance_helpers.typed_ledger_snapshot(args.ledger, key)
     phase = manifest["phase"]
@@ -856,7 +953,7 @@ def resource_forecast(bundle, pilot_calls, pilot_intents, selected):
                     }
                 )
     options = {}
-    for name, arms in (("eight", EIGHT_ARMS), ("four", FOUR_ARMS)):
+    for name, arms in (("four", FOUR_ARMS),):
         repetitions = Counter(ARMS[arm]["model"] for arm in arms)
         totals = {
             field: str(
@@ -906,14 +1003,13 @@ def choose_arms(forecast):
         or forecast["selection_metric"] != "conservative_observed_usd"
     ):
         raise PilotError("public forecast selection policy changed")
-    for option, arms in (("eight", EIGHT_ARMS), ("four", FOUR_ARMS)):
-        if (
-            money(forecast["options"][option]["conservative_observed_usd"])
-            <= PRIMARY_PROGRESS
-        ):
-            return arms
+    if (
+        money(forecast["options"]["four"]["conservative_observed_usd"])
+        <= PRIMARY_PROGRESS
+    ):
+        return FOUR_ARMS
     raise PilotError(
-        "neither prospective public factorial fits the frozen forecast gate"
+        "fixed four-cell public factorial exceeds the frozen forecast gate"
     )
 
 
@@ -950,10 +1046,9 @@ def cell_report(rows, task, label):
 
 def contrasts(cells):
     """Factorial differences averaged over factors outside each contrast."""
-    full = set(cells) == set(EIGHT_ARMS)
-    if not full and set(cells) != set(FOUR_ARMS):
+    if set(cells) != set(FOUR_ARMS):
         raise PilotError("paired task has the wrong fixed cell coverage")
-    factors = ("model", "cc", "sd") if full else ("model", "rules_bundle")
+    factors = ("model", "rules_bundle")
     signs = {
         arm: {
             "model": 1 if ARMS[arm]["model"] == live.TARGET_MODEL else -1,
@@ -1103,15 +1198,9 @@ def analyze(args, manifest):
                 [{field: row[field] for field in finite_fields} for row in metrics],
                 seed=2026090504,
             ),
-            scheduled_factorial_factors=(
-                ["model", "cc", "sd"]
-                if set(manifest["arms"]) == set(EIGHT_ARMS)
-                else ["model", "rules_bundle"]
-            ),
-            individual_cc_sd_identified=(
-                set(manifest["arms"]) == set(EIGHT_ARMS)
-                and {"ContextCompress", "StateDrop"} <= applied_rules
-            ),
+            scheduled_factorial_factors=["model", "rules_bundle"],
+            operational_interpretation=SCOPE_DECISION["operational_intervention"],
+            individual_cc_sd_identified=False,
             pilot_inclusive_known_usd=str(
                 money(checked["finance"]["known_stage_usd"])
                 + money(manifest["pilot_evidence"]["known_cost_usd"])

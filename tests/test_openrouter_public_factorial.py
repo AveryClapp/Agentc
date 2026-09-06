@@ -51,6 +51,69 @@ def no_op(call, rule, bridge):
     }
 
 
+def fake_coverage(args):
+    bundle = study.load_bundle(args.bundle)
+    models = [study.live.SOURCE_MODEL, study.live.TARGET_MODEL]
+    cohorts = {
+        "CC_actual_public": ("ContextCompress", "filter", False, "not_applicable"),
+        "SD_synthetic_history": ("StateDrop", "answer", True, None),
+        "SD_invalid_synthetic_history": (
+            "StateDrop",
+            "answer",
+            False,
+            "ambiguous_provenance",
+        ),
+    }
+    records = [
+        {
+            "task_id": task["task_id"],
+            "model": model,
+            "cohort": cohort,
+            "rule": rule,
+            "stage": stage,
+            "applied": applied,
+            "abstention_reason": reason,
+            "original_call_sha256": "a" * 64,
+            "materialized_call_sha256": ("b" if applied else "a") * 64,
+        }
+        for task in bundle["tasks"]
+        for model in models
+        for cohort, (rule, stage, applied, reason) in cohorts.items()
+    ]
+    report = {
+        "kind": "hotpot-public-rule-mechanics-v1",
+        "source_sha256": {
+            key: study.file_hash(study.ROOT / path)
+            for key, path in {
+                "builder": "bench/build_typed_hotpot_fixture.py",
+                "adapter": "bench/typed_public_workload.py",
+                "attention": "python/agentc/_attention.py",
+                "bridge": study.materializer.BRIDGE_SOURCE,
+            }.items()
+        },
+        "bridge_sha256": study.file_hash(args.bridge),
+        "public_sha256": study.file_hash(args.bundle / "public.json"),
+        "selection_sha256": study.digest(bundle["selection"]),
+        "contract_sha256": public.contract_hash(),
+        "tasks": 38,
+        "provider_calls": 0,
+        "quality_evaluations": 0,
+        "gold_access": False,
+        "native_admission": False,
+        "feedback_provided": False,
+        "models": models,
+        "records": records,
+        "summary": {
+            model: {
+                cohort + "/" + ("applied" if applied else reason): 38
+                for cohort, (_, _, applied, reason) in cohorts.items()
+            }
+            for model in models
+        },
+    }
+    (args.bundle / "coverage.json").write_text(json.dumps(report))
+
+
 @pytest.fixture
 def experiment(fixture, tmp_path, monkeypatch):
     root, cache, bundle_dir, selection, parquet = fixture
@@ -144,6 +207,7 @@ def experiment(fixture, tmp_path, monkeypatch):
         pilot_manifest_sha256=None,
         manifest_sha256=None,
     )
+    fake_coverage(args)
     frozen = study.freeze(args, KEY, "pilot")
     args.manifest_sha256 = frozen["manifest_sha256"]
     manifest = study.read(args.output / "manifest.json")
@@ -191,18 +255,20 @@ def test_complete_pilot_advances_on_format_and_finance_without_accuracy_or_label
     assert ledger.summary()["spent_usd"] == "0.036"
     assert frozen["pilot_evidence"]["accuracy_used"] is False
     assert Decimal(frozen["stage_cap_usd"]) == Decimal("13.964")
-    assert tuple(frozen["arms"]) == tuple(sorted(study.EIGHT_ARMS))
-    assert len(frozen["schedule"]) == 32 * 8
+    assert tuple(frozen["arms"]) == tuple(sorted(study.FOUR_ARMS))
+    assert len(frozen["schedule"]) == 32 * 4
+    assert frozen["scope_decision"]["accuracy_used"] is False
     assert (
         study.validate(primary, frozen)[0]["selection"]
         == checked["bundle"]["selection"]
     )
     report = frozen["forecast"]
     assert report["selection_metric"] == "conservative_observed_usd"
-    assert Decimal(report["options"]["eight"]["conservative_observed_usd"]) <= 7
-    assert (
-        Decimal(report["options"]["eight"]["conservative_universal_price_cap_usd"]) > 7
-    )
+    assert set(report["options"]) == {"four"}
+    assert Decimal(report["options"]["four"]["conservative_observed_usd"]) <= 7
+    assert Decimal(
+        report["options"]["four"]["conservative_universal_price_cap_usd"]
+    ) > Decimal(report["options"]["four"]["conservative_observed_usd"])
     assert report["capacity_bound"] is False and report["spending_guarantee"] is False
 
 
@@ -216,7 +282,7 @@ def test_primary_full_own_history_run_and_all_32_cluster_analysis(
     with monkeypatch.context() as guarded:
         deny_labels(guarded)
         result = study.run(primary, KEY, manifest)
-        assert result == {"completed_calls": 768, "schedule_complete": True}
+        assert result == {"completed_calls": 384, "schedule_complete": True}
         assert study.audit(primary, manifest)["schedule_complete"]
     # An invalid filter remains contagious, even though later fake provider
     # responses in that workflow are plausible and well-formed.
@@ -235,12 +301,13 @@ def test_primary_full_own_history_run_and_all_32_cluster_analysis(
         row for row in report["paired_tasks"] if row["task_id"] == first["task_id"]
     )["cells"][first["arm"]]
     assert cell["em"] == cell["f1"] == 0 and cell["invalid_path"]
-    assert report["scheduled_factorial_factors"] == ["model", "cc", "sd"]
+    assert report["scheduled_factorial_factors"] == ["model", "rules_bundle"]
     assert report["applied_transformations"] == []
     assert report["individual_cc_sd_identified"] is False
-    assert "modelxccxsd/em" in report["descriptive_task_cluster_intervals"]
-    assert Decimal(report["pilot_inclusive_known_usd"]) == Decimal(".804")
-    assert ledger.summary()["completed_calls"] == 804
+    assert "modelxrules_bundle/em" in report["descriptive_task_cluster_intervals"]
+    assert "ccxsd/em" not in report["descriptive_task_cluster_intervals"]
+    assert Decimal(report["pilot_inclusive_known_usd"]) == Decimal(".420")
+    assert ledger.summary()["completed_calls"] == 420
     assert not (args.output / "analysis.json").exists()
 
 
@@ -334,7 +401,17 @@ def test_full_selection_phase_claim_survives_copy_and_new_manifest_timestamp(
 
 
 @pytest.mark.parametrize(
-    "mutation", ["source", "bridge", "budget", "schema", "selection", "key", "ledger"]
+    "mutation",
+    [
+        "source",
+        "bridge",
+        "budget",
+        "schema",
+        "selection",
+        "key",
+        "ledger",
+        "disk_manifest",
+    ],
 )
 def test_changed_frozen_contract_stops_before_paid_dispatch(
     experiment, monkeypatch, tmp_path, mutation
@@ -353,6 +430,10 @@ def test_changed_frozen_contract_stops_before_paid_dispatch(
         manifest["selection_sha256"] = "f" * 64
     elif mutation == "key":
         key = "other-fake-key"
+    elif mutation == "disk_manifest":
+        changed = deepcopy(manifest)
+        changed["created_at"] = "unrelated disk content"
+        (args.output / "manifest.json").write_text(json.dumps(changed))
     else:
         args.ledger = tmp_path / "copy.jsonl"
         args.ledger.write_bytes(ledger.path.read_bytes())
@@ -405,23 +486,54 @@ def test_audit_rejects_altered_artifacts_and_entire_summary(experiment, mutation
         study.audit(args, manifest)
 
 
-@pytest.mark.parametrize(
-    "eight,four,choice", [("7", "3.5", 8), ("7.01", "3.505", 4), ("15", "7.5", 0)]
-)
-def test_predeclared_scope_gate_has_no_quality_input(eight, four, choice):
+@pytest.mark.parametrize("four,choice", [("3.5", 4), ("7", 4), ("7.01", 0)])
+def test_predeclared_scope_gate_has_no_quality_input(four, choice):
     forecast = {
         "policy": study.FORECAST_POLICY,
         "selection_metric": "conservative_observed_usd",
         "options": {
-            "eight": {"conservative_observed_usd": eight},
             "four": {"conservative_observed_usd": four},
         },
     }
     if choice:
         assert len(study.choose_arms(forecast)) == choice
     else:
-        with pytest.raises(pilot.PilotError, match="neither"):
+        with pytest.raises(pilot.PilotError, match="exceeds"):
             study.choose_arms(forecast)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["source", "selection", "gold", "count", "duplicate", "cc_applied", "schema_bool"],
+)
+def test_four_cell_scope_requires_bound_complete_zero_cc_preflight(
+    experiment, mutation
+):
+    args, manifest, _, dispatched, _, _ = experiment
+    path = args.bundle / "coverage.json"
+    report = study.read(path)
+    if mutation == "source":
+        report["source_sha256"]["adapter"] = "changed"
+    elif mutation == "selection":
+        report["selection_sha256"] = "changed"
+    elif mutation == "gold":
+        report["gold_access"] = True
+    elif mutation == "count":
+        report["summary"][study.live.SOURCE_MODEL][
+            "CC_actual_public/not_applicable"
+        ] = 37
+    elif mutation == "duplicate":
+        report["records"][-1] = report["records"][0]
+    elif mutation == "cc_applied":
+        report["records"][0]["applied"] = True
+    else:
+        report["records"][0]["applied"] = 0
+    path.write_text(json.dumps(report))
+    with pytest.raises(pilot.PilotError, match="coverage"):
+        study.coverage_evidence(args, study.load_bundle(args.bundle))
+    with pytest.raises(pilot.PilotError):
+        study.run(args, KEY, manifest)
+    assert not dispatched
 
 
 def test_factorial_interaction_distinguishes_relative_cost_from_price_multiplication():
@@ -438,8 +550,8 @@ def test_factorial_interaction_distinguishes_relative_cost_from_price_multiplica
         for arm, spec in study.ARMS.items()
     }
     values = study.contrasts(cells)
-    assert values["ccxsd/em"] == 1 and values["modelxccxsd/em"] == 0
-    assert values["modelxcc/log_cost"] == pytest.approx(0)
+    assert values["rules_bundle/em"] == 1 and values["modelxrules_bundle/em"] == 0
+    assert values["modelxrules_bundle/log_cost"] == pytest.approx(0)
     four = study.contrasts({arm: cells[arm] for arm in study.FOUR_ARMS})
     assert "rules_bundle/em" in four and "cc/em" not in four
     cells["S0"]["cost_usd"] = "0"
@@ -471,7 +583,7 @@ def test_real_existing_bridge_can_materialize_public_filter_and_answer(
     attention = study.load_module(
         "public_real_bridge_attention", study.ROOT / "python/agentc/_attention.py"
     )
-    manifest["arms"] = {arm: study.ARMS[arm] for arm in study.EIGHT_ARMS}
+    manifest["arms"] = {arm: study.ARMS[arm] for arm in study.FOUR_ARMS}
     for stage, history in (
         ("filter", {}),
         (

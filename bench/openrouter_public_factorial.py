@@ -265,7 +265,9 @@ def coverage_evidence(args, bundle):
         },
         "bridge_sha256": file_hash(args.bridge),
         "public_sha256": file_hash(Path(args.bundle) / "public.json"),
-        "selection_sha256": digest(bundle["selection"]),
+        # The builder checkpoint hash excludes its own hash field. The phase
+        # manifest and one-shot claim separately bind the full selection below.
+        "selection_sha256": bundle["selection"]["selection_sha256"],
         "contract_sha256": adapter().contract_hash(),
         "tasks": PILOT_COUNT + PRIMARY_COUNT,
         "provider_calls": 0,

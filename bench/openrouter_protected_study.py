@@ -7,6 +7,7 @@ and an incomplete acquisition supports no workflow efficacy calculation.
 
 from __future__ import annotations
 
+import argparse
 from datetime import datetime, timezone
 from decimal import Decimal
 import hashlib
@@ -896,3 +897,215 @@ def run_phase(
             output, manifest, phase, intents, events, complete=complete, error=error
         )
     return summary
+
+
+def current_endpoints(key, prior):
+    selected = {}
+    for model in (live.SOURCE_MODEL, live.TARGET_MODEL):
+        available = pilot.request_json("/models/" + model + "/endpoints", key)["data"][
+            "endpoints"
+        ]
+        matches = [
+            row for row in available if row["tag"] == prior["endpoints"][model]["tag"]
+        ]
+        require(len(matches) == 1, "protected endpoint is not uniquely available")
+        pilot.validate_schema_endpoint(model, matches[0])
+        selected[model] = matches[0]
+    return selected
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=("freeze", "run", "audit"))
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--bundle", type=Path, required=True)
+    parser.add_argument("--ledger", type=Path, required=True)
+    parser.add_argument("--native", type=Path, required=True)
+    parser.add_argument("--materializer", type=Path, required=True)
+    parser.add_argument("--env-file", type=Path)
+    parser.add_argument("--phase", choices=PHASES)
+    parser.add_argument("--manifest-sha256")
+    parser.add_argument("--native-store", type=Path)
+    parser.add_argument("--native-sha256")
+    parser.add_argument("--controls", type=Path)
+    parser.add_argument("--controls-sha256")
+    parser.add_argument("--reference", type=Path)
+    parser.add_argument("--reference-manifest-sha256")
+    parser.add_argument("--reference-calls-sha256")
+    parser.add_argument("--reference-intents-sha256")
+    args = parser.parse_args()
+    try:
+        require(
+            args.command == "audit" or args.env_file is not None,
+            "paid/preflight commands require an explicit credential path",
+        )
+        key = None if args.command == "audit" else pilot.load_key(args.env_file)
+        bundle = fixture.load_bundle(args.bundle)
+        binding, events, state = finance.typed_ledger_snapshot(args.ledger, key)
+        if args.command == "freeze":
+            from bench import openrouter_protected_forecast as forecast
+
+            require(
+                all(
+                    value is not None
+                    for value in (
+                        args.native_store,
+                        args.native_sha256,
+                        args.controls,
+                        args.controls_sha256,
+                        args.reference,
+                        args.reference_manifest_sha256,
+                        args.reference_calls_sha256,
+                        args.reference_intents_sha256,
+                    )
+                ),
+                "freeze requires exact control and historical evidence pins",
+            )
+            clean_finance(state)
+            controls = fixture.read(args.controls)
+            require(
+                file_hash(args.controls) == args.controls_sha256,
+                "offline control artifact hash changed",
+            )
+            raw = {
+                name: fixture.read(args.reference / name)
+                for name in ("manifest.json", "calls.json", "intents.json")
+            }
+            pins = {
+                "manifest.json": args.reference_manifest_sha256,
+                "calls.json": args.reference_calls_sha256,
+                "intents.json": args.reference_intents_sha256,
+            }
+            require(
+                all(
+                    file_hash(args.reference / name) == expected
+                    for name, expected in pins.items()
+                ),
+                "historical artifact bytes changed",
+            )
+            normalized = forecast.normalize_reference(
+                raw["manifest.json"],
+                raw["calls.json"],
+                raw["intents.json"],
+                artifact_hashes=pins,
+            )
+            selected = current_endpoints(key, raw["manifest.json"])
+            catalog = finance.catalog_for(raw["manifest.json"], selected)
+            frozen = pair.enrollment(
+                catalog,
+                selected,
+                args.native_sha256,
+                max_calls_per_site=60,
+                max_output_tokens=256,
+            )
+            pair.NativeBridge(
+                args.native, args.native_store, args.native_sha256
+            ).validate()
+            estimate = forecast.prepilot_forecast(
+                bundle,
+                normalized["calls"],
+                normalized["intents"],
+                frozen,
+                args.materializer,
+                reference_manifest_sha256=normalized["reference_manifest_sha256"],
+                reference_artifact_hashes=pins,
+            )
+            manifest = freeze_manifest(
+                args.output,
+                bundle,
+                binding,
+                frozen,
+                args.native_store,
+                args.materializer,
+                events,
+                estimate,
+                controls,
+            )
+            result = {
+                "manifest_sha256": pilot.digest(manifest),
+                "family_cap_usd": manifest["family_cap_usd"],
+                "pilot_calls": 36,
+                "maximum_study_calls": 518,
+                "paid_dispatches": 0,
+            }
+        else:
+            require(
+                args.phase is not None and args.manifest_sha256 is not None,
+                "run/audit needs explicit phase and reviewed manifest hash",
+            )
+            manifest = fixture.read(args.output / "manifest.json")
+            require(
+                binding == manifest["campaign_ledger"],
+                "original campaign binding changed",
+            )
+            bridge = pair.NativeBridge(
+                args.native,
+                manifest["native_store"],
+                manifest["enrollment"]["native_sha256"],
+            )
+            validate_manifest(
+                manifest,
+                bundle,
+                events,
+                bridge,
+                args.materializer,
+                args.manifest_sha256,
+            )
+            if args.command == "run":
+                ledger = PinnedLedger(args.ledger, key, manifest, args.phase)
+                gate = (
+                    prepare_study_gate(
+                        args.output, manifest, bundle, events, bridge, args.materializer
+                    )
+                    if args.phase == "study"
+                    else None
+                )
+                result = run_phase(
+                    args.output,
+                    manifest,
+                    bundle,
+                    args.phase,
+                    ledger,
+                    key,
+                    bridge,
+                    args.materializer,
+                    expected_manifest_sha256=args.manifest_sha256,
+                    gate=gate,
+                )
+            else:
+                from bench import openrouter_protected_audit as audit
+
+                directory = args.output / args.phase
+                artifacts = {
+                    name: fixture.read(directory / name)
+                    for name in ("intents.json", "calls.json", "protected-events.json")
+                }
+                result = audit.audit_phase(
+                    manifest,
+                    bundle,
+                    args.phase,
+                    artifacts["intents.json"],
+                    artifacts["calls.json"],
+                    artifacts["protected-events.json"],
+                    events,
+                    bridge,
+                    args.materializer,
+                )
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    except (pilot.PilotError, OSError, ValueError, KeyError, TypeError) as exc:
+        print(
+            json.dumps(
+                {
+                    "status": "stopped",
+                    "error_type": type(exc).__name__,
+                    "retry_or_resume_allowed": False,
+                    "raw_request_diagnostics": False,
+                }
+            )
+        )
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

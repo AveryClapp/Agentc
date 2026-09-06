@@ -3,6 +3,7 @@
 from copy import deepcopy
 from decimal import Decimal
 from types import SimpleNamespace
+import sys
 
 import pytest
 
@@ -410,3 +411,87 @@ def test_runner_returns_terminal_summary_or_preserves_failed_claim(
         assert report["schedule_complete"] is True
         assert s.fixture.read(tmp_path / "output/pilot/summary.json") == report
     assert len([e for e in read(ledger) if e["event"] == s.CLAIM_EVENT]) == 1
+
+
+def test_cli_audit_never_loads_credentials_or_writes_artifacts(
+    frozen_setup, tmp_path, monkeypatch, capsys
+):
+    ledger, manifest, bundle, bridge, materializer = frozen_setup
+    directory = tmp_path / "protocol"
+    s.write_json(directory / "manifest.json", manifest)
+    for name in ("intents.json", "calls.json", "protected-events.json"):
+        s.write_json(directory / "pilot" / name, [])
+    before = {str(p): p.read_bytes() for p in directory.rglob("*.json")}
+    ledger_before = ledger.path.read_bytes()
+    monkeypatch.setattr(s.fixture, "load_bundle", lambda path: bundle)
+    monkeypatch.setattr(s.pair, "NativeBridge", lambda *args: bridge)
+    captured = []
+
+    def audit(*args):
+        captured.append(args)
+        return {"schedule_complete": False, "efficacy_claim": False}
+
+    monkeypatch.setitem(
+        sys.modules,
+        "bench.openrouter_protected_audit",
+        SimpleNamespace(audit_phase=audit),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "protected-study",
+            "audit",
+            "--output",
+            str(directory),
+            "--bundle",
+            str(tmp_path / "unused"),
+            "--ledger",
+            str(ledger.path),
+            "--native",
+            str(tmp_path / "unused-binary"),
+            "--materializer",
+            str(materializer),
+            "--phase",
+            "pilot",
+            "--manifest-sha256",
+            s.pilot.digest(manifest),
+        ],
+    )
+    assert s.main() == 0
+    assert captured[0][0] == manifest and captured[0][1] == bundle
+    assert "false" in capsys.readouterr().out
+    assert ledger.path.read_bytes() == ledger_before
+    assert {str(p): p.read_bytes() for p in directory.rglob("*.json")} == before
+
+
+@pytest.mark.parametrize("command", ["run", "freeze"])
+def test_cli_paid_entry_requires_explicit_credential_path_before_any_io(
+    tmp_path, monkeypatch, capsys, command
+):
+    monkeypatch.setattr(
+        s.fixture,
+        "load_bundle",
+        lambda path: pytest.fail("loaded data before required command arguments"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "protected-study",
+            command,
+            "--output",
+            str(tmp_path / "out"),
+            "--bundle",
+            str(tmp_path / "bundle"),
+            "--ledger",
+            str(tmp_path / "ledger"),
+            "--native",
+            str(tmp_path / "native"),
+            "--materializer",
+            str(tmp_path / "materializer"),
+        ],
+    )
+    assert s.main() == 1
+    assert '"retry_or_resume_allowed": false' in capsys.readouterr().out
+    assert list(tmp_path.iterdir()) == []

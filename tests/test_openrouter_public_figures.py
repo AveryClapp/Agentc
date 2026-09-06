@@ -8,12 +8,15 @@ from decimal import Decimal
 import pytest
 
 from bench import openrouter_public_figures as figures
+from bench import typed_public_workload
 from bench.openrouter_pilot import PilotError, digest
 
 study = figures.study
 
 
-def inputs(*, all_unit=False, all_zero_cost=False, invalid=False):
+def inputs(
+    *, all_unit=False, all_zero_cost=False, invalid=False, normalized_empty=False
+):
     manifest = {
         "kind": study.KIND,
         "phase": "primary",
@@ -49,6 +52,10 @@ def inputs(*, all_unit=False, all_zero_cost=False, invalid=False):
                 "cache_unknown_calls": 3,
                 "observational_latency_ms": 120.5,
             }
+            if normalized_empty:
+                cells[arm].update(
+                    typed_public_workload.score_answer('{"result":"the"}', "the")
+                )
         rows.append(
             {
                 "task_id": f"synthetic-{i:02d}",
@@ -163,6 +170,26 @@ def test_percentile_interval_need_not_contain_sample_mean():
     assert summary["mean"] < 1
     data = figures.build_data(manifest, report)
     assert data["cells"][0]["metrics"]["em"] == summary
+
+
+def test_official_normalized_empty_exact_match_preserves_zero_f1():
+    # Synthetic strings only: no fixture, dataset labels, or provider response.
+    score = typed_public_workload.score_answer('{"result":"the"}', "the")
+    assert score == {"em": 1.0, "f1": 0.0}
+    manifest, report = inputs(normalized_empty=True)
+    data = figures.build_data(manifest, report)
+    assert data["paired_tasks"] == report["paired_tasks"]
+    assert data["canonical_intervals"] == report["descriptive_task_cluster_intervals"]
+    for cell in data["cells"]:
+        assert cell["invalid_paths"] == 0
+        assert cell["metrics"]["em"] == {
+            "mean": 1.0,
+            "descriptive_95_percentile_interval": [1.0, 1.0],
+        }
+        assert cell["metrics"]["f1"] == {
+            "mean": 0.0,
+            "descriptive_95_percentile_interval": [0.0, 0.0],
+        }
 
 
 @pytest.mark.parametrize(

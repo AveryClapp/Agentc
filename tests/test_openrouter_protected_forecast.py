@@ -209,11 +209,15 @@ def test_largest_three_uses_json_utf8_not_characters_or_relevance(setup):
     }
     chosen = set(f.typed.parse_filter(history["filter"]))
     paragraphs = task["meta"]["paragraphs"]
-    size = lambda items: len(
-        f.canonical(
-            "\n\n".join(p["title"] + "\n" + "\n".join(p["sentences"]) for p in items)
+    def size(items):
+        return len(
+            f.canonical(
+                "\n\n".join(
+                    p["title"] + "\n" + "\n".join(p["sentences"]) for p in items
+                )
+            )
         )
-    )
+
     best = size([p for p in paragraphs if p["title"] in chosen])
     assert best == max(size(items) for items in itertools.combinations(paragraphs, 3))
 

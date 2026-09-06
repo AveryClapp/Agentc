@@ -60,5 +60,19 @@ operations (analysis writes a derived report). Pilot analysis does not open labe
 Implementation verification included 494 relevant tests before the final hash
 convention fix and 37 focused public-driver tests afterward. Independent review
 separately tested crash, failure, replay, exact source/fixture binding, and
-attempt-accounting tampering. Recorded outcomes will be added after acquisition;
-this freeze itself reports none.
+attempt-accounting tampering.
+
+## Completed pilot
+
+All 36 scheduled calls completed with valid non-null application state for
+USD0.095678. The complete own-history/native/provider/ledger audit reports no
+extra attempts, failed results, pending allowances, missing receipts, or new
+uncertainty. The prospective structural/resource gate passed. No labels were
+read and no answer-quality result was calculated.
+
+The [derived analysis](analysis.json) records the audited resources and full
+campaign snapshot: USD21.71423747 known plus USD6.259659 historical uncertainty,
+leaving USD22.02610353 of the original USD50 ceiling. Raw calls, intents,
+manifest, and completion summary are preserved here. The permanently claimed
+pilot must not be run again. Primary acquisition has its own frozen manifest
+and separate launch review.

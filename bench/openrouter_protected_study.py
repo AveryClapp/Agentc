@@ -7,7 +7,9 @@ and an incomplete acquisition supports no workflow efficacy calculation.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
+import hashlib
 import json
 from pathlib import Path
 import time
@@ -25,7 +27,6 @@ from bench.openrouter_matrix import ROOT, file_hash, load_module, write_json
 
 KIND = "protected-native-learning-study-v1"
 CLAIM_EVENT = "protected_study_phase"
-FAMILY_CAP = Decimal("15.4")
 PILOT_CAP = Decimal("8")
 PILOT_PROGRESS_STOP = Decimal("0.6")
 MAX_SECONDS = 6 * 60 * 60
@@ -114,7 +115,7 @@ def stage_cap(manifest, phase, state):
         not any(row["stage"] == sid for row in state["pending"]),
         "pilot has pending allowances",
     )
-    return FAMILY_CAP - committed
+    return pilot.money(manifest["family_cap_usd"]) - committed
 
 
 def financial_state(state):
@@ -136,6 +137,260 @@ def clean_finance(state):
         not state["pending"] and not state["failed_calls"] and not state["unsafe_ids"],
         "unresolved campaign accounting blocks protected work",
     )
+
+
+def prepilot_gate(manifest, state):
+    clean_finance(state)
+    report = manifest["prepilot_forecast"]
+    available = min(
+        pilot.money(financial_state(state)["remaining_usd"]),
+        pilot.money(manifest["family_cap_usd"]),
+    )
+    pilot_cost = pilot.money(report["prospective_pilot_usd"])
+    training = pilot.money(report["training_usd"])
+    require(
+        pilot_cost + training + pilot.money(report["largest_pair_allowance_usd"])
+        <= available,
+        "prepilot forecast plus full pair reserve exceeds authorized remaining funds",
+    )
+    require(
+        pilot_cost + training + pilot.money(report["HR_usd"]) <= available,
+        "prepilot full protocol forecast exceeds authorized remaining funds",
+    )
+
+
+def validate_controls(report, frozen):
+    """Integrity preflight; independent review still verifies the actual run."""
+    require(
+        report["kind"] == "protected-native-reachability-controls-v1"
+        and report["native_sha256"] == frozen["native_sha256"],
+        "native control binary differs from enrollment",
+    )
+    for field in (
+        "reference_primary_only",
+        "no_seeded_profiles",
+        "fake_provider",
+        "typed_zero_loss",
+        "other_numeric_defaults_unchanged",
+        "complete",
+    ):
+        require(
+            report[field] is True, "native controls lack a required verified premise"
+        )
+    require(
+        type(report["provider_calls"]) is int and report["provider_calls"] == 0,
+        "offline controls cannot contain provider calls",
+    )
+    require(
+        report["source_files"] == pair.source_files()
+        and report["source_files_sha256"] == pilot.digest(report["source_files"]),
+        "native control source closure changed",
+    )
+    for name, allowance, probes in (("control", 20, 60), ("treatment", 60, 140)):
+        row = report[name]
+        require(
+            pilot.canonical(
+                {
+                    key: row[key]
+                    for key in (
+                        "allowance",
+                        "output_cap",
+                        "source_workflows",
+                        "source_calls",
+                        "probes",
+                    )
+                }
+            )
+            == pilot.canonical(
+                {
+                    "allowance": allowance,
+                    "output_cap": 256,
+                    "source_workflows": 63,
+                    "source_calls": 189,
+                    "probes": probes,
+                }
+            ),
+            "native control trajectory changed",
+        )
+    require(
+        report["test_files"]
+        and all(
+            file_hash(ROOT / name) == expected
+            for name, expected in report["test_files"].items()
+        ),
+        "native control test source changed",
+    )
+
+
+def manifest_core(
+    bundle,
+    binding,
+    frozen,
+    native_store,
+    materializer_sha256,
+    initial_events,
+    prepilot,
+    controls,
+    created_at,
+):
+    fixture.validate_bundle(bundle)
+    state = accounting(initial_events)
+    clean_finance(state)
+    remaining = pilot.money(financial_state(state)["remaining_usd"])
+    require(0 < remaining <= pilot.HARD_CAP, "invalid original campaign remainder")
+    expected = pair.enrollment(
+        frozen["catalog"],
+        frozen["endpoints"],
+        frozen["native_sha256"],
+        max_calls_per_site=60,
+        max_output_tokens=256,
+    )
+    require(
+        pilot.canonical(frozen) == pilot.canonical(expected),
+        "native experiment enrollment changed",
+    )
+    validate_controls(controls, frozen)
+    require(
+        prepilot["evidence_kind"] == "historical_pre_pilot"
+        and prepilot["provenance"]["enrollment_sha256"] == pilot.digest(frozen)
+        and prepilot["provenance"]["selection_sha256"]
+        == bundle["selection"]["selection_sha256"]
+        and prepilot["provenance"]["materializer_sha256"] == materializer_sha256,
+        "prospective resource evidence belongs to another frozen protocol",
+    )
+    result = {
+        "kind": KIND,
+        "created_at": created_at,
+        "source_files": sources(),
+        "selection_sha256": bundle["selection"]["selection_sha256"],
+        "public_bundle_sha256": pilot.digest(bundle),
+        "bundle_files": {
+            "selection.json": bundle["provenance"]["selection_file_sha256"],
+            "public.json": bundle["provenance"]["public_sha256"],
+            "provenance.json": hashlib.sha256(
+                pilot.canonical(bundle["provenance"]) + b"\n"
+            ).hexdigest(),
+        },
+        "schedule": schedules(bundle),
+        "enrollment": frozen,
+        "campaign_ledger": binding,
+        "native_store": str(Path(native_store).resolve()),
+        "materializer_sha256": materializer_sha256,
+        "family_cap_usd": str(remaining),
+        "initial_ledger_prefix": {
+            "count": len(initial_events),
+            "sha256": pilot.digest(initial_events),
+        },
+        "initial_financial_snapshot": financial_state(state),
+        "prepilot_forecast": prepilot,
+        "structural_controls": controls,
+        "structural_controls_sha256": pilot.digest(controls),
+        "protocol": {
+            "pilot_tasks": 6,
+            "study_tasks": 63,
+            "pilot_calls": 36,
+            "source_calls": 189,
+            "completed_probe_ceiling": 140,
+            "HR_calls": 189,
+            "max_tokens": 256,
+            "max_calls_per_site": 60,
+            "per_plan_evidence_target": 20,
+            "max_phase_seconds": MAX_SECONDS,
+            "pilot_cap_usd": str(PILOT_CAP),
+            "pilot_known_progress_stop_usd": str(PILOT_PROGRESS_STOP),
+            "phase_order": ["pilot", "study:source-and-probes", "study:HR"],
+            "pilot_gate": "all36-valid-non-null-nontruncated;format-and-resources-only",
+            "study_invalid": "charged-loss-and-own-source-contagious-null;native-guards-unchanged",
+            "failure_policy": "first-provider-or-protocol-failure=permanent-phase-stop;no-retry-resume-reseed",
+            "source_visible": True,
+            "primary_promotion": False,
+            "gold_before_complete_protocol": False,
+        },
+        "limitations": LIMITATIONS,
+        "efficacy_claim": False,
+        "paper_evidence": False,
+    }
+    prepilot_gate(result, state)
+    return result
+
+
+def validate_manifest(manifest, bundle, events, bridge, materializer, expected_sha256):
+    require(
+        pilot.digest(manifest) == expected_sha256, "protected manifest hash changed"
+    )
+    prefix = manifest["initial_ledger_prefix"]
+    require(
+        type(prefix["count"]) is int
+        and 0 < prefix["count"] <= len(events)
+        and pilot.digest(events[: prefix["count"]]) == prefix["sha256"],
+        "original campaign prefix changed since prospective freeze",
+    )
+    binding = manifest["campaign_ledger"]
+    require(
+        events[0]["event"] == "origin"
+        and pilot.digest(events[0]) == binding["origin_event_sha256"]
+        and all(event.get("key_id") == events[0].get("key_id") for event in events),
+        "protected original campaign key or origin changed",
+    )
+    require(
+        str(bridge.store) == manifest["native_store"]
+        and bridge.sha256 == manifest["enrollment"]["native_sha256"]
+        and file_hash(materializer) == manifest["materializer_sha256"],
+        "protected frozen binary or store changed",
+    )
+    bridge.validate()
+    expected = manifest_core(
+        bundle,
+        binding,
+        manifest["enrollment"],
+        bridge.store,
+        manifest["materializer_sha256"],
+        events[: prefix["count"]],
+        manifest["prepilot_forecast"],
+        manifest["structural_controls"],
+        manifest["created_at"],
+    )
+    require(
+        pilot.canonical(expected) == pilot.canonical(manifest),
+        "protected source or protocol contract changed",
+    )
+
+
+def freeze_manifest(
+    output,
+    bundle,
+    binding,
+    frozen,
+    native_store,
+    materializer,
+    events,
+    prepilot,
+    controls,
+):
+    require(
+        not Path(native_store).exists(), "prospective native profile store is not empty"
+    )
+    result = manifest_core(
+        bundle,
+        binding,
+        frozen,
+        native_store,
+        file_hash(materializer),
+        events,
+        prepilot,
+        controls,
+        datetime.now(timezone.utc).isoformat(),
+    )
+    require(
+        not any(
+            e.get("event") == CLAIM_EVENT
+            and e.get("selection_sha256") == result["selection_sha256"]
+            for e in events
+        ),
+        "this selection already has a claimed protocol",
+    )
+    write_json(Path(output) / "manifest.json", result, immutable=True)
+    return result
 
 
 def claim_phase(ledger, manifest, phase, gate):
@@ -184,8 +439,18 @@ def claim_phase(ledger, manifest, phase, gate):
                 and gate is not None,
                 "study requires the exact audited pilot and resource gate",
             )
+            require(
+                pilot.canonical(gate)
+                == pilot.canonical(
+                    resource_gate(
+                        manifest, state, gate["forecast"], gate["pilot_evidence"]
+                    )
+                ),
+                "study financial gate changed before its atomic phase claim",
+            )
         else:
             require(gate is None, "pilot cannot have a post-pilot gate")
+            prepilot_gate(manifest, state)
         return ledger.append(
             handle,
             {
@@ -405,10 +670,84 @@ def save_phase(output, manifest, phase, intents, events, *, complete, error=None
     return summary
 
 
+def audit_records(manifest, bundle, phase, intents, events, bridge, materializer):
+    from bench import openrouter_protected_audit as audit
+
+    calls, protected = extract_records(manifest, phase, intents, events)
+    return audit.audit_phase(
+        manifest, bundle, phase, intents, calls, protected, events, bridge, materializer
+    )
+
+
+def prepare_study_gate(output, manifest, bundle, events, bridge, materializer):
+    from bench import openrouter_protected_forecast as forecast
+
+    directory = Path(output) / "pilot"
+    summary = fixture.read(directory / "summary.json")
+    require(
+        summary["manifest_sha256"] == pilot.digest(manifest)
+        and summary["schedule_complete"] is True,
+        "study requires the complete frozen pilot artifact",
+    )
+    for name in ("intents.json", "calls.json", "protected-events.json"):
+        require(
+            file_hash(directory / name) == summary["artifact_files"][name],
+            "pilot artifact bytes changed",
+        )
+    intents = fixture.read(directory / "intents.json")
+    calls, protected = extract_records(manifest, "pilot", intents, events)
+    require(
+        pilot.canonical(calls)
+        == pilot.canonical(fixture.read(directory / "calls.json"))
+        and pilot.canonical(protected)
+        == pilot.canonical(fixture.read(directory / "protected-events.json")),
+        "pilot artifact differs from original campaign receipts",
+    )
+    audit = audit_records(
+        manifest, bundle, "pilot", intents, events, bridge, materializer
+    )
+    require(
+        audit["pilot_format_gate"] is True, "pilot format gate failed; no continuation"
+    )
+    evidence = {
+        "manifest_sha256": pilot.digest(manifest),
+        "selection_sha256": manifest["selection_sha256"],
+        "calls_sha256": pilot.digest(calls),
+        "intents_sha256": pilot.digest(intents),
+        "known_cost_usd": audit["finance"]["known_stage_usd"],
+    }
+    estimate = forecast.forecast(
+        bundle, calls, intents, manifest["enrollment"], materializer
+    )
+    return resource_gate(manifest, accounting(events), estimate, evidence)
+
+
 def run_phase(
-    output, manifest, bundle, phase, ledger, key, bridge, materializer, *, gate=None
+    output,
+    manifest,
+    bundle,
+    phase,
+    ledger,
+    key,
+    bridge,
+    materializer,
+    *,
+    expected_manifest_sha256,
+    gate=None,
 ):
-    """Caller verifies frozen source/manifest and pilot audit before this entry."""
+    """Validate exact source/manifest and the pilot before claiming any work."""
+    _, initial_events, _ = finance.typed_ledger_snapshot(ledger.path, key)
+    validate_manifest(
+        manifest, bundle, initial_events, bridge, materializer, expected_manifest_sha256
+    )
+    if phase == "study":
+        expected_gate = prepare_study_gate(
+            output, manifest, bundle, initial_events, bridge, materializer
+        )
+        require(
+            pilot.canonical(gate) == pilot.canonical(expected_gate),
+            "study gate is not the exact independently audited pilot forecast",
+        )
     fixture.validate_bundle(bundle)
     require(manifest["schedule"] == schedules(bundle), "protected schedule changed")
     require(
@@ -500,6 +839,17 @@ def run_phase(
                 ),
                 flush=True,
             )
+        _, events, _ = finance.typed_ledger_snapshot(ledger.path, key)
+        audit = audit_records(
+            manifest, bundle, phase, intents, events, bridge, materializer
+        )
+        require(
+            audit["schedule_complete"] is True,
+            "executed phase lacks complete audited evidence",
+        )
+        if phase == "pilot":
+            require(audit["pilot_format_gate"] is True, "pilot format gate failed")
+        write_json(directory / "audit.json", audit, immutable=True)
         complete = True
     except BaseException as exc:
         error = type(exc).__name__

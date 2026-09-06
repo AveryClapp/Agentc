@@ -357,6 +357,7 @@ def test_runner_returns_terminal_summary_or_preserves_failed_claim(
     setup, tmp_path, monkeypatch, failure
 ):
     ledger, manifest, bundle = setup
+    ledger = s.PinnedLedger(ledger.path, KEY, manifest, "pilot")
     bundle["tasks"] = []
     manifest["schedule"] = {"pilot": [], "study": []}
     materializer = tmp_path / "fake-binary"
@@ -504,3 +505,124 @@ def test_cli_paid_entry_requires_explicit_credential_path_before_any_io(
     assert s.main() == 1
     assert '"retry_or_resume_allowed": false' in capsys.readouterr().out
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.fixture
+def deadline_setup(tmp_path, monkeypatch):
+    from test_openrouter_protected_audit import experiment
+
+    return experiment.__wrapped__(tmp_path, monkeypatch, SimpleNamespace(param=None))
+
+
+@pytest.mark.parametrize("overrun", ["preflight", "reservation", "receipt"])
+def test_deadline_guards_dispatch_but_finalizes_already_sent_receipts(
+    deadline_setup, tmp_path, monkeypatch, overrun
+):
+    from test_openrouter_protected_audit import KEY as audit_key
+
+    manifest, bundle, ledger, bridge, materializer, state = deadline_setup
+    pinned = s.PinnedLedger(ledger.path, audit_key, manifest, "pilot")
+    clock = {"now": 0}
+    monkeypatch.setattr(s.time, "monotonic", lambda: clock["now"])
+    transport, append = s.pilot.request_json, pinned.append
+
+    def request(path, key, payload=None):
+        if payload is None and overrun == "preflight":
+            clock["now"] = s.MAX_SECONDS + 1
+        if payload is not None:
+            assert clock["now"] < s.MAX_SECONDS
+        result = transport(path, key, payload)
+        if payload is not None and overrun == "receipt":
+            clock["now"] = s.MAX_SECONDS + 1
+        return result
+
+    def reserved(handle, event):
+        result = append(handle, event)
+        if event["event"] == "reserve" and overrun == "reservation":
+            clock["now"] = s.MAX_SECONDS + 1
+        return result
+
+    monkeypatch.setattr(s.pilot, "request_json", request)
+    monkeypatch.setattr(pinned, "append", reserved)
+
+    def run():
+        return s.run_phase(
+            tmp_path / "deadline-output", manifest, bundle, "pilot", pinned,
+            audit_key, bridge, materializer,
+            expected_manifest_sha256=s.pilot.digest(manifest),
+        )
+
+    with pytest.raises(s.pilot.PilotError, match="deadline"):
+        run()
+    events = read(ledger)
+    finances = s.accounting(events)
+    assert state["dispatches"] == (1 if overrun == "receipt" else 0)
+    assert sum(e["event"] == "result" for e in events) == (
+        1 if overrun == "receipt" else 0
+    )
+    assert sum(e["event"] == "attempt_failure" for e in events) == (
+        1 if overrun == "reservation" else 0
+    )
+    if overrun == "reservation":
+        reserve = next(e for e in events if e["event"] == "reserve")
+        assert finances["holds_usd"] == s.pilot.money(reserve["upper_cost_usd"])
+    before = ledger.path.read_bytes()
+    with pytest.raises(s.pilot.PilotError):
+        run()
+    assert ledger.path.read_bytes() == before
+    with pytest.raises(s.pilot.PilotError, match="cannot be reset"):
+        pinned.start_phase()
+
+
+def test_unbound_pinned_ledger_cannot_authorize_dispatch(setup):
+    ledger, manifest, _ = setup
+    pinned = s.PinnedLedger(ledger.path, KEY, manifest, "pilot")
+    with pytest.raises(s.pilot.PilotError, match="deadline"):
+        pinned.check_deadline()
+
+
+def test_actual_native_source_overrun_cannot_dispatch_candidate(
+    deadline_setup, monkeypatch
+):
+    from test_openrouter_protected_audit import KEY as audit_key, study_prefix
+
+    manifest, bundle, ledger, bridge, materializer, state = deadline_setup
+    data = study_prefix(deadline_setup, monkeypatch, count=9)
+    claim = next(
+        e for e in data["events"]
+        if e["event"] == s.CLAIM_EVENT and e["phase"] == "study"
+    )
+    pinned = s.PinnedLedger(ledger.path, audit_key, manifest, "study")
+    clock = {"now": 0}
+    monkeypatch.setattr(s.time, "monotonic", lambda: clock["now"])
+    pinned.start_phase()
+    coordinator = s.pair.Coordinator(
+        pinned, audit_key, bridge, manifest["enrollment"],
+        run_id=claim["stage"], budget_stage=claim["stage"],
+        stage_cap=claim["stage_cap_usd"],
+    )
+    transport, before = s.pilot.request_json, state["dispatches"]
+
+    def request(path, key, payload=None):
+        if payload is not None:
+            assert clock["now"] < s.MAX_SECONDS
+        result = transport(path, key, payload)
+        if payload is not None:
+            clock["now"] = s.MAX_SECONDS + 1
+        return result
+
+    monkeypatch.setattr(s.pilot, "request_json", request)
+    item = manifest["schedule"]["study"][9]
+    task = next(t for t in bundle["tasks"] if t["task_id"] == item["task_id"])
+    with pytest.raises(s.pilot.PilotError):
+        coordinator.execute(task, item["workflow_stage"])
+    events = read(ledger)
+    assert state["dispatches"] == before + 1
+    group = next(e for e in reversed(events) if e["event"] == "budget_group")
+    candidate = group["slots"]["candidate"]
+    assert not any(
+        e["event"] == "reserve" and e["id"] == candidate["id"] for e in events
+    )
+    assert s.accounting(events)["pending_usd"] >= s.pilot.money(
+        candidate["upper_cost_usd"]
+    )

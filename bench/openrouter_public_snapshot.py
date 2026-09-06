@@ -14,6 +14,8 @@ import hashlib
 import json
 import os
 import re
+import stat
+import subprocess
 import sys
 import threading
 from contextlib import contextmanager
@@ -29,6 +31,7 @@ from bench.openrouter_pilot import HARD_CAP, Ledger, PilotError, canonical, dige
 
 VERSION = "public-terminal-prefix-audit-v1"
 _ACTIVE = None
+_NATIVE_PIPE_OPEN = False
 _LOCK = threading.Lock()
 
 
@@ -56,13 +59,20 @@ def _guard(event, args):
                 ),
                 "snapshot audit prohibits labels and credentials",
             )
+        writing = (isinstance(mode, str) and any(char in mode for char in "wax+")) or (
+            isinstance(flags, int)
+            and flags
+            & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND)
+        )
+        # Popen opens its stdin pipe before emitting its subprocess audit event.
+        # The scoped constructor below has already verified the exact command.
+        native_pipe = (
+            _NATIVE_PIPE_OPEN
+            and type(name) is int
+            and stat.S_ISFIFO(os.fstat(name).st_mode)
+        )
         _require(
-            not (isinstance(mode, str) and any(char in mode for char in "wax+"))
-            and not (
-                isinstance(flags, int)
-                and flags
-                & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND)
-            ),
+            not writing or native_pipe,
             "snapshot audit prohibits file writes",
         )
     elif event in {
@@ -97,20 +107,45 @@ sys.addaudithook(_guard)
 
 @contextmanager
 def _read_only(bridge):
-    global _ACTIVE
+    global _ACTIVE, _NATIVE_PIPE_OPEN
     _require(
         threading.active_count() == 1,
         "snapshot audit requires a dedicated single-threaded process",
     )
     _require(_LOCK.acquire(blocking=False), "snapshot audit already active")
     previous_bytecode = sys.dont_write_bytecode
+    original_popen = subprocess.Popen
+
+    def native_popen(command, *args, **kwargs):
+        global _NATIVE_PIPE_OPEN
+        _require(
+            command == [_ACTIVE]
+            and not args
+            and set(kwargs) == {"stdin", "stdout", "stderr"}
+            and all(
+                type(value) is int and value == subprocess.PIPE
+                for value in kwargs.values()
+            ),
+            "snapshot audit permits only frozen native pipe IPC",
+        )
+        _NATIVE_PIPE_OPEN = True
+        try:
+            return original_popen(command, **kwargs)
+        finally:
+            _NATIVE_PIPE_OPEN = False
+
     try:
         _ACTIVE = str(Path(bridge).resolve(strict=True))
         sys.dont_write_bytecode = True
-        with patch.object(Ledger, "call", _deny), patch.object(study, "analyze", _deny):
+        with (
+            patch.object(Ledger, "call", _deny),
+            patch.object(study, "analyze", _deny),
+            patch.object(subprocess, "Popen", native_popen),
+        ):
             yield
     finally:
         _ACTIVE = None
+        _NATIVE_PIPE_OPEN = False
         sys.dont_write_bytecode = previous_bytecode
         _LOCK.release()
 

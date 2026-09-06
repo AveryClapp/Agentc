@@ -1,0 +1,400 @@
+{
+  "all_starts_within_one_24h_window": true,
+  "command": "AGENTC_PROTECTED_PAIR_BRIDGE=<pinned binary> AGENTC_PROTECTED_PAIR_BRIDGE_SHA256=<native_sha256> AGENTC_PROTECTED_CONTROLS_REPORT=<output> python -m pytest tests/test_openrouter_protected_reachability.py -q",
+  "complete": true,
+  "control": {
+    "allowance": 20,
+    "exact_plan_counts": [
+      {
+        "divergence_threshold": 0.029999999329447746,
+        "key": {
+          "call_site_version": "84b6677b624e10572f2e9e820a6d3bf895b4c7f50ad52d274ec581ddd9556214",
+          "execution_plan_id": "116890add0412730a84f496f15823afeae05bd6be49e91238e3934c1268c3264"
+        },
+        "paired_observations": 20,
+        "rules": [
+          "ModelDowngrade"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-haiku-4.5",
+          "target_model_version": "anthropic/claude-haiku-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "synthesize"
+      },
+      {
+        "divergence_threshold": 0.019999999552965164,
+        "key": {
+          "call_site_version": "e56d24752fdd8d19569e8527a22ebc80fd11dcc70851da70a740bbe712043d21",
+          "execution_plan_id": "91a21b2e0390d099413c05eb88a396b0eea173ec13cde26dcfd40239c069a3fe"
+        },
+        "paired_observations": 7,
+        "rules": [
+          "ContextCompress"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-sonnet-4.5",
+          "target_model_version": "anthropic/claude-sonnet-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "filter"
+      },
+      {
+        "divergence_threshold": 0.009999999776482582,
+        "key": {
+          "call_site_version": "9a83d3eb3bc14d41f8a01a0d6b57c34f61854f944f89fe707f5f11ed7d40fca6",
+          "execution_plan_id": "ea2d8d84284653c16e2e78d22a0d223d4c3fc04acf656a4ca792b2b0fa2d2e83"
+        },
+        "paired_observations": 6,
+        "rules": [
+          "StateDrop"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-sonnet-4.5",
+          "target_model_version": "anthropic/claude-sonnet-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "answer"
+      },
+      {
+        "divergence_threshold": 0.029999999329447746,
+        "key": {
+          "call_site_version": "9a83d3eb3bc14d41f8a01a0d6b57c34f61854f944f89fe707f5f11ed7d40fca6",
+          "execution_plan_id": "a2589bfa09bb1dda7745de94a4db2e67211e7fdb87abb7ec7a821426f9151f38"
+        },
+        "paired_observations": 7,
+        "rules": [
+          "ModelDowngrade"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-haiku-4.5",
+          "target_model_version": "anthropic/claude-haiku-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "answer"
+      },
+      {
+        "divergence_threshold": 0.009999999776482582,
+        "key": {
+          "call_site_version": "9a83d3eb3bc14d41f8a01a0d6b57c34f61854f944f89fe707f5f11ed7d40fca6",
+          "execution_plan_id": "6bb9452773767e83f4a4ba7e8f94312fe42afd1d2483a43c21c33b711acd4a6a"
+        },
+        "paired_observations": 7,
+        "rules": [
+          "StateDrop",
+          "ModelDowngrade"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-haiku-4.5",
+          "target_model_version": "anthropic/claude-haiku-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "answer"
+      },
+      {
+        "divergence_threshold": 0.019999999552965164,
+        "key": {
+          "call_site_version": "e56d24752fdd8d19569e8527a22ebc80fd11dcc70851da70a740bbe712043d21",
+          "execution_plan_id": "7c6e8d2cf9e2d39bede24dade1ea122d7d507401f66902982ae90acc9c1476ea"
+        },
+        "paired_observations": 7,
+        "rules": [
+          "ContextCompress",
+          "ModelDowngrade"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-haiku-4.5",
+          "target_model_version": "anthropic/claude-haiku-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "filter"
+      },
+      {
+        "divergence_threshold": 0.029999999329447746,
+        "key": {
+          "call_site_version": "e56d24752fdd8d19569e8527a22ebc80fd11dcc70851da70a740bbe712043d21",
+          "execution_plan_id": "82f50f63ec9969d6911b4acb1534a68cefdcbe554a581af08d6f2b5025df49c6"
+        },
+        "paired_observations": 6,
+        "rules": [
+          "ModelDowngrade"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-haiku-4.5",
+          "target_model_version": "anthropic/claude-haiku-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "filter"
+      }
+    ],
+    "output_cap": 256,
+    "probes": 60,
+    "site_counts": {
+      "answer": 20,
+      "filter": 20,
+      "synthesize": 20
+    },
+    "source_calls": 189,
+    "source_workflows": 63
+  },
+  "default_policy": {
+    "max_calls_per_site": 20,
+    "max_output_tokens": 512
+  },
+  "fake_provider": true,
+  "guard_basis": "Pinned native bridge overrides only exploration_calls_per_site_24h; all other OptimizerConfig defaults unchanged.",
+  "kind": "protected-native-reachability-controls-v1",
+  "labels_used": false,
+  "native_sha256": "3803d2d0c8c6c804f4144a8d369f3bdd955d638f744d73db4d3f4486a3ac9d30",
+  "no_seeded_profiles": true,
+  "other_numeric_defaults_unchanged": true,
+  "provider_calls": 0,
+  "public_tasks_sha256": "1e4b1925dd016353f1eec08783057466afc58c0bc39a2a4398e508d3a3f06120",
+  "reference_primary_only": true,
+  "resource_basis": {
+    "fake_cost_usd_per_call": "0.001",
+    "fake_input_tokens": 500,
+    "fake_latency_ms": 1000.0,
+    "fake_output_tokens": 40
+  },
+  "scope": "Actual native lease/accounting/feedback reachability under synthetic zero-loss receipts; no provider-quality, capacity, primary-admission or efficacy claim.",
+  "seed": 2026090603,
+  "source_files": {
+    "Cargo.lock": "85dfc311d38aede005ad57ff9e4c7fe997a0f7ad6681f7d47d4300aca1fd6c3c",
+    "Cargo.toml": "bf54fe4f21526852107e27b5bef9f976e1717756b6e5085e4eda6d1ab5260597",
+    "bench/agents/research_planner.py": "a5b725c711261cab1fcf0ef6913b850fa8dc7ad3b80143524533c68194836be3",
+    "bench/openrouter_attempts.py": "162e7d7df5f46401a886e7c9b548bd19e3abb7031900e41495b146f64cbe924b",
+    "bench/openrouter_contract.py": "17cde15e7aad6397d09aeaa83bb86b86311a6edd7e5c54ee3415e395a1fe45c3",
+    "bench/openrouter_frontier.py": "36967e16feb85abb3d37836c16be87a68ac94f2715a0a0a1eb3fd71d68545852",
+    "bench/openrouter_groups.py": "900aea1a09c4b2d896f17284521fb9e8e1e5b3c28509d9100405c135488a472a",
+    "bench/openrouter_joint_analysis.py": "d9a543cd6263954daaf1e2be13d35447ce15dd85db3ece5462994edd64c3117f",
+    "bench/openrouter_joint_study.py": "7adfe38249c3f7e3d17921df138748980080f331d41d9fae6a428efc7cb3c900",
+    "bench/openrouter_matrix.py": "da23345ffe727c536c58a507e35958cd7ce21b8506c9bed9f841d55d428caa49",
+    "bench/openrouter_pilot.py": "b40294a05e50137cff7a499fbec58bf59834afa06220d944a34cda8c2684c408",
+    "bench/openrouter_protected_pair.py": "3e4496056489c97e7ce28c943e5220bde1ee9c2bb31608c4b8ef789fa8d014d6",
+    "bench/openrouter_replay.py": "ddc22db5aaf7529ed5f03de9b3d49bc72e58bc6df21cb3b06cc755d019172c07",
+    "bench/openrouter_rules_comparison.py": "2026aa18beff2b1520e98e0ea4aff9da2aac752c373a8a217e51ca7c0b9a9a87",
+    "bench/openrouter_rules_diagnostics.py": "56e1189bb83b2bcf5c68685e93ab463ce968273240a6359f279b1fa1c81e9c16",
+    "bench/openrouter_rules_live.py": "caec7b53968ed78f6892cd28799fbf64b7576aa936c374f87016a53e2661e5b5",
+    "bench/openrouter_rules_protocol.py": "61b0ccb8e33abb067782f541d378074ddbc5d153003dc2e28631cb847493f9ad",
+    "bench/openrouter_rules_validity.py": "a99652a9b6dda33ec7e2b31ccc02b433746317eb14be45bbdbe1a1b945b8f24d",
+    "bench/openrouter_structured_study.py": "5ce679cf584e6e700a65af8c1cf8ba155812405153ba4d8972e7990c1b89efda",
+    "bench/openrouter_transport.py": "c3493c7235afafec4ae0387f1a0eb8f34f1961714fd646e1dd455cac151baaf5",
+    "bench/openrouter_typed_factorial.py": "cd8ba3f9e78ce90d97a1a662550937dfa4bcaa6aed07185b2d795e492025ec67",
+    "bench/structured_relational_workload.py": "52ec6d7b716139397a1dba1686debc14eedb5a03b6a6c6b851a653cd45674416",
+    "bench/typed_relational_workload.py": "ca3c789768b4d2b62ab5bcd29a9a30d45e001544eb8819a3e4201f8ddb1098be",
+    "crates/agentc-core/Cargo.toml": "451cf0c3b31add9c184b0b1ce6f1d12a9e21c5ec91c87e9337e10d75f49cbae2",
+    "crates/agentc-core/src/db.rs": "b7b2f6cf4c1fda982519858fe448f5ef539fcc29370bc71b6c99c76843a0e4e8",
+    "crates/agentc-core/src/embedding.rs": "5b4ddd2da2387b4748513a2cdad4266f13c86ae6d1deddc0804adeab18ce802d",
+    "crates/agentc-core/src/hardening.rs": "0bbe426fd633e107360e6b592424b54de6178f427f58fee78c54b48cfe34c2ed",
+    "crates/agentc-core/src/lib.rs": "1c2031552feaeaffd08efc67c8e598451a85116c5c9b973812c0398a6c707913",
+    "crates/agentc-core/src/memo_schema.rs": "f8c41f6ba51abc48cd879b8126116e6bb38e7809d2c7f599400a08eb0c5b392b",
+    "crates/agentc-core/src/merge.rs": "2b6963bcdc1f137c0f90acee702af2bf18cc3b47502c3b2c20feb8524ebe9a96",
+    "crates/agentc-core/src/span.rs": "909eda5d17771f570694e445a8366a3b277731083139e22f8329f1905626e214",
+    "crates/agentc-core/src/storage.rs": "71431058e4d21a0e4e084ede6ba0b7558db93fd0aae1bedaa850b6edbb6676ee",
+    "crates/agentc-embed/Cargo.toml": "02e15729abd643bf78156c575759a2af148954737536ce40b7bf240ba9de5d50",
+    "crates/agentc-embed/src/hyperplane_gen.rs": "98c2bc923a3e6fe3810312ab0c1542ba98872565cc8311c8c11238076f206f0f",
+    "crates/agentc-embed/src/lib.rs": "c3b879ca05059294ecdc626c76c61d0316095177291907697fb816b2b4aacb2f",
+    "crates/agentc-embed/src/lsh.rs": "a9bb7f43adcded838c2aed91e1f1ee3b3f4966e9dfb5450906138aa40a0d9a45",
+    "crates/agentc-embed/src/model.rs": "5ce279718a5c3a92c6c7aa29b38a1049d95caf64ba2f9907d6cce34293a73dce",
+    "crates/agentc-memo/Cargo.toml": "19e309ad7e7720bcd3c64d671006e87412a664dc5cf652e28f0e57610fdfc8c4",
+    "crates/agentc-memo/src/cache.rs": "7e2119265f4f3eef11d09a7bed57e148bb83dbb33f49d5b8ca2136d65469be3c",
+    "crates/agentc-memo/src/canonical.rs": "727548054ed9b98b6aad8a44de18c2d11934c9a3ca7cd77106c6da6737ff6c18",
+    "crates/agentc-memo/src/eviction.rs": "3e38bff7e887ab90aab3f4d39efce39a947fdfd72098e24f12c4035a9e1d3b9f",
+    "crates/agentc-memo/src/ffi.rs": "5ae1ca312c23dcb66e635cac96e586358494ef24492c7d85afded93543274137",
+    "crates/agentc-memo/src/key.rs": "88519b097183150ee0b06c103487cb7c1d5bcc7043e50f94051d99f5d4857a64",
+    "crates/agentc-memo/src/lib.rs": "168c8740eb414c028d27455eda218169f92aac49ea903f1c209fe5374ce74646",
+    "crates/agentc-memo/src/lsh.rs": "858cc016dfe9f2942c4577429f50d548d8e964022dfb8580b1a88f6b3db7d35d",
+    "crates/agentc-memo/src/schema.rs": "e247b1d7e09a4bfd11239b61122b9471883f3592067be27acc4134d48a4cb023",
+    "crates/agentc-optimizer/Cargo.toml": "506b6fd95a41f8abc4ca2c51013857fa6db8c260e62a405458802213dae8adfc",
+    "crates/agentc-optimizer/examples/protected_pair_bridge.rs": "d5ae96113e71c811ddc929287250fd52b11d6d63b2e71f303f81916b542db091",
+    "crates/agentc-optimizer/examples/typed_rule_materializer.rs": "806ab0ebfba5ef222607e673cf33676b82510f590f34e485c0b8b97d07a1a460",
+    "crates/agentc-optimizer/src/audit.rs": "4de96940c579d9e4c2fa537c3ac8a28968cc2346ccabd7dd4317655efd0d6bc9",
+    "crates/agentc-optimizer/src/budget.rs": "d64c31c6df60ba8dfb9643217efbe586e18c0a92118cb50b6d17302cb8cc040d",
+    "crates/agentc-optimizer/src/composition.rs": "89ee6e7707441524101ae028f313e7ba133c4464b98fc8ce1c17fba2e6568148",
+    "crates/agentc-optimizer/src/config.rs": "0cbe219866d35b942bb158bf019366d1d3836619f3ad62b3a50d113b5e2b5d51",
+    "crates/agentc-optimizer/src/cost_model.rs": "1e368cd949a90fd03d0d522aafd915aed9f9e5c6b7fdd3fa98c6500502f3df73",
+    "crates/agentc-optimizer/src/dag.rs": "5a6045e3ad107d3fe1b88867a214ab1540027c3e4f54b0154517443164db0901",
+    "crates/agentc-optimizer/src/dag_context.rs": "fda4786f428faf0faf95d075c8421c620c3aad126b6630c10c6aacaf5806048a",
+    "crates/agentc-optimizer/src/diagnostics.rs": "2bc299e0a492239223ac6f24a9bac84dda160846e5d0121d834b58774e2119fa",
+    "crates/agentc-optimizer/src/execution_plan.rs": "9fac49cb9acc12acf1f3377e4b8d06ab1c272200ff790b6ff62f0811b3fe8813",
+    "crates/agentc-optimizer/src/exploration.rs": "6852158e4e71d2738e1fbefd42552570a4fdd23c296cf95f2bdd30ea168855aa",
+    "crates/agentc-optimizer/src/ffi.rs": "21690e6022ff2a138b6387fee4cdf1601e193e504e135454a299bd97ebabf9d0",
+    "crates/agentc-optimizer/src/lib.rs": "c9b1e200d13cfdce9f8e0b33ec8c109ad1c1195a83eade218a24bada92db9e49",
+    "crates/agentc-optimizer/src/model_catalog.rs": "e3084f1babd199999a015506c027ca247c4c8fa2f6f5a4e3f8eddfb9d6e2a954",
+    "crates/agentc-optimizer/src/plan_guard.rs": "6b7732c734c4f33858815a5a29d88752c380c6553befad351a92ef313a7bec34",
+    "crates/agentc-optimizer/src/plan_profile.rs": "f68add9325acf774e759157f8fa31281eb84940675b11b3186599cc35de138a2",
+    "crates/agentc-optimizer/src/planner.rs": "56ddb914da52b94eef2d5e226747ce3e1cc7f972bbb5b9e11e351a7fe5575382",
+    "crates/agentc-optimizer/src/reporting.rs": "1b77a17654eee83506b788af0f9b3bc911bb23a40c0d54bbf143644840a30a80",
+    "crates/agentc-optimizer/src/rules/cache_hit.rs": "4e5cf9e9813dadecd2db02d7b9c7ab3cf281cb2a9044c8ce18599fc114c01cc9",
+    "crates/agentc-optimizer/src/rules/context_compress.rs": "d12d52eee1f960a5cfedec215e49e219fb0e57f5556cec715cf7901e53e1521d",
+    "crates/agentc-optimizer/src/rules/dead_output_truncation.rs": "fe70eb28e767bacf835a3328bbb78789842d0e21b05d0ac6b124cef5d50ac384",
+    "crates/agentc-optimizer/src/rules/mod.rs": "407fdcec7d70d9550d574cb6715cb32554329b91dfab6a9f372503ec8c5a62d8",
+    "crates/agentc-optimizer/src/rules/model_downgrade.rs": "fe6b422bcfd781749ce3dd793e7a10765684ed762ce68b5dbd6d7af1d94b2ace",
+    "crates/agentc-optimizer/src/rules/output_budget.rs": "5ecfef5f8a8a7b5a2e756da6a9536ff743f7f64e7f02bd7d32269cefc6758a7b",
+    "crates/agentc-optimizer/src/rules/parallel_branch.rs": "04aa731feee28a530362d9e4ad2b4f2fb95ac0bc7d486ad33550a13dca34b159",
+    "crates/agentc-optimizer/src/rules/prompt_dedup.rs": "2a82cb22b95d429593be4ec64f95317cd3ca1268b1918338718044fa55ecf037",
+    "crates/agentc-optimizer/src/rules/state_drop.rs": "7670fb5b770bc9537b61baf09847967dfc4d5d9218c3eb21bd44813d9f7a2670",
+    "crates/agentc-optimizer/src/rules/structured_truncation.rs": "1e08de63c693b89fd39fffd803cdb81b63157639d901776b4654de1a29b8f265",
+    "crates/agentc-optimizer/src/schema.rs": "54392e3b6b86dbe109e04efdaad43137a80411904d64063330e60bb9b13ae09f",
+    "crates/agentc-optimizer/src/shadow.rs": "11fdbd9fe00a1b275faaa2405e35e2350ab207543af96a34d447f22df7bffb31",
+    "crates/agentc-optimizer/src/wiring.rs": "099783f0a09572f062129ead30b86dc670077f336b550f3fa04f4864e8e72ad2",
+    "python/agentc/_attention.py": "e069181774b045679c56f57561c553c48baac51956636b88741ed74c6dda85d5"
+  },
+  "source_files_sha256": "384deef32265b0d4f713c979eb6c9e06cc511c6766ba1fc5ac0686b8fa524871",
+  "test_files": {
+    "tests/test_openrouter_protected_pair.py": "354fb77e9ea9c923d35a07a225136fd819014164d2bd0c8a0117d7049dc13e54",
+    "tests/test_openrouter_protected_reachability.py": "317dd5415393105d4ad4d3034c5c1286d8cf1a53551800f9409a7427e5056b7a"
+  },
+  "test_files_sha256": "0414491619e51d4a3d34f4a77ca90c2cc3fffb3577ce770677c04c41be0582e1",
+  "treatment": {
+    "allowance": 60,
+    "exact_plan_counts": [
+      {
+        "divergence_threshold": 0.029999999329447746,
+        "key": {
+          "call_site_version": "60af8932a030766c1fc84ca484601f3f6b74622a55be96cd2b149c72f1d3aa1c",
+          "execution_plan_id": "2aa3a52007b68250ca01c759ef8fbd73a33b7274ae5e87f0760ff083bf96f905"
+        },
+        "paired_observations": 20,
+        "rules": [
+          "ModelDowngrade"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-haiku-4.5",
+          "target_model_version": "anthropic/claude-haiku-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "answer"
+      },
+      {
+        "divergence_threshold": 0.009999999776482582,
+        "key": {
+          "call_site_version": "60af8932a030766c1fc84ca484601f3f6b74622a55be96cd2b149c72f1d3aa1c",
+          "execution_plan_id": "67b5d3d84faaa8378ceb048699fbd4534c7dc383f0f6980ff25d035bcb6e1c30"
+        },
+        "paired_observations": 20,
+        "rules": [
+          "StateDrop",
+          "ModelDowngrade"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-haiku-4.5",
+          "target_model_version": "anthropic/claude-haiku-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "answer"
+      },
+      {
+        "divergence_threshold": 0.029999999329447746,
+        "key": {
+          "call_site_version": "ed47473e69d2c916f2236fbe3956a4c3b526dc8a98c3ef4b2df709671945a9ea",
+          "execution_plan_id": "be077338516fa0af6da06cf4377c19d08627a7940b7d1efd37b7415c2862174a"
+        },
+        "paired_observations": 20,
+        "rules": [
+          "ModelDowngrade"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-haiku-4.5",
+          "target_model_version": "anthropic/claude-haiku-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "synthesize"
+      },
+      {
+        "divergence_threshold": 0.009999999776482582,
+        "key": {
+          "call_site_version": "60af8932a030766c1fc84ca484601f3f6b74622a55be96cd2b149c72f1d3aa1c",
+          "execution_plan_id": "e6c613f6943f9a7e736aae3189cb444917de3fcf65ef91d42c4cdee810e7c88b"
+        },
+        "paired_observations": 20,
+        "rules": [
+          "StateDrop"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-sonnet-4.5",
+          "target_model_version": "anthropic/claude-sonnet-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "answer"
+      },
+      {
+        "divergence_threshold": 0.019999999552965164,
+        "key": {
+          "call_site_version": "956f338ab741317be8ce286a0c1d2785de88fb51d3fb02686d7cff8367f6539d",
+          "execution_plan_id": "abb8037419bff4a00f8a7fe35f8add5a6441ee8722cc4878ed06b5603c42a48a"
+        },
+        "paired_observations": 20,
+        "rules": [
+          "ContextCompress"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-sonnet-4.5",
+          "target_model_version": "anthropic/claude-sonnet-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "filter"
+      },
+      {
+        "divergence_threshold": 0.029999999329447746,
+        "key": {
+          "call_site_version": "956f338ab741317be8ce286a0c1d2785de88fb51d3fb02686d7cff8367f6539d",
+          "execution_plan_id": "af2d95c156a2ca210603a892596d828f797653d22a636c502fad59a1b01f99d9"
+        },
+        "paired_observations": 20,
+        "rules": [
+          "ModelDowngrade"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-haiku-4.5",
+          "target_model_version": "anthropic/claude-haiku-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "filter"
+      },
+      {
+        "divergence_threshold": 0.019999999552965164,
+        "key": {
+          "call_site_version": "956f338ab741317be8ce286a0c1d2785de88fb51d3fb02686d7cff8367f6539d",
+          "execution_plan_id": "fabd4dd443c15e6781767fdb177e82b695eff8625dc17afeb152a520b15c74d7"
+        },
+        "paired_observations": 20,
+        "rules": [
+          "ContextCompress",
+          "ModelDowngrade"
+        ],
+        "runtime_version": {
+          "price_table_version": "fake-protected-catalog-v1",
+          "provider_protocol": "openrouter.chat.completions.v1",
+          "target_model_id": "anthropic/claude-haiku-4.5",
+          "target_model_version": "anthropic/claude-haiku-4.5@fake-protected-catalog-v1"
+        },
+        "stage": "filter"
+      }
+    ],
+    "output_cap": 256,
+    "probes": 140,
+    "site_counts": {
+      "answer": 60,
+      "filter": 60,
+      "synthesize": 20
+    },
+    "source_calls": 189,
+    "source_workflows": 63
+  },
+  "typed_zero_loss": true
+}

@@ -1,6 +1,9 @@
 """Actual native controls; all provider resources/results are explicitly fake."""
 
 from collections import Counter, defaultdict
+import json
+import os
+from pathlib import Path
 import sqlite3
 
 import pytest
@@ -8,6 +11,69 @@ import pytest
 from bench import openrouter_protected_pair as pair
 from bench import openrouter_pilot as pilot
 from test_openrouter_protected_pair import KEY, events, setup as setup
+
+
+def write_control_report(coordinator, tasks, calls, stage_counts, plans):
+    """Opt-in generated test evidence, never an acquisition/admission artifact."""
+    output = os.environ.get("AGENTC_PROTECTED_CONTROLS_REPORT")
+    if not output:
+        return
+    test_files = {
+        name: pair.file_hash(pair.ROOT / name)
+        for name in (
+            "tests/test_openrouter_protected_pair.py",
+            "tests/test_openrouter_protected_reachability.py",
+        )
+    }
+    header = {
+        "kind": "protected-native-reachability-controls-v1",
+        "native_sha256": coordinator.bridge.sha256,
+        "source_files": coordinator.frozen["source_files"],
+        "source_files_sha256": pilot.digest(coordinator.frozen["source_files"]),
+        "test_files": test_files,
+        "test_files_sha256": pilot.digest(test_files),
+        "command": "AGENTC_PROTECTED_PAIR_BRIDGE=<pinned binary> AGENTC_PROTECTED_PAIR_BRIDGE_SHA256=<native_sha256> AGENTC_PROTECTED_CONTROLS_REPORT=<output> python -m pytest tests/test_openrouter_protected_reachability.py -q",
+        "reference_primary_only": True,
+        "no_seeded_profiles": True,
+        "provider_calls": 0,
+        "fake_provider": True,
+        "typed_zero_loss": True,
+        "other_numeric_defaults_unchanged": True,
+        "default_policy": {"max_calls_per_site": 20, "max_output_tokens": 512},
+        "guard_basis": "Pinned native bridge overrides only exploration_calls_per_site_24h; all other OptimizerConfig defaults unchanged.",
+        "resource_basis": {
+            "fake_cost_usd_per_call": "0.001",
+            "fake_input_tokens": 500,
+            "fake_output_tokens": 40,
+            "fake_latency_ms": 1000.0,
+        },
+        "seed": 2026090603,
+        "public_tasks_sha256": pilot.digest(
+            [pair.typed._public(task) for task in tasks]
+        ),
+        "labels_used": False,
+        "all_starts_within_one_24h_window": True,
+        "scope": "Actual native lease/accounting/feedback reachability under synthetic zero-loss receipts; no provider-quality, capacity, primary-admission or efficacy claim.",
+    }
+    path = Path(output)
+    report = {**header, "complete": False}
+    if calls == 60:
+        report = json.loads(path.read_text())
+        assert {key: report[key] for key in header} == header
+        assert "control" in report and "treatment" not in report
+    report["control" if calls == 20 else "treatment"] = {
+        "allowance": calls,
+        "output_cap": 256,
+        "source_workflows": 63,
+        "source_calls": 189,
+        "probes": sum(stage_counts.values()),
+        "site_counts": dict(stage_counts),
+        "exact_plan_counts": plans,
+    }
+    report["complete"] = calls == 60
+    path.write_text(
+        json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    )
 
 
 def configured(original, calls=20, tokens=256):
@@ -186,6 +252,7 @@ def test_actual_63_workflow_zero_loss_reachability_without_seeded_profiles(
     saved = events(coordinator)
     pairs = pair._pairs(saved)
     counts, stage_counts, runtime_by_key = Counter(), Counter(), defaultdict(set)
+    descriptors = {}
     rules_by_stage = defaultdict(set)
     for rows in pairs.values():
         start = rows[0]
@@ -214,6 +281,14 @@ def test_actual_63_workflow_zero_loss_reachability_without_seeded_profiles(
             else [r["rule"] for r in candidate["rules"]]
         )
         rules_by_stage[stage].add(tuple(rules))
+        descriptor = {
+            "key": observation["key"],
+            "runtime_version": observation["runtime_version"],
+            "stage": stage,
+            "rules": rules,
+            "divergence_threshold": feedback["reply"]["result"]["divergence_threshold"],
+        }
+        assert descriptors.setdefault(key, descriptor) == descriptor
     assert len(pairs) == 189
     assert len(counts) == 7 and all(
         len(values) == 1 for values in runtime_by_key.values()
@@ -241,3 +316,17 @@ def test_actual_63_workflow_zero_loss_reachability_without_seeded_profiles(
         ]
         assert sorted(paired) == sorted(counts.values())
     assert all(item["payload"]["max_tokens"] == 256 for item in state["dispatches"])
+    clocks = [rows[0]["now_us"] for rows in pairs.values()]
+    assert (
+        clocks == sorted(clocks) and clocks[-1] - clocks[0] < 24 * 60 * 60 * 1_000_000
+    )
+    write_control_report(
+        coordinator,
+        tasks,
+        calls,
+        stage_counts,
+        [
+            {**descriptors[key], "paired_observations": counts[key]}
+            for key in sorted(counts)
+        ],
+    )

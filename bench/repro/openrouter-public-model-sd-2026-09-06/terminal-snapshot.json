@@ -1,0 +1,36 @@
+{
+  "kind": "public-factorial-incomplete-terminal-snapshot-v1",
+  "manifest_sha256": "b5b1769028a2b81d509907a1097838802b65e1efb214c3bffda0238a5a8750f3",
+  "ledger_event_count": 19340,
+  "ledger_prefix_bytes": 85236939,
+  "ledger_raw_sha256": "e87d7ace08cf67f18281796a2fbeda99e9c0118552e40ea33fc516c87c365e73",
+  "ledger_canonical_sha256": "1ac37cab4a456971d9083f86f243eb1509c629076f2863ef6d157d15679b0f35",
+  "artifact_sha256": {
+    "manifest.json": "789b18e01a56b4564e7fe66d4504f7f08075c8a3bff16828bd6b8da5b0e7debb",
+    "calls.json": "69b4ada5f7317a7ca283ea7f27e9220cd44af0c75ec04da4091deb0866bf3a77",
+    "intents.json": "21b9ef0c2e93e9ee33ef28f76a62e005f4eceee93e4a1f69453a934524126666",
+    "summary.json": "f06a2c056d6e7e00271ed1014d41161398f22765f0131fbdb13c3d9fabbbe7c4",
+    "analysis.json": "b96ee8e56ddeda88ee3acc16a15f29a72b5fd6c070e2a09fd318ff6b3ac58a3b"
+  },
+  "analysis_canonical_sha256": "2c1c2f2a8da7e99af17570e15c994449a73266b2a04c1dd65659ad8b06305bae",
+  "independent_review": "bd-323l.6.13.8.6.20.14.2.5",
+  "completed_calls": 229,
+  "scheduled_calls": 384,
+  "intents": 230,
+  "failed_attempt": {
+    "reserve_sha256": "12e5f6dbf8c688d02be5b1319c51dc77c16937121379e6f64a78eef5dde245eb",
+    "task_id": "hotpot_5ac2d102554299657fa29080",
+    "arm": "SR",
+    "workflow_stage": "synthesize",
+    "kind": "timeout",
+    "request_started_at": "2026-09-06T00:26:35.075574+00:00",
+    "failed_at": "2026-09-06T00:28:35.090817+00:00",
+    "response_receipt_exists": false,
+    "reported_cost_usd": null,
+    "retained_uncertainty_usd": "6.01536"
+  },
+  "labels_read": false,
+  "efficacy_claim": false,
+  "paper_evidence": false,
+  "scope": "Historical incomplete snapshot only; the full current original ledger remains authoritative for spending."
+}

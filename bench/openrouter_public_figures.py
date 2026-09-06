@@ -178,7 +178,10 @@ def _build_data(manifest, report):
                 "invalid path credited as correct",
             )
             _require(
-                cell["em"] != 1 or cell["f1"] == 1, "exact match must have unit F1"
+                # Official Hotpot normalization can remove every token from
+                # both strings: exact match is 1 but token-overlap F1 is 0.
+                cell["em"] != 1 or cell["f1"] in (0, 1),
+                "exact match F1 must be zero or one",
             )
             invalid_calls += sum(not value for value in statuses)
             for key in MONEY:

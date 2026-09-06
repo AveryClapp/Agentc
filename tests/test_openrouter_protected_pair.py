@@ -879,3 +879,114 @@ def test_native_effect_without_journal_ack_blocks_distinct_task(setup, monkeypat
     assert state["counter"].value == 1
     with sqlite3.connect(coordinator.bridge.store) as native:
         assert list(native.iterdump()) == snapshot
+
+
+def test_public_audit_has_no_key_ledger_or_mutating_native_capability(
+    setup, monkeypatch
+):
+    coordinator, state, tasks = setup
+    warm(setup)
+    value = coordinator.execute(tasks[3], "filter")
+    journal = events(coordinator)
+    rows = list(pair._pairs(journal).values())[-1]
+    with sqlite3.connect(coordinator.bridge.store) as native:
+        snapshot = list(native.iterdump())
+    original = coordinator.bridge.call
+    operations = []
+
+    def readonly(binding, catalog, command, *args, **kwargs):
+        operations.append(command["op"])
+        assert command["op"] in {"checkpoint", "verify"}
+        return original(binding, catalog, command, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("pure audit attempted a keyed or ledger effect")
+
+    monkeypatch.setattr(coordinator.bridge, "call", readonly)
+    monkeypatch.setattr(pilot.Ledger, "__init__", forbidden)
+    monkeypatch.setattr(pilot.Ledger, "locked", forbidden)
+    monkeypatch.setattr(pilot, "account", forbidden)
+    monkeypatch.setattr(pilot, "request_json", forbidden)
+    del coordinator.key
+    assert pair.audit_native_state(
+        coordinator.bridge, coordinator.frozen, coordinator.binding, journal
+    ) == pair._pairs(journal)
+    assert (
+        pair.audit_completed(
+            coordinator.bridge, coordinator.frozen, coordinator.binding, rows, journal
+        )
+        == value
+    )
+    assert set(operations) == {"checkpoint", "verify"}
+    assert state["counter"].value == 5
+    with sqlite3.connect(coordinator.bridge.store) as native:
+        assert list(native.iterdump()) == snapshot
+
+
+@pytest.mark.parametrize("stop_at", ["budget_group", "reserve"])
+def test_public_audit_validates_unfinished_exact_specs_without_missing_receipts(
+    setup, monkeypatch, stop_at
+):
+    coordinator, state, tasks = setup
+    warm(setup)
+    append = coordinator.ledger.append
+
+    class Interrupted(Exception):
+        pass
+
+    def stop(handle, event):
+        result = append(handle, event)
+        if event["event"] == stop_at:
+            raise Interrupted
+        return result
+
+    monkeypatch.setattr(coordinator.ledger, "append", stop)
+    with pytest.raises(Interrupted):
+        coordinator.execute(tasks[3], "filter")
+    journal = events(coordinator)
+    rows = list(
+        pair.audit_native_state(
+            coordinator.bridge, coordinator.frozen, coordinator.binding, journal
+        ).values()
+    )[-1]
+    with pytest.raises(pilot.PilotError, match="interrupted"):
+        pair.audit_completed(
+            coordinator.bridge, coordinator.frozen, coordinator.binding, rows, journal
+        )
+    changed = deepcopy(journal)
+    group = next(event for event in changed if event["event"] == "budget_group")
+    if stop_at == "budget_group":
+        slot = group["slots"]["candidate"]
+        slot["request"]["max_tokens"] -= 1
+        slot["fingerprint"] = pilot.digest(
+            {
+                "payload": slot["request"],
+                "metadata": slot["metadata"],
+                "stage": group["stage"],
+            }
+        )
+    else:
+        # Alter an already-claimed source, consistently updating its group and
+        # fingerprints; the unchanged native plan still requires the old call.
+        group["slots"]["source"]["request"]["max_tokens"] -= 1
+        slot = group["slots"]["source"]
+        slot["fingerprint"] = pilot.digest(
+            {
+                "payload": slot["request"],
+                "metadata": slot["metadata"],
+                "stage": group["stage"],
+            }
+        )
+        claim = next(
+            event
+            for event in changed
+            if event["event"] == "reserve" and event["id"] == slot["id"]
+        )
+        claim.update(deepcopy(slot))
+        claim["group_sha256"] = pilot.digest(group)
+    accounting(changed)  # Conservative accounting alone is not exact plan proof.
+    with pytest.raises(pilot.PilotError, match="group slot"):
+        pair.audit_native_state(
+            coordinator.bridge, coordinator.frozen, coordinator.binding, changed
+        )
+    assert state["counter"].value == 3

@@ -43,8 +43,22 @@ def source_files():
     }
 
 
-def enrollment(catalog, endpoints, native_sha256):
+def enrollment(
+    catalog, endpoints, native_sha256, *, max_calls_per_site=20, max_output_tokens=512
+):
     """Local preimage, not a self-asserted adapter label or capacity certificate."""
+    if (
+        type(max_calls_per_site) is not int
+        or max_calls_per_site not in {20, 60}
+        or type(max_output_tokens) is not int
+        or max_output_tokens not in {256, 512}
+    ):
+        raise pilot.PilotError("unsupported frozen exploration allowance/output cap")
+    experiment_policy = {
+        "kind": "protected-pair-experiment-policy-v1",
+        "max_calls_per_site": max_calls_per_site,
+        "max_output_tokens": max_output_tokens,
+    }
     if set(endpoints) != {live.SOURCE_MODEL, live.TARGET_MODEL}:
         raise pilot.PilotError(
             "protected experiment needs exact source/target endpoints"
@@ -65,7 +79,8 @@ def enrollment(catalog, endpoints, native_sha256):
                 "native_sha256": native_sha256,
                 "source_files": source_files(),
                 "rules": RULES,
-                "numeric_policy": "OptimizerConfig::default",
+                "numeric_policy": "OptimizerConfig::default+frozen-exploration-allowance-v1",
+                "experiment_policy": experiment_policy,
                 "source_model": live.SOURCE_MODEL,
             }
         )
@@ -290,6 +305,349 @@ def _outcome(receipt, call):
     }
 
 
+def _validate_contract(bridge, frozen, binding):
+    bridge.validate()
+    actual = enrollment(
+        frozen["catalog"],
+        frozen["endpoints"],
+        bridge.sha256,
+        max_calls_per_site=frozen["experiment_policy"]["max_calls_per_site"],
+        max_output_tokens=frozen["experiment_policy"]["max_output_tokens"],
+    )
+    if pilot.canonical(actual) != pilot.canonical(frozen):
+        raise pilot.PilotError("protected typed/native source contract changed")
+    if (
+        binding["kind"] != KIND
+        or binding["store"] != str(bridge.store)
+        or binding["enrollment_sha256"] != pilot.digest(frozen)
+        or pilot.canonical(binding["experiment_policy"])
+        != pilot.canonical(frozen["experiment_policy"])
+    ):
+        raise pilot.PilotError("audit binding differs from frozen native enrollment")
+
+
+def audit_completed(bridge, frozen, binding, rows, events):
+    """Verify completed source text using only readonly native callbacks."""
+    _validate_contract(bridge, frozen, binding)
+    pairs = _native_state(bridge, frozen, binding, events)
+    if not rows or pilot.canonical(rows) != pilot.canonical(
+        pairs.get(rows[0]["pair_id"])
+    ):
+        raise pilot.PilotError("audited pair differs from original journal")
+    return _audit_completed(bridge, frozen, binding, rows, events)
+
+
+def audit_native_state(bridge, frozen, binding, events):
+    """Verify available frozen attempt records; missing receipts stay incomplete."""
+    _validate_contract(bridge, frozen, binding)
+    pairs = _native_state(bridge, frozen, binding, events)
+    state = accounting(events)
+    positions = {id(event): index for index, event in enumerate(events)}
+    for rows in pairs.values():
+        start = rows[0]
+        if start["binding"]["store"] != binding["store"]:
+            continue
+        if pilot.canonical(start["binding"]) != pilot.canonical(binding):
+            raise pilot.PilotError("audited pair changed its native cohort")
+        planned = next((row for row in rows if row["action"] == "planned"), None)
+        if planned is None:
+            continue
+        bridge.verify(
+            binding,
+            frozen["catalog"],
+            start["pair_id"] + "/plan",
+            planned["reply"],
+            {"op": "plan", "call": start["source_call"], "now_us": start["now_us"]},
+            events,
+        )
+        specs = _specs(bridge, frozen, start, planned["reply"]["result"])
+        group = next(
+            (
+                event
+                for event in events
+                if event["event"] == "budget_group"
+                and event["id"] == start["pair_id"] + "/group"
+            ),
+            None,
+        )
+        if group is not None:
+            if (
+                set(group["slots"]) != set(specs)
+                or group["stage"] != binding["budget_stage"]
+                or group["stage_cap_usd"] != binding["stage_cap_usd"]
+            ):
+                raise pilot.PilotError("audited group differs from frozen pair")
+            for slot, spec in specs.items():
+                expected = {
+                    "id": spec["id"],
+                    "request": spec["payload"],
+                    "metadata": spec["metadata"],
+                }
+                if pilot.canonical(
+                    {key: group["slots"][slot][key] for key in expected}
+                ) != pilot.canonical(expected):
+                    raise pilot.PilotError(
+                        "audited group slot changed its exact request"
+                    )
+        for slot, spec in specs.items():
+            claims = [
+                claim
+                for claim in state["reserves"].values()
+                if claim["id"] == spec["id"]
+            ]
+            if claims:
+                expected = {
+                    "id": spec["id"],
+                    "request": spec["payload"],
+                    "metadata": spec["metadata"],
+                    "stage": binding["budget_stage"],
+                }
+                if len(claims) != 1 or pilot.canonical(
+                    {key: claims[0][key] for key in expected}
+                ) != pilot.canonical(expected):
+                    raise pilot.PilotError("audited attempt changed its exact request")
+                if slot == "candidate":
+                    observed = next(
+                        (row for row in rows if row["action"] == "observed"), None
+                    )
+                    if (
+                        observed is None
+                        or positions[id(observed)] >= positions[id(claims[0])]
+                    ):
+                        raise pilot.PilotError(
+                            "audited probe preceded durable source observation"
+                        )
+            if spec["id"] in state["results"]:
+                _receipt(spec, events)
+    return pairs
+
+
+def source_call(task, workflow_stage, history, frozen, run_id):
+    """Pure source rendering for execution and key-free exact replay."""
+    public = typed._public(task)
+    attention = load_module(
+        "protected_pair_attention", ROOT / "python/agentc/_attention.py"
+    )
+    call = restrict_call(
+        typed.call(
+            public,
+            workflow_stage,
+            history,
+            attention,
+            model=frozen["source_model"],
+            run_identity=run_id,
+        ),
+        workflow_stage,
+    )
+    call["parameters"]["max_output_tokens"] = frozen["experiment_policy"][
+        "max_output_tokens"
+    ]
+    call["parameters"]["extra"]["agentc_route_context"]["protected_attempt"] = {
+        "policy": "opaque-provider-attempt-v1",
+        "mode": groups.POLICY,
+        "catalog_version": frozen["catalog"]["catalog_version"],
+        "endpoint_cohort_sha256": pilot.digest(frozen["endpoints"]),
+        "application_contract_sha256": frozen["typed_contract_sha256"],
+        "rule_contract_sha256": pilot.digest(
+            {
+                "rules": RULES,
+                "sources": frozen["source_files"],
+                "experiment_policy": frozen["experiment_policy"],
+            }
+        ),
+        "max_request_json_bytes": 65536,
+    }
+    return call
+
+
+def _native_state(bridge, frozen, binding, events):
+    if any(event.get("key_id") != binding["key_id"] for event in events):
+        raise pilot.PilotError("audit journal belongs to another key")
+    if any(
+        event["event"] == "budget_group"
+        and event["ledger_binding"] != binding["ledger"]
+        for event in events
+    ):
+        raise pilot.PilotError("audit group belongs to another original ledger")
+    accounting(events)
+    pairs = _pairs(events)
+    checkpoint = bridge.call(binding, frozen["catalog"], {"op": "checkpoint"})["result"]
+    _check_prefix(checkpoint, events)
+    # Both stores must agree: a valid older prefix alone cannot authorize
+    # resetting source/probe counts or guards through native-store rollback.
+    # Ahead-of-journal native effects are ambiguous, never recoverable here.
+    latest = next(
+        (
+            row
+            for row in reversed(events)
+            if row["event"] == EVENT
+            and row.get("reply") is not None
+            and row["binding"]["store"] == str(bridge.store)
+        ),
+        None,
+    )
+    expected = latest["reply"]["ledger_prefix"] if latest else None
+    if pilot.canonical(checkpoint) != pilot.canonical(expected):
+        raise pilot.PilotError(
+            "native state differs from latest journal acknowledgement"
+        )
+    if latest:
+        if pilot.canonical(latest["binding"]) != pilot.canonical(binding):
+            raise pilot.PilotError(
+                "journal acknowledgement belongs to a different native cohort"
+            )
+        operation = {
+            "planned": "plan",
+            "observed": "observe",
+            "feedback": "complete",
+            "failed": "fail",
+        }[latest["action"]]
+        bridge._verify_ack(
+            binding,
+            frozen["catalog"],
+            latest["pair_id"] + "/" + operation,
+            latest["reply"],
+        )
+    return pairs
+
+
+def _receipt(spec, events):
+    state = accounting(events)
+    result = state["results"].get(spec["id"])
+    if result is None:
+        raise pilot.PilotError("protected stage lacks durable successful receipt")
+    claims = [r for r in state["reserves"].values() if r["id"] == spec["id"]]
+    bodies = [
+        e["response"]
+        for e in events
+        if e["event"] == "response" and e.get("id") == spec["id"]
+    ]
+    if (
+        len(claims) != 1
+        or len(bodies) != 1
+        or any(
+            pilot.canonical(claims[0][key]) != pilot.canonical(spec[field])
+            for key, field in (("request", "payload"), ("metadata", "metadata"))
+        )
+    ):
+        raise pilot.PilotError("protected receipt differs from exact frozen attempt")
+    groups.validate_completion(claims[0], bodies[0], result)
+    return result
+
+
+def _specs(bridge, frozen, start, plan):
+    call = start["source_call"]
+    cap = call["parameters"]["max_output_tokens"]
+    if type(cap) is not int or cap != frozen["experiment_policy"]["max_output_tokens"]:
+        raise pilot.PilotError("source cap differs from frozen experiment policy")
+    candidate = _candidate(call, plan)
+    context = {
+        "kind": KIND,
+        "start_sha256": pilot.digest(start),
+        "plan_sha256": pilot.digest(plan),
+        "enrollment_sha256": pilot.digest(frozen),
+        "native_store": str(bridge.store),
+    }
+    result = {}
+    for slot, selected in (
+        ("source", call),
+        ("candidate", candidate["call"] if candidate else None),
+    ):
+        if selected is None:
+            continue
+        payload = live.payload_for(selected, frozen)
+        endpoint = frozen["endpoints"][selected["model"]]
+        result[slot] = {
+            "id": start["pair_id"] + "/" + slot,
+            "payload": payload,
+            "metadata": {
+                "protected_pair": {
+                    **context,
+                    "slot": slot,
+                    "call_sha256": pilot.digest(selected),
+                },
+                "dispatch_contract": {
+                    "provider_name": endpoint["provider_name"],
+                    "endpoint_model": endpoint["name"].split(" | ", 1)[1],
+                },
+            },
+        }
+    return result
+
+
+def _audit_completed(bridge, frozen, binding, rows, events):
+    if rows[-1]["action"] != "complete" or pilot.canonical(
+        rows[0]["binding"]
+    ) != pilot.canonical(binding):
+        raise pilot.PilotError("interrupted protected stage cannot resume")
+    start, plan = rows[0], rows[1]["reply"]["result"]
+    specs = _specs(bridge, frozen, start, plan)
+    source = _receipt(specs["source"], events)
+    actions = {row["action"]: row for row in rows}
+    _check_prefix(
+        bridge.call(binding, frozen["catalog"], {"op": "checkpoint"})["result"],
+        events,
+    )
+    commands = {
+        "planned": {
+            "op": "plan",
+            "call": start["source_call"],
+            "now_us": start["now_us"],
+        },
+        "observed": {
+            "op": "observe",
+            "primary": _primary(plan),
+            "outcome": _outcome(source, start["source_call"]),
+        },
+    }
+    if actions["observe_claim"]["source_receipt_sha256"] != pilot.digest(source):
+        raise pilot.PilotError("source observation receipt changed")
+    if "candidate" in specs:
+        candidate = _receipt(specs["candidate"], events)
+        claim = actions["feedback_claim"]
+        divergence = typed.application_disagreement(
+            start["workflow_stage"],
+            source["answer"],
+            candidate["answer"],
+            upstream_valid=start["source_call"]["parameters"]["extra"][
+                "typed_relational_contract"
+            ]["upstream_valid"],
+            reference_finish_reason=source["finish_reason"],
+            candidate_finish_reason=candidate["finish_reason"],
+        )
+        if (
+            claim["candidate_receipt_sha256"] != pilot.digest(candidate)
+            or claim["source_receipt_sha256"] != pilot.digest(source)
+            or claim["divergence"] != divergence
+        ):
+            raise pilot.PilotError("paired observation receipt changed")
+        commands["feedback"] = {
+            "op": "complete",
+            "lease_token": plan["agentc_exploration_context"]["lease_token"],
+            "outcome": _outcome(
+                candidate,
+                plan["agentc_exploration_context"]["candidate_plan"]["call"],
+            ),
+            "divergence": divergence,
+            "now_us": claim["now_us"],
+        }
+    for action, command in commands.items():
+        bridge.verify(
+            binding,
+            frozen["catalog"],
+            start["pair_id"] + "/" + command["op"],
+            actions[action]["reply"],
+            command,
+            events,
+        )
+    value = typed.application_text(
+        source["answer"], source["finish_reason"], stage=start["workflow_stage"]
+    )
+    if rows[-1]["application_text"] != value:
+        raise pilot.PilotError("application history differs from exact source receipt")
+    return value
+
+
 class Coordinator:
     """Execute one typed stage; history comes only from this run's source rows."""
 
@@ -310,6 +668,7 @@ class Coordinator:
             "run_id": run_id,
             "budget_stage": budget_stage,
             "stage_cap_usd": str(self.stage_cap),
+            "experiment_policy": self.frozen["experiment_policy"],
         }
         self._validate()
 
@@ -323,57 +682,12 @@ class Coordinator:
             or not 0 < self.stage_cap <= pilot.HARD_CAP
         ):
             raise pilot.PilotError("invalid protected run identity or ceiling")
-        actual = enrollment(
-            self.frozen["catalog"], self.frozen["endpoints"], self.bridge.sha256
-        )
-        if pilot.canonical(actual) != pilot.canonical(self.frozen):
-            raise pilot.PilotError("protected typed/native source contract changed")
+        _validate_contract(self.bridge, self.frozen, self.binding)
 
     def _read(self):
         with self.ledger.locked() as handle:
             events = pilot.Ledger.read(self.ledger, handle)
-        accounting(events)
-        pairs = _pairs(events)
-        checkpoint = self.bridge.call(
-            self.binding, self.frozen["catalog"], {"op": "checkpoint"}
-        )["result"]
-        _check_prefix(checkpoint, events)
-        # Both stores must agree: a valid older prefix alone cannot authorize
-        # resetting source/probe counts or guards through native-store rollback.
-        # Ahead-of-journal native effects are ambiguous, never recoverable here.
-        latest = next(
-            (
-                row
-                for row in reversed(events)
-                if row["event"] == EVENT
-                and row.get("reply") is not None
-                and row["binding"]["store"] == str(self.bridge.store)
-            ),
-            None,
-        )
-        expected = latest["reply"]["ledger_prefix"] if latest else None
-        if pilot.canonical(checkpoint) != pilot.canonical(expected):
-            raise pilot.PilotError(
-                "native state differs from latest journal acknowledgement"
-            )
-        if latest:
-            if pilot.canonical(latest["binding"]) != pilot.canonical(self.binding):
-                raise pilot.PilotError(
-                    "journal acknowledgement belongs to a different native cohort"
-                )
-            operation = {
-                "planned": "plan",
-                "observed": "observe",
-                "feedback": "complete",
-                "failed": "fail",
-            }[latest["action"]]
-            self.bridge._verify_ack(
-                self.binding,
-                self.frozen["catalog"],
-                latest["pair_id"] + "/" + operation,
-                latest["reply"],
-            )
-        return events, pairs
+        return events, _native_state(self.bridge, self.frozen, self.binding, events)
 
     def _append(self, pair_id, action, **data):
         with self.ledger.locked() as handle:
@@ -418,141 +732,13 @@ class Coordinator:
         )
 
     def _receipt(self, spec, events):
-        state = accounting(events)
-        result = state["results"].get(spec["id"])
-        if result is None:
-            raise pilot.PilotError("protected stage lacks durable successful receipt")
-        claims = [r for r in state["reserves"].values() if r["id"] == spec["id"]]
-        bodies = [
-            e["response"]
-            for e in events
-            if e["event"] == "response" and e.get("id") == spec["id"]
-        ]
-        if (
-            len(claims) != 1
-            or len(bodies) != 1
-            or any(
-                pilot.canonical(claims[0][key]) != pilot.canonical(spec[field])
-                for key, field in (("request", "payload"), ("metadata", "metadata"))
-            )
-        ):
-            raise pilot.PilotError(
-                "protected receipt differs from exact frozen attempt"
-            )
-        groups.validate_completion(claims[0], bodies[0], result)
-        return result
+        return _receipt(spec, events)
 
     def _specs(self, start, plan):
-        call = start["source_call"]
-        candidate = _candidate(call, plan)
-        context = {
-            "kind": KIND,
-            "start_sha256": pilot.digest(start),
-            "plan_sha256": pilot.digest(plan),
-            "enrollment_sha256": pilot.digest(self.frozen),
-            "native_store": str(self.bridge.store),
-        }
-        result = {}
-        for slot, selected in (
-            ("source", call),
-            ("candidate", candidate["call"] if candidate else None),
-        ):
-            if selected is None:
-                continue
-            payload = live.payload_for(selected, self.frozen)
-            endpoint = self.frozen["endpoints"][selected["model"]]
-            result[slot] = {
-                "id": start["pair_id"] + "/" + slot,
-                "payload": payload,
-                "metadata": {
-                    "protected_pair": {
-                        **context,
-                        "slot": slot,
-                        "call_sha256": pilot.digest(selected),
-                    },
-                    "dispatch_contract": {
-                        "provider_name": endpoint["provider_name"],
-                        "endpoint_model": endpoint["name"].split(" | ", 1)[1],
-                    },
-                },
-            }
-        return result
+        return _specs(self.bridge, self.frozen, start, plan)
 
     def _completed(self, rows, events):
-        if rows[-1]["action"] != "complete" or pilot.canonical(
-            rows[0]["binding"]
-        ) != pilot.canonical(self.binding):
-            raise pilot.PilotError("interrupted protected stage cannot resume")
-        start, plan = rows[0], rows[1]["reply"]["result"]
-        specs = self._specs(start, plan)
-        source = self._receipt(specs["source"], events)
-        actions = {row["action"]: row for row in rows}
-        _check_prefix(
-            self.bridge.call(
-                self.binding, self.frozen["catalog"], {"op": "checkpoint"}
-            )["result"],
-            events,
-        )
-        commands = {
-            "planned": {
-                "op": "plan",
-                "call": start["source_call"],
-                "now_us": start["now_us"],
-            },
-            "observed": {
-                "op": "observe",
-                "primary": _primary(plan),
-                "outcome": _outcome(source, start["source_call"]),
-            },
-        }
-        if actions["observe_claim"]["source_receipt_sha256"] != pilot.digest(source):
-            raise pilot.PilotError("source observation receipt changed")
-        if "candidate" in specs:
-            candidate = self._receipt(specs["candidate"], events)
-            claim = actions["feedback_claim"]
-            divergence = typed.application_disagreement(
-                start["workflow_stage"],
-                source["answer"],
-                candidate["answer"],
-                upstream_valid=start["source_call"]["parameters"]["extra"][
-                    "typed_relational_contract"
-                ]["upstream_valid"],
-                reference_finish_reason=source["finish_reason"],
-                candidate_finish_reason=candidate["finish_reason"],
-            )
-            if (
-                claim["candidate_receipt_sha256"] != pilot.digest(candidate)
-                or claim["source_receipt_sha256"] != pilot.digest(source)
-                or claim["divergence"] != divergence
-            ):
-                raise pilot.PilotError("paired observation receipt changed")
-            commands["feedback"] = {
-                "op": "complete",
-                "lease_token": plan["agentc_exploration_context"]["lease_token"],
-                "outcome": _outcome(
-                    candidate,
-                    plan["agentc_exploration_context"]["candidate_plan"]["call"],
-                ),
-                "divergence": divergence,
-                "now_us": claim["now_us"],
-            }
-        for action, command in commands.items():
-            self.bridge.verify(
-                self.binding,
-                self.frozen["catalog"],
-                start["pair_id"] + "/" + command["op"],
-                actions[action]["reply"],
-                command,
-                events,
-            )
-        value = typed.application_text(
-            source["answer"], source["finish_reason"], stage=start["workflow_stage"]
-        )
-        if rows[-1]["application_text"] != value:
-            raise pilot.PilotError(
-                "application history differs from exact source receipt"
-            )
-        return value
+        return _audit_completed(self.bridge, self.frozen, self.binding, rows, events)
 
     def execute(self, task, workflow_stage):
         self._validate()
@@ -568,28 +754,7 @@ class Coordinator:
             ] != pilot.digest(public):
                 raise pilot.PilotError("stage requires exact own-source history")
             history[prior] = self._completed(pairs[prior_id], events)
-        call = restrict_call(
-            typed.call(
-                public,
-                workflow_stage,
-                history,
-                self.attention,
-                model=self.frozen["source_model"],
-                run_identity=self.run_id,
-            ),
-            workflow_stage,
-        )
-        call["parameters"]["extra"]["agentc_route_context"]["protected_attempt"] = {
-            "policy": "opaque-provider-attempt-v1",
-            "mode": groups.POLICY,
-            "catalog_version": self.frozen["catalog"]["catalog_version"],
-            "endpoint_cohort_sha256": pilot.digest(self.frozen["endpoints"]),
-            "application_contract_sha256": self.frozen["typed_contract_sha256"],
-            "rule_contract_sha256": pilot.digest(
-                {"rules": RULES, "sources": self.frozen["source_files"]}
-            ),
-            "max_request_json_bytes": 65536,
-        }
+        call = source_call(public, workflow_stage, history, self.frozen, self.run_id)
         if pair_id in pairs:
             if pilot.canonical(call) != pilot.canonical(
                 pairs[pair_id][0]["source_call"]

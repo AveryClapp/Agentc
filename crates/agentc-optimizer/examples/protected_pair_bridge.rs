@@ -42,6 +42,14 @@ struct Prefix {
     sha256: String,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExperimentPolicy {
+    kind: String,
+    max_calls_per_site: u32,
+    max_output_tokens: u32,
+}
+
 fn checkpoint(conn: &Connection) -> Result<Option<Prefix>> {
     Ok(conn
         .query_row(
@@ -95,9 +103,25 @@ fn run(store: PathBuf, input: &str) -> Result<Value> {
     if !store.is_absolute() || request.binding["store"] != store.to_string_lossy().as_ref() {
         bail!("bridge store binding differs");
     }
-    // These defaults and the exact three rules are a frozen experiment contract.
-    // There is no environment/config route to changing a numerical guard here.
-    let config = OptimizerConfig::default();
+    let policy: ExperimentPolicy =
+        serde_json::from_value(request.binding["experiment_policy"].clone())?;
+    if policy.kind != "protected-pair-experiment-policy-v1"
+        || ![20, 60].contains(&policy.max_calls_per_site)
+        || ![256, 512].contains(&policy.max_output_tokens)
+    {
+        bail!("unsupported frozen experiment policy");
+    }
+    if let Command::Plan { call, .. } = &request.command {
+        if call.parameters.max_output_tokens != Some(policy.max_output_tokens) {
+            bail!("source output cap differs from frozen policy");
+        }
+    }
+    // Only the explicitly enrolled spend allowance varies. All evidence,
+    // risk, confidence, exposure and overhead guards retain their defaults.
+    let config = OptimizerConfig {
+        exploration_calls_per_site_24h: policy.max_calls_per_site,
+        ..OptimizerConfig::default()
+    };
     config.validate()?;
     let request_sha256 = format!("{:x}", Sha256::digest(input.as_bytes()));
     let binding = canonical_json(&json!({"binding":request.binding,"catalog":request.catalog}));

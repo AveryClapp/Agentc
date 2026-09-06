@@ -42,7 +42,7 @@ ROLLING_TELEMETRY = {
     "uptime_last_5m",
 }
 LIMITATIONS = [
-    "Fresh generated development tasks; not an independent public benchmark.",
+    "One fixed generated development draw; not an independent public benchmark.",
     "Six pilot and two study inputs previously appeared in offline fake-provider unit tests; no unseen-input claim.",
     "UNKNOWN primary always uses the exact Sonnet source; no adaptive cost-win claim.",
     "Twenty exact-plan pairs are an evidence floor, not a two-percent damage certificate.",
@@ -73,7 +73,7 @@ def exposure_disclosure(selection):
         "offline_generated_ids": affected,
         "affected_pilot_ids": selection["pilot_ids"],
         "affected_study_ids": selection["study_ids"][:2],
-        "exposure": "Before the ID-only checkpoint, inherited unit tests generated these eight public contexts and their internal expected scalars. Fake response constants, not expected scalars, drove assertions and native feedback.",
+        "exposure": "Historical test source predates the checkpoint and generates these eight public contexts and their internal expected scalars. Fake response constants, not expected scalars, drove assertions and native feedback. Earliest execution time is not established by Git, so no unseen-input claim is supported.",
         "scope": "Offline tests only: real transport forbidden, constant fake responses, temporary ledger/native stores. No provider-response, gold-feedback, accuracy-selection, or production-profile exposure was found in independent source review.",
         "corrected_claim": "One preserved development draw with prospectively acquired real-model responses; not unseen-input or held-out evidence. The earlier checkpoint is not proof that no overlapping task bodies had ever been generated.",
         "prospective_ids_and_raw_artifacts_preserved": True,

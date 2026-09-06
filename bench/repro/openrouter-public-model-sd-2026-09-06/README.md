@@ -39,6 +39,33 @@ so retirement changes its unresolved-call list (`bd-8qlq`). Historical replay
 must use the exact pinned original-ledger prefix and report current accounting
 separately; do not edit the summary, drop later holds, or create a fresh ledger.
 
+The [read-only replay wrapper](../../openrouter_public_snapshot.py) resolves
+that snapshot coupling without changing any of the 80 frozen acquisition files.
+[Independent replay](replay-verification.json) reconstructed all 229 calls using
+the immutable native executable and separately reported the complete 19,341-event
+post-retirement ledger. Its 41 tests include actual native pipe communication,
+changed/truncated-prefix rejection, later charges and abandonment, and prohibited
+label/credential reads, network calls, and file writes. This wrapper cannot run inference,
+regenerate analysis, or turn the historical prefix into a spending ledger.
+
+For read-only historical reconstruction, supply the original ledger path and the
+immutable `b260a39b...` materializer path to the following command. The external
+hashes are the independently checked terminal pins, not newly computed cutoffs:
+
+```bash
+python -m bench.openrouter_public_snapshot \
+  --ledger ORIGINAL_LEDGER_PATH --bridge IMMUTABLE_B260_MATERIALIZER_PATH \
+  --output bench/repro/openrouter-public-model-sd-2026-09-06 \
+  --bundle bench/repro/hotpot-train-typed-2026-09-05 \
+  --pilot bench/repro/openrouter-public-typed-pilot-2026-09-06 \
+  --manifest-sha256 b5b1769028a2b81d509907a1097838802b65e1efb214c3bffda0238a5a8750f3 \
+  --pilot-manifest-sha256 61dd892ecb9ab9e929dfaa590a29976e308abe25d4473b001ababe26b8ee0152 \
+  --analysis-sha256 b96ee8e56ddeda88ee3acc16a15f29a72b5fd6c070e2a09fd318ff6b3ac58a3b \
+  --ledger-event-count 19340 --ledger-prefix-bytes 85236939 \
+  --ledger-raw-sha256 e87d7ace08cf67f18281796a2fbeda99e9c0118552e40ea33fc516c87c365e73 \
+  --ledger-canonical-sha256 1ac37cab4a456971d9083f86f243eb1509c629076f2863ef6d157d15679b0f35
+```
+
 Manifest canonical SHA-256:
 `b5b1769028a2b81d509907a1097838802b65e1efb214c3bffda0238a5a8750f3`.
 Acquisition source remains `51a47a9562143b43f9efeb346cc387200eee709c`;

@@ -2,9 +2,12 @@
 
 import hashlib
 import json
+import os
 import socket
+import subprocess
 import sys
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -314,3 +317,123 @@ def test_cli_prints_only_readonly_accounting_and_sanitizes_failures(
     argv[argv.index("--analysis-sha256") + 1] = "f" * 64
     assert snapshot.main() == 1
     assert "no raw diagnostics" in capsys.readouterr().out
+
+
+def test_actual_frozen_materializer_pipe_ipc_when_supplied():
+    binary = os.environ.get("AGENTC_TYPED_MATERIALIZER")
+    if not binary:
+        pytest.skip("supply the immutable b260 binary; never build in this test")
+    assert study.file_hash(Path(binary)) == (
+        "b260a39b1baedbe0a4cc45895c6041ec5bfcfdbddb3c7f342c38ed3879fe0122"
+    )
+    from test_typed_public_workload import build, envelope
+
+    call = build(
+        "answer",
+        {
+            "filter": envelope("synthetic selected text"),
+            "synthesize": envelope("synthetic draft"),
+        },
+    )
+    original_popen = subprocess.Popen
+    with snapshot._read_only(binary):
+        materialized, report = study.materializer.materialize(
+            call, "StateDrop", Path(binary)
+        )
+        assert report["applied"] is True
+        assert report["retained_indices"] == [0, 2, 3]
+        assert len(materialized["messages"]) == 3
+        assert snapshot._NATIVE_PIPE_OPEN is False
+        # A native parse failure also uses only IPC, and leaves no permission on.
+        failed = subprocess.run(
+            [binary], input=b"{}", capture_output=True, timeout=10, check=False
+        )
+        assert failed.returncode != 0
+        assert snapshot._NATIVE_PIPE_OPEN is False
+    assert subprocess.Popen is original_popen
+
+
+@pytest.mark.parametrize(
+    "kind,in_constructor",
+    [(kind, False) for kind in ("file", "socket", "device", "pipe")]
+    + [(kind, True) for kind in ("file", "socket", "device")],
+)
+def test_native_ipc_exception_never_allows_other_fd_writes(
+    tmp_path, monkeypatch, kind, in_constructor
+):
+    bridge = tmp_path / "placeholder-bridge"
+    bridge.write_text("never executed")
+    path = tmp_path / "protected-file"
+    path.write_text("unchanged")
+    sockets, descriptors = [], []
+    if kind == "file":
+        descriptor = os.open(path, os.O_WRONLY)
+        descriptors.append(descriptor)
+    elif kind == "device":
+        descriptor = os.open(os.devnull, os.O_WRONLY)
+        descriptors.append(descriptor)
+    elif kind == "socket":
+        sockets = list(socket.socketpair())
+        descriptor = sockets[0].fileno()
+    else:
+        descriptors = list(os.pipe())
+        descriptor = descriptors[1]
+
+    def forbidden_open(*args, **kwargs):
+        with open(descriptor, "wb", closefd=False) as handle:
+            handle.write(b"forbidden")
+        pytest.fail("descriptor write permitted")
+
+    if in_constructor:
+        monkeypatch.setattr(subprocess, "Popen", forbidden_open)
+    original_popen = subprocess.Popen
+    try:
+        with snapshot._read_only(bridge):
+            with pytest.raises(PilotError, match="file writes"):
+                if in_constructor:
+                    subprocess.Popen(
+                        [str(bridge)],
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                    )
+                else:
+                    forbidden_open()
+            assert snapshot._NATIVE_PIPE_OPEN is False
+    finally:
+        for descriptor in descriptors:
+            os.close(descriptor)
+        for connection in sockets:
+            connection.close()
+    assert path.read_text() == "unchanged"
+    assert subprocess.Popen is original_popen
+
+
+def test_wrong_command_and_constructor_failure_restore_native_permission(
+    tmp_path, monkeypatch
+):
+    bridge = tmp_path / "placeholder-bridge"
+    bridge.write_text("never executed")
+
+    def failed_constructor(*args, **kwargs):
+        raise OSError("synthetic constructor failure")
+
+    monkeypatch.setattr(subprocess, "Popen", failed_constructor)
+    with snapshot._read_only(bridge):
+        with pytest.raises(PilotError, match="frozen native pipe"):
+            subprocess.Popen(
+                ["another-command"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        assert snapshot._NATIVE_PIPE_OPEN is False
+        with pytest.raises(OSError, match="synthetic constructor"):
+            subprocess.Popen(
+                [str(bridge)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        assert snapshot._NATIVE_PIPE_OPEN is False
+    assert subprocess.Popen is failed_constructor

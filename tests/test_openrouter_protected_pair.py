@@ -806,3 +806,76 @@ def test_ambiguous_native_ack_cannot_replay_completed_journal(setup):
     with pytest.raises(pilot.PilotError):
         coordinator.execute(tasks[0], "filter")
     assert state["counter"].value == 1
+
+
+@pytest.mark.parametrize("mode", ["missing", "older", "missing_latest_ack"])
+def test_intact_journal_rejects_native_rollback_before_distinct_next_task(
+    setup, tmp_path, mode
+):
+    coordinator, state, tasks = setup
+    warm(setup)
+    backup = tmp_path / "older-native.db"
+    with (
+        sqlite3.connect(coordinator.bridge.store) as source,
+        sqlite3.connect(backup) as saved,
+    ):
+        source.backup(saved)
+    coordinator.execute(tasks[3], "filter")
+    assert inspect(coordinator) == {
+        "source_observations": 4,
+        "completed_leases": 1,
+        "failed_leases": 0,
+    }
+    journal = coordinator.ledger.path.read_bytes()
+    if mode == "missing":
+        coordinator.bridge.store.rename(tmp_path / "removed-native.db")
+        snapshot = None
+    else:
+        with sqlite3.connect(coordinator.bridge.store) as native:
+            if mode == "older":
+                with sqlite3.connect(backup) as saved:
+                    saved.backup(native)
+            else:
+                native.execute(
+                    "DELETE FROM protected_bridge_callbacks WHERE callback_id LIKE '%/complete'"
+                )
+            snapshot = list(native.iterdump())
+    # A distinct task must not silently warm a reset store; same-task replay
+    # checks alone would not protect this path.
+    with pytest.raises(pilot.PilotError):
+        coordinator.execute(tasks[4], "filter")
+    assert state["counter"].value == 5
+    assert coordinator.ledger.path.read_bytes() == journal
+    if snapshot is None:
+        assert not coordinator.bridge.store.exists()
+    else:
+        with sqlite3.connect(coordinator.bridge.store) as native:
+            assert list(native.iterdump()) == snapshot
+
+
+def test_native_effect_without_journal_ack_blocks_distinct_task(setup, monkeypatch):
+    coordinator, state, tasks = setup
+    coordinator.execute(tasks[0], "filter")
+    append = coordinator._append
+
+    class LostAcknowledgement(Exception):
+        pass
+
+    def lose(pair_id, action, **data):
+        if action == "planned":
+            raise LostAcknowledgement
+        return append(pair_id, action, **data)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(coordinator, "_append", lose)
+        with pytest.raises(LostAcknowledgement):
+            coordinator.execute(tasks[1], "filter")
+    journal = coordinator.ledger.path.read_bytes()
+    with sqlite3.connect(coordinator.bridge.store) as native:
+        snapshot = list(native.iterdump())
+    with pytest.raises(pilot.PilotError, match="latest journal acknowledgement"):
+        coordinator.execute(tasks[2], "filter")
+    assert coordinator.ledger.path.read_bytes() == journal
+    assert state["counter"].value == 1
+    with sqlite3.connect(coordinator.bridge.store) as native:
+        assert list(native.iterdump()) == snapshot

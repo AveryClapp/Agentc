@@ -130,13 +130,6 @@ class NativeBridge:
         return reply
 
     def verify(self, binding, catalog, callback_id, reply, command, events):
-        wire = reply["wire_json"]
-        if pilot.canonical(json.loads(wire)) != pilot.canonical(
-            {k: reply[k] for k in ("request_sha256", "result")}
-        ):
-            raise pilot.PilotError(
-                "native reply changed from its exact wire acknowledgement"
-            )
         for prefix in (reply["ledger_prefix"], reply["previous_prefix"]):
             _check_prefix(prefix, events)
         expected = {
@@ -150,6 +143,16 @@ class NativeBridge:
         if pilot.digest(expected) != reply["request_sha256"]:
             raise pilot.PilotError(
                 "native callback differs from reconstructed source/receipt command"
+            )
+        self._verify_ack(binding, catalog, callback_id, reply)
+
+    def _verify_ack(self, binding, catalog, callback_id, reply):
+        wire = reply["wire_json"]
+        if pilot.canonical(json.loads(wire)) != pilot.canonical(
+            {k: reply[k] for k in ("request_sha256", "result")}
+        ):
+            raise pilot.PilotError(
+                "native reply changed from its exact wire acknowledgement"
             )
         self.call(
             binding,
@@ -330,13 +333,47 @@ class Coordinator:
         with self.ledger.locked() as handle:
             events = pilot.Ledger.read(self.ledger, handle)
         accounting(events)
-        _check_prefix(
-            self.bridge.call(
-                self.binding, self.frozen["catalog"], {"op": "checkpoint"}
-            )["result"],
-            events,
+        pairs = _pairs(events)
+        checkpoint = self.bridge.call(
+            self.binding, self.frozen["catalog"], {"op": "checkpoint"}
+        )["result"]
+        _check_prefix(checkpoint, events)
+        # Both stores must agree: a valid older prefix alone cannot authorize
+        # resetting source/probe counts or guards through native-store rollback.
+        # Ahead-of-journal native effects are ambiguous, never recoverable here.
+        latest = next(
+            (
+                row
+                for row in reversed(events)
+                if row["event"] == EVENT
+                and row.get("reply") is not None
+                and row["binding"]["store"] == str(self.bridge.store)
+            ),
+            None,
         )
-        return events, _pairs(events)
+        expected = latest["reply"]["ledger_prefix"] if latest else None
+        if pilot.canonical(checkpoint) != pilot.canonical(expected):
+            raise pilot.PilotError(
+                "native state differs from latest journal acknowledgement"
+            )
+        if latest:
+            if pilot.canonical(latest["binding"]) != pilot.canonical(self.binding):
+                raise pilot.PilotError(
+                    "journal acknowledgement belongs to a different native cohort"
+                )
+            operation = {
+                "planned": "plan",
+                "observed": "observe",
+                "feedback": "complete",
+                "failed": "fail",
+            }[latest["action"]]
+            self.bridge._verify_ack(
+                self.binding,
+                self.frozen["catalog"],
+                latest["pair_id"] + "/" + operation,
+                latest["reply"],
+            )
+        return events, pairs
 
     def _append(self, pair_id, action, **data):
         with self.ledger.locked() as handle:

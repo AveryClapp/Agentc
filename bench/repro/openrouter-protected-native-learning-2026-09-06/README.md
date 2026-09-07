@@ -158,6 +158,10 @@ and after review was
 `96272404e084a7ae6b49997107f4add3f1760d8006cbfabc33afa48988fea7fd`;
 the WAL was empty before and after review.
 
+`native-profile-census.json` is an answer-free transcription of this independent
+review, including the full plan and call-site keys and acquisition-time guard
+records. It is not raw SQL output or a substitute for the original replay.
+
 Probe assignments were adaptive and used different calls. The table is a native
 learning diagnostic, not a matched rule-interaction estimate or gold correctness
 measurement. The primary remained Sonnet throughout. Neither zero disagreements
@@ -165,3 +169,57 @@ in 20 comparisons nor a completed acquisition certifies safe adaptive serving.
 The separately predeclared 63-task analysis may open labels only after repeating
 its full completion and receipt gates; no partial quality comparison is reported
 here.
+
+## Completed predeclared development analysis
+
+The unchanged reviewed analysis completed at `2026-09-07T21:36:05.380357+00:00`,
+after independently repeating both complete receipt gates. It opened the pinned
+labels only after those gates passed and retained all 63 whole-task pairs. Local
+analysis took 2,398.483 seconds, made no provider requests, and left the original
+journal unchanged. This elapsed time is not an LLM latency measurement.
+
+| Fixed workflow | Correct tasks | Exact accuracy | Workflow charges (USD) |
+| --- | ---: | ---: | ---: |
+| Plain Sonnet source | 58 / 63 | 92.06% | 1.666728 |
+| Haiku + ContextCompress / StateDrop (HR) | 61 / 63 | 96.83% | 0.215898 |
+
+HR gained four tasks, lost one, and tied on 58. Its mean paired accuracy
+difference was **+4.76 percentage points**, with the predeclared descriptive
+95% whole-task bootstrap interval **[-1.59, +11.11] percentage points**. This
+interval includes zero: neither superior accuracy nor a general quality/damage
+guarantee is established. The bootstrap uses the original 10,000 replicates and
+seed `2026090605`; there is no cluster filtering, alternative interval selection,
+or pilot-accuracy report.
+
+Fixed HR workflow charges were **87.05% lower** than source workflow charges.
+That comparison excludes learning overhead, which remains explicitly charged:
+native probes cost $0.306344, the pilot cost $0.211568, and the entire acquisition
+cost $2.400538. The source-plus-probe learning block cost $1.973072. This is not
+the deployed cost of an adaptive policy.
+
+These results extend the fixed-combination development evidence, not the claim
+that a learned policy outperforms the best fixed configuration. This study does
+not contain the other two factorial cells and cannot independently identify a
+model-by-rewrite interaction. Source/HR block order, generated-workload scope,
+disclosed offline exposure, and UNKNOWN source-only primary behavior remain
+limitations. No public-data, unseen-task, admission, or adaptive-serving claim is
+made.
+
+- Derived analysis: [analysis.json](analysis.json), file SHA-256
+  `0d27c6306a5584ff69de1de521055166d1be00bc23823538760c38944b64df7b`.
+- Execution receipt: [analysis-execution.json](analysis-execution.json), file
+  SHA-256 `88a97575de4e52bc9ed39e5d78acd42f1dd8751d7c44abe4cb43756083b69124`.
+- Current figures: [fixed workflow quality](figures-v2/01-fixed-workflow-quality.svg),
+  [full acquisition costs](figures-v2/02-all-acquisition-costs.svg), and
+  [native learning counts](figures-v2/03-native-plan-learning.svg).
+- [Plot data](figures-v2/plot-data.json) and
+  [rendering provenance](figures-v2/rendering.json) pin the input analysis,
+  rendering source, and every plotted output. All three PNGs were visually checked.
+
+The original `figures/` set is preserved but superseded by `figures-v2/`: the only
+change is a background behind the accuracy-difference annotation so the zero
+reference line does not cross its text. No plotted value or interval changed.
+Figure source is `bench/openrouter_protected_figures.py` at commit `515f5dc`
+(branch `feat/protected-study-figures`); the rendering command requires the exact
+analysis hash above and refuses to overwrite an output directory. Rendering does
+not reopen labels or rerun acquisition/scoring.

@@ -168,6 +168,25 @@ def test_render_outputs_are_scoped_and_never_overwrite(report, tmp_path):
         figures.render(data, output)
 
 
+def test_difference_annotation_masks_reference_line(report, tmp_path, monkeypatch):
+    from matplotlib.axes import Axes
+
+    original = Axes.text
+    annotations = []
+
+    def text(self, x, y, value, *args, **kwargs):
+        artist = original(self, x, y, value, *args, **kwargs)
+        if " pp   [" in str(value):
+            annotations.append(artist)
+        return artist
+
+    monkeypatch.setattr(Axes, "text", text)
+    figures.render(figures.build_data(report), tmp_path / "figures", preview=True)
+    assert len(annotations) == 1
+    patch = annotations[0].get_bbox_patch()
+    assert patch is not None and patch.get_facecolor() == (1, 1, 1, 1)
+
+
 def test_cli_external_pin_checked_before_render(report, tmp_path, monkeypatch):
     path = tmp_path / "approved-analysis.json"
     raw = json.dumps(report).encode()

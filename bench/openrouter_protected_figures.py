@@ -310,6 +310,7 @@ def render(data, directory, *, preview=False):
         f"{100 * row['mean']:+.2f} pp   [{100 * row['low']:+.2f}, {100 * row['high']:+.2f}]",
         transform=axes[1].transAxes,
         ha="center",
+        bbox={"facecolor": "white", "edgecolor": "none", "pad": 2},
     )
     fig.text(
         0.5,

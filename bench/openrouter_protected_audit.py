@@ -8,6 +8,7 @@ evidence, and an unverifiable native acknowledgement is never recovered.
 
 from collections import Counter
 from decimal import Decimal
+import json
 import math
 
 from bench import openrouter_groups as groups
@@ -366,6 +367,8 @@ def audit_phase(
     events,
     bridge,
     materializer,
+    *,
+    completed_batch=False,
 ):
     """Validate a complete or interrupted phase without scoring or mutating it.
 
@@ -373,6 +376,12 @@ def audit_phase(
     caller owns byte-level journal loading. Native dependencies may only execute
     read-only checkpoint/verify operations. Integrity mismatches raise PilotError;
     an intact unfinished prefix returns ``schedule_complete=False``.
+
+    ``completed_batch=True`` explicitly selects successor-source batch replay
+    and requires a complete phase. It privately snapshots JSON inputs, retains
+    every schedule/receipt/historical-budget check, and rejects mutation or
+    native rollback before returning the same report as individual replay.
+    No caller-provided cache or old-source compatibility mode is accepted.
     """
     from bench import openrouter_protected_pair as pair
     from bench import openrouter_protected_study as study
@@ -380,6 +389,7 @@ def audit_phase(
     from bench.openrouter_matrix import ROOT, load_module
 
     _require(phase in study.PHASES, "unknown protected audit phase")
+    _require(type(completed_batch) is bool, "completed_batch must be a boolean")
     _require(
         all(
             isinstance(value, list)
@@ -387,6 +397,11 @@ def audit_phase(
         ),
         "protected audit inputs must be ordered arrays",
     )
+    if completed_batch:
+        caller_inputs = [manifest, bundle, intents, calls, protected_events, events]
+        encoded = pilot.canonical(caller_inputs)
+        input_sha256 = pilot.digest(caller_inputs)
+        manifest, bundle, intents, calls, protected_events, events = json.loads(encoded)
     study.validate_manifest(
         manifest, bundle, events, bridge, materializer, pilot.digest(manifest)
     )
@@ -448,6 +463,7 @@ def audit_phase(
         )
 
     native_pairs = {}
+    completed_texts = None
     binding = None
     if phase == "study" and claim is not None:
         binding = {
@@ -465,6 +481,12 @@ def audit_phase(
         ids = {row["pair_id"] for row in protected_events}
         native_pairs = {key: rows for key, rows in validated.items() if key in ids}
         _require(set(native_pairs) == ids, "native event inventory changed")
+        if completed_batch:
+            completed_texts = pair.audit_completed_many(bridge, frozen, binding, events)
+            _require(
+                set(completed_texts) == set(native_pairs),
+                "completed batch changed the native pair inventory",
+            )
 
     state = accounting(events)
     tasks = {task["task_id"]: task for task in bundle["tasks"]}
@@ -505,7 +527,11 @@ def audit_phase(
                 items[call_id] = {**item, "arm": arm, "pair_id": pair_id}
             if rows[-1]["action"] != "complete":
                 break
-            text = pair.audit_completed(bridge, frozen, binding, rows, events)
+            text = (
+                completed_texts[pair_id]
+                if completed_texts is not None
+                else pair.audit_completed(bridge, frozen, binding, rows, events)
+            )
             previous_end = positions[id(rows[-1])]
         else:
             if fixed_index == len(intents):
@@ -610,6 +636,23 @@ def audit_phase(
         and (phase != "pilot" or not invalid)
     )
     learning = _learning_report(native_pairs)
+    if completed_batch:
+        _require(complete, "completed batch requires the complete phase schedule")
+        if binding is not None:
+            # Recheck the live reciprocal checkpoint after the entire phase,
+            # including fixed HR materialization and every liability boundary.
+            pair.audit_native_state(bridge, frozen, binding, events)
+        study.validate_manifest(
+            manifest, bundle, events, bridge, materializer, pilot.digest(manifest)
+        )
+        _require(
+            pilot.digest(caller_inputs) == input_sha256
+            and pilot.digest(
+                [manifest, bundle, intents, calls, protected_events, events]
+            )
+            == input_sha256,
+            "protected phase input changed during completed batch replay",
+        )
     return {
         "kind": "protected-study-readonly-audit-v1",
         "phase": phase,

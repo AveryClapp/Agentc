@@ -1,7 +1,8 @@
 # Protected native learning experiment
 
 Prospective configuration frozen at `2026-09-06T02:09:58.755187+00:00`.
-This file documents the acquisition design, not a completed result.
+The frozen acquisition design is preserved below; independently verified terminal
+findings follow the pilot checkpoint.
 
 ## Frozen identity
 
@@ -102,3 +103,65 @@ The saved pilot summary binds its raw calls, intents, and protected-event subset
 The study runner independently reconstructs this gate again before claiming the
 study; a changed financial snapshot or incomplete pilot cannot be bypassed using
 the saved gate's `passed` field.
+
+## Independently verified terminal acquisition
+
+Both one-shot phases completed. Independent review
+`bd-323l.6.13.8.6.20.5.1.3.6.8` reproduced the entire saved pilot and study audits
+against their exact original-journal prefixes, with unchanged acquisition sources,
+native database and binaries. The full study replay finished on September 7 at
+20:45:38 UTC and took 3,297.993 seconds. This is audit-harness time, not provider
+latency or a runtime-overhead benchmark.
+
+The study contains all 189 source calls, 130 probes and 189 fixed HR calls. There
+were no invalid scheduled application values, new failed attempts, ambiguous
+native claims, pending allowances or new uncertainty holds. Study cost was
+$2.188970; including the $0.211568 pilot, acquisition cost was $2.400538.
+
+| Acquisition part | Calls | Input tokens | Output tokens | Actual cost (USD) |
+| --- | ---: | ---: | ---: | ---: |
+| Source workflows | 189 | 535,616 | 3,992 | 1.666728 |
+| Native probes | 130 | 229,244 | 2,214 | 0.306344 |
+| Fixed HR workflows | 189 | 195,988 | 3,982 | 0.215898 |
+
+The source learning block cost $1.973072, including probes. The fixed HR workflow
+bill is not an adaptive deployment cost: the pilot and all probes remain in the
+full acquisition total above, and the quality comparison is separately gated.
+
+The original journal has 22,310 events: $24.67648547 known charges, $12.275019 in
+unchanged historical uncertainty holds, no pending allowances, and $13.04849553
+remaining under the original $50 cap. `terminal-snapshot.json` records the exact
+original-journal and ten raw phase-artifact hashes; it is not a replacement ledger.
+
+The independent native census reconciled three sites with 63 lifetime source
+observations each (50 retained rolling-window rows each), 130 completed probe
+leases, and 508 fully acknowledged callbacks. Exact planned-reply identities map
+the observed comparisons as follows:
+
+| Call site | Candidate plan | Pairs | Disagreements |
+| --- | --- | ---: | ---: |
+| Filter | ContextCompress, Sonnet | 20 | 0 |
+| Filter | ModelDowngrade, Haiku | 20 | 0 |
+| Filter | ContextCompress + ModelDowngrade, Haiku | 20 | 0 |
+| Synthesize | ModelDowngrade, Haiku | 20 | 0 |
+| Answer | StateDrop + ModelDowngrade, Haiku | 20 | 0 |
+| Answer | ModelDowngrade, Haiku | 16 | 2 |
+| Answer | StateDrop, Sonnet | 14 | 2 |
+
+The two short answer profiles retain `divergence_exposure` disable records, with
+exposure 1.9400000013411045 for ModelDowngrade and 1.9800000004470348 for StateDrop.
+In each case the recorded disable time matches the final verified disagreeing
+feedback. This explains the ten unused probes; it is not a transport failure or
+missing feedback. These are persisted acquisition-time records, not a reassessment
+of current guard or admission eligibility. Native database file SHA-256 before
+and after review was
+`96272404e084a7ae6b49997107f4add3f1760d8006cbfabc33afa48988fea7fd`;
+the WAL was empty before and after review.
+
+Probe assignments were adaptive and used different calls. The table is a native
+learning diagnostic, not a matched rule-interaction estimate or gold correctness
+measurement. The primary remained Sonnet throughout. Neither zero disagreements
+in 20 comparisons nor a completed acquisition certifies safe adaptive serving.
+The separately predeclared 63-task analysis may open labels only after repeating
+its full completion and receipt gates; no partial quality comparison is reported
+here.

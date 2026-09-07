@@ -145,20 +145,7 @@ class NativeBridge:
         return reply
 
     def verify(self, binding, catalog, callback_id, reply, command, events):
-        for prefix in (reply["ledger_prefix"], reply["previous_prefix"]):
-            _check_prefix(prefix, events)
-        expected = {
-            "binding": binding,
-            "catalog": catalog,
-            "callback_id": callback_id,
-            "command": command,
-            "ledger_prefix": reply["ledger_prefix"],
-            "previous_prefix": reply["previous_prefix"],
-        }
-        if pilot.digest(expected) != reply["request_sha256"]:
-            raise pilot.PilotError(
-                "native callback differs from reconstructed source/receipt command"
-            )
+        _verify_request(binding, catalog, callback_id, reply, command, events)
         self._verify_ack(binding, catalog, callback_id, reply)
 
     def _verify_ack(self, binding, catalog, callback_id, reply):
@@ -181,13 +168,35 @@ class NativeBridge:
         )
 
 
-def _check_prefix(prefix, events):
+def _verify_request(binding, catalog, callback_id, reply, command, events, replay=None):
+    for prefix in (reply["ledger_prefix"], reply["previous_prefix"]):
+        _check_prefix(prefix, events, replay)
+    expected = {
+        "binding": binding,
+        "catalog": catalog,
+        "callback_id": callback_id,
+        "command": command,
+        "ledger_prefix": reply["ledger_prefix"],
+        "previous_prefix": reply["previous_prefix"],
+    }
+    if pilot.digest(expected) != reply["request_sha256"]:
+        raise pilot.PilotError(
+            "native callback differs from reconstructed source/receipt command"
+        )
+
+
+def _check_prefix(prefix, events, replay=None):
     if prefix is not None and (
         not isinstance(prefix, dict)
         or set(prefix) != {"count", "sha256"}
         or type(prefix.get("count")) is not int
         or not 0 < prefix["count"] <= len(events)
-        or pilot.digest(events[: prefix["count"]]) != prefix.get("sha256")
+        or (
+            replay.prefix_digest(events, prefix["count"])
+            if replay is not None
+            else pilot.digest(events[: prefix["count"]])
+        )
+        != prefix.get("sha256")
     ):
         raise pilot.PilotError(
             "original journal was truncated, replaced, or changed below native checkpoint"
@@ -340,8 +349,12 @@ def audit_completed(bridge, frozen, binding, rows, events):
 def audit_native_state(bridge, frozen, binding, events):
     """Verify available frozen attempt records; missing receipts stay incomplete."""
     _validate_contract(bridge, frozen, binding)
-    pairs = _native_state(bridge, frozen, binding, events)
-    state = accounting(events)
+    return _audit_native_state(bridge, frozen, binding, events)
+
+
+def _audit_native_state(bridge, frozen, binding, events, replay=None):
+    pairs = _native_state(bridge, frozen, binding, events, replay)
+    state = replay.state if replay is not None else accounting(events)
     positions = {id(event): index for index, event in enumerate(events)}
     for rows in pairs.values():
         start = rows[0]
@@ -418,7 +431,7 @@ def audit_native_state(bridge, frozen, binding, events):
                             "audited probe preceded durable source observation"
                         )
             if spec["id"] in state["results"]:
-                _receipt(spec, events)
+                _receipt(spec, events, replay)
     return pairs
 
 
@@ -460,7 +473,7 @@ def source_call(task, workflow_stage, history, frozen, run_id):
     return call
 
 
-def _native_state(bridge, frozen, binding, events):
+def _native_state(bridge, frozen, binding, events, replay=None):
     if any(event.get("key_id") != binding["key_id"] for event in events):
         raise pilot.PilotError("audit journal belongs to another key")
     if any(
@@ -469,10 +482,11 @@ def _native_state(bridge, frozen, binding, events):
         for event in events
     ):
         raise pilot.PilotError("audit group belongs to another original ledger")
-    accounting(events)
+    if replay is None:
+        accounting(events)
     pairs = _pairs(events)
     checkpoint = bridge.call(binding, frozen["catalog"], {"op": "checkpoint"})["result"]
-    _check_prefix(checkpoint, events)
+    _check_prefix(checkpoint, events, replay)
     # Both stores must agree: a valid older prefix alone cannot authorize
     # resetting source/probe counts or guards through native-store rollback.
     # Ahead-of-journal native effects are ambiguous, never recoverable here.
@@ -511,17 +525,21 @@ def _native_state(bridge, frozen, binding, events):
     return pairs
 
 
-def _receipt(spec, events):
-    state = accounting(events)
+def _receipt(spec, events, replay=None):
+    state = replay.state if replay is not None else accounting(events)
     result = state["results"].get(spec["id"])
     if result is None:
         raise pilot.PilotError("protected stage lacks durable successful receipt")
-    claims = [r for r in state["reserves"].values() if r["id"] == spec["id"]]
-    bodies = [
-        e["response"]
-        for e in events
-        if e["event"] == "response" and e.get("id") == spec["id"]
-    ]
+    if replay is not None:
+        claims = replay.claims.get(spec["id"], [])
+        bodies = replay.bodies.get(spec["id"], [])
+    else:
+        claims = [r for r in state["reserves"].values() if r["id"] == spec["id"]]
+        bodies = [
+            e["response"]
+            for e in events
+            if e["event"] == "response" and e.get("id") == spec["id"]
+        ]
     if (
         len(claims) != 1
         or len(bodies) != 1
@@ -575,18 +593,19 @@ def _specs(bridge, frozen, start, plan):
     return result
 
 
-def _audit_completed(bridge, frozen, binding, rows, events):
+def _audit_completed(bridge, frozen, binding, rows, events, replay=None):
     if rows[-1]["action"] != "complete" or pilot.canonical(
         rows[0]["binding"]
     ) != pilot.canonical(binding):
         raise pilot.PilotError("interrupted protected stage cannot resume")
     start, plan = rows[0], rows[1]["reply"]["result"]
     specs = _specs(bridge, frozen, start, plan)
-    source = _receipt(specs["source"], events)
+    source = _receipt(specs["source"], events, replay)
     actions = {row["action"]: row for row in rows}
     _check_prefix(
         bridge.call(binding, frozen["catalog"], {"op": "checkpoint"})["result"],
         events,
+        replay,
     )
     commands = {
         "planned": {
@@ -603,7 +622,7 @@ def _audit_completed(bridge, frozen, binding, rows, events):
     if actions["observe_claim"]["source_receipt_sha256"] != pilot.digest(source):
         raise pilot.PilotError("source observation receipt changed")
     if "candidate" in specs:
-        candidate = _receipt(specs["candidate"], events)
+        candidate = _receipt(specs["candidate"], events, replay)
         claim = actions["feedback_claim"]
         divergence = typed.application_disagreement(
             start["workflow_stage"],
@@ -646,6 +665,140 @@ def _audit_completed(bridge, frozen, binding, rows, events):
     if rows[-1]["application_text"] != value:
         raise pilot.PilotError("application history differs from exact source receipt")
     return value
+
+
+def _immutable(*args, **kwargs):
+    raise pilot.PilotError("read-only replay snapshot cannot be mutated")
+
+
+class _FrozenDict(dict):
+    __setitem__ = __delitem__ = clear = pop = popitem = setdefault = update = _immutable
+    __ior__ = _immutable
+
+    def __deepcopy__(self, memo):
+        # Existing proposal checks deliberately transform their private copies.
+        return {key: deepcopy(value, memo) for key, value in self.items()}
+
+
+class _FrozenList(list):
+    __setitem__ = __delitem__ = append = clear = extend = insert = pop = _immutable
+    remove = reverse = sort = __iadd__ = __imul__ = _immutable
+
+    def __deepcopy__(self, memo):
+        return [deepcopy(value, memo) for value in self]
+
+
+def _freeze(value):
+    if isinstance(value, dict):
+        return _FrozenDict({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return _FrozenList(_freeze(item) for item in value)
+    return value
+
+
+class _ReplaySnapshot:
+    """Single invocation, private ownership; never a caller-supplied cache."""
+
+    def __init__(self, frozen, binding, events):
+        if not isinstance(events, list):
+            raise pilot.PilotError("read-only replay requires an ordered journal array")
+        raw = pilot.canonical([frozen, binding, events])
+        self.input_sha256 = hashlib.sha256(raw).hexdigest()
+        self.frozen, self.binding, self.events = _freeze(json.loads(raw))
+        self.state = accounting(self.events)
+        self.claims, self.bodies = {}, {}
+        for row in self.state["reserves"].values():
+            self.claims.setdefault(row["id"], []).append(row)
+        # One streaming canonical array preimage; hash copies add only the ']'.
+        # This is exactly digest(events[:count]), not a different chain format.
+        self.prefixes = {}
+        running = hashlib.sha256(b"[")
+        for index, row in enumerate(self.events):
+            if index:
+                running.update(b",")
+            running.update(pilot.canonical(row))
+            prefix = running.copy()
+            prefix.update(b"]")
+            self.prefixes[index + 1] = prefix.hexdigest()
+            if row["event"] == "response":
+                self.bodies.setdefault(row.get("id"), []).append(row["response"])
+
+    def prefix_digest(self, events, count):
+        if events is not self.events:
+            raise pilot.PilotError("replay prefix belongs to another snapshot")
+        return self.prefixes[count]
+
+    def unchanged(self, frozen, binding, events):
+        if pilot.digest([frozen, binding, events]) != self.input_sha256:
+            raise pilot.PilotError("caller input changed during read-only replay")
+
+
+class _ReplayBridge(NativeBridge):
+    """No saved native reply is trusted; checkpoint/ack RPCs remain live."""
+
+    def __init__(self, bridge, replay):
+        self._bridge, self._replay = bridge, replay
+        self.binary, self.store, self.sha256 = (
+            bridge.binary,
+            bridge.store,
+            bridge.sha256,
+        )
+
+    def validate(self):
+        if (self.binary, self.store, self.sha256) != (
+            self._bridge.binary,
+            self._bridge.store,
+            self._bridge.sha256,
+        ):
+            raise pilot.PilotError("native replay dependency identity changed")
+        self._bridge.validate()
+
+    def call(self, binding, catalog, command, *args, **kwargs):
+        if command["op"] not in {"checkpoint", "verify"}:
+            raise pilot.PilotError("replay cannot execute a mutating native callback")
+        self.validate()
+        return self._bridge.call(binding, catalog, command, *args, **kwargs)
+
+    def verify(self, binding, catalog, callback_id, reply, command, events):
+        _verify_request(
+            binding, catalog, callback_id, reply, command, events, self._replay
+        )
+        self._verify_ack(binding, catalog, callback_id, reply)
+
+
+def audit_completed_many(bridge, frozen, binding, events):
+    """Opt-in batch equivalent to state audit plus every completed pair replay.
+
+    Returns pair_id -> exact source application text for this native store.
+    Any incomplete/failed pair refuses the entire result. No saved audit flags,
+    labels, provider calls, native effects or caller-supplied trusted cache.
+    Inputs are privately snapshotted and checked again before return; native
+    checkpoints, exact reconstructed commands and every ack are still verified.
+
+    This does NOT replace the study's schedule/own-history/historical-budget
+    audit. It is a successor-source interface: enrollment validation remains
+    exact, so this changed module cannot replay an older frozen source contract.
+    Legacy audit/execution entry points never select this path automatically.
+    """
+    replay = _ReplaySnapshot(frozen, binding, events)
+    readonly = _ReplayBridge(bridge, replay)
+    _validate_contract(readonly, replay.frozen, replay.binding)
+    pairs = _audit_native_state(
+        readonly, replay.frozen, replay.binding, replay.events, replay
+    )
+    result = {}
+    for pair_id, rows in pairs.items():
+        if rows[0]["binding"]["store"] != replay.binding["store"]:
+            continue
+        result[pair_id] = _audit_completed(
+            readonly, replay.frozen, replay.binding, rows, replay.events, replay
+        )
+    # A fresh reciprocal checkpoint/ack check rejects native state changing
+    # during the batch, including rollback or an effect without a journal ack.
+    _native_state(readonly, replay.frozen, replay.binding, replay.events, replay)
+    _validate_contract(readonly, replay.frozen, replay.binding)
+    replay.unchanged(frozen, binding, events)
+    return result
 
 
 class Coordinator:

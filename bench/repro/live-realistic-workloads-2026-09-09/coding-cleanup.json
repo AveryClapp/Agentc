@@ -1,0 +1,38 @@
+{
+  "cargo_cleanup": [
+    {
+      "worktree": "bd-kmeg",
+      "profile": "dev",
+      "removed_files": 7030,
+      "cargo_reported_size": "1.4GiB"
+    },
+    {
+      "worktree": "bd-shi1-8-1-2",
+      "profile": "dev",
+      "removed_files": 4728,
+      "cargo_reported_size": "1.0GiB"
+    }
+  ],
+  "free_bytes_before_image_cleanup": 8088600576,
+  "docker_before": "TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE\nImages          73        6         30.8GB    30.6GB (99%)\nContainers      36        2         73.48MB   73.34MB (99%)\nLocal Volumes   12        0         1.989GB   1.989GB (100%)\nBuild Cache     1223      0         5.344GB   5.344GB\n",
+  "images": [
+    {
+      "task": "psf__requests-1766",
+      "id": "sha256:04d36df979a3cc89ceba67df58abd56e975e3b43db54ef69e94ec1ff5223d020",
+      "reference": "swebench/sweb.eval.x86_64.psf_1776_requests-1766@sha256:0618949b48408350dfae74d27e47ff9df8192fbf03248aa4f10650e0a36f52eb",
+      "logical_bytes": 2674752727,
+      "status": "removed"
+    },
+    {
+      "task": "pytest-dev__pytest-7324",
+      "id": "sha256:c349965fe3b23ad2bcee153886e5900d3590d4d324a8c1619365abe3fff364cf",
+      "reference": "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-7324@sha256:bbdb6c6576dc1294ac789dd5ab3bed3ae231aec39c2d4f3d643bab76a4ef34ff",
+      "logical_bytes": 2682362191,
+      "status": "removed"
+    }
+  ],
+  "docker_after": "TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE\nImages          71        6         26.87GB   26.66GB (99%)\nContainers      36        2         73.48MB   73.34MB (99%)\nLocal Volumes   12        0         1.989GB   1.989GB (100%)\nBuild Cache     1223      0         5.344GB   5.344GB\n",
+  "free_bytes_after_image_cleanup": 9332514816,
+  "native_sha256_after": "9b5f4e3d5c3f7e71b2db0c765f0a3da43b2192c88b3626cebebc206002d48f23",
+  "preserved": "All source worktrees, exact native binary, task/data caches, private transcripts, predictions, grader logs and original budget journal; no unrelated Docker images, containers or volumes pruned"
+}

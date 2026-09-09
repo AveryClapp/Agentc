@@ -1,0 +1,157 @@
+{
+  "schema": "agentc-fresh-coding-pilot-v1",
+  "seed": 2026090903,
+  "planned_tasks": 2,
+  "planned_arms": 4,
+  "model": "openai/gpt-4.1-mini",
+  "endpoint": "OpenAI | openai/gpt-4.1-mini-2025-04-14",
+  "dataset_revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+  "agent_revision": "a2b0efee5fd9c1d3bc9fdfc6fe88036a2235d74d",
+  "runner_commit": "ed92dd10a92a1b42b290a6033158bdbb37c9f8b5",
+  "native_sha256": "9b5f4e3d5c3f7e71b2db0c765f0a3da43b2192c88b3626cebebc206002d48f23",
+  "grading_revision": "b524f150d5d76f188c741d75669025f718c89c2e",
+  "grading_adapter_sha256": "66cfb888443a57721a79622f1075a4aec6d8c11e6f9071c1a163a00c9487f73c",
+  "stage_cap_usd": "0.50",
+  "total_cost_usd": "0.0474188",
+  "provider_calls": 70,
+  "learned_policy": false,
+  "arm_results": [
+    {
+      "task": "pytest-dev__pytest-7324",
+      "arm": "source",
+      "status": "LimitsExceeded",
+      "calls": 20,
+      "cost_usd": "0.0129640",
+      "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rewrites": 0,
+      "input_tokens": 64878,
+      "cached_input_tokens": 54400,
+      "output_tokens": 2083,
+      "grading_status": "no_submission",
+      "resolved": false,
+      "quality_control_valid": true
+    },
+    {
+      "task": "pytest-dev__pytest-7324",
+      "arm": "compress",
+      "status": "LimitsExceeded",
+      "calls": 20,
+      "cost_usd": "0.0118064",
+      "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rewrites": 17,
+      "input_tokens": 44268,
+      "cached_input_tokens": 30208,
+      "output_tokens": 1976,
+      "grading_status": "no_submission",
+      "resolved": false,
+      "quality_control_valid": true
+    },
+    {
+      "task": "psf__requests-1766",
+      "arm": "compress",
+      "status": "LimitsExceeded",
+      "calls": 20,
+      "cost_usd": "0.0165764",
+      "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "rewrites": 18,
+      "input_tokens": 58969,
+      "cached_input_tokens": 39040,
+      "output_tokens": 2938,
+      "grading_status": "no_submission",
+      "resolved": null,
+      "quality_control_valid": false,
+      "diagnostic_resolved": false
+    },
+    {
+      "task": "psf__requests-1766",
+      "arm": "source",
+      "status": "Submitted",
+      "calls": 10,
+      "cost_usd": "0.0060720",
+      "patch_sha256": "c1597485a538873f04c107a2322153a7af5535dc06643bf4f33eef4efee07f8f",
+      "rewrites": 0,
+      "input_tokens": 29924,
+      "cached_input_tokens": 25600,
+      "output_tokens": 1114,
+      "grading_status": "patch_apply_failed",
+      "resolved": null,
+      "quality_control_valid": false,
+      "diagnostic_resolved": false
+    }
+  ],
+  "negative_controls_pass": false,
+  "negative_controls": [
+    {
+      "task": "pytest-dev__pytest-7324",
+      "status": "graded",
+      "resolved": false,
+      "complete_reference_tests": true,
+      "negative_control_valid": true,
+      "observed_failing_f2p": 3,
+      "error_type": null
+    },
+    {
+      "task": "psf__requests-1766",
+      "status": "graded",
+      "resolved": false,
+      "complete_reference_tests": true,
+      "negative_control_valid": false,
+      "observed_failing_f2p": 6,
+      "error_type": null
+    }
+  ],
+  "evidence": {
+    "manifest.json": {
+      "sha256": "3f0e329f0317b5520839c7b31babf58a0af49a958e0178d338a9c4c0da660e36",
+      "bytes": 4885
+    },
+    "run/summary.json": {
+      "sha256": "14af5ea0a657693e799c74893b8b2c50e426ef1ec5c9eb407673d125cf8954f9",
+      "bytes": 42149
+    },
+    "grading/summary.json": {
+      "sha256": "bcde6f3c995c710b2456acd520bec5fc70ebca91eb86419d76774162716024ed",
+      "bytes": 15619
+    },
+    "run/psf__requests-1766-compress.jsonl": {
+      "sha256": "e417ef66ab0a03bee1f00cbdf9d955263e89ba10da2a66ed15a262764a90c8a0",
+      "bytes": 677150
+    },
+    "run/psf__requests-1766-source.jsonl": {
+      "sha256": "a218979f23f70b1560f4cead08dd52fe7d4cf3c61c23dc60b87453f3aad50602",
+      "bytes": 289355
+    },
+    "run/pytest-dev__pytest-7324-compress.jsonl": {
+      "sha256": "2cce7ceef22451fe0d130931b0ae882df13cdee17ec525d069b2d76f14170b3c",
+      "bytes": 483159
+    },
+    "run/pytest-dev__pytest-7324-source.jsonl": {
+      "sha256": "ee9f001949c475548d3645c49820ff49dea44fb0c8aeda4502e15a8b20371323",
+      "bytes": 653229
+    },
+    "grading-source-original.py": {
+      "sha256": "66cfb888443a57721a79622f1075a4aec6d8c11e6f9071c1a163a00c9487f73c",
+      "bytes": 10454,
+      "provenance": "Reconstructed by reversing only the later LF helper patch; exact original grading receipt hash verified"
+    },
+    "patch-apply-control.json": {
+      "sha256": "085e5252f4c3ad204962a537174cef61a9ad78060ba2e381a6393b50e531148f",
+      "bytes": 1025
+    }
+  },
+  "limitations": [
+    "Two prospective development tasks; no heldout or causal savings claim",
+    "Three arms reached20call limits; retained as non-successes",
+    "Fixed materialization only; no learned admission or StateDrop",
+    "Strict test-result validation augments unchanged official script/parser; no fuzzy patch fallback"
+  ],
+  "quality_comparison_valid": false,
+  "quality_limitation": "Requests unchanged preservation tests fail in the isolated grader; its submitted patch also failed strict application. Requests correctness is unscored, not evidence of a model repair failure.",
+  "postrun_serialization_diagnostic": {
+    "raw_patch_sha256": "c1597485a538873f04c107a2322153a7af5535dc06643bf4f33eef4efee07f8f",
+    "captured_terminal_patch_sha256": "40e0a038e85306243eb4f3f26a5fcea232c2ad640b0b4a2128daa0f2aaff25ba",
+    "strict_application": "raw fails; exact captured terminal LF restoration passes",
+    "test_quality": "still unscored; Requests preservation control invalid",
+    "provider_calls": 0
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "findings": [
+    {
+      "assertions_requested": 1,
+      "assertions_returned": 0,
+      "stub_judge_payload": {},
+      "upstream_reward": 1.0
+    },
+    {
+      "assertions_requested": 1,
+      "assertions_returned": 0,
+      "stub_judge_payload": {
+        "results": []
+      },
+      "upstream_reward": 1.0
+    }
+  ],
+  "followup": "bd-jcmv",
+  "provider_calls": 0,
+  "scope": "Synthetic malformed-judge negative control; no model or benchmark task execution",
+  "tau_revision": "672227c6b6676edc20d57ea53b7000262aae77b9"
+}

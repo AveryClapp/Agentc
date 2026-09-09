@@ -1,0 +1,27 @@
+{
+  "source_url": "https://raw.githubusercontent.com/psf/requests/847735553aeda6e6633f2b32e14ba14ba86887a4/requests/auth.py",
+  "source_sha256": "e9ac12db8dfb81a4abe59e5e3b1764e01fe1f04dbdc5f57dc7deb7a47695087c",
+  "restoration": "exact final newline from original captured tool output",
+  "results": [
+    {
+      "variant": "raw",
+      "exit_code": 128,
+      "patch_sha256": "c1597485a538873f04c107a2322153a7af5535dc06643bf4f33eef4efee07f8f",
+      "diagnostic": "error: corrupt patch at <stdin>:13\n"
+    },
+    {
+      "variant": "captured_terminal_diff",
+      "exit_code": 0,
+      "patch_sha256": "40e0a038e85306243eb4f3f26a5fcea232c2ad640b0b4a2128daa0f2aaff25ba",
+      "diagnostic": ""
+    }
+  ],
+  "network_error_mentions": {
+    "Failed to establish a new connection": 0,
+    "Name or service not known": 0,
+    "Network is unreachable": 0,
+    "Connection refused": 0,
+    "httpbin.org": 139
+  },
+  "quality": "unscored: original Requests preservation control failed; no provider calls or new test execution"
+}

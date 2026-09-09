@@ -7,6 +7,9 @@
 //! - Safety: the compressed prompt still contains every token from
 //!   `DepSource::UserInput`, every token any subsequent span read, and
 //!   at least one token from each distinct role.
+//! - Conservatively retain the first user message as well: raw SDK histories
+//!   may label the original task `Literal` rather than `UserInput`. Explicit
+//!   `UserInput` tags still protect later instructions independently of role.
 //! - Extractive only (no secondary LLM summary — would blow the
 //!   overhead budget).
 //!
@@ -246,6 +249,13 @@ fn extract_message_deps(call: &Call) -> Option<Vec<DepSource>> {
 
 fn user_input_message_indices(call: &Call) -> HashSet<usize> {
     let mut out = HashSet::new();
+    // Raw SDK calls do not distinguish the initial task from later tool
+    // observations carried in user messages. Retain the first user message
+    // even when provenance is absent, Literal, or incomplete. This can keep
+    // extra context; it does not infer provenance for later user messages.
+    if let Some(i) = call.messages.iter().position(|message| message.role == "user") {
+        out.insert(i);
+    }
     let Some(deps) = extract_message_deps(call) else { return out; };
     if deps.len() != call.messages.len() {
         return out;
@@ -415,6 +425,87 @@ mod tests {
             }
             _ => panic!("expected Rewritten"),
         }
+    }
+
+    #[test]
+    fn original_task_survives_later_observation_salience_without_user_input_tags() {
+        // Raw SDK histories mark the initial task and tool observations alike
+        // as Literal. A later observation can dominate the overlap proxy even
+        // though the initial task must remain available to the agent.
+        let messages = vec![
+            Message { role: "system".into(), content: "agent instructions".into() },
+            Message { role: "user".into(), content: "Fix the estimator regression".into() },
+            Message { role: "assistant".into(), content: "inspect implementation".into() },
+            Message { role: "user".into(), content: big("obsolete output ", 1000) },
+            Message { role: "user".into(), content: "current diagnostic".into() },
+        ];
+        let original = call_with(
+            messages,
+            vec![1.0, 0.0, 1.0, 0.0, 1.0],
+            vec![DepSource::Literal; 5],
+            vec!["diagnostic"],
+        );
+        for include_deps in [true, false] {
+            let mut call = original.clone();
+            if !include_deps {
+                call.parameters.extra.as_object_mut().unwrap().remove("message_deps");
+            }
+            let rule = ContextCompressRule::default();
+            assert!(rule.applies(&call, &hot_profile()));
+            let proposal = rule.propose(&call, &hot_profile()).expect("old output is removable");
+            assert!((proposal.safety_check)(&call));
+            let Plan::Rewritten { call: rewritten, .. } = proposal.rewritten else {
+                panic!("expected rewritten call");
+            };
+            assert_eq!(serde_json::to_value(&rewritten.messages).unwrap(), json!([
+                call.messages[0].clone(), call.messages[1].clone(),
+                call.messages[2].clone(), call.messages[4].clone(),
+            ]));
+            assert_eq!(rewritten.parameters.extra, call.parameters.extra);
+        }
+    }
+
+    #[test]
+    fn first_user_and_all_explicit_user_inputs_are_protected_together() {
+        let call = call_with(
+            vec![
+                Message { role: "user".into(), content: "initial literal task".into() },
+                Message { role: "user".into(), content: big("obsolete ", 1500) },
+                Message { role: "user".into(), content: "first clarification".into() },
+                Message { role: "user".into(), content: "second clarification".into() },
+                Message { role: "user".into(), content: "current observation".into() },
+            ],
+            vec![0.0, 0.0, 0.0, 0.0, 1.0],
+            vec![
+                DepSource::Literal, DepSource::Literal,
+                DepSource::UserInput { span_id: [1; 8] },
+                DepSource::UserInput { span_id: [2; 8] }, DepSource::Literal,
+            ],
+            vec![],
+        );
+        let proposal = ContextCompressRule::default().propose(&call, &hot_profile()).unwrap();
+        assert!((proposal.safety_check)(&call));
+        let Plan::Rewritten { call: rewritten, .. } = proposal.rewritten else {
+            panic!("expected rewritten call");
+        };
+        assert_eq!(serde_json::to_value(&rewritten.messages).unwrap(), json!([
+            call.messages[0].clone(), call.messages[2].clone(),
+            call.messages[3].clone(), call.messages[4].clone(),
+        ]));
+    }
+
+    #[test]
+    fn no_proposal_when_first_user_is_the_only_dead_message() {
+        let call = call_with(
+            vec![
+                Message { role: "user".into(), content: big("original task ", 1000) },
+                Message { role: "user".into(), content: "recent observation".into() },
+            ],
+            vec![0.0, 1.0], vec![DepSource::Literal; 2], vec![],
+        );
+        let rule = ContextCompressRule::default();
+        assert!(rule.applies(&call, &hot_profile()));
+        assert!(rule.propose(&call, &hot_profile()).is_none());
     }
 
     #[test]

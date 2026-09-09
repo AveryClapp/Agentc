@@ -329,6 +329,20 @@ mod tests {
     }
 
     #[test]
+    fn context_compress_retains_literal_task_and_explicit_user_input() {
+        let mut call = cc_call();
+        call["messages"][1]["content"] = json!("Fix the estimator regression");
+        call["parameters"]["extra"]["attention_scores"][1] = json!(0);
+        let output = apply("ContextCompress", &call).unwrap();
+        assert_eq!(output["retained_indices"], json!([0, 1, 2, 3, 21]));
+        assert_eq!(output["applied"], true);
+        assert_eq!(output["abstention_reason"], Value::Null);
+        assert_eq!(output["call"]["messages"][1], call["messages"][1]);
+        assert_eq!(output["call"]["messages"][4], call["messages"][21]);
+        assert_eq!(output["call"]["parameters"], call["parameters"]);
+    }
+
+    #[test]
     fn no_proposal_and_inapplicable_rule_return_exact_original_json() {
         let mut call = state_call();
         call["parameters"]["extra"]["window_state_reads"] = json!(["docs", "synthesis"]);

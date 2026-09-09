@@ -686,7 +686,9 @@ fn native_context_compress_route_preserves_exact_deletion_and_schema() {
             };
             assert_eq!(
                 serde_json::to_value(&selected.messages).unwrap(),
-                json!([call.messages[0], call.messages[3], call.messages[4]])
+                // Even an explicitly Literal first user message is retained
+                // conservatively; only the later dead context is removed.
+                json!([call.messages[0], call.messages[1], call.messages[3], call.messages[4]])
             );
             assert_eq!(
                 selected.parameters.extra["response_format"],

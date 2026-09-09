@@ -159,3 +159,36 @@ def test_manifest_hash_failure_precedes_environment_access(tmp_path):
     p.write_text("{}")
     with pytest.raises(live.PilotError, match="manifest hash"):
         live.load_manifest(p, "0" * 64, tmp_path)
+
+
+def test_image_preparation_commit_is_replaced_by_clean_task_base():
+    base = "a" * 40
+    calls = []
+
+    def execute(command):
+        calls.append(command)
+        return {
+            "returncode": 0,
+            "output": base if command == "git rev-parse HEAD" else "",
+        }
+
+    live.initialize_task(SimpleNamespace(execute=execute), base)
+    assert calls == [
+        "git status --porcelain --untracked-files=all",
+        "git checkout --detach " + base,
+        "git rev-parse HEAD",
+        "git status --porcelain --untracked-files=all",
+    ]
+
+
+@pytest.mark.parametrize("status", [" M source.py", "?? inherited.py"])
+def test_inherited_container_changes_stop_before_checkout(status):
+    calls = []
+
+    def execute(command):
+        calls.append(command)
+        return {"returncode": 0, "output": status}
+
+    with pytest.raises(live.PilotError, match="inherited"):
+        live.initialize_task(SimpleNamespace(execute=execute), "a" * 40)
+    assert len(calls) == 1

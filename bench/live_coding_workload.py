@@ -50,6 +50,9 @@ OWN_SOURCE = (
     "bench/openrouter_groups.py",
     "bench/openrouter_transport.py",
     "python/agentc/_attention.py",
+    "crates/agentc-optimizer/src/rules/context_compress.rs",
+    "crates/agentc-optimizer/examples/typed_rule_materializer.rs",
+    "crates/agentc-optimizer/tests/protected_unknown.rs",
 )
 UPSTREAM_SOURCE = (
     "src/microsweagent/__init__.py",
@@ -133,7 +136,6 @@ def prepare(cache: Path, excluded_path: Path, binary: Path, output: Path):
     rows = pq.read_table(cache / "verified.parquet", columns=fields).to_pylist()
     tasks = [next(r for r in rows if r["instance_id"] == task) for task in ids]
     public_path = cache / "public-tasks.json"
-    save(public_path, tasks)
     mini = cache / "mini-source"
     if (
         command(["git", "-C", str(mini), "rev-parse", "HEAD"]).decode().strip()
@@ -165,7 +167,7 @@ def prepare(cache: Path, excluded_path: Path, binary: Path, output: Path):
         "excluded": excluded,
         "dataset_revision": DATA_COMMIT,
         "dataset_sha256": DATA_SHA,
-        "public_sha256": sha(public_path),
+        "public_sha256": hashlib.sha256(canonical(tasks) + b"\n").hexdigest(),
         "agent_commit": MINI_COMMIT,
         "source_sha256": {p: sha(ROOT / p) for p in OWN_SOURCE},
         "upstream_sha256": {p: sha(mini / p) for p in UPSTREAM_SOURCE},
@@ -190,6 +192,7 @@ def prepare(cache: Path, excluded_path: Path, binary: Path, output: Path):
         ],
         "purpose": "development pilot; no learned-policy or heldout claim",
     }
+    save(public_path, tasks)
     save(output, manifest)
     return {"manifest_sha256": sha(output), "ids": ids}
 
@@ -393,6 +396,27 @@ def upstream(cache):
     return DefaultAgent, DockerEnvironment
 
 
+def initialize_task(environment, base_commit):
+    """Select the task commit only inside a new, clean benchmark container."""
+    if not re.fullmatch(r"[0-9a-f]{40}", base_commit):
+        raise PilotError("invalid task base commit")
+    status = environment.execute("git status --porcelain --untracked-files=all")
+    if status["returncode"] or status["output"].strip():
+        raise PilotError("new task container has inherited worktree changes")
+    selected = environment.execute("git checkout --detach " + base_commit)
+    if selected["returncode"]:
+        raise PilotError("cannot select task base commit")
+    head = environment.execute("git rev-parse HEAD")
+    status = environment.execute("git status --porcelain --untracked-files=all")
+    if (
+        head["returncode"]
+        or head["output"].strip() != base_commit
+        or status["returncode"]
+        or status["output"].strip()
+    ):
+        raise PilotError("container is not clean at the selected task base commit")
+
+
 def run(manifest, cache: Path, output: Path):
     import yaml
 
@@ -483,9 +507,7 @@ def run(manifest, cache: Path, output: Path):
                     }
                 )
             )
-            observed = environment.execute("git rev-parse HEAD")["output"].strip()
-            if observed != task["base_commit"]:
-                raise PilotError("container repository is not at the task base commit")
+            initialize_task(environment, task["base_commit"])
             agent = DefaultAgent(
                 model, environment, **(config["agent"] | {"step_limit": STEPS})
             )

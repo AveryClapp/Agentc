@@ -1,0 +1,148 @@
+{
+  "experiments_commit": "40f164d5b8f1d249bf95a6df8b74b577fd8e519d",
+  "files": {
+    "gpt": [
+      {
+        "ETag": "\"e52d451e0a7ee487625baa678c796974\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/pytest-dev__pytest-6197/pytest-dev__pytest-6197.traj.json",
+        "Size": "22471"
+      },
+      {
+        "ETag": "\"7a3c90b3b665339d99673d3990d0d9af\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/scikit-learn__scikit-learn-25102/scikit-learn__scikit-learn-25102.traj.json",
+        "Size": "182966"
+      },
+      {
+        "ETag": "\"a43954181b3f0d4a913750792c584a20\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/pydata__xarray-3095/pydata__xarray-3095.traj.json",
+        "Size": "89273"
+      },
+      {
+        "ETag": "\"515795fa93b282977d87bb1a3f0fd643\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/pydata__xarray-2905/pydata__xarray-2905.traj.json",
+        "Size": "29176"
+      },
+      {
+        "ETag": "\"56d7ef4603286925e643985d7a2fdfc4\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/django__django-12276/django__django-12276.traj.json",
+        "Size": "19879"
+      },
+      {
+        "ETag": "\"2f7d35bee62767a7efabc1f7ad32ecca\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/django__django-11119/django__django-11119.traj.json",
+        "Size": "16468"
+      },
+      {
+        "ETag": "\"3d6a9a17410e91c9f35546675783c81a\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/sympy__sympy-23534/sympy__sympy-23534.traj.json",
+        "Size": "34929"
+      },
+      {
+        "ETag": "\"fc4e16b16b2f291f0fe02395466580c0\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/matplotlib__matplotlib-13989/matplotlib__matplotlib-13989.traj.json",
+        "Size": "66582"
+      },
+      {
+        "ETag": "\"f259c589735fd7c7b451822700c38669\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/astropy__astropy-8872/astropy__astropy-8872.traj.json",
+        "Size": "170407"
+      },
+      {
+        "ETag": "\"a2af834dd3c91fa5972fb8141533c85e\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/django__django-15732/django__django-15732.traj.json",
+        "Size": "28762"
+      },
+      {
+        "ETag": "\"f51d08cf29e95b673fd9d1d00354e420\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/matplotlib__matplotlib-21568/matplotlib__matplotlib-21568.traj.json",
+        "Size": "48069"
+      },
+      {
+        "ETag": "\"07b21ed1f530cb6b3f3a6d70892170ee\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/sympy__sympy-15809/sympy__sympy-15809.traj.json",
+        "Size": "29592"
+      }
+    ],
+    "sonnet": [
+      {
+        "ETag": "\"b9eb437223a153c740dfe31679947bcc\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-6197/pytest-dev__pytest-6197.traj.json",
+        "Size": "109962"
+      },
+      {
+        "ETag": "\"c720c3a44b5c85807f6146783b47032a\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-25102/scikit-learn__scikit-learn-25102.traj.json",
+        "Size": "90840"
+      },
+      {
+        "ETag": "\"45993d4f1ba2d896055da051f66291bf\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-3095/pydata__xarray-3095.traj.json",
+        "Size": "94942"
+      },
+      {
+        "ETag": "\"a59c033b6b5f89fa511aea5e99483bc1\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-2905/pydata__xarray-2905.traj.json",
+        "Size": "75111"
+      },
+      {
+        "ETag": "\"b61b9cd47555e828c7287ef89e41fd1c\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12276/django__django-12276.traj.json",
+        "Size": "57737"
+      },
+      {
+        "ETag": "\"c5c0acf05c8a37fb2f2ef20fe572e9c0\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11119/django__django-11119.traj.json",
+        "Size": "82340"
+      },
+      {
+        "ETag": "\"b81a086cdde915bbd709b9253d9233ab\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-23534/sympy__sympy-23534.traj.json",
+        "Size": "55096"
+      },
+      {
+        "ETag": "\"6972e285fe5bde524844ae677c0f5bca\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-13989/matplotlib__matplotlib-13989.traj.json",
+        "Size": "70978"
+      },
+      {
+        "ETag": "\"41f8fdedbccc0ec93c9549b0b4992f96\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-8872/astropy__astropy-8872.traj.json",
+        "Size": "49599"
+      },
+      {
+        "ETag": "\"807bd78eb977ee4a2331db05967755c9\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15732/django__django-15732.traj.json",
+        "Size": "166718"
+      },
+      {
+        "ETag": "\"21018ed7201ec228c5be3057bdf69ee8\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-21568/matplotlib__matplotlib-21568.traj.json",
+        "Size": "165751"
+      },
+      {
+        "ETag": "\"9a1af346618fa4e08979547a56d666e8\"",
+        "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-15809/sympy__sympy-15809.traj.json",
+        "Size": "51199"
+      }
+    ]
+  },
+  "ids": [
+    "pytest-dev__pytest-6197",
+    "scikit-learn__scikit-learn-25102",
+    "pydata__xarray-3095",
+    "pydata__xarray-2905",
+    "django__django-12276",
+    "django__django-11119",
+    "sympy__sympy-23534",
+    "matplotlib__matplotlib-13989",
+    "astropy__astropy-8872",
+    "django__django-15732",
+    "matplotlib__matplotlib-21568",
+    "sympy__sympy-15809"
+  ],
+  "inventory_counts": {
+    "gpt": 500,
+    "sonnet": 500
+  },
+  "seed": 2026090902
+}

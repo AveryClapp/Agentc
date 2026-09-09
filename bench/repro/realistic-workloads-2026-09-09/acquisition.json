@@ -1,0 +1,222 @@
+{
+  "files": [
+    {
+      "bytes": 22471,
+      "etag": "e52d451e0a7ee487625baa678c796974",
+      "id": "pytest-dev__pytest-6197",
+      "name": "gpt-pytest-dev__pytest-6197.json",
+      "run": "gpt",
+      "sha256": "f17fceab722c17e28ec4f31650b4c6e4bfc329a4da136f184b6db6f0b8b4a188",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/pytest-dev__pytest-6197/pytest-dev__pytest-6197.traj.json"
+    },
+    {
+      "bytes": 182966,
+      "etag": "7a3c90b3b665339d99673d3990d0d9af",
+      "id": "scikit-learn__scikit-learn-25102",
+      "name": "gpt-scikit-learn__scikit-learn-25102.json",
+      "run": "gpt",
+      "sha256": "c3065614eba8fc788552da34c232515849faedfc8e28453dfb452d020d82996e",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/scikit-learn__scikit-learn-25102/scikit-learn__scikit-learn-25102.traj.json"
+    },
+    {
+      "bytes": 89273,
+      "etag": "a43954181b3f0d4a913750792c584a20",
+      "id": "pydata__xarray-3095",
+      "name": "gpt-pydata__xarray-3095.json",
+      "run": "gpt",
+      "sha256": "50a09a3914ba4fe42625059ac05cb8bdf601518899592438993470a3fefa97b7",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/pydata__xarray-3095/pydata__xarray-3095.traj.json"
+    },
+    {
+      "bytes": 29176,
+      "etag": "515795fa93b282977d87bb1a3f0fd643",
+      "id": "pydata__xarray-2905",
+      "name": "gpt-pydata__xarray-2905.json",
+      "run": "gpt",
+      "sha256": "eb1b937fe61e8555bab883da6d4410f3e40590cdb62008d210406ebb532985f9",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/pydata__xarray-2905/pydata__xarray-2905.traj.json"
+    },
+    {
+      "bytes": 19879,
+      "etag": "56d7ef4603286925e643985d7a2fdfc4",
+      "id": "django__django-12276",
+      "name": "gpt-django__django-12276.json",
+      "run": "gpt",
+      "sha256": "d0dcb104b2c90743c766a6cbe7b71db7271c284f88a9d5cabcc30edf5dafd682",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/django__django-12276/django__django-12276.traj.json"
+    },
+    {
+      "bytes": 16468,
+      "etag": "2f7d35bee62767a7efabc1f7ad32ecca",
+      "id": "django__django-11119",
+      "name": "gpt-django__django-11119.json",
+      "run": "gpt",
+      "sha256": "bb751d9f2bc8808c799606ed5a6a77583aca7cd30eb2a5bc46e2053c89ddb6d4",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/django__django-11119/django__django-11119.traj.json"
+    },
+    {
+      "bytes": 34929,
+      "etag": "3d6a9a17410e91c9f35546675783c81a",
+      "id": "sympy__sympy-23534",
+      "name": "gpt-sympy__sympy-23534.json",
+      "run": "gpt",
+      "sha256": "7775ca968a0df0a85fcc5b1e77f9e12dca2125bdd74cc59a944d4315e0ac91c6",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/sympy__sympy-23534/sympy__sympy-23534.traj.json"
+    },
+    {
+      "bytes": 66582,
+      "etag": "fc4e16b16b2f291f0fe02395466580c0",
+      "id": "matplotlib__matplotlib-13989",
+      "name": "gpt-matplotlib__matplotlib-13989.json",
+      "run": "gpt",
+      "sha256": "aa1dbafb49d9cfa2c2e8bdbe5f89d0bfc556559affbe7218cede77ac6460adea",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/matplotlib__matplotlib-13989/matplotlib__matplotlib-13989.traj.json"
+    },
+    {
+      "bytes": 170407,
+      "etag": "f259c589735fd7c7b451822700c38669",
+      "id": "astropy__astropy-8872",
+      "name": "gpt-astropy__astropy-8872.json",
+      "run": "gpt",
+      "sha256": "4fa8ad0e78c612b9678e9e2ced1049b46f1a1b94e903d6ba75b77477126a0d84",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/astropy__astropy-8872/astropy__astropy-8872.traj.json"
+    },
+    {
+      "bytes": 28762,
+      "etag": "a2af834dd3c91fa5972fb8141533c85e",
+      "id": "django__django-15732",
+      "name": "gpt-django__django-15732.json",
+      "run": "gpt",
+      "sha256": "b9a399d777fb55d9bb21061928301bdbcd26343e5a5fbaf8f43b4c52d459a558",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/django__django-15732/django__django-15732.traj.json"
+    },
+    {
+      "bytes": 48069,
+      "etag": "f51d08cf29e95b673fd9d1d00354e420",
+      "id": "matplotlib__matplotlib-21568",
+      "name": "gpt-matplotlib__matplotlib-21568.json",
+      "run": "gpt",
+      "sha256": "544a77f005bcae441a0a011550d9d0bb9203453b2d9ef6af87973c8e62618dea",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/matplotlib__matplotlib-21568/matplotlib__matplotlib-21568.traj.json"
+    },
+    {
+      "bytes": 29592,
+      "etag": "07b21ed1f530cb6b3f3a6d70892170ee",
+      "id": "sympy__sympy-15809",
+      "name": "gpt-sympy__sympy-15809.json",
+      "run": "gpt",
+      "sha256": "4ce788f8d92bf211c557435d174d2aefcd649d9fd648476f38e8b43d2d36cb28",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_gpt-4.1-2025-04-14/trajs/sympy__sympy-15809/sympy__sympy-15809.traj.json"
+    },
+    {
+      "bytes": 109962,
+      "etag": "b9eb437223a153c740dfe31679947bcc",
+      "id": "pytest-dev__pytest-6197",
+      "name": "sonnet-pytest-dev__pytest-6197.json",
+      "run": "sonnet",
+      "sha256": "b7d4de666d3bb3ebdeac630c8fa7b5aacce1a3deb59c0ba70bfd48c012abd2f9",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-6197/pytest-dev__pytest-6197.traj.json"
+    },
+    {
+      "bytes": 90840,
+      "etag": "c720c3a44b5c85807f6146783b47032a",
+      "id": "scikit-learn__scikit-learn-25102",
+      "name": "sonnet-scikit-learn__scikit-learn-25102.json",
+      "run": "sonnet",
+      "sha256": "705721cbbc6cd080847decb85eb99c26d04479c0fe0e8208ffa42b86e6f9142c",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-25102/scikit-learn__scikit-learn-25102.traj.json"
+    },
+    {
+      "bytes": 94942,
+      "etag": "45993d4f1ba2d896055da051f66291bf",
+      "id": "pydata__xarray-3095",
+      "name": "sonnet-pydata__xarray-3095.json",
+      "run": "sonnet",
+      "sha256": "f9e16a0351ed7eabd44d0b64bd6f9fabaa81754d6f1d093e16340fab6f147e0b",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-3095/pydata__xarray-3095.traj.json"
+    },
+    {
+      "bytes": 75111,
+      "etag": "a59c033b6b5f89fa511aea5e99483bc1",
+      "id": "pydata__xarray-2905",
+      "name": "sonnet-pydata__xarray-2905.json",
+      "run": "sonnet",
+      "sha256": "d6e65bbe885655f4f41888625785d54bba746b6667de1e841e9daf52ed9a042e",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-2905/pydata__xarray-2905.traj.json"
+    },
+    {
+      "bytes": 57737,
+      "etag": "b61b9cd47555e828c7287ef89e41fd1c",
+      "id": "django__django-12276",
+      "name": "sonnet-django__django-12276.json",
+      "run": "sonnet",
+      "sha256": "41627b12a10fc7e6e28280b47790b5604d44caa2a43148ba56196b3c113a0540",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12276/django__django-12276.traj.json"
+    },
+    {
+      "bytes": 82340,
+      "etag": "c5c0acf05c8a37fb2f2ef20fe572e9c0",
+      "id": "django__django-11119",
+      "name": "sonnet-django__django-11119.json",
+      "run": "sonnet",
+      "sha256": "4c520e2d55e32202306b47052dd611477354e76e5f6fe07c3136ce09e027993b",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11119/django__django-11119.traj.json"
+    },
+    {
+      "bytes": 55096,
+      "etag": "b81a086cdde915bbd709b9253d9233ab",
+      "id": "sympy__sympy-23534",
+      "name": "sonnet-sympy__sympy-23534.json",
+      "run": "sonnet",
+      "sha256": "f9f153e6dd57d8fac18598f3a124871b763536404b1961fa4d14933dfaa9c9e6",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-23534/sympy__sympy-23534.traj.json"
+    },
+    {
+      "bytes": 70978,
+      "etag": "6972e285fe5bde524844ae677c0f5bca",
+      "id": "matplotlib__matplotlib-13989",
+      "name": "sonnet-matplotlib__matplotlib-13989.json",
+      "run": "sonnet",
+      "sha256": "4fda722ff912520281ef9b4008f82770e6b149a63e669286553226fd3f62f10b",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-13989/matplotlib__matplotlib-13989.traj.json"
+    },
+    {
+      "bytes": 49599,
+      "etag": "41f8fdedbccc0ec93c9549b0b4992f96",
+      "id": "astropy__astropy-8872",
+      "name": "sonnet-astropy__astropy-8872.json",
+      "run": "sonnet",
+      "sha256": "44caa42333c43255a3ecf42e7f8ba1273f2b4ea027540774b72091642e573f28",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-8872/astropy__astropy-8872.traj.json"
+    },
+    {
+      "bytes": 166718,
+      "etag": "807bd78eb977ee4a2331db05967755c9",
+      "id": "django__django-15732",
+      "name": "sonnet-django__django-15732.json",
+      "run": "sonnet",
+      "sha256": "ab6fb541bff20005623da205ddf9a4352b677a03bfdcae079f566c76b16ad768",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15732/django__django-15732.traj.json"
+    },
+    {
+      "bytes": 165751,
+      "etag": "21018ed7201ec228c5be3057bdf69ee8",
+      "id": "matplotlib__matplotlib-21568",
+      "name": "sonnet-matplotlib__matplotlib-21568.json",
+      "run": "sonnet",
+      "sha256": "06276b48b4b1623ccce14ff40f16aaf2b62e3f2748bf32ea3106676838920b06",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-21568/matplotlib__matplotlib-21568.traj.json"
+    },
+    {
+      "bytes": 51199,
+      "etag": "9a1af346618fa4e08979547a56d666e8",
+      "id": "sympy__sympy-15809",
+      "name": "sonnet-sympy__sympy-15809.json",
+      "run": "sonnet",
+      "sha256": "35d98a2c1ed76a07db9ad864b78514699b5230c48d7e40f6d8729bd9b7bf6098",
+      "url": "https://swe-bench-submissions.s3.amazonaws.com/bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-15809/sympy__sympy-15809.traj.json"
+    }
+  ],
+  "provider_calls": 0,
+  "selection_sha256": "d203979bd61fa20216b8c42ed170e346a614ca621a36b8e652ea4c3d95f05afe"
+}

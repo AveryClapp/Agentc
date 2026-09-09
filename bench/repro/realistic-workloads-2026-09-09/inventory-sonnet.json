@@ -1,0 +1,2522 @@
+[
+  {
+    "ETag": "\"24a2bba1b31ea39c6c350d479c2b6d70\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-12907/astropy__astropy-12907.traj.json",
+    "Size": "60121"
+  },
+  {
+    "ETag": "\"608793c7fba56b079fad330d651f12c7\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-13033/astropy__astropy-13033.traj.json",
+    "Size": "56424"
+  },
+  {
+    "ETag": "\"aba99ff7778be7c4ff93383b27708fe6\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-13236/astropy__astropy-13236.traj.json",
+    "Size": "55972"
+  },
+  {
+    "ETag": "\"0f4317c5d9ca42ae2200e193df7c693b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-13398/astropy__astropy-13398.traj.json",
+    "Size": "254364"
+  },
+  {
+    "ETag": "\"c372a31022937038b09a35cbd0b73307\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-13453/astropy__astropy-13453.traj.json",
+    "Size": "125023"
+  },
+  {
+    "ETag": "\"c0b5d05674b268d74e5c8b4a1b3891e5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-13579/astropy__astropy-13579.traj.json",
+    "Size": "163126"
+  },
+  {
+    "ETag": "\"71e5a14507b87bd971b92393ccece682\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-13977/astropy__astropy-13977.traj.json",
+    "Size": "93510"
+  },
+  {
+    "ETag": "\"bdd5116a9f1173bc6916af86336462d1\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-14096/astropy__astropy-14096.traj.json",
+    "Size": "61387"
+  },
+  {
+    "ETag": "\"8042dcbf3a5ce76dfe99c138b6baad5b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-14182/astropy__astropy-14182.traj.json",
+    "Size": "88225"
+  },
+  {
+    "ETag": "\"bd9012698932066ef337c8d51b2e066e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-14309/astropy__astropy-14309.traj.json",
+    "Size": "33324"
+  },
+  {
+    "ETag": "\"1398ea5b08ee601ed6b8e391e032e077\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-14365/astropy__astropy-14365.traj.json",
+    "Size": "59092"
+  },
+  {
+    "ETag": "\"92cb111c75795da0fc681a1357773ca9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-14369/astropy__astropy-14369.traj.json",
+    "Size": "139872"
+  },
+  {
+    "ETag": "\"c4fe29f393ae82670b4ee6fdf09ff856\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-14508/astropy__astropy-14508.traj.json",
+    "Size": "156367"
+  },
+  {
+    "ETag": "\"48797badb5322a48a715675eeb96af52\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-14539/astropy__astropy-14539.traj.json",
+    "Size": "90129"
+  },
+  {
+    "ETag": "\"849946ea036150c673158ffbf7841647\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-14598/astropy__astropy-14598.traj.json",
+    "Size": "306039"
+  },
+  {
+    "ETag": "\"f3c831dc0f06f797022fd569f5080cba\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-14995/astropy__astropy-14995.traj.json",
+    "Size": "101014"
+  },
+  {
+    "ETag": "\"5f552fa11b3a1874ae366c5573a962dc\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-7166/astropy__astropy-7166.traj.json",
+    "Size": "65510"
+  },
+  {
+    "ETag": "\"193195d25e87aa389be3a17b2509a29f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-7336/astropy__astropy-7336.traj.json",
+    "Size": "43915"
+  },
+  {
+    "ETag": "\"609a0177c9abf16e6f140ff9f6892044\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-7606/astropy__astropy-7606.traj.json",
+    "Size": "36725"
+  },
+  {
+    "ETag": "\"dbb1bc04bfddfc931bd4391d927181ff\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-7671/astropy__astropy-7671.traj.json",
+    "Size": "43091"
+  },
+  {
+    "ETag": "\"95c2b80b9667b4570c8c1e5373be8fd2\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-8707/astropy__astropy-8707.traj.json",
+    "Size": "134163"
+  },
+  {
+    "ETag": "\"41f8fdedbccc0ec93c9549b0b4992f96\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/astropy__astropy-8872/astropy__astropy-8872.traj.json",
+    "Size": "49599"
+  },
+  {
+    "ETag": "\"f8fc013577700daaefd4e9c721350d67\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-10097/django__django-10097.traj.json",
+    "Size": "53641"
+  },
+  {
+    "ETag": "\"ab2d9189413fafda195bdb2ed93ae801\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-10554/django__django-10554.traj.json",
+    "Size": "356372"
+  },
+  {
+    "ETag": "\"ef5e1bf98fdb737e05f3f1916cf7af4e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-10880/django__django-10880.traj.json",
+    "Size": "89699"
+  },
+  {
+    "ETag": "\"f3e0e90bd2a2b11acd87607fbc4a92b9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-10914/django__django-10914.traj.json",
+    "Size": "87072"
+  },
+  {
+    "ETag": "\"48c050e914f3a3b6352ea57b2ebf30be\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-10973/django__django-10973.traj.json",
+    "Size": "48954"
+  },
+  {
+    "ETag": "\"b38fd48ee67a5f8552662f509c4cd900\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-10999/django__django-10999.traj.json",
+    "Size": "26441"
+  },
+  {
+    "ETag": "\"c477e4ed7863b9a8bb519d71615c797b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11066/django__django-11066.traj.json",
+    "Size": "34513"
+  },
+  {
+    "ETag": "\"3ed4944524a08317d6700c52b8c9bb71\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11087/django__django-11087.traj.json",
+    "Size": "300493"
+  },
+  {
+    "ETag": "\"5484a5de06ae6025f5163ebfd7866165\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11095/django__django-11095.traj.json",
+    "Size": "69629"
+  },
+  {
+    "ETag": "\"32c41056d9f7a8591c204b8ad4320558\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11099/django__django-11099.traj.json",
+    "Size": "32190"
+  },
+  {
+    "ETag": "\"c5c0acf05c8a37fb2f2ef20fe572e9c0\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11119/django__django-11119.traj.json",
+    "Size": "82340"
+  },
+  {
+    "ETag": "\"bf8c6b6984b80265cd2ab29eeeafc372\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11133/django__django-11133.traj.json",
+    "Size": "48455"
+  },
+  {
+    "ETag": "\"16a0f0ebec8bec547b193abd2ebc53cf\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11138/django__django-11138.traj.json",
+    "Size": "209506"
+  },
+  {
+    "ETag": "\"14fcec2f34de91dee95fa007b2ea109f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11141/django__django-11141.traj.json",
+    "Size": "75501"
+  },
+  {
+    "ETag": "\"1c31377175eb4ad28673a395f335c73c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11149/django__django-11149.traj.json",
+    "Size": "199880"
+  },
+  {
+    "ETag": "\"e2543796b15780f440516cd7558664b7\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11163/django__django-11163.traj.json",
+    "Size": "39044"
+  },
+  {
+    "ETag": "\"320a2b29f2ae652f9f11b94a775bd617\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11179/django__django-11179.traj.json",
+    "Size": "59987"
+  },
+  {
+    "ETag": "\"89b7678a222a685ae6ce20eec15917c9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11206/django__django-11206.traj.json",
+    "Size": "48579"
+  },
+  {
+    "ETag": "\"5d25465f5132130b1a1de3862c20e779\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11211/django__django-11211.traj.json",
+    "Size": "207395"
+  },
+  {
+    "ETag": "\"1b2316da69050fe7c14c000aaea52d61\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11239/django__django-11239.traj.json",
+    "Size": "95963"
+  },
+  {
+    "ETag": "\"b8b55933bd746dd86284afc7e207374c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11265/django__django-11265.traj.json",
+    "Size": "210012"
+  },
+  {
+    "ETag": "\"37f9f7028932065382af6e15046a829b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11276/django__django-11276.traj.json",
+    "Size": "71786"
+  },
+  {
+    "ETag": "\"ad8fd87943d752d78b7478e6499f0b17\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11292/django__django-11292.traj.json",
+    "Size": "125883"
+  },
+  {
+    "ETag": "\"7e2e5d36e9de35740c69d22168ca363e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11299/django__django-11299.traj.json",
+    "Size": "143978"
+  },
+  {
+    "ETag": "\"884248026c10c5233b791319c8f53de3\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11333/django__django-11333.traj.json",
+    "Size": "59568"
+  },
+  {
+    "ETag": "\"d93de06de7490b54046100b6cbecbfe2\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11400/django__django-11400.traj.json",
+    "Size": "93779"
+  },
+  {
+    "ETag": "\"b04d2f6bb1f1a0ca313fc93c2a62daea\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11433/django__django-11433.traj.json",
+    "Size": "111372"
+  },
+  {
+    "ETag": "\"51b8420f17e33931d4571126e170eb6a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11451/django__django-11451.traj.json",
+    "Size": "57875"
+  },
+  {
+    "ETag": "\"9e6bb85b77a0d89687434182268388b2\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11477/django__django-11477.traj.json",
+    "Size": "84408"
+  },
+  {
+    "ETag": "\"67697199bd0257308562377c96925556\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11490/django__django-11490.traj.json",
+    "Size": "97315"
+  },
+  {
+    "ETag": "\"ae9ae5e2a6a93416d232eb7dba359748\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11532/django__django-11532.traj.json",
+    "Size": "93000"
+  },
+  {
+    "ETag": "\"13ef0e54f612257bc456a04eda4d0444\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11551/django__django-11551.traj.json",
+    "Size": "76845"
+  },
+  {
+    "ETag": "\"05386a6caed6a7adb224070b886fab4d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11555/django__django-11555.traj.json",
+    "Size": "71041"
+  },
+  {
+    "ETag": "\"84d0b67fec5f51623b5849a14eaca5a0\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11603/django__django-11603.traj.json",
+    "Size": "36574"
+  },
+  {
+    "ETag": "\"5982bb65d5b7ca7c757e559daae42620\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11728/django__django-11728.traj.json",
+    "Size": "162331"
+  },
+  {
+    "ETag": "\"94bbd7018f9a5b8c948b351b77f63e91\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11734/django__django-11734.traj.json",
+    "Size": "292523"
+  },
+  {
+    "ETag": "\"362c7a8e234228589f8c462ddf7bd79e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11740/django__django-11740.traj.json",
+    "Size": "88768"
+  },
+  {
+    "ETag": "\"dbffe21d7b649a8e9280e885138fde62\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11749/django__django-11749.traj.json",
+    "Size": "90100"
+  },
+  {
+    "ETag": "\"4d1768e19b9913b5a95cca75231e7723\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11790/django__django-11790.traj.json",
+    "Size": "112207"
+  },
+  {
+    "ETag": "\"b0a4d482d1138ac45e06de2e709c494a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11815/django__django-11815.traj.json",
+    "Size": "102002"
+  },
+  {
+    "ETag": "\"eeaa9e610a5dd9d7a21a66fd9b0e7b70\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11820/django__django-11820.traj.json",
+    "Size": "231969"
+  },
+  {
+    "ETag": "\"641875eb2cffa5171b9d544113907f64\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11848/django__django-11848.traj.json",
+    "Size": "58050"
+  },
+  {
+    "ETag": "\"c973d78982a57aebd5f78fb76bac5065\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11880/django__django-11880.traj.json",
+    "Size": "47740"
+  },
+  {
+    "ETag": "\"3778c180342837a0becc28664d295aa7\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11885/django__django-11885.traj.json",
+    "Size": "181581"
+  },
+  {
+    "ETag": "\"033f2ae189c381846178cc33463d3815\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11951/django__django-11951.traj.json",
+    "Size": "69604"
+  },
+  {
+    "ETag": "\"654a8f288111d605aabe73a668878334\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11964/django__django-11964.traj.json",
+    "Size": "374199"
+  },
+  {
+    "ETag": "\"ffdf6df9dfc08467f0ade33141b238d8\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-11999/django__django-11999.traj.json",
+    "Size": "46728"
+  },
+  {
+    "ETag": "\"f9d86471eba9f76f4434b25d044b8bae\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12039/django__django-12039.traj.json",
+    "Size": "98909"
+  },
+  {
+    "ETag": "\"cb68636f11ed98d1146dd4a870a31566\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12050/django__django-12050.traj.json",
+    "Size": "36939"
+  },
+  {
+    "ETag": "\"cf0649ff7fee19795fc97d743ad79387\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12125/django__django-12125.traj.json",
+    "Size": "138543"
+  },
+  {
+    "ETag": "\"b08c9a044bacbf3b51bd98d70feedecc\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12143/django__django-12143.traj.json",
+    "Size": "44901"
+  },
+  {
+    "ETag": "\"752e030a58de1969df672e796cd03da1\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12155/django__django-12155.traj.json",
+    "Size": "43671"
+  },
+  {
+    "ETag": "\"63eeef6cd2bedf9312401a0e21b28616\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12193/django__django-12193.traj.json",
+    "Size": "164418"
+  },
+  {
+    "ETag": "\"92434124d018e7e671a94ce5125df544\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12209/django__django-12209.traj.json",
+    "Size": "97026"
+  },
+  {
+    "ETag": "\"8168ed460ae3d7b0bf9811eee23ccd8a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12262/django__django-12262.traj.json",
+    "Size": "58032"
+  },
+  {
+    "ETag": "\"fb3529d84dc8d004c739432c650ec050\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12273/django__django-12273.traj.json",
+    "Size": "322336"
+  },
+  {
+    "ETag": "\"b61b9cd47555e828c7287ef89e41fd1c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12276/django__django-12276.traj.json",
+    "Size": "57737"
+  },
+  {
+    "ETag": "\"e76cdd14ed7099a42e209594de943ef3\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12304/django__django-12304.traj.json",
+    "Size": "54288"
+  },
+  {
+    "ETag": "\"158c84948575fbb1df400cce4843f0ea\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12308/django__django-12308.traj.json",
+    "Size": "67740"
+  },
+  {
+    "ETag": "\"7a4f788035694593edabe48b52e7cd65\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12325/django__django-12325.traj.json",
+    "Size": "217940"
+  },
+  {
+    "ETag": "\"bccdd40ca2042f33fb199a7ea5c16713\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12406/django__django-12406.traj.json",
+    "Size": "151450"
+  },
+  {
+    "ETag": "\"d356f3ef51cb5b8bf1037256159d4e51\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12419/django__django-12419.traj.json",
+    "Size": "32171"
+  },
+  {
+    "ETag": "\"6eb4511f4fc64c99c7425dcb144c3918\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12663/django__django-12663.traj.json",
+    "Size": "142235"
+  },
+  {
+    "ETag": "\"09084b9b77b705a07a6b5d47f256086f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12708/django__django-12708.traj.json",
+    "Size": "71546"
+  },
+  {
+    "ETag": "\"085aaeb7697cf8f22a08fc6d2436827b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12713/django__django-12713.traj.json",
+    "Size": "70345"
+  },
+  {
+    "ETag": "\"4ad5477617333d8f82b641e9ffd48dc2\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12741/django__django-12741.traj.json",
+    "Size": "50605"
+  },
+  {
+    "ETag": "\"1432d709c2aa3d93e5969bf8b476e5f1\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12754/django__django-12754.traj.json",
+    "Size": "318056"
+  },
+  {
+    "ETag": "\"ea2568b36e29d48228c26e9c115b8996\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12774/django__django-12774.traj.json",
+    "Size": "77106"
+  },
+  {
+    "ETag": "\"7d61f6b1d1c323e2775061afb5bebdf0\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12858/django__django-12858.traj.json",
+    "Size": "127038"
+  },
+  {
+    "ETag": "\"40f8ef8bc4f48828abc4d69fd592ac0d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-12965/django__django-12965.traj.json",
+    "Size": "296934"
+  },
+  {
+    "ETag": "\"1f0a9b60356e5cda9cd90ff476056258\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13012/django__django-13012.traj.json",
+    "Size": "59799"
+  },
+  {
+    "ETag": "\"0d08e4f6c0304108df3e5ac481414fd4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13023/django__django-13023.traj.json",
+    "Size": "87574"
+  },
+  {
+    "ETag": "\"58d71a1529a4936403d23e8d4ff0f7ab\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13028/django__django-13028.traj.json",
+    "Size": "56357"
+  },
+  {
+    "ETag": "\"e1a658410967cdaf68dd11be1a4ae3b5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13033/django__django-13033.traj.json",
+    "Size": "332968"
+  },
+  {
+    "ETag": "\"43ce33fd4058258c357eea7414d60c96\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13089/django__django-13089.traj.json",
+    "Size": "65970"
+  },
+  {
+    "ETag": "\"5df1a4d925f9d009d8924e51dc1c1111\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13109/django__django-13109.traj.json",
+    "Size": "71209"
+  },
+  {
+    "ETag": "\"63076e7e9625d8258f33374dfa3fa70d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13112/django__django-13112.traj.json",
+    "Size": "187848"
+  },
+  {
+    "ETag": "\"580fd2b9fa87fd25875a1a6b6625406b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13121/django__django-13121.traj.json",
+    "Size": "111599"
+  },
+  {
+    "ETag": "\"58bb2b99bbcd7421e69df6b78ebd185d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13128/django__django-13128.traj.json",
+    "Size": "117400"
+  },
+  {
+    "ETag": "\"4a9096079483726971a07ffc06d76c9b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13158/django__django-13158.traj.json",
+    "Size": "97133"
+  },
+  {
+    "ETag": "\"c197c3838bcd639c67b1ef35f4650c30\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13195/django__django-13195.traj.json",
+    "Size": "106550"
+  },
+  {
+    "ETag": "\"61ba40c49c3c60b7efe2d8435c748c49\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13212/django__django-13212.traj.json",
+    "Size": "105064"
+  },
+  {
+    "ETag": "\"c52b37b645402389ff775309fd25f7f2\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13279/django__django-13279.traj.json",
+    "Size": "142316"
+  },
+  {
+    "ETag": "\"29a859867331c9240194d0ee81f48d61\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13297/django__django-13297.traj.json",
+    "Size": "184908"
+  },
+  {
+    "ETag": "\"3349a706c0a9c4938e01550ba9dc320f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13315/django__django-13315.traj.json",
+    "Size": "172566"
+  },
+  {
+    "ETag": "\"eecd24ceb1249545eee459f8d6300ee7\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13343/django__django-13343.traj.json",
+    "Size": "174595"
+  },
+  {
+    "ETag": "\"84c6425a3b36365f787e650aedcb68b5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13344/django__django-13344.traj.json",
+    "Size": "167652"
+  },
+  {
+    "ETag": "\"16608f7317603c2124de26f2a5db9d35\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13346/django__django-13346.traj.json",
+    "Size": "99176"
+  },
+  {
+    "ETag": "\"d40043a8987502c6f573c85cc16234d6\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13363/django__django-13363.traj.json",
+    "Size": "63125"
+  },
+  {
+    "ETag": "\"9dcaba82f1db6705534aabbfbb574d58\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13401/django__django-13401.traj.json",
+    "Size": "72853"
+  },
+  {
+    "ETag": "\"0d7b133d709d885864cbbbdbcfd6a2d8\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13406/django__django-13406.traj.json",
+    "Size": "92685"
+  },
+  {
+    "ETag": "\"0569a10b2cd79495039c9571f475ab69\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13410/django__django-13410.traj.json",
+    "Size": "44831"
+  },
+  {
+    "ETag": "\"5b6b9fbc1211d8a9e1e52a2f021692ac\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13417/django__django-13417.traj.json",
+    "Size": "256772"
+  },
+  {
+    "ETag": "\"73567963e5490c7515fe83509d7f247b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13449/django__django-13449.traj.json",
+    "Size": "138422"
+  },
+  {
+    "ETag": "\"3886b8d648681e14375e07d89b226ce1\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13512/django__django-13512.traj.json",
+    "Size": "60620"
+  },
+  {
+    "ETag": "\"fbff07dfe203f86ad47acff570bafd9a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13513/django__django-13513.traj.json",
+    "Size": "44526"
+  },
+  {
+    "ETag": "\"59f5d9a05b710c030c876a95bf28c31b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13516/django__django-13516.traj.json",
+    "Size": "138204"
+  },
+  {
+    "ETag": "\"d71a25119846e902eb1e540f73cdc3bd\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13551/django__django-13551.traj.json",
+    "Size": "84428"
+  },
+  {
+    "ETag": "\"8c99255b97fef0b58a9917d1a3256889\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13568/django__django-13568.traj.json",
+    "Size": "141339"
+  },
+  {
+    "ETag": "\"1a18a1ac4fe99aa02357f3a27b29d5bc\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13569/django__django-13569.traj.json",
+    "Size": "91945"
+  },
+  {
+    "ETag": "\"7fe4377b27cc569021aaf8ade4e66a11\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13590/django__django-13590.traj.json",
+    "Size": "88591"
+  },
+  {
+    "ETag": "\"28c549f9e787e051795b656da572b5bc\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13658/django__django-13658.traj.json",
+    "Size": "48683"
+  },
+  {
+    "ETag": "\"acacea349ae8635cc116209449307c72\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13670/django__django-13670.traj.json",
+    "Size": "39406"
+  },
+  {
+    "ETag": "\"86bc13d546f2d658edc7ddeac35eabc4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13741/django__django-13741.traj.json",
+    "Size": "125794"
+  },
+  {
+    "ETag": "\"0b64c9a0940df2bc099c825556ec9dad\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13786/django__django-13786.traj.json",
+    "Size": "90900"
+  },
+  {
+    "ETag": "\"70a2798465520a2c0af3b5c392780fba\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13794/django__django-13794.traj.json",
+    "Size": "41070"
+  },
+  {
+    "ETag": "\"a51860f1156672b64b681d459b41f88e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13807/django__django-13807.traj.json",
+    "Size": "72506"
+  },
+  {
+    "ETag": "\"96a374e433a26de3c8aced3f0fa29339\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13809/django__django-13809.traj.json",
+    "Size": "141070"
+  },
+  {
+    "ETag": "\"e9062bf79495e9dd6ac9041679ebd449\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13810/django__django-13810.traj.json",
+    "Size": "128413"
+  },
+  {
+    "ETag": "\"e963e49b0b6a1a5c330fd17d5976a3cd\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13820/django__django-13820.traj.json",
+    "Size": "48167"
+  },
+  {
+    "ETag": "\"7b544b0a37efbc88b50cd2ae37da18cf\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13821/django__django-13821.traj.json",
+    "Size": "29281"
+  },
+  {
+    "ETag": "\"d96682fae0ca7d8ad17436c16883ac58\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13837/django__django-13837.traj.json",
+    "Size": "81380"
+  },
+  {
+    "ETag": "\"7674e85d32657ab002ab4f046b80d6ea\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13925/django__django-13925.traj.json",
+    "Size": "340972"
+  },
+  {
+    "ETag": "\"01914f4bde4716e74559e9f69ac54652\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13933/django__django-13933.traj.json",
+    "Size": "58166"
+  },
+  {
+    "ETag": "\"eb0cd683eca141167da61f8d1ed67d55\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-13964/django__django-13964.traj.json",
+    "Size": "115847"
+  },
+  {
+    "ETag": "\"a18bcbde6e5bf16295b9c164af5c6cda\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14007/django__django-14007.traj.json",
+    "Size": "107829"
+  },
+  {
+    "ETag": "\"a23539c86abb5375587113ef5a1caf0d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14011/django__django-14011.traj.json",
+    "Size": "136571"
+  },
+  {
+    "ETag": "\"baa152e35b7dbbc8994591d4911bb6ac\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14017/django__django-14017.traj.json",
+    "Size": "90521"
+  },
+  {
+    "ETag": "\"b6923b11095e7acb563d2f2d4bef54db\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14034/django__django-14034.traj.json",
+    "Size": "81788"
+  },
+  {
+    "ETag": "\"5955701736678b1566c613d6d34da52c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14053/django__django-14053.traj.json",
+    "Size": "188210"
+  },
+  {
+    "ETag": "\"60bdc05f8f821dcad5574352321134b5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14089/django__django-14089.traj.json",
+    "Size": "47144"
+  },
+  {
+    "ETag": "\"9834ab7be498bb77bc5bcf5820466efb\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14122/django__django-14122.traj.json",
+    "Size": "97275"
+  },
+  {
+    "ETag": "\"1d223fe72a09adfb79a3ff274ef21aa4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14140/django__django-14140.traj.json",
+    "Size": "53297"
+  },
+  {
+    "ETag": "\"7582238f39ffe7399bd257813c6ce8de\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14155/django__django-14155.traj.json",
+    "Size": "52625"
+  },
+  {
+    "ETag": "\"f1e136c7fdb9b331e379a892aab11644\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14170/django__django-14170.traj.json",
+    "Size": "86778"
+  },
+  {
+    "ETag": "\"c71d1b64b81fd8b5a32e1520e6561a1c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14238/django__django-14238.traj.json",
+    "Size": "46565"
+  },
+  {
+    "ETag": "\"0b7d962a8ae32ae48c94d859d9d4e25c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14311/django__django-14311.traj.json",
+    "Size": "74178"
+  },
+  {
+    "ETag": "\"650b16a81eff236689d0ae723966245d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14315/django__django-14315.traj.json",
+    "Size": "92758"
+  },
+  {
+    "ETag": "\"5a50b95e925c8129e336b329de923b50\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14349/django__django-14349.traj.json",
+    "Size": "60488"
+  },
+  {
+    "ETag": "\"f69b2d90cf17c8f94aa45a8b75f97a3c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14351/django__django-14351.traj.json",
+    "Size": "499557"
+  },
+  {
+    "ETag": "\"b7c8dabc27354ef1ea359dd4cc16711c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14373/django__django-14373.traj.json",
+    "Size": "43285"
+  },
+  {
+    "ETag": "\"2f2974d06609caef5286fad43dad54cb\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14376/django__django-14376.traj.json",
+    "Size": "39673"
+  },
+  {
+    "ETag": "\"515b6adbfc49018beb636bcb7fc05882\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14404/django__django-14404.traj.json",
+    "Size": "56789"
+  },
+  {
+    "ETag": "\"bc7217d595ffdc846c7a06382ad26426\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14434/django__django-14434.traj.json",
+    "Size": "117942"
+  },
+  {
+    "ETag": "\"284f3358ab2ef905902910559a92b9ec\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14493/django__django-14493.traj.json",
+    "Size": "62538"
+  },
+  {
+    "ETag": "\"4fefdf3e35f9f9fb04b2976379d831c4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14500/django__django-14500.traj.json",
+    "Size": "68327"
+  },
+  {
+    "ETag": "\"18ed8e70ffc6ac33a1f4803b16f2b18d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14534/django__django-14534.traj.json",
+    "Size": "84906"
+  },
+  {
+    "ETag": "\"6482d11e9656610bb60a27e86f75c518\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14539/django__django-14539.traj.json",
+    "Size": "84158"
+  },
+  {
+    "ETag": "\"e98df98f78495ef02a8beb30baab64e9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14559/django__django-14559.traj.json",
+    "Size": "45310"
+  },
+  {
+    "ETag": "\"cfc7c8a6493f490f43fc8817e26be32f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14580/django__django-14580.traj.json",
+    "Size": "71945"
+  },
+  {
+    "ETag": "\"023c25cb082904d708306aa53df2e7b5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14608/django__django-14608.traj.json",
+    "Size": "45682"
+  },
+  {
+    "ETag": "\"c5c657acf5e924414522379cc7af1925\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14631/django__django-14631.traj.json",
+    "Size": "95473"
+  },
+  {
+    "ETag": "\"4e4c495a1342fb06a6f8b4a5f8146095\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14672/django__django-14672.traj.json",
+    "Size": "73036"
+  },
+  {
+    "ETag": "\"200567ef90a39c36e905f1e9a300a540\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14725/django__django-14725.traj.json",
+    "Size": "140419"
+  },
+  {
+    "ETag": "\"cacba699b03ba0fb072325fd9b3d60c5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14752/django__django-14752.traj.json",
+    "Size": "83035"
+  },
+  {
+    "ETag": "\"8a6a3bc37dc64bd34b83ff4e8accac64\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14765/django__django-14765.traj.json",
+    "Size": "33131"
+  },
+  {
+    "ETag": "\"b6fa8a5f366c3932e0b3edd9ae2a0d1b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14771/django__django-14771.traj.json",
+    "Size": "69005"
+  },
+  {
+    "ETag": "\"003ec4280e37db26367c58c7b91089c3\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14787/django__django-14787.traj.json",
+    "Size": "51924"
+  },
+  {
+    "ETag": "\"439f261dc477c5a0926445e9fbbd5751\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14792/django__django-14792.traj.json",
+    "Size": "140063"
+  },
+  {
+    "ETag": "\"09e329c526fa1d7ddcc1e29b5f960cec\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14855/django__django-14855.traj.json",
+    "Size": "113378"
+  },
+  {
+    "ETag": "\"4f85140f14c94bb72f9b4600c3ad8419\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14915/django__django-14915.traj.json",
+    "Size": "45633"
+  },
+  {
+    "ETag": "\"336c0debcb72c31b5dc92c2773d92303\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-14999/django__django-14999.traj.json",
+    "Size": "151241"
+  },
+  {
+    "ETag": "\"e326f7acccff972868759e7611530e0c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15022/django__django-15022.traj.json",
+    "Size": "318669"
+  },
+  {
+    "ETag": "\"203a40176929ecf13dea4c9b21342019\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15037/django__django-15037.traj.json",
+    "Size": "157228"
+  },
+  {
+    "ETag": "\"9ad773bd932b3f743f3e710827bd580c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15098/django__django-15098.traj.json",
+    "Size": "159067"
+  },
+  {
+    "ETag": "\"dc6de8db2feb73800b4424674268fda6\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15103/django__django-15103.traj.json",
+    "Size": "58021"
+  },
+  {
+    "ETag": "\"d8d60e57970497c8afa411ae5e7b29fa\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15104/django__django-15104.traj.json",
+    "Size": "71391"
+  },
+  {
+    "ETag": "\"1601e8a45cf6001a2af4475b5f3d0368\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15127/django__django-15127.traj.json",
+    "Size": "47852"
+  },
+  {
+    "ETag": "\"3c26076c98c510edc19f4dde83d459a8\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15128/django__django-15128.traj.json",
+    "Size": "108123"
+  },
+  {
+    "ETag": "\"020f52d5e01ef2b0fb67fa0172fc4de9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15161/django__django-15161.traj.json",
+    "Size": "99044"
+  },
+  {
+    "ETag": "\"99ad2bdb04a0949f6fd2f8b8955da699\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15252/django__django-15252.traj.json",
+    "Size": "112662"
+  },
+  {
+    "ETag": "\"3dbc31384b31c4d30164688700293b19\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15268/django__django-15268.traj.json",
+    "Size": "185427"
+  },
+  {
+    "ETag": "\"7b609f021743fb4c41809fe3a313dc6d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15277/django__django-15277.traj.json",
+    "Size": "66433"
+  },
+  {
+    "ETag": "\"93f93481f8adbecaf4e7744429af9fa8\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15278/django__django-15278.traj.json",
+    "Size": "113392"
+  },
+  {
+    "ETag": "\"23b9a0ee31845bf125443ea4f2d6663c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15280/django__django-15280.traj.json",
+    "Size": "511064"
+  },
+  {
+    "ETag": "\"c283d4d812e2359666c735d44f5cf945\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15315/django__django-15315.traj.json",
+    "Size": "98820"
+  },
+  {
+    "ETag": "\"61a4633ded072310497a9f41bf74b7de\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15368/django__django-15368.traj.json",
+    "Size": "70834"
+  },
+  {
+    "ETag": "\"3e7da38e5e0a22e3691ab8763c0f1bc7\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15375/django__django-15375.traj.json",
+    "Size": "150706"
+  },
+  {
+    "ETag": "\"c5bd3f1f17e32d2a4335948f1287a6fb\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15380/django__django-15380.traj.json",
+    "Size": "97948"
+  },
+  {
+    "ETag": "\"ee8aba286c08a133e621c2526e03308f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15382/django__django-15382.traj.json",
+    "Size": "122085"
+  },
+  {
+    "ETag": "\"008515b3368281b6d81eba278bb1cac7\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15467/django__django-15467.traj.json",
+    "Size": "78039"
+  },
+  {
+    "ETag": "\"082d56807cd985a372bd91ba2ba4d1a9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15499/django__django-15499.traj.json",
+    "Size": "77440"
+  },
+  {
+    "ETag": "\"01ab84f0d2e288a354cdede82f8a207e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15503/django__django-15503.traj.json",
+    "Size": "127284"
+  },
+  {
+    "ETag": "\"0975c60864e107b6caed6b07af190b68\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15525/django__django-15525.traj.json",
+    "Size": "341540"
+  },
+  {
+    "ETag": "\"25beafcf5d16e68a8a282dfef022e688\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15554/django__django-15554.traj.json",
+    "Size": "176312"
+  },
+  {
+    "ETag": "\"1723fe09ce206d44002dec26f274d01d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15561/django__django-15561.traj.json",
+    "Size": "154684"
+  },
+  {
+    "ETag": "\"c26c44b818475134f75b384b746f15d5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15563/django__django-15563.traj.json",
+    "Size": "369213"
+  },
+  {
+    "ETag": "\"70e849e12895a519e8bd6e01a384029c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15569/django__django-15569.traj.json",
+    "Size": "73149"
+  },
+  {
+    "ETag": "\"067e55ff99b1f35a2c258916e9446e29\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15572/django__django-15572.traj.json",
+    "Size": "55970"
+  },
+  {
+    "ETag": "\"403ef3a947aff0d4aa82e0d41ff54c37\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15629/django__django-15629.traj.json",
+    "Size": "298040"
+  },
+  {
+    "ETag": "\"cbc82bb8bd187b3a423173f6dc9ac785\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15695/django__django-15695.traj.json",
+    "Size": "159994"
+  },
+  {
+    "ETag": "\"df93300bf6d6396366be119225dcb84c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15731/django__django-15731.traj.json",
+    "Size": "29449"
+  },
+  {
+    "ETag": "\"807bd78eb977ee4a2331db05967755c9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15732/django__django-15732.traj.json",
+    "Size": "166718"
+  },
+  {
+    "ETag": "\"2d90cd36db4c5557617c9d3a9c5d9600\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15741/django__django-15741.traj.json",
+    "Size": "48065"
+  },
+  {
+    "ETag": "\"acef30d9dd5ad019a2136b01ac1f6510\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15814/django__django-15814.traj.json",
+    "Size": "47430"
+  },
+  {
+    "ETag": "\"a851859e36b10d27c44224fc7541736b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15851/django__django-15851.traj.json",
+    "Size": "77734"
+  },
+  {
+    "ETag": "\"1b93928bbad2c32f547f4340ecc74cc2\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15863/django__django-15863.traj.json",
+    "Size": "41261"
+  },
+  {
+    "ETag": "\"c235d63b316b1052fcccd220c841a5e1\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15916/django__django-15916.traj.json",
+    "Size": "181713"
+  },
+  {
+    "ETag": "\"edc901103dd0670efd6070685adb99b3\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15930/django__django-15930.traj.json",
+    "Size": "69126"
+  },
+  {
+    "ETag": "\"e37a78b375cabdf7ccee6f8e4f791d38\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15957/django__django-15957.traj.json",
+    "Size": "102607"
+  },
+  {
+    "ETag": "\"573819f671b85f86c35ef001388b654a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15973/django__django-15973.traj.json",
+    "Size": "138942"
+  },
+  {
+    "ETag": "\"bac6ab44d4a442a6a461b4b9f67ef27a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-15987/django__django-15987.traj.json",
+    "Size": "81460"
+  },
+  {
+    "ETag": "\"0aab8661d17ff20972550f1ac3efef23\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16032/django__django-16032.traj.json",
+    "Size": "544828"
+  },
+  {
+    "ETag": "\"bd9bf6b801bc6c5e97b88f9941691132\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16082/django__django-16082.traj.json",
+    "Size": "73257"
+  },
+  {
+    "ETag": "\"d844e1c42c9336702b9a639fe9d620df\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16100/django__django-16100.traj.json",
+    "Size": "57539"
+  },
+  {
+    "ETag": "\"afceda68cb2dffccf1942a9d8509460d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16116/django__django-16116.traj.json",
+    "Size": "153106"
+  },
+  {
+    "ETag": "\"ddd6af3b97fbbcc7574b58bb0c635c0d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16136/django__django-16136.traj.json",
+    "Size": "71459"
+  },
+  {
+    "ETag": "\"7ee4815dc2bbd67152c16f47f8df3bdc\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16139/django__django-16139.traj.json",
+    "Size": "137081"
+  },
+  {
+    "ETag": "\"fc3cd0cee4e17fc81f780fd289b2faab\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16145/django__django-16145.traj.json",
+    "Size": "71633"
+  },
+  {
+    "ETag": "\"c2eb6dc8c976f45849ce084387d2a088\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16255/django__django-16255.traj.json",
+    "Size": "38702"
+  },
+  {
+    "ETag": "\"bcb5dde69f62fdcbc82866cb7f25573b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16256/django__django-16256.traj.json",
+    "Size": "118543"
+  },
+  {
+    "ETag": "\"726030df6c9618c7190f15114352391c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16263/django__django-16263.traj.json",
+    "Size": "257662"
+  },
+  {
+    "ETag": "\"f15f7286b33c216b42f6b4f5fe9d3d71\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16315/django__django-16315.traj.json",
+    "Size": "184174"
+  },
+  {
+    "ETag": "\"c0c28cbdf828bd7fee3a9f3fb0646c73\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16333/django__django-16333.traj.json",
+    "Size": "115715"
+  },
+  {
+    "ETag": "\"1bd423d0d0dbf8bca97826a34a39d3ef\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16429/django__django-16429.traj.json",
+    "Size": "43659"
+  },
+  {
+    "ETag": "\"9536e7737624c658e3f4a1758e0cd63d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16454/django__django-16454.traj.json",
+    "Size": "98465"
+  },
+  {
+    "ETag": "\"f872d30bd8015f12129cbb6635ed8ed3\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16485/django__django-16485.traj.json",
+    "Size": "52537"
+  },
+  {
+    "ETag": "\"ca04a16e63a19dfe6c6d55395d94c658\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16493/django__django-16493.traj.json",
+    "Size": "78181"
+  },
+  {
+    "ETag": "\"7a8cbacc164cfd364c76362253d6fa91\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16502/django__django-16502.traj.json",
+    "Size": "102963"
+  },
+  {
+    "ETag": "\"1ef526eaa7f89fe54b8b960b1f6cda49\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16527/django__django-16527.traj.json",
+    "Size": "35202"
+  },
+  {
+    "ETag": "\"08e1b41dc5c792d90558d0a0f3145651\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16560/django__django-16560.traj.json",
+    "Size": "136137"
+  },
+  {
+    "ETag": "\"87d5811b903d991fe5b440deed97741f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16569/django__django-16569.traj.json",
+    "Size": "24140"
+  },
+  {
+    "ETag": "\"8a306b66b756427254ff5c8657cac6c4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16595/django__django-16595.traj.json",
+    "Size": "106810"
+  },
+  {
+    "ETag": "\"a85b662b7e06f90bfd1dea6ab9a0d5ec\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16612/django__django-16612.traj.json",
+    "Size": "45273"
+  },
+  {
+    "ETag": "\"fc68aab3a819633ac35d5bdd174c4607\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16631/django__django-16631.traj.json",
+    "Size": "87259"
+  },
+  {
+    "ETag": "\"1b0e18705efd4d604ca2e394d8dcb073\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16642/django__django-16642.traj.json",
+    "Size": "41750"
+  },
+  {
+    "ETag": "\"0bb1f6c0d2577bdc1cccd51b5bc901b5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16661/django__django-16661.traj.json",
+    "Size": "307666"
+  },
+  {
+    "ETag": "\"cce4c85f9cc7ad668a32282639495e99\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16662/django__django-16662.traj.json",
+    "Size": "47621"
+  },
+  {
+    "ETag": "\"9900a475ac7e44efd9c82a7a7266d0cd\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16667/django__django-16667.traj.json",
+    "Size": "33553"
+  },
+  {
+    "ETag": "\"d20c1cb06e470a23af5afaefe6c6c356\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16801/django__django-16801.traj.json",
+    "Size": "74238"
+  },
+  {
+    "ETag": "\"1a9495f8750ccf1675e562b09dbb4158\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16819/django__django-16819.traj.json",
+    "Size": "218431"
+  },
+  {
+    "ETag": "\"3cc72489525cf50395813dcf9b3c5e09\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16877/django__django-16877.traj.json",
+    "Size": "67138"
+  },
+  {
+    "ETag": "\"4f501457674a350d4a9eb22f68318a16\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16899/django__django-16899.traj.json",
+    "Size": "74449"
+  },
+  {
+    "ETag": "\"576b2403700a3136857397648ad86290\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16901/django__django-16901.traj.json",
+    "Size": "72460"
+  },
+  {
+    "ETag": "\"5bd67502175435da21c5ce4365d23080\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16938/django__django-16938.traj.json",
+    "Size": "124103"
+  },
+  {
+    "ETag": "\"77d969a7d9c5e61fe39183c833f0be28\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-16950/django__django-16950.traj.json",
+    "Size": "343099"
+  },
+  {
+    "ETag": "\"77c3c86ca2824ee94fbffe1ed82739ad\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-17029/django__django-17029.traj.json",
+    "Size": "48631"
+  },
+  {
+    "ETag": "\"4d11244843175f4998adf26d985cd95f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-17084/django__django-17084.traj.json",
+    "Size": "116822"
+  },
+  {
+    "ETag": "\"c6b6b394cf7d8dae10dbdfc1f5e119d7\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-17087/django__django-17087.traj.json",
+    "Size": "104283"
+  },
+  {
+    "ETag": "\"5c9246ac7cdd4cd67df105dcab1be362\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-7530/django__django-7530.traj.json",
+    "Size": "48871"
+  },
+  {
+    "ETag": "\"d5f0416922cac05d7d4f970e3b30891e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/django__django-9296/django__django-9296.traj.json",
+    "Size": "41595"
+  },
+  {
+    "ETag": "\"6972e285fe5bde524844ae677c0f5bca\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-13989/matplotlib__matplotlib-13989.traj.json",
+    "Size": "70978"
+  },
+  {
+    "ETag": "\"aebbb82b0ca31be7c0614340059d019b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-14623/matplotlib__matplotlib-14623.traj.json",
+    "Size": "341010"
+  },
+  {
+    "ETag": "\"384f9a0abcf5f06ae027e4fc9f032bf2\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-20488/matplotlib__matplotlib-20488.traj.json",
+    "Size": "250246"
+  },
+  {
+    "ETag": "\"ab1fd8005d435075fd775f06bcecf30c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-20676/matplotlib__matplotlib-20676.traj.json",
+    "Size": "104882"
+  },
+  {
+    "ETag": "\"bd4dc869de4aa6704b21725983f8b23a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-20826/matplotlib__matplotlib-20826.traj.json",
+    "Size": "102236"
+  },
+  {
+    "ETag": "\"c59f2792487f6427ce8399d518607e73\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-20859/matplotlib__matplotlib-20859.traj.json",
+    "Size": "44483"
+  },
+  {
+    "ETag": "\"21018ed7201ec228c5be3057bdf69ee8\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-21568/matplotlib__matplotlib-21568.traj.json",
+    "Size": "165751"
+  },
+  {
+    "ETag": "\"e8a442ba7d67aa69ab95c6170a490ba3\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-22719/matplotlib__matplotlib-22719.traj.json",
+    "Size": "76338"
+  },
+  {
+    "ETag": "\"0ab66a0519d7caeaf6dce0a42c009117\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-22865/matplotlib__matplotlib-22865.traj.json",
+    "Size": "77516"
+  },
+  {
+    "ETag": "\"ba72008e69f7fa2ef7b0a98c645c2754\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-22871/matplotlib__matplotlib-22871.traj.json",
+    "Size": "88064"
+  },
+  {
+    "ETag": "\"4e58a1040e267dd4500b95e075d52636\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-23299/matplotlib__matplotlib-23299.traj.json",
+    "Size": "94555"
+  },
+  {
+    "ETag": "\"ae7636611046e7bf35701ea8cb9d890a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-23314/matplotlib__matplotlib-23314.traj.json",
+    "Size": "60782"
+  },
+  {
+    "ETag": "\"3131a25add557fea44e1f46d4f5c9339\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-23412/matplotlib__matplotlib-23412.traj.json",
+    "Size": "100367"
+  },
+  {
+    "ETag": "\"f8db3b9f4c86f8f6109783535b6c681d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-23476/matplotlib__matplotlib-23476.traj.json",
+    "Size": "78994"
+  },
+  {
+    "ETag": "\"ebd2dd201dc69f7c07533d31986878cb\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-24026/matplotlib__matplotlib-24026.traj.json",
+    "Size": "68071"
+  },
+  {
+    "ETag": "\"51b8c74c70234ad3700bc79aedb1aece\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-24149/matplotlib__matplotlib-24149.traj.json",
+    "Size": "79634"
+  },
+  {
+    "ETag": "\"1a1355fb8ed2097079084fabcc91ca4c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-24177/matplotlib__matplotlib-24177.traj.json",
+    "Size": "897624"
+  },
+  {
+    "ETag": "\"54c481e38c0d7099141844c149b50ed5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-24570/matplotlib__matplotlib-24570.traj.json",
+    "Size": "102005"
+  },
+  {
+    "ETag": "\"b5b13356d17d85f009c44404726f4998\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-24627/matplotlib__matplotlib-24627.traj.json",
+    "Size": "66178"
+  },
+  {
+    "ETag": "\"b2ab04b09bab3dfb67bfb5e120cb564c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-24637/matplotlib__matplotlib-24637.traj.json",
+    "Size": "150480"
+  },
+  {
+    "ETag": "\"6d5f392e66ee2c4ceb8577b0d1f9050a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-24870/matplotlib__matplotlib-24870.traj.json",
+    "Size": "89682"
+  },
+  {
+    "ETag": "\"487f52fcfb4a4443b3a9a8b51ebf1ed7\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-24970/matplotlib__matplotlib-24970.traj.json",
+    "Size": "60249"
+  },
+  {
+    "ETag": "\"55311683485e3ac4709ec038aef0fef0\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-25122/matplotlib__matplotlib-25122.traj.json",
+    "Size": "56709"
+  },
+  {
+    "ETag": "\"0f6ef0529b6051cbb32bc9330726ea38\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-25287/matplotlib__matplotlib-25287.traj.json",
+    "Size": "36742"
+  },
+  {
+    "ETag": "\"a0b4d694dd5c7377e9956df619c79ae6\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-25311/matplotlib__matplotlib-25311.traj.json",
+    "Size": "103234"
+  },
+  {
+    "ETag": "\"199711669acc9f6e461fac45b03b2453\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-25332/matplotlib__matplotlib-25332.traj.json",
+    "Size": "72098"
+  },
+  {
+    "ETag": "\"d9d76b8b2f97bc76aec7f4797a671ab6\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-25479/matplotlib__matplotlib-25479.traj.json",
+    "Size": "127816"
+  },
+  {
+    "ETag": "\"4a8047b1547a1f9007ff25eb990ed0fd\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-25775/matplotlib__matplotlib-25775.traj.json",
+    "Size": "293317"
+  },
+  {
+    "ETag": "\"777a6dd324a780b9b026ae57e63e8ad9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-25960/matplotlib__matplotlib-25960.traj.json",
+    "Size": "391039"
+  },
+  {
+    "ETag": "\"f2e370b000d1b0285115a7533b323371\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-26113/matplotlib__matplotlib-26113.traj.json",
+    "Size": "59822"
+  },
+  {
+    "ETag": "\"2234b03b46811e2879725b80fb0984a8\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-26208/matplotlib__matplotlib-26208.traj.json",
+    "Size": "574719"
+  },
+  {
+    "ETag": "\"e205eb6eb875bdff52054b22fcc9c17f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-26291/matplotlib__matplotlib-26291.traj.json",
+    "Size": "66503"
+  },
+  {
+    "ETag": "\"5ab5dc3e0daf84c952a3b0a591731e7d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-26342/matplotlib__matplotlib-26342.traj.json",
+    "Size": "77021"
+  },
+  {
+    "ETag": "\"73054bc43b0d2e1529708fa736f26575\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/matplotlib__matplotlib-26466/matplotlib__matplotlib-26466.traj.json",
+    "Size": "92622"
+  },
+  {
+    "ETag": "\"686257b7cc2bbf1c4906ccbaac33f44b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/mwaskom__seaborn-3069/mwaskom__seaborn-3069.traj.json",
+    "Size": "246752"
+  },
+  {
+    "ETag": "\"c780450c78e72b4a8dcf3b8889fd2b21\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/mwaskom__seaborn-3187/mwaskom__seaborn-3187.traj.json",
+    "Size": "180912"
+  },
+  {
+    "ETag": "\"36df074b4bc067c498c9182b70211719\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pallets__flask-5014/pallets__flask-5014.traj.json",
+    "Size": "47569"
+  },
+  {
+    "ETag": "\"5690c3c09578d365146e189a9cd28d0e-3\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/preds.json",
+    "Size": "24933393"
+  },
+  {
+    "ETag": "\"1a1d154f050b175fb71f0a0ef6ebbfc4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/psf__requests-1142/psf__requests-1142.traj.json",
+    "Size": "1858391"
+  },
+  {
+    "ETag": "\"5094395c8c1d82a3e248d433b322fe15\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/psf__requests-1724/psf__requests-1724.traj.json",
+    "Size": "90915"
+  },
+  {
+    "ETag": "\"678afacaf4c7f00ee06202686380478b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/psf__requests-1766/psf__requests-1766.traj.json",
+    "Size": "38844"
+  },
+  {
+    "ETag": "\"954dbbd7286c2c6df92f37671082f9c3\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/psf__requests-1921/psf__requests-1921.traj.json",
+    "Size": "55354"
+  },
+  {
+    "ETag": "\"510ea7613047b2d94d4ca2cb257d2f74\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/psf__requests-2317/psf__requests-2317.traj.json",
+    "Size": "61356"
+  },
+  {
+    "ETag": "\"ce98188beb47ce43d227857ef7eddec8\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/psf__requests-2931/psf__requests-2931.traj.json",
+    "Size": "57483"
+  },
+  {
+    "ETag": "\"3c5c4c028839fac4f6bac87b587fc433\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/psf__requests-5414/psf__requests-5414.traj.json",
+    "Size": "158656"
+  },
+  {
+    "ETag": "\"ee90c22a59d9a911fc7a0f317a0fc3a3\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/psf__requests-6028/psf__requests-6028.traj.json",
+    "Size": "150167"
+  },
+  {
+    "ETag": "\"a59c033b6b5f89fa511aea5e99483bc1\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-2905/pydata__xarray-2905.traj.json",
+    "Size": "75111"
+  },
+  {
+    "ETag": "\"45993d4f1ba2d896055da051f66291bf\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-3095/pydata__xarray-3095.traj.json",
+    "Size": "94942"
+  },
+  {
+    "ETag": "\"8b0dd4fab5d70a7d31bb66087797d65b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-3151/pydata__xarray-3151.traj.json",
+    "Size": "70423"
+  },
+  {
+    "ETag": "\"baf631c8a0be6d3ea6f7090e527ec95d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-3305/pydata__xarray-3305.traj.json",
+    "Size": "70723"
+  },
+  {
+    "ETag": "\"d552e1a424f2b563bb39354f9463627c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-3677/pydata__xarray-3677.traj.json",
+    "Size": "64330"
+  },
+  {
+    "ETag": "\"b73bd32cb787ba03e1d97d3e14ead39e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-3993/pydata__xarray-3993.traj.json",
+    "Size": "55577"
+  },
+  {
+    "ETag": "\"044b495b7836fdce01d9a98c59a92e82\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-4075/pydata__xarray-4075.traj.json",
+    "Size": "80350"
+  },
+  {
+    "ETag": "\"1b1c41a16b52fcaa5c93ec295b7cfd04\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-4094/pydata__xarray-4094.traj.json",
+    "Size": "111059"
+  },
+  {
+    "ETag": "\"005e1b7fc0c1b8db6ad70ce0d81a7558\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-4356/pydata__xarray-4356.traj.json",
+    "Size": "91107"
+  },
+  {
+    "ETag": "\"daf440be0139b6750d7d00f4eca67a48\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-4629/pydata__xarray-4629.traj.json",
+    "Size": "38611"
+  },
+  {
+    "ETag": "\"4d614999edb213e144528b89e95e8c60\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-4687/pydata__xarray-4687.traj.json",
+    "Size": "119205"
+  },
+  {
+    "ETag": "\"7efa1b2f90bfd5dd25910ba920e596db\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-4695/pydata__xarray-4695.traj.json",
+    "Size": "74349"
+  },
+  {
+    "ETag": "\"461ac4241c51f2be0da4bff14d08414e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-4966/pydata__xarray-4966.traj.json",
+    "Size": "69855"
+  },
+  {
+    "ETag": "\"36b237ec529c5fe846d3a87ddd9b7191\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-6461/pydata__xarray-6461.traj.json",
+    "Size": "58776"
+  },
+  {
+    "ETag": "\"7ab51314afa4d8d58f8428b818277144\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-6599/pydata__xarray-6599.traj.json",
+    "Size": "137404"
+  },
+  {
+    "ETag": "\"6b0fd23e0a9a4eef8ce75cc44e30e44d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-6721/pydata__xarray-6721.traj.json",
+    "Size": "111881"
+  },
+  {
+    "ETag": "\"44d515e9df71e34f3c0569683333dd49\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-6744/pydata__xarray-6744.traj.json",
+    "Size": "105726"
+  },
+  {
+    "ETag": "\"770ebf12056c465dfea75222f6ec1d78\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-6938/pydata__xarray-6938.traj.json",
+    "Size": "59764"
+  },
+  {
+    "ETag": "\"97b6a9e7a920e7030f562be27defe4e8\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-6992/pydata__xarray-6992.traj.json",
+    "Size": "32817"
+  },
+  {
+    "ETag": "\"a25814af03e6ba6a3c7b2f268d36ddd4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-7229/pydata__xarray-7229.traj.json",
+    "Size": "91242"
+  },
+  {
+    "ETag": "\"4f80006424a4bffe705149824c82de9a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-7233/pydata__xarray-7233.traj.json",
+    "Size": "67993"
+  },
+  {
+    "ETag": "\"55346d9a35429e6dffc6f3d6d266f08d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pydata__xarray-7393/pydata__xarray-7393.traj.json",
+    "Size": "199693"
+  },
+  {
+    "ETag": "\"9945b257d247da154f234ff07d60ea5d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pylint-dev__pylint-4551/pylint-dev__pylint-4551.traj.json",
+    "Size": "141597"
+  },
+  {
+    "ETag": "\"a5958c06f6c343462464ade7266d3904\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pylint-dev__pylint-4604/pylint-dev__pylint-4604.traj.json",
+    "Size": "268387"
+  },
+  {
+    "ETag": "\"b9a2066aedda47785f222db90fc29558\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pylint-dev__pylint-4661/pylint-dev__pylint-4661.traj.json",
+    "Size": "41293"
+  },
+  {
+    "ETag": "\"7a5f8d97ace2db02dc85e69f4f05a564\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pylint-dev__pylint-4970/pylint-dev__pylint-4970.traj.json",
+    "Size": "59295"
+  },
+  {
+    "ETag": "\"72c7d4372db8907bbf7486193a025b1b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pylint-dev__pylint-6386/pylint-dev__pylint-6386.traj.json",
+    "Size": "36812"
+  },
+  {
+    "ETag": "\"e7d476ea50f550ef6c43bc6c950d5199\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pylint-dev__pylint-6528/pylint-dev__pylint-6528.traj.json",
+    "Size": "248329"
+  },
+  {
+    "ETag": "\"f455d0b3c6b347e1dace9a7dab223a61\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pylint-dev__pylint-6903/pylint-dev__pylint-6903.traj.json",
+    "Size": "56038"
+  },
+  {
+    "ETag": "\"8ac9cb027c864238ab81d1464b687d85\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pylint-dev__pylint-7080/pylint-dev__pylint-7080.traj.json",
+    "Size": "231031"
+  },
+  {
+    "ETag": "\"f07aca21dd6dbe51fc9c9745fe08a096\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pylint-dev__pylint-7277/pylint-dev__pylint-7277.traj.json",
+    "Size": "66572"
+  },
+  {
+    "ETag": "\"246edab5db56de8e708d77213347eab5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pylint-dev__pylint-8898/pylint-dev__pylint-8898.traj.json",
+    "Size": "104294"
+  },
+  {
+    "ETag": "\"abec9e0cf45797ec638b61b843df78ad\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-10051/pytest-dev__pytest-10051.traj.json",
+    "Size": "91134"
+  },
+  {
+    "ETag": "\"a024d606445668d252eaa17a21194f2b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-10081/pytest-dev__pytest-10081.traj.json",
+    "Size": "61603"
+  },
+  {
+    "ETag": "\"f8b45d7a35ab288dba8a6d715c17ab18\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-10356/pytest-dev__pytest-10356.traj.json",
+    "Size": "98034"
+  },
+  {
+    "ETag": "\"aeb133aef9553fbac6de826684323b15\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-5262/pytest-dev__pytest-5262.traj.json",
+    "Size": "70864"
+  },
+  {
+    "ETag": "\"c85e1f3ca3b0d3e95d233c5831ef8d10\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-5631/pytest-dev__pytest-5631.traj.json",
+    "Size": "81354"
+  },
+  {
+    "ETag": "\"c90171b27598b21178342caa36641f0f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-5787/pytest-dev__pytest-5787.traj.json",
+    "Size": "172293"
+  },
+  {
+    "ETag": "\"25b7b3bed65db3fe8c4d79c70aefc034\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-5809/pytest-dev__pytest-5809.traj.json",
+    "Size": "26399"
+  },
+  {
+    "ETag": "\"39a06c21041e59554f6f47fc6198264c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-5840/pytest-dev__pytest-5840.traj.json",
+    "Size": "132004"
+  },
+  {
+    "ETag": "\"b9eb437223a153c740dfe31679947bcc\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-6197/pytest-dev__pytest-6197.traj.json",
+    "Size": "109962"
+  },
+  {
+    "ETag": "\"12c114e4e12c267b1a5c12c73540ec17\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-6202/pytest-dev__pytest-6202.traj.json",
+    "Size": "27933"
+  },
+  {
+    "ETag": "\"b795cd814152e2f4029d2118c13e673c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-7205/pytest-dev__pytest-7205.traj.json",
+    "Size": "49298"
+  },
+  {
+    "ETag": "\"baf97988998575d92052038f03755160\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-7236/pytest-dev__pytest-7236.traj.json",
+    "Size": "61988"
+  },
+  {
+    "ETag": "\"b2f3326bb068ef2a6bee0e069dd4f606\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-7324/pytest-dev__pytest-7324.traj.json",
+    "Size": "49486"
+  },
+  {
+    "ETag": "\"373207d411b0ad95b0f278713347c235\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-7432/pytest-dev__pytest-7432.traj.json",
+    "Size": "53088"
+  },
+  {
+    "ETag": "\"ddd92bd73567d0a1117243101167b44b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-7490/pytest-dev__pytest-7490.traj.json",
+    "Size": "94302"
+  },
+  {
+    "ETag": "\"0b28f2c30b6e0d79f1a9070d65a17731\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-7521/pytest-dev__pytest-7521.traj.json",
+    "Size": "72625"
+  },
+  {
+    "ETag": "\"9534564fdc4d8a40f2741657d5342b1d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-7571/pytest-dev__pytest-7571.traj.json",
+    "Size": "79758"
+  },
+  {
+    "ETag": "\"e566ac0a4037d56fc9fcdc1e8e83ea09\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-7982/pytest-dev__pytest-7982.traj.json",
+    "Size": "34413"
+  },
+  {
+    "ETag": "\"1a0d3eb32dea1b47495cbf14319d12aa\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/pytest-dev__pytest-8399/pytest-dev__pytest-8399.traj.json",
+    "Size": "59934"
+  },
+  {
+    "ETag": "\"88fbd2224daba5bf2f92f7c52c307079\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sb-cli-reports/swe-bench_verified__test__micro-sonnet4-v3-1.json",
+    "Size": "17856"
+  },
+  {
+    "ETag": "\"80b9a5fab740f00b9ae3d8e4fe92ae1f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sb-cli-reports/swe-bench_verified__test__micro-sonnet4-v3-2.json",
+    "Size": "50606"
+  },
+  {
+    "ETag": "\"9bfd68472f3b4ae3216a4ab3e46c7104\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sb-cli-reports/swe-bench_verified__test__micro-sonnet4-v3-3.json",
+    "Size": "50606"
+  },
+  {
+    "ETag": "\"c689b967307f2073ec4594333c9d1423\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-10297/scikit-learn__scikit-learn-10297.traj.json",
+    "Size": "81829"
+  },
+  {
+    "ETag": "\"f3ceffef4b072a4d0fb33fd71b1037a7\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-10844/scikit-learn__scikit-learn-10844.traj.json",
+    "Size": "66036"
+  },
+  {
+    "ETag": "\"229eb0fb12a77964ceb5a42acc5bdcf0\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-10908/scikit-learn__scikit-learn-10908.traj.json",
+    "Size": "78489"
+  },
+  {
+    "ETag": "\"a9f28c66472274852fb7de8e2763bf56\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-11310/scikit-learn__scikit-learn-11310.traj.json",
+    "Size": "72596"
+  },
+  {
+    "ETag": "\"33e58d1bb6eaebbe2b65b469bb20e01e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-11578/scikit-learn__scikit-learn-11578.traj.json",
+    "Size": "77410"
+  },
+  {
+    "ETag": "\"a7d8941be96e5326edc136fc544e95fe\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-12585/scikit-learn__scikit-learn-12585.traj.json",
+    "Size": "66265"
+  },
+  {
+    "ETag": "\"446e32ac0cefb2e7eeed94e2414013c0\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-12682/scikit-learn__scikit-learn-12682.traj.json",
+    "Size": "117220"
+  },
+  {
+    "ETag": "\"6d72dd467783f4464abde070e256409d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-12973/scikit-learn__scikit-learn-12973.traj.json",
+    "Size": "80546"
+  },
+  {
+    "ETag": "\"b17aee98a93b5740df2d260b6b3ade86\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-13124/scikit-learn__scikit-learn-13124.traj.json",
+    "Size": "316397"
+  },
+  {
+    "ETag": "\"072136e661030736a0926ad1b3fa612c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-13135/scikit-learn__scikit-learn-13135.traj.json",
+    "Size": "89132"
+  },
+  {
+    "ETag": "\"f7c556f591abaf76124357bef69d5846\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-13142/scikit-learn__scikit-learn-13142.traj.json",
+    "Size": "93308"
+  },
+  {
+    "ETag": "\"8a63ffe24004238232b924df689cd7c6\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-13328/scikit-learn__scikit-learn-13328.traj.json",
+    "Size": "54186"
+  },
+  {
+    "ETag": "\"5515b3b57957fc114ee6f88c66b50fec\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-13439/scikit-learn__scikit-learn-13439.traj.json",
+    "Size": "62599"
+  },
+  {
+    "ETag": "\"922334018324ea123e5e2d9b8134e310\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-13496/scikit-learn__scikit-learn-13496.traj.json",
+    "Size": "115659"
+  },
+  {
+    "ETag": "\"ad4db38c085ea1b09bb365eaafe8fd33\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-13779/scikit-learn__scikit-learn-13779.traj.json",
+    "Size": "73704"
+  },
+  {
+    "ETag": "\"b1b8684eeb07c93bb8b9d6eae0923326\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-14053/scikit-learn__scikit-learn-14053.traj.json",
+    "Size": "69114"
+  },
+  {
+    "ETag": "\"399beb55a4c80c49edd27d601b4a86f4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-14087/scikit-learn__scikit-learn-14087.traj.json",
+    "Size": "97324"
+  },
+  {
+    "ETag": "\"29530a17a67afc3ff1f52e9d9c21683a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-14141/scikit-learn__scikit-learn-14141.traj.json",
+    "Size": "21417"
+  },
+  {
+    "ETag": "\"583906a493c29eedec0c9ea625fd1adf\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-14496/scikit-learn__scikit-learn-14496.traj.json",
+    "Size": "57343"
+  },
+  {
+    "ETag": "\"1249abea5e5565006fdeffe334930291\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-14629/scikit-learn__scikit-learn-14629.traj.json",
+    "Size": "97409"
+  },
+  {
+    "ETag": "\"d532a25f50861d69672ec4931acf278d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-14710/scikit-learn__scikit-learn-14710.traj.json",
+    "Size": "60291"
+  },
+  {
+    "ETag": "\"0201fc0cb84d8aab62e13fc0f4b12b5d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-14894/scikit-learn__scikit-learn-14894.traj.json",
+    "Size": "168068"
+  },
+  {
+    "ETag": "\"ccfe0cb797818e01cb3caa95fc50e521\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-14983/scikit-learn__scikit-learn-14983.traj.json",
+    "Size": "89191"
+  },
+  {
+    "ETag": "\"71ae0923293f4bc275bc82f77f2ed44a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-15100/scikit-learn__scikit-learn-15100.traj.json",
+    "Size": "67106"
+  },
+  {
+    "ETag": "\"c720c3a44b5c85807f6146783b47032a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-25102/scikit-learn__scikit-learn-25102.traj.json",
+    "Size": "90840"
+  },
+  {
+    "ETag": "\"f832542d113aa7be79136dc8ca425ece\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-25232/scikit-learn__scikit-learn-25232.traj.json",
+    "Size": "119346"
+  },
+  {
+    "ETag": "\"6b96b39f174fae67985b492f350cba65\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-25747/scikit-learn__scikit-learn-25747.traj.json",
+    "Size": "70723"
+  },
+  {
+    "ETag": "\"4713e37f7a6a4d70238cdd889a62a985\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-25931/scikit-learn__scikit-learn-25931.traj.json",
+    "Size": "79289"
+  },
+  {
+    "ETag": "\"716abbff3d2ca3673549259676cb61b5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-25973/scikit-learn__scikit-learn-25973.traj.json",
+    "Size": "154904"
+  },
+  {
+    "ETag": "\"d529230dd5b88408edbb5c25b885f909\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-26194/scikit-learn__scikit-learn-26194.traj.json",
+    "Size": "116351"
+  },
+  {
+    "ETag": "\"a59735c891306f3edd5bc9f0850c5c7e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-26323/scikit-learn__scikit-learn-26323.traj.json",
+    "Size": "74995"
+  },
+  {
+    "ETag": "\"4da4d7be2842a90abe5562a5ee781ee6\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/scikit-learn__scikit-learn-9288/scikit-learn__scikit-learn-9288.traj.json",
+    "Size": "88555"
+  },
+  {
+    "ETag": "\"c01b944fb575798fb0259b83cb14729f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-10323/sphinx-doc__sphinx-10323.traj.json",
+    "Size": "71548"
+  },
+  {
+    "ETag": "\"8d2b1a05fe47f6b7fe7e2f6d9c7cb7ba\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-10435/sphinx-doc__sphinx-10435.traj.json",
+    "Size": "71953"
+  },
+  {
+    "ETag": "\"aa0860ef65daf14076f085a0834ee4f9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-10449/sphinx-doc__sphinx-10449.traj.json",
+    "Size": "1394576"
+  },
+  {
+    "ETag": "\"4ae06a90721fc58eed2c7ffc1693c60e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-10466/sphinx-doc__sphinx-10466.traj.json",
+    "Size": "52602"
+  },
+  {
+    "ETag": "\"197bde3a20c05f3ccb5e626cf5e98bdd\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-10614/sphinx-doc__sphinx-10614.traj.json",
+    "Size": "49989"
+  },
+  {
+    "ETag": "\"0efddbe8704935334643a9afa4f1c021\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-10673/sphinx-doc__sphinx-10673.traj.json",
+    "Size": "117143"
+  },
+  {
+    "ETag": "\"a514b35bfe591c05db55dcaf2a92ee93\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-11445/sphinx-doc__sphinx-11445.traj.json",
+    "Size": "281937"
+  },
+  {
+    "ETag": "\"fd327575915b8a0310213c54dd2c3b64-4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-11510/sphinx-doc__sphinx-11510.traj.json",
+    "Size": "25204722"
+  },
+  {
+    "ETag": "\"c7d9f8b3fc12daa5896dd0d48a50f300\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-7440/sphinx-doc__sphinx-7440.traj.json",
+    "Size": "82332"
+  },
+  {
+    "ETag": "\"49a0450185bfaa1b47710c51db140034\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-7454/sphinx-doc__sphinx-7454.traj.json",
+    "Size": "134773"
+  },
+  {
+    "ETag": "\"79387e005e09eadab6c1185f939d83e4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-7462/sphinx-doc__sphinx-7462.traj.json",
+    "Size": "49565"
+  },
+  {
+    "ETag": "\"ef428d48f88b6aea50cc29329f3d99e9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-7590/sphinx-doc__sphinx-7590.traj.json",
+    "Size": "133964"
+  },
+  {
+    "ETag": "\"0c9a2f15311b63726de4bd08bc6bd32c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-7748/sphinx-doc__sphinx-7748.traj.json",
+    "Size": "259739"
+  },
+  {
+    "ETag": "\"22fdc1e24f4a93049837ccd226b5be74\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-7757/sphinx-doc__sphinx-7757.traj.json",
+    "Size": "130776"
+  },
+  {
+    "ETag": "\"c0b8ae44700e03cfedc7f48aed3db578\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-7889/sphinx-doc__sphinx-7889.traj.json",
+    "Size": "42905"
+  },
+  {
+    "ETag": "\"e33d3e38bbb8261b35af82c396ce7838\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-7910/sphinx-doc__sphinx-7910.traj.json",
+    "Size": "155041"
+  },
+  {
+    "ETag": "\"2123f380cef651c0f1d52dd4ecc783af\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-7985/sphinx-doc__sphinx-7985.traj.json",
+    "Size": "865138"
+  },
+  {
+    "ETag": "\"a129b723bc0f0db58b54930641c639bf\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8035/sphinx-doc__sphinx-8035.traj.json",
+    "Size": "133154"
+  },
+  {
+    "ETag": "\"b98f925e3816f409c2115c50d560e3b4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8056/sphinx-doc__sphinx-8056.traj.json",
+    "Size": "191928"
+  },
+  {
+    "ETag": "\"3653947c9364ba3fd30a551ef94fbece\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8120/sphinx-doc__sphinx-8120.traj.json",
+    "Size": "62885"
+  },
+  {
+    "ETag": "\"5994e36b38ec6ab29a5791b4acda94fa\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8265/sphinx-doc__sphinx-8265.traj.json",
+    "Size": "51839"
+  },
+  {
+    "ETag": "\"586ccb228082d9d449ee8da288c0414a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8269/sphinx-doc__sphinx-8269.traj.json",
+    "Size": "64092"
+  },
+  {
+    "ETag": "\"e36583244f010b04bd56b1c09b791cb4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8459/sphinx-doc__sphinx-8459.traj.json",
+    "Size": "126635"
+  },
+  {
+    "ETag": "\"6776d246f1b61ab8aadd968d7302ebb4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8475/sphinx-doc__sphinx-8475.traj.json",
+    "Size": "64500"
+  },
+  {
+    "ETag": "\"f15eab5714312c07fde1aab28e54829e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8548/sphinx-doc__sphinx-8548.traj.json",
+    "Size": "325307"
+  },
+  {
+    "ETag": "\"8ce7d8bb57745f8bfdc50827b1693d98\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8551/sphinx-doc__sphinx-8551.traj.json",
+    "Size": "170804"
+  },
+  {
+    "ETag": "\"2e7a0a2b5dc85babbe52599cffcfb366\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8593/sphinx-doc__sphinx-8593.traj.json",
+    "Size": "324222"
+  },
+  {
+    "ETag": "\"62c4b9a02cb9e329722337fdde50a8fc\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8595/sphinx-doc__sphinx-8595.traj.json",
+    "Size": "95770"
+  },
+  {
+    "ETag": "\"666c9649c503ed6fa7d19806441cf9bd\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8621/sphinx-doc__sphinx-8621.traj.json",
+    "Size": "115290"
+  },
+  {
+    "ETag": "\"bd8c4e3e72e975d23ec3fb1b91c3a9f5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8638/sphinx-doc__sphinx-8638.traj.json",
+    "Size": "254722"
+  },
+  {
+    "ETag": "\"6c5604e2f7bec8058cd46a8890c90f23\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-8721/sphinx-doc__sphinx-8721.traj.json",
+    "Size": "48729"
+  },
+  {
+    "ETag": "\"0de75fb50f0eacb1c93e27c189f5c57a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9229/sphinx-doc__sphinx-9229.traj.json",
+    "Size": "189463"
+  },
+  {
+    "ETag": "\"ee7fa682b3f835e04078b96ff1a286d3\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9230/sphinx-doc__sphinx-9230.traj.json",
+    "Size": "1362278"
+  },
+  {
+    "ETag": "\"ad761e030000e4b3d27e97abc392052e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9258/sphinx-doc__sphinx-9258.traj.json",
+    "Size": "113584"
+  },
+  {
+    "ETag": "\"1ef9cf497fb21d8f6de449b3b777f860\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9281/sphinx-doc__sphinx-9281.traj.json",
+    "Size": "55548"
+  },
+  {
+    "ETag": "\"44aa81828bad0443d068ef7022e1f6e9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9320/sphinx-doc__sphinx-9320.traj.json",
+    "Size": "67510"
+  },
+  {
+    "ETag": "\"d2bf823fa6a56819b5c0e8f0d389f852\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9367/sphinx-doc__sphinx-9367.traj.json",
+    "Size": "57895"
+  },
+  {
+    "ETag": "\"070106bf7abda914d051e8b445ca789d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9461/sphinx-doc__sphinx-9461.traj.json",
+    "Size": "129499"
+  },
+  {
+    "ETag": "\"ba2a88bd4c15ab94a54320dd7b7c4a69\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9591/sphinx-doc__sphinx-9591.traj.json",
+    "Size": "129530"
+  },
+  {
+    "ETag": "\"cd1e93fc4612339b6fe75e527204fea1\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9602/sphinx-doc__sphinx-9602.traj.json",
+    "Size": "242925"
+  },
+  {
+    "ETag": "\"f3222f11360c0f1bf8f2130ae1104d87\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9658/sphinx-doc__sphinx-9658.traj.json",
+    "Size": "84589"
+  },
+  {
+    "ETag": "\"da8b5dc2c4137ea33d4d316f15d71aac\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9673/sphinx-doc__sphinx-9673.traj.json",
+    "Size": "111800"
+  },
+  {
+    "ETag": "\"ec9739e8430a771a97381e3800d05da6\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9698/sphinx-doc__sphinx-9698.traj.json",
+    "Size": "120787"
+  },
+  {
+    "ETag": "\"c19fef510fc6668a854e82b0a74c23df\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sphinx-doc__sphinx-9711/sphinx-doc__sphinx-9711.traj.json",
+    "Size": "62508"
+  },
+  {
+    "ETag": "\"126d7531b73b8bfc12bc4c8f97ab4314\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-11618/sympy__sympy-11618.traj.json",
+    "Size": "53232"
+  },
+  {
+    "ETag": "\"375924546592d0a854221b080675dcb9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-12096/sympy__sympy-12096.traj.json",
+    "Size": "47267"
+  },
+  {
+    "ETag": "\"82ba6019bbd53b154034ac15f288b4c1\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-12419/sympy__sympy-12419.traj.json",
+    "Size": "115583"
+  },
+  {
+    "ETag": "\"b50667d9918569e4522294b329afa8c6\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-12481/sympy__sympy-12481.traj.json",
+    "Size": "240304"
+  },
+  {
+    "ETag": "\"ab37f865181887f3d582075a865d10e6\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-12489/sympy__sympy-12489.traj.json",
+    "Size": "159951"
+  },
+  {
+    "ETag": "\"df713e1c00f74993d686e4f71f9ad110\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13031/sympy__sympy-13031.traj.json",
+    "Size": "81510"
+  },
+  {
+    "ETag": "\"770f33e5f4e31abeebc74d0e19020d79\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13091/sympy__sympy-13091.traj.json",
+    "Size": "95934"
+  },
+  {
+    "ETag": "\"a23d4f8321af17a8de419cbe8ed1042a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13372/sympy__sympy-13372.traj.json",
+    "Size": "46166"
+  },
+  {
+    "ETag": "\"775fa180430942be60a8f5128f2ca59b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13480/sympy__sympy-13480.traj.json",
+    "Size": "26114"
+  },
+  {
+    "ETag": "\"6039aad4bc37cb70e16ecfbb0b5914a1\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13551/sympy__sympy-13551.traj.json",
+    "Size": "125371"
+  },
+  {
+    "ETag": "\"bd0be45776a9990a2ffc03e3549e1940\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13615/sympy__sympy-13615.traj.json",
+    "Size": "77644"
+  },
+  {
+    "ETag": "\"92047cee41740ed61f6fe17000026eea\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13647/sympy__sympy-13647.traj.json",
+    "Size": "66381"
+  },
+  {
+    "ETag": "\"14f934101835c8f7c00c2741f6031d5a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13757/sympy__sympy-13757.traj.json",
+    "Size": "100131"
+  },
+  {
+    "ETag": "\"68469e75e49e1c334ce7d7b230c11177\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13798/sympy__sympy-13798.traj.json",
+    "Size": "80862"
+  },
+  {
+    "ETag": "\"8979266813fb968b11fd59ee2e13cc31\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13852/sympy__sympy-13852.traj.json",
+    "Size": "81289"
+  },
+  {
+    "ETag": "\"5d39899c56d50dd9547906bdec2c4e3d\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13877/sympy__sympy-13877.traj.json",
+    "Size": "99465"
+  },
+  {
+    "ETag": "\"cce28c0e1e47a825b2d9cf942b3fe38a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13878/sympy__sympy-13878.traj.json",
+    "Size": "140456"
+  },
+  {
+    "ETag": "\"fa87c67eecb69f3244e5e9a43bf9e6e7\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-13974/sympy__sympy-13974.traj.json",
+    "Size": "128934"
+  },
+  {
+    "ETag": "\"a661bcfc023c2891c7f6a5cf42f5620e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-14248/sympy__sympy-14248.traj.json",
+    "Size": "529073"
+  },
+  {
+    "ETag": "\"b478db431acf9b3ea013fa5b28584243\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-14531/sympy__sympy-14531.traj.json",
+    "Size": "81256"
+  },
+  {
+    "ETag": "\"eb4dc13abb267de1ccbc867aa0119c84\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-14711/sympy__sympy-14711.traj.json",
+    "Size": "58226"
+  },
+  {
+    "ETag": "\"da7e48e8f2184a835022e04ae0145713\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-14976/sympy__sympy-14976.traj.json",
+    "Size": "70811"
+  },
+  {
+    "ETag": "\"194019c5de47a9cbb05a7669bf11dfb4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-15017/sympy__sympy-15017.traj.json",
+    "Size": "54975"
+  },
+  {
+    "ETag": "\"8c969b2c41ec28a333e77eadccdba52c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-15345/sympy__sympy-15345.traj.json",
+    "Size": "52840"
+  },
+  {
+    "ETag": "\"f008aff24a39f47170ac78b015f5e1a4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-15349/sympy__sympy-15349.traj.json",
+    "Size": "62510"
+  },
+  {
+    "ETag": "\"8de85f99e31096ee9b9f3cff6935d2d5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-15599/sympy__sympy-15599.traj.json",
+    "Size": "80023"
+  },
+  {
+    "ETag": "\"9a1af346618fa4e08979547a56d666e8\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-15809/sympy__sympy-15809.traj.json",
+    "Size": "51199"
+  },
+  {
+    "ETag": "\"bda4328f82810c1114e2d8487a5d0b7c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-15875/sympy__sympy-15875.traj.json",
+    "Size": "156814"
+  },
+  {
+    "ETag": "\"f16d7f2ac084945a64a79def5a9dba26\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-15976/sympy__sympy-15976.traj.json",
+    "Size": "148086"
+  },
+  {
+    "ETag": "\"af1782acedd89fd7f011eeef00709550\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-16450/sympy__sympy-16450.traj.json",
+    "Size": "57354"
+  },
+  {
+    "ETag": "\"3f01b878883dd784a513857ffd086e9a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-16597/sympy__sympy-16597.traj.json",
+    "Size": "84261"
+  },
+  {
+    "ETag": "\"13a2e52d0dbd9bec4f0a309360ca0487\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-16766/sympy__sympy-16766.traj.json",
+    "Size": "51348"
+  },
+  {
+    "ETag": "\"9ed6d0d2b552f610564d20f72a9ddf62\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-16792/sympy__sympy-16792.traj.json",
+    "Size": "71794"
+  },
+  {
+    "ETag": "\"699fe4687c4ab822bd5d02ec006281bf\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-16886/sympy__sympy-16886.traj.json",
+    "Size": "22350"
+  },
+  {
+    "ETag": "\"1589fe6be019e4f35b4ee31ed05de8fb\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-17139/sympy__sympy-17139.traj.json",
+    "Size": "191563"
+  },
+  {
+    "ETag": "\"7227d79607ab6e8bacd76468e54ee861\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-17318/sympy__sympy-17318.traj.json",
+    "Size": "51495"
+  },
+  {
+    "ETag": "\"57f369e7dc5c3639b32b0ed9786d59b9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-17630/sympy__sympy-17630.traj.json",
+    "Size": "72326"
+  },
+  {
+    "ETag": "\"6020f6b27815771d8c0652d98eb5b695\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-17655/sympy__sympy-17655.traj.json",
+    "Size": "89348"
+  },
+  {
+    "ETag": "\"0d99bb0fe13e4831e014491b66745ec7\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-18189/sympy__sympy-18189.traj.json",
+    "Size": "50924"
+  },
+  {
+    "ETag": "\"0c320f573c796a33c28f39ec00435217\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-18199/sympy__sympy-18199.traj.json",
+    "Size": "66664"
+  },
+  {
+    "ETag": "\"a1592657639a4e47d964495a481f6404\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-18211/sympy__sympy-18211.traj.json",
+    "Size": "81396"
+  },
+  {
+    "ETag": "\"d04fea9a9cd3854674d7bbd2e3e690d2\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-18698/sympy__sympy-18698.traj.json",
+    "Size": "116275"
+  },
+  {
+    "ETag": "\"21c650be7918ef21399954c066ed0c0b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-18763/sympy__sympy-18763.traj.json",
+    "Size": "91301"
+  },
+  {
+    "ETag": "\"2ba8a4b3c8afb17440e8c460a957c044\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-19040/sympy__sympy-19040.traj.json",
+    "Size": "174999"
+  },
+  {
+    "ETag": "\"85cd782dfaed541c767984cfa0608f28\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-19346/sympy__sympy-19346.traj.json",
+    "Size": "35917"
+  },
+  {
+    "ETag": "\"3aacaaa593c4b97056930c1b91fa63f9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-19495/sympy__sympy-19495.traj.json",
+    "Size": "162029"
+  },
+  {
+    "ETag": "\"89c4c72846d36245e9738b22224bdc99\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-19637/sympy__sympy-19637.traj.json",
+    "Size": "46878"
+  },
+  {
+    "ETag": "\"e1059fc345d909944d58b1f8a0433863\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-19783/sympy__sympy-19783.traj.json",
+    "Size": "74811"
+  },
+  {
+    "ETag": "\"dc6c993dd0874bb7a59702d5b5520cd7\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-19954/sympy__sympy-19954.traj.json",
+    "Size": "55908"
+  },
+  {
+    "ETag": "\"a924c624f8461af44f740b9a05ae2b1b\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-20154/sympy__sympy-20154.traj.json",
+    "Size": "41564"
+  },
+  {
+    "ETag": "\"088d46f639f2296065202847640b1879\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-20428/sympy__sympy-20428.traj.json",
+    "Size": "124861"
+  },
+  {
+    "ETag": "\"6cf537ef9cc81002b04ea3fce24c5815\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-20438/sympy__sympy-20438.traj.json",
+    "Size": "55925"
+  },
+  {
+    "ETag": "\"1e4fd5f43c173f78164fc2cb030a169f\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-20590/sympy__sympy-20590.traj.json",
+    "Size": "56363"
+  },
+  {
+    "ETag": "\"db53cddeab955f82787f982e314636b3\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-20801/sympy__sympy-20801.traj.json",
+    "Size": "44291"
+  },
+  {
+    "ETag": "\"1e2191bd7f05a01abb4047797d3ab6a2\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-20916/sympy__sympy-20916.traj.json",
+    "Size": "212303"
+  },
+  {
+    "ETag": "\"6022c32d12b36ed55d1c9d5b43619f65\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-21379/sympy__sympy-21379.traj.json",
+    "Size": "109781"
+  },
+  {
+    "ETag": "\"1b76a4ef8af5317413aeab406eecc545\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-21596/sympy__sympy-21596.traj.json",
+    "Size": "108741"
+  },
+  {
+    "ETag": "\"97ef434c1d26fb812affdbfbdd49a3ba\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-21612/sympy__sympy-21612.traj.json",
+    "Size": "627108"
+  },
+  {
+    "ETag": "\"483b7beaedc849928b95e56d94bd8276\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-21847/sympy__sympy-21847.traj.json",
+    "Size": "96469"
+  },
+  {
+    "ETag": "\"3b92cfb574791d096e8a98ade735905e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-21930/sympy__sympy-21930.traj.json",
+    "Size": "53351"
+  },
+  {
+    "ETag": "\"429c087d1da9047ae2b9ae23b18bf820\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-22080/sympy__sympy-22080.traj.json",
+    "Size": "92584"
+  },
+  {
+    "ETag": "\"268d7098a4cb449a2bc44e8af5fa9224\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-22456/sympy__sympy-22456.traj.json",
+    "Size": "45469"
+  },
+  {
+    "ETag": "\"e72fb055790353200dac8a7295fef49c\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-22714/sympy__sympy-22714.traj.json",
+    "Size": "57680"
+  },
+  {
+    "ETag": "\"91d00daa7d1a63eff880b3f6bedbf1a9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-22914/sympy__sympy-22914.traj.json",
+    "Size": "41688"
+  },
+  {
+    "ETag": "\"cc691b8a4560a51ecd199d6b686bbc9a\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-23262/sympy__sympy-23262.traj.json",
+    "Size": "102998"
+  },
+  {
+    "ETag": "\"3bb4b8a1e54fbb2de4a32e692222c395\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-23413/sympy__sympy-23413.traj.json",
+    "Size": "107821"
+  },
+  {
+    "ETag": "\"b81a086cdde915bbd709b9253d9233ab\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-23534/sympy__sympy-23534.traj.json",
+    "Size": "55096"
+  },
+  {
+    "ETag": "\"405ceee6d45b655839195a4b9c1c7ecb\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-23824/sympy__sympy-23824.traj.json",
+    "Size": "69187"
+  },
+  {
+    "ETag": "\"7a3dd365445ad91838b3e088e3a5c9e9\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-23950/sympy__sympy-23950.traj.json",
+    "Size": "95439"
+  },
+  {
+    "ETag": "\"00d71bf583d11298742c3b2c723857c5\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-24066/sympy__sympy-24066.traj.json",
+    "Size": "74108"
+  },
+  {
+    "ETag": "\"a43872835ba696f44ec6a82fa57836c4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-24213/sympy__sympy-24213.traj.json",
+    "Size": "73028"
+  },
+  {
+    "ETag": "\"5a18db33a4ff87aeb5fcf82c00316e15\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-24443/sympy__sympy-24443.traj.json",
+    "Size": "121437"
+  },
+  {
+    "ETag": "\"a44d9b08b021b4de2e4502a36832624e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-24539/sympy__sympy-24539.traj.json",
+    "Size": "29582"
+  },
+  {
+    "ETag": "\"da359ecd31b8601539ed476a3be347a4\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-24562/sympy__sympy-24562.traj.json",
+    "Size": "350694"
+  },
+  {
+    "ETag": "\"565139f4c9d758b1eec4fc31e0b9944e\"",
+    "Key": "bash-only/20250726_mini-v1.0.0_claude-sonnet-4-20250514/trajs/sympy__sympy-24661/sympy__sympy-24661.traj.json",
+    "Size": "65691"
+  }
+]

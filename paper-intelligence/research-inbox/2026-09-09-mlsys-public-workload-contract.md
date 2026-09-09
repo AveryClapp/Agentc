@@ -5,6 +5,10 @@ evaluator code, and repository metadata only; no corpus rows, gold shards,
 provider calls, or previous experiment outcomes were opened for selection.
 This note authorizes neither data acquisition nor an experiment.
 
+**Same-day clarification:** the [dated follow-up below](#2026-09-09-follow-up-local-research-versus-redistribution)
+supersedes the blanket local-acquisition concern, not the separate redistribution
+review. The initial finding is preserved here to make that change explicit.
+
 ## Decision
 
 Proceed with a **synthetic-only, dependency-free FinQA adapter and execution
@@ -180,3 +184,69 @@ Research verification: official pages/source inspected; Git ref and file-size/bl
 metadata checked through unauthenticated APIs; evaluator/license raw hashes
 computed. No implementation tests were run by this research task. Open gates are
 tracked in **bd-2r1p**, **bd-tprq**, and **bd-ntst**, not in a parallel task list.
+
+## 2026-09-09 follow-up: local research versus redistribution
+
+Task: **bd-tprq.1**. The initial review above stopped at the repository license
+and README. That was insufficient grounds for blocking ordinary local research
+acquisition: uncertainty about redistribution is not evidence that downloading
+and privately evaluating the authors' published dataset is prohibited.
+
+**New primary evidence.** The original paper's section 8, "Data Access and
+Licensing" (PDF page 9), explicitly identifies the underlying FinTabNet reports
+as CDLA-Permissive data and states that this permits the authors' additional
+annotations and publication. This is a first-party statement about source-data
+rights, not merely a generic MIT badge.
+([FinQA paper, section 8](https://aclanthology.org/2021.emnlp-main.300.pdf#page=9))
+
+There is a precise remaining inconsistency: footnote 6 labels the license
+Permissive but links **Sharing 1.0**, and its cited Publish-section numbering
+matches Sharing. **bd-wjbv** records this; do not silently choose a redistribution
+license. The old [IBM FinTabNet page](https://developer.ibm.com/data/fintabnet/)
+now redirects to the generic Data Asset eXchange, so it did not independently
+resolve the variant during this check.
+([paper footnote 6](https://aclanthology.org/2021.emnlp-main.300.pdf#page=9))
+
+Both variants grant Use in section 2.1. Their definitions expressly encompass
+accessing, copying, studying, analyzing, and evaluating data. Their publication
+conditions differ: Permissive allows another outbound license with the required
+notices; Sharing requires its own agreement. Both distinguish internal use from
+making data available outside the entity, and exempt qualifying computational
+results, which must not contain more than a de minimis portion of source data.
+([CDLA-Permissive 1.0, sections 1–3](https://cdla.dev/permissive-1-0/),
+[CDLA-Sharing 1.0, sections 1–3](https://cdla.dev/sharing-1-0/))
+
+**Recommendation, not a legal guarantee:** a documented assumption relying on
+the authors' official MIT repository release **and** their stated CDLA source
+provenance is sufficient for this project's prospective **local-only research
+download and evaluation**. No FinQA-specific prohibition of that use was found
+in the inspected author sources; the README actively documents research
+training/inference/evaluation. TAT-QA is not needed solely to avoid the earlier
+blanket concern. Preserve the pinned source, hashes, MIT copyright/permission
+notice, paper citation, and CDLA provenance in any local acquisition record.
+([pinned MIT license](https://github.com/czyssrs/FinQA/blob/0f16e2867befa6840783e58be38c9efb9229d742/LICENSE),
+[pinned research-use instructions](https://github.com/czyssrs/FinQA/blob/0f16e2867befa6840783e58be38c9efb9229d742/README.md))
+
+Keep public redistribution of copied report text, tables, selected fixtures, or
+response logs separately reviewed for the exact license, notices, and changed-
+file obligations. Do not automatically classify sending report content to an
+external model provider as local-only use; review that sharing arrangement
+separately. Prefer releasing acquisition/selection/scoring code, source hashes,
+IDs, and aggregate results without report excerpts until that scope is resolved.
+Neither the MIT license nor the CDLA texts guarantees every upstream right or
+replaces compliance with applicable law. The remaining uncertainty is specific
+to those rights and sharing conditions, not a discovered private-use ban.
+
+This follow-up examined documentation, paper licensing text, and license terms;
+it downloaded no corpus, inspected no selected evaluation labels, contacted no
+author, and made no provider call. It changes a research recommendation, not
+execution authority, a frozen cohort, or any previous study's status.
+
+**Exposure disclosure:** the PDF extractor also displayed published examples,
+including Figure 1 and Figure 4, while opening the licensing source. These are
+not unseen evaluation inputs. Future enrollment (**bd-lnai**) must exclude the
+known **GRMN/2006** report and identify the other published-example reports by
+matching public questions before any label access. Conservatively inventory all
+paper examples, including appendices, rather than treating unmatched example
+provenance as unexposed. No IDs, thresholds, or new outcomes were selected from
+those examples during this licensing check.

@@ -33,7 +33,7 @@ use crate::exploration::{
     CounterfactualFeedback, CounterfactualLabel, ExplorationCandidate, ExplorationCompletion,
     ExplorationController, ExplorationLease,
 };
-use crate::model_catalog::{ModelCatalog, RequestRequirements, ROUTE_CONTEXT_KEY};
+use crate::model_catalog::{ModelCatalog, ProtectedAttempt, RequestFacts, RequestRequirements, ROUTE_CONTEXT_KEY};
 use crate::plan_guard::PlanGuard;
 use crate::plan_profile::{
     CallSiteVersion, CallSiteVersionSpec, PlanObservationToken, PlanProfile, PlanProfileKey,
@@ -204,6 +204,11 @@ pub fn optimize_profiled_plan(
                 &reference_descriptor.context,
             )
         };
+        // Protected UNKNOWN observations may warm profiles, but this policy
+        // has no primary-promotion transition. Never reach candidate ranking.
+        if ProtectedAttempt::declared(&call) {
+            return fallback();
+        }
         if started.elapsed().as_micros() > max_overhead_us {
             let alternatives = Vec::new();
             let policy = opt.config().selection_policy(now_us);
@@ -366,8 +371,20 @@ pub fn reserve_profiled_exploration(
         let Ok(call) = serde_json::from_str::<Call>(call_json) else {
             return primary_plan_json.to_string();
         };
-        let Some(requirements) = RequestRequirements::from_call(&call) else {
-            return primary_plan_json.to_string();
+        let protected = ProtectedAttempt::declared(&call);
+        let requirements = if protected {
+            let Some(permit) = ProtectedAttempt::from_call(&call, catalog) else {
+                return primary_plan_json.to_string();
+            };
+            permit.facts
+        } else {
+            if RequestRequirements::from_call(&call).is_none() {
+                return primary_plan_json.to_string();
+            }
+            let Some(facts) = RequestFacts::from_call(&call) else {
+                return primary_plan_json.to_string();
+            };
+            facts
         };
         // Text-only completion comparison is the only production comparator
         // currently implemented. Discarded tool calls cannot be scored by it.
@@ -377,11 +394,21 @@ pub fn reserve_profiled_exploration(
         let Ok(Some(reference_context)) = embedded_observation_context(primary_plan_json) else {
             return primary_plan_json.to_string();
         };
+        if protected && describe_plan(catalog, &call, &Plan::PassThrough, opt.divergence_threshold_for_plan(&Plan::PassThrough))
+            .is_none_or(|descriptor| descriptor.context != reference_context)
+        {
+            return primary_plan_json.to_string();
+        }
 
         let mut controller_candidates = Vec::new();
         let mut executable = Vec::new();
         let mut seen = HashSet::new();
-        for plan in opt.candidate_plans(&call, catalog) {
+        let plans = if protected {
+            opt.protected_candidate_plans(&call, catalog)
+        } else {
+            opt.candidate_plans(&call, catalog)
+        };
+        for plan in plans {
             if matches!(plan, Plan::PassThrough | Plan::Cached { .. } | Plan::Parallel { .. }) {
                 continue;
             }
@@ -708,6 +735,9 @@ pub fn guard_and_attach_observation_context(
     divergence_threshold: f64,
     now_us: i64,
 ) -> String {
+    if serde_json::from_str::<Call>(call_json).ok().as_ref().is_some_and(ProtectedAttempt::declared) {
+        return attach_observation_context(catalog, call_json, PASS_THROUGH_JSON, divergence_threshold);
+    }
     let attached = attach_observation_context(
         catalog,
         call_json,
@@ -762,13 +792,22 @@ fn describe_plan(
     plan: &Plan,
     divergence_threshold: f64,
 ) -> Option<ResolvedPlanDescriptor> {
-    let requirements = RequestRequirements::from_call(original_call)?;
+    let protected = if ProtectedAttempt::declared(original_call) {
+        Some(ProtectedAttempt::from_call(original_call, catalog)?)
+    } else {
+        RequestRequirements::from_call(original_call)?;
+        None
+    };
+    let requirements = RequestFacts::from_call(original_call)?;
     let selected_call = selected_call(original_call, plan)?;
     let target = catalog.resolve(
         &requirements.provider_protocol,
         &requirements.provider_namespace,
         &selected_call.model,
     )?;
+    if protected.as_ref().is_some_and(|permit| !permit.permits(selected_call, target)) {
+        return None;
+    }
     let target_model_id = selected_call.model.clone();
     let target_model_version = if selected_call.model == target.model_id {
         target.model_version.clone()
@@ -782,7 +821,13 @@ fn describe_plan(
 
     let prompt_shape_version = prompt_shape_version(original_call, &requirements);
     let tool_schema_version = tool_schema_version(original_call)?;
-    let application_config_version = application_config_version(original_call);
+    let application_config_version = protected.as_ref().map_or_else(
+        || application_config_version(original_call),
+        |permit| format!("protected-application-v1:{}", content_hash(&canonical_json(&serde_json::json!({
+            "application": application_config_version(original_call),
+            "protected_attempt": permit.identity,
+        })))),
+    );
     let call_site_version = CallSiteVersion::from_spec(&CallSiteVersionSpec {
         call_site_id: original_call.call_site_id.clone(),
         prompt_shape_version,
@@ -834,7 +879,14 @@ fn describe_plan(
             }
             .to_string(),
             implementation_version: "1".to_string(),
-            parameters: if has_alternative {
+            parameters: if let Some(permit) = protected {
+                serde_json::json!({
+                    "protected_attempt": permit.identity,
+                    "semantic_validation": if has_alternative {
+                        validation_policy_parameters(divergence_threshold)
+                    } else { serde_json::json!({}) },
+                })
+            } else if has_alternative {
                 validation_policy_parameters(divergence_threshold)
             } else {
                 serde_json::json!({})
@@ -876,7 +928,7 @@ pub fn plan_rules(plan: &Plan) -> Vec<String> {
     plan.rule_names()
 }
 
-fn prompt_shape_version(call: &Call, requirements: &RequestRequirements) -> String {
+fn prompt_shape_version(call: &Call, requirements: &RequestFacts) -> String {
     let roles: Vec<&str> = call
         .messages
         .iter()
@@ -1344,6 +1396,61 @@ mod tests {
             .unwrap();
         assert_eq!(snapshot.calls_in_window, 1);
         assert_eq!(snapshot.active_leases, 1);
+    }
+
+    #[test]
+    fn model_routing_default_threshold_survives_opaque_json_tokens() {
+        let site = "routing-float-roundtrip";
+        let catalog = Arc::new(default_model_catalog().unwrap());
+        let cost_model = Arc::new(CostModel::new());
+        for observed_at_us in 1..=3 {
+            cost_model.observe(CostModelUpdate {
+                call_site_id: site.to_string(), input_tokens: 100, output_tokens: 50,
+                latency_ms: 100.0, cost_usd: 0.01, output_is_structured: false,
+                output_is_short: true, now_us: Some(observed_at_us),
+            });
+        }
+        let budget = Arc::new(Budget::new());
+        let optimizer = Optimizer::with_budget(cost_model.clone(),
+            vec![Box::new(ModelDowngradeRule::from_catalog(catalog.clone(), budget.clone()))],
+            OptimizerConfig::default(), budget);
+        let call_json = serde_json::to_string(&observable_call(site, "public request")).unwrap();
+        let profiles = PlanProfiles::new();
+        let guard = PlanGuard::new();
+        let controller = ExplorationController::new();
+        let mut connection = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&connection).unwrap();
+        let now_us = 2_000_000;
+        let primary = optimize_profiled_plan(&optimizer, Some(&catalog), &profiles,
+            &guard, &call_json, now_us);
+        let planned = reserve_profiled_exploration(&optimizer, Some(&catalog), &profiles,
+            &guard, &controller, &mut connection, &call_json, &primary, now_us);
+        let value: serde_json::Value = serde_json::from_str(&planned).unwrap();
+        let exploration: EmbeddedExplorationContext = serde_json::from_value(
+            value.get(EXPLORATION_CONTEXT_KEY).expect("routing candidate lease").clone()).unwrap();
+        let token = decode_exploration_token(&exploration.lease_token).unwrap();
+        let expected = f64::from(0.03_f32).to_bits();
+        let durable: f64 = connection.query_row("SELECT divergence_threshold FROM execution_plan_exploration",
+            [], |row| row.get(0)).unwrap();
+        let candidate_json = serde_json::to_string(&exploration.candidate_plan).unwrap();
+        let candidate_context = embedded_observation_context(&candidate_json).unwrap().unwrap();
+        for threshold in [durable, token.lease.divergence_threshold,
+            token.context.divergence_threshold, candidate_context.divergence_threshold] {
+            assert_eq!(threshold.to_bits(), expected);
+        }
+        let outcome_json = serde_json::to_string(&outcome(site)).unwrap();
+        // An actual mutation still fails: round-trip correctness does not relax validation.
+        let mut tampered = token.clone();
+        tampered.lease.divergence_threshold = f64::from_bits(expected + 1);
+        assert!(complete_profiled_exploration(&profiles, &controller, &mut connection,
+            &serde_json::to_string(&tampered).unwrap(), &outcome_json, 0.0, now_us + 1).is_err());
+        assert!(complete_profiled_exploration(&profiles, &controller, &mut connection,
+            &exploration.lease_token, &outcome_json, 0.0, now_us + 1).unwrap().is_some());
+        assert!(complete_profiled_exploration(&profiles, &controller, &mut connection,
+            &exploration.lease_token, &outcome_json, 0.0, now_us + 1).unwrap().is_none());
+        let observed = optimize_observe(&cost_model, &PlanProfiles::new(), &candidate_json, &outcome_json).unwrap();
+        let observed: OpaqueObservationToken = serde_json::from_str(&observed).unwrap();
+        assert_eq!(observed.divergence_threshold.unwrap().to_bits(), expected);
     }
 
     #[test]

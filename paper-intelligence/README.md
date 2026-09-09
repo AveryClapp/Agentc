@@ -1,7 +1,7 @@
 ---
 title: Paper Intelligence README
 status: active
-last-updated: 2026-09-04
+last-updated: 2026-09-09
 owner: paper-intelligence
 ---
 
@@ -71,6 +71,9 @@ AgentC is currently strongest as a **guarded, application-side rewrite control p
 
 The best current evidence is:
 
+- The [32-task fixed factorial and matched repeat](results-experiments-and-repro.md) show a model-dependent rewrite opportunity on generated development tasks. The same 32 questions remain 32 clusters, not independent confirmation; fixed Haiku-plus-rules is the strongest aggregate configuration.
+- The [completed protected development study](../bench/repro/openrouter-protected-native-learning-2026-09-06/README.md) records real source-first native profiling and a separate fixed-workflow comparison: source 58/63 versus HR 61/63, with a paired descriptive interval crossing zero. Source remained primary throughout; USD2.400538 includes the pilot and all probes. This is not adaptive routing or admission evidence.
+- The [public HotpotQA follow-up](../bench/repro/openrouter-public-model-sd-2026-09-06/README.md) is terminal **FAILED/UNSCORED** after a timeout. Its labels remain unopened and its full failed-attempt allowance remains held.
 - `RES-001`: `ContextCompress` saves substantial tokens/cost on long-context stress workloads.
 - `RES-002`: `ModelDowngrade` saves substantial dollars on a routing workload.
 - `RES-004`: warmup-corrected `StateDrop` is complete but still semantically caveated.
@@ -84,6 +87,7 @@ The paper is not ready to claim:
 - CacheHit or ParallelBranch as headline contributions;
 - semantic behavior preservation without uncertainty treatment;
 - StateDrop as sound compiler slicing.
+- a native 20-pair profile as a context-fit certificate, admission decision, or proof of task correctness.
 
 ## Promotion Rule
 
@@ -97,4 +101,4 @@ Do not add a new top-level paper-intelligence file unless it will stay active. P
 
 ## Next Work
 
-The highest-value next sequence is concrete: repeat the admission/coverage protocol on a quiet second host, then run the held-out joint routing-plus-rewrite campaign against fixed, route-only, rewrite-only, both ordering controls, current greedy, and best-static policies. The positive joint-policy result is the largest contribution gap. Routing baselines, the 2% risk-controller check, provider-backed admission behavior, and the blind unengineered-workload gate follow.
+The largest contribution gap remains benefit beyond the best fixed plan after charging learning. Protected source-first profiling now has provider-backed development evidence, but primary promotion, adaptive superiority, and public-workload quality remain unproved. A separately designed complete public study, matched static/sequential/joint baselines, and drift/restart damage tests are the scientific requirements; the quiet second-host overhead/coverage check remains open. Closed acquisitions must not be resumed. Beads owns the implementation and experiment sequence.

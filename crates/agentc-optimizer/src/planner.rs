@@ -30,7 +30,7 @@ use crate::budget::Budget;
 use crate::config::OptimizerConfig;
 use crate::cost_model::{CallSiteProfile, CostModel};
 use crate::dag::Call;
-use crate::model_catalog::{ModelCatalog, ModelTarget, RequestRequirements};
+use crate::model_catalog::{ModelCatalog, ModelTarget, ProtectedAttempt, RequestRequirements};
 
 /// Frozen bound from the joint execution-planning contract. Model routing is
 /// an additional target choice and does not consume semantic rewrite depth.
@@ -257,8 +257,21 @@ impl Optimizer {
     /// projections only produce concrete mutations; they never rank the
     /// returned plans.
     pub fn candidate_plans(&self, call: &Call, catalog: &ModelCatalog) -> Vec<Plan> {
+        self.candidate_plans_impl(call, catalog, None)
+    }
+
+    /// A private exploration-only seam: the ordinary enumeration interface
+    /// never admits UNKNOWN, even when this opt-in is present on the request.
+    pub(crate) fn protected_candidate_plans(&self, call: &Call, catalog: &ModelCatalog) -> Vec<Plan> {
+        let Some(permit) = ProtectedAttempt::from_call(call, catalog) else {
+            return vec![Plan::PassThrough];
+        };
+        self.candidate_plans_impl(call, catalog, Some(&permit))
+    }
+
+    fn candidate_plans_impl(&self, call: &Call, catalog: &ModelCatalog, protected: Option<&ProtectedAttempt>) -> Vec<Plan> {
         let reference = || vec![Plan::PassThrough];
-        if !self.config.enabled {
+        if !self.config.enabled || (ProtectedAttempt::declared(call) && protected.is_none()) {
             return reference();
         }
 
@@ -310,10 +323,12 @@ impl Optimizer {
         ));
 
         let requirements = RequestRequirements::from_call(call);
-        let source = requirements.as_ref().and_then(|requirements| {
+        let protocol = protected.map(|permit| (&permit.facts.provider_protocol, &permit.facts.provider_namespace))
+            .or_else(|| requirements.as_ref().map(|requirements| (&requirements.provider_protocol, &requirements.provider_namespace)));
+        let source = protocol.and_then(|(provider_protocol, provider_namespace)| {
             catalog.resolve(
-                &requirements.provider_protocol,
-                &requirements.provider_namespace,
+                provider_protocol,
+                provider_namespace,
                 &call.model,
             )
         });
@@ -330,7 +345,11 @@ impl Optimizer {
             };
             let mut bounded_call = candidate_call.clone();
             RequestRequirements::apply_transformed_input_bound(call, &mut bounded_call);
-            for target in catalog.compatible_targets(&bounded_call) {
+            let targets = protected.map_or_else(
+                || catalog.compatible_targets(&bounded_call),
+                |permit| catalog.protected_targets(&bounded_call, permit),
+            );
+            for target in targets {
                 if target.model_id == source.model_id {
                     continue;
                 }
@@ -341,6 +360,7 @@ impl Optimizer {
                     target,
                     catalog,
                     projected_savings,
+                    protected,
                 ) {
                     plans.push(routed);
                 }
@@ -361,6 +381,11 @@ impl Optimizer {
     /// caught at the FFI boundary in `agentc-profiler`; internally we just
     /// return `PassThrough` on any ambiguous state).
     pub fn plan(&self, call: &Call) -> Plan {
+        // An experiment opt-in is never permission to use the projected or
+        // non-composed primary path. Only protected enumeration consumes it.
+        if ProtectedAttempt::declared(call) {
+            return Plan::PassThrough;
+        }
         // Step 1 — master switch.
         if !self.config.enabled {
             return Plan::PassThrough;
@@ -479,8 +504,12 @@ fn route_semantic_plan(
     target: &ModelTarget,
     catalog: &ModelCatalog,
     projected_savings_usd: f32,
+    protected: Option<&ProtectedAttempt>,
 ) -> Option<Plan> {
-    let metadata = catalog.routed_target(candidate_call, target).ok()?;
+    let metadata = match protected {
+        Some(permit) => catalog.protected_routed_target(candidate_call, target, permit)?,
+        None => catalog.routed_target(candidate_call, target).ok()?,
+    };
     let mut routed_call = candidate_call.clone();
     routed_call.model = target.model_id.clone();
     metadata.annotate_call(&mut routed_call).ok()?;

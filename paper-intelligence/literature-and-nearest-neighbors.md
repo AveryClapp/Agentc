@@ -1,7 +1,7 @@
 ---
 title: Literature and Nearest Neighbors
 status: active
-last-updated: 2026-09-04
+last-updated: 2026-09-09
 owner: paper-intelligence
 ---
 
@@ -25,9 +25,9 @@ Supersedes:
 
 ## Verification Summary
 
-- Verified source rows: 76 active literature entries.
+- Source rows: 76 prior entries plus `LIT-078`, an explicitly abstract-only conceptual neighbor. This is not a count of 77 full-methods-verified or runnable baselines.
 - Rows needing correction from the candidate pass: `LIT-003`, `LIT-006`, `LIT-011`, `LIT-015`, `LIT-020`, `LIT-024`, `LIT-034`, `LIT-039`, `LIT-043`, `LIT-044`, `LIT-045`, `LIT-046`, `LIT-049`, `LIT-053`, `LIT-054`, `LIT-059`, `LIT-061`, `LIT-063`, `LIT-069`, `LIT-070`.
-- Strongest novelty threats: `LIT-008`, `LIT-024`, `LIT-025`, `LIT-036`, `LIT-040`, `LIT-041`, `LIT-043`, `LIT-044`, `LIT-055`, `LIT-060`, `LIT-071`-`LIT-074`.
+- Strongest novelty threats: `LIT-008`, `LIT-024`, `LIT-025`, `LIT-036`, `LIT-040`, `LIT-041`, `LIT-043`, `LIT-044`, `LIT-055`, `LIT-060`, `LIT-071`-`LIT-074`, and abstract-level `LIT-078`.
 - Strongest runnable baselines to consider: `LIT-007`, `LIT-008`, `LIT-009`, `LIT-013`, `LIT-014`, `LIT-017`, `LIT-021`, `LIT-034`, `LIT-036`, `LIT-042`, `LIT-047`, `LIT-055`, `LIT-072`.
 - Most important evaluation-caution sources: `LIT-031`, `LIT-032`, `LIT-064`, `LIT-065`, `LIT-068`, `LIT-070`.
 
@@ -72,6 +72,10 @@ efficacy result.
 
 ## How To Use This File
 
+The [September 5 primary-source refresh](research-inbox/2026-09-05-joint-routing-novelty-refresh.md) also covers OPTIMAS's heterogeneous configuration optimization and MESS+'s online routing with charged exploration and distribution-shift experiments. Those overlaps preclude novelty from the phrases “joint optimization,” “online learning,” or “charged exploration” alone. In particular, [OPTIMAS](https://arxiv.org/html/2507.03041v4) optimization-time local-reward updates must not be mislabeled production drift, and [MESS+](https://arxiv.org/html/2505.19947v3) guarantees must not be extended to arbitrary provider failures.
+
+The [completed protected study](../bench/repro/openrouter-protected-native-learning-2026-09-06/README.md) now supplies actual exact-plan source/probe observations, not an adaptive comparison against these systems. UNKNOWN stayed source-primary even for the five 20/0 profiles. Fixed HR's 61/63 versus source's 58/63 has an interval crossing zero and comes from generated development data, so it establishes neither primary admission nor a competitive novelty claim. The [context-exhaustion receipt research](research-inbox/2026-09-07-openrouter-context-exhaustion-receipts.md) is a possible future failure-classification seam, not a verified safety distinction over prior work.
+
 - Use the **cluster map** to decide where a paper belongs in related work.
 - Use the **nearest-neighbor matrix** before making novelty claims.
 - Use the **runnable baseline table** before proposing experiments.
@@ -102,6 +106,7 @@ efficacy result.
 | `LIT-043` | AIOS | Agent execution runtime | Agent OS scheduler/context/memory/tool layer | Runtime | Closest OS/runtime analogy; AgentC is narrower and focused on trace rewrite/control. |
 | `LIT-044` | Cognify | Gen-AI workflow autotuning | Hierarchical autotuner over structure/operator/model/prompt choices | Mostly offline/autotuning | Close optimizer threat; AgentC is runtime interception and trace rewrites rather than evaluator-driven autotuning. |
 | `LIT-071` | ApproxMLIR | Accuracy/performance choices across compound-AI components | MLIR approximation dialect, optimizer, and emitted runtime policy | Profile/compile plus runtime | Strongest heterogeneous-transformation threat; AgentC must distinguish online opaque-API plan learning and abstention from compiler-visible approximation search. |
+| `LIT-078` | CORAL | Coupled model routing and adaptive prompts | Interlinked prompt/router populations; abstract names NSGA-II/III multiobjective search | Online/offline supervision unverified | Direct conceptual overlap; full methods and runnable artifact not obtained in the September 7 retrieval. No effect-size or feature-absence inference. |
 | `LIT-072` | AgentOpt | Per-role model combinations, per-call routing, tracking, and caching | Framework-agnostic HTTP/network interception | Offline selection plus runtime routing | Strongest transparent-deployment threat; AgentC needs semantic rewrites, plan-specific online evidence, and an explicit damage contract to remain distinct. |
 | `LIT-073` | Agent JIT Compilation | Web-agent plan generation and latency scheduling | Task-to-code planner plus Monte Carlo scheduler | JIT planning/runtime | The unqualified "agent JIT" label is unavailable; AgentC acts on existing emitted calls rather than compiling tasks into agent programs. |
 | `LIT-074` | Parrot | End-to-end dataflow optimization for multi-call LLM applications | Semantic-variable programming abstraction plus serving runtime | Runtime/service | Parrot already exposes cross-request semantics; AgentC's distinction is client-side recovery over opaque provider APIs without requiring a new application abstraction. |
@@ -558,8 +563,8 @@ The entries below are checked source blurbs. They preserve the `LIT` IDs, citati
 
 - Primary: https://proceedings.mlsys.org/paper_files/paper/2026/hash/bbd3e0e9913824bbc46e7e87b11461ae-Abstract-Conference.html
 - Verdict: verified MLSys 2026 paper; use the published title "ApproxMLIR: Accuracy-Aware Compiler for Compound ML System."
-- Citation blurb: ApproxMLIR provides a unified approximation dialect and optimizer that searches end-to-end accuracy/performance tradeoffs across ML and non-ML components, then materializes profitable compound-system choices.
-- AgentC difference: AgentC's defensible target is online, call-conditional selection over opaque provider APIs with exact-plan evidence and abstention, rather than compiler-visible offline approximation search.
+- Citation blurb: ApproxMLIR provides a unified approximation dialect and optimizer across ML and non-ML components, including runtime-state-dependent policy and developer-provided checking/recovery through `approx.try`. Its [published paper](https://proceedings.mlsys.org/paper_files/paper/2026/file/bbd3e0e9913824bbc46e7e87b11461ae-Paper-Conference.pdf) is not a static-only baseline.
+- AgentC difference: the hypothesis is useful persistent exact-plan evidence and explicit external-call accounting over opaque APIs. Runtime selection, heterogeneous composition, and checking/recovery are already covered by ApproxMLIR; AgentC has not demonstrated a matched advantage over them.
 - Use: must-cite and compare directly in the contribution table. Baseline: `cite-only-unless-port-feasible`. Evidence: 5. Threat: 5.
 
 ### `LIT-072` - AgentOpt
@@ -574,6 +579,7 @@ The entries below are checked source blurbs. They preserve the `LIT` IDs, citati
   and admits only evidenced plans after restart. This changes the gap from
   *unimplemented* to *unevaluated*: the no-network Stage E0 preflight proves
   mechanics, not superiority to AgentOpt or any MLSys contribution claim.
+- Protected-policy update (2026-09-07): the [provider-backed development study](../bench/repro/openrouter-protected-native-learning-2026-09-06/README.md) gathers real complete-plan evidence but explicitly forbids UNKNOWN primary promotion, including after warm profiles/restart. Do not transfer the earlier proven-bound preflight's admission behavior into this different policy cohort.
 - Use: must-cite and mandatory runnable baseline for routing or transparent-deployment claims. Baseline: `run`. Evidence: 5. Threat: 5.
 
 ### `LIT-073` - Agent JIT Compilation for Latency-Optimizing Web Agent Planning and Scheduling
@@ -599,6 +605,14 @@ The entries below are checked source blurbs. They preserve the `LIT` IDs, citati
 - Citation blurb: JIT-Agent synthesizes, repairs, and evolves task-specific agent harnesses spanning memory, planning, action protocols, and tool or skill orchestration.
 - AgentC difference: AgentC retains an existing harness and chooses guarded execution plans for its calls; JIT-Agent changes the harness itself using a trained generation system.
 - Use: cite for the now-crowded JIT/harness-optimization framing, not as a direct runtime baseline. Baseline: `cite-only`. Evidence: 4. Threat: 3.
+
+### `LIT-078` - CORAL: Co-Evolutionary Optimization of Routing and Adaptive Prompts for Cost-Efficient LLM Deployment
+
+- Primary: [Frontiers publisher abstract, DOI 10.3389/frai.2026.1891737](https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2026.1891737/abstract). Received May 26, accepted August 24, 2026. Authors: Goenka, Khekare, Adhikari, Anushree Tyagi, and Divyanjali Tyagi.
+- Verdict: **abstract verified; full methods/artifact unverified**. The [September 7 retrieval record](research-inbox/2026-09-07-coral-full-paper-followup.md), source `059297d`, found that `/full` returned the abstract, PDF/XML returned 422, and bounded exact-title preprint/repository searches did not obtain the paper or artifact. These dated negative retrievals are not proof of permanent unavailability.
+- Supported conceptual overlap: the abstract explicitly describes coupled prompt/router populations, PRCP, and NSGA-II/III multiobjective optimization over correctness, cost, throughput, and latency. No abstract effect size is adopted here.
+- Comparison boundary: supervision, online versus offline updates, input-rewrite families, drift handling, persistence, failure/fallback policy, and full accounting remain unverified. AgentC cannot claim those mechanisms absent from CORAL. An unrelated same-name CORAL repository is not this paper's runnable artifact.
+- Use: must-cite conceptual novelty threat, not a methods-verified quantitative comparator or novelty certificate. Baseline: `unverified-artifact`. Follow-up remains `bd-323l.6.13.8.6.21.1` for full-paper review; creating this entry does not close it.
 
 ## State, Memory, And Compiler Analogies
 

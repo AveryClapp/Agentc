@@ -1,0 +1,41 @@
+{
+  "kind": "protected-terminal-evidence-snapshot-v1",
+  "manifest_sha256": "c5a38945224decfbc1ea03b582213f992b7742c7179121529bc7a3f5de85d477",
+  "manifest_file_sha256": "5d8ed2f4be4bd6eb21594bcd12b7b76fc6bebe96d474cfc1da8f357dbdecc5ae",
+  "acquisition_source_files_count": 84,
+  "acquisition_source_files_sha256": "46239bc59240b1686d2de6332fadc18fcd790de06970bb25968d1c1f7743e17c",
+  "original_journal": {
+    "path": "/Users/averyclapp/Documents/Coding/GitProjects/Agentc/.git/openrouter-pilot-budget.jsonl",
+    "bytes": 101340980,
+    "file_sha256": "1abbb47dcbcd4df40932fcf5aa5ca2a99e5be03d6b66bed32832453cb9998204",
+    "event_count": 22310,
+    "events_sha256": "16c091d70ace784d64082fc89156780de0f9535dac66c240e7b4543bb75abdbe",
+    "known_usd": "24.67648547",
+    "retained_uncertainty_usd": "12.275019",
+    "pending_usd": "0",
+    "remaining_usd": "13.04849553"
+  },
+  "artifact_sha256": {
+    "pilot/intents.json": "9de9c33e38aeb27e56674c098395b75dc5485f6af9378ceb138feaa0b1f52de1",
+    "pilot/calls.json": "3d9e8d3f28731c682f845433f6b40bdf9f927c9f518a69ab68090f378dbee55f",
+    "pilot/protected-events.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "pilot/audit.json": "6a831c512f185d2e911e4118c869a66e92c7bde838305c4380cf5b8864162203",
+    "pilot/summary.json": "9c28ba5ff488c546eb08b5719fed49bf02920dc30a6c808fa35f66d586cf39e1",
+    "study/intents.json": "aefd44583683272d604a6f95183ebcb77cef22220fd0e8bbbd5e14976c651e29",
+    "study/calls.json": "9a60e722c180e2fcff712de26554ab80be599a2a6c7200975b3ebc67840b1998",
+    "study/protected-events.json": "b30bfda38f3619befcf608f0279ecdddc1c15504abdf23562c24c01be1ae93fd",
+    "study/audit.json": "ebc7aa885be6d4879fb645b639cfcf9e22da714645139f2f27cc0d95935bb337",
+    "study/summary.json": "6385bbf3664a7f51ff95bda8c2914ca01b6ade1b654c3518fe1c2caac71ecfd5"
+  },
+  "native_sha256": "3803d2d0c8c6c804f4144a8d369f3bdd955d638f744d73db4d3f4486a3ac9d30",
+  "materializer_sha256": "b260a39b1baedbe0a4cc45895c6041ec5bfcfdbddb3c7f342c38ed3879fe0122",
+  "study_call_counts": {"source": 189, "probe": 130, "HR": 189},
+  "study_known_usd": "2.188970",
+  "pilot_known_usd": "0.211568",
+  "all_acquisition_known_usd": "2.400538",
+  "independent_review_bead": "bd-323l.6.13.8.6.20.5.1.3.6.8",
+  "scope": "Externally captured artifact hashes and original-journal accounting; this snapshot alone does not certify complete native replay or authorize label access.",
+  "labels_opened": false,
+  "efficacy_claim": false,
+  "paper_evidence": false
+}

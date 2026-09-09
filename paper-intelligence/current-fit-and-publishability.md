@@ -1,7 +1,7 @@
 ---
 title: Current Fit And Publishability
 status: active
-last-updated: 2026-09-06
+last-updated: 2026-09-09
 owner: paper-intelligence
 ---
 
@@ -11,7 +11,7 @@ This is the short reality check for AgentC after the current experiment review a
 
 ## One-Screen Summary
 
-AgentC now has a promising model-dependent rewrite result, but not a demonstrated adaptive joint-system contribution. It is not ready for a confident MLSys main-track submission yet.
+**Joint-system efficacy remains UNPROVEN.** AgentC has a promising model-dependent rewrite result and completed protected profiling, but no demonstrated adaptive joint-system contribution. The decisive next comparison is a learned joint policy versus the strongest calibration-frozen fixed model-plus-rules configuration, charging warmup, probes, failures, and fallbacks. It is not ready for a confident MLSys main-track submission yet.
 
 The working thesis is a **guarded, application-side rewrite control plane for opaque LLM-agent calls**. The broad combination of model routing and prompt/workflow optimization is already occupied. Even online quality learning, charged exploration, distribution-shift adaptation, and checking/recovery have prior art. AgentC's candidate distinction is evidence bound to exact call-site/complete-plan identities, persistent invalidation, and useful control under an executable failure/damage contract. That is a hypothesis requiring comparative evidence, not a novelty certificate.
 
@@ -37,6 +37,16 @@ All selected questions retained their original ten paragraphs. ContextCompress a
 
 The reviewed native prototype `ac436255` separates explicit protected exploration from proven context capacity. It passes 331 Rust tests and independent review, but **UNKNOWN-capacity requests still return the exact source plan as primary**, even with favorable profiles and after restart. This is a mechanism prerequisite, not native adaptive superiority. A further scheduling constraint is explicit: the default 20 probes per call site cannot supply a 20-observation floor to each of several candidate plans in one window. Any larger prospective exploration allowance must be declared and fully charged; the evidence floor and semantic guards cannot be quietly lowered to obtain admission.
 
+## September 7: Protected Profiling Completed; Fixed Quality Interval Crosses Zero
+
+The [protected study and post-completion analysis](../bench/repro/openrouter-protected-native-learning-2026-09-06/README.md) completed 63 generated **development** source workflows, 130 native probes, and 63 later fixed Haiku-plus-rules (HR) workflows. A separate six-task format/resource pilot contributed 36 calls. The prospective experiment declared 60 probes per site and a common 256-token output cap; the product defaults and all other numeric guards were unchanged. There was no seeded warmup or candidate output in source history, and UNKNOWN requests always returned the source as primary.
+
+Source scores **58/63** and fixed HR **61/63**: four gains, one loss, 58 ties. The +4.7619-point paired difference has a descriptive 95% whole-task bootstrap interval **[−1.5873, 11.1111]**, including zero. Source workflow cost is USD1.666728 versus HR USD0.215898; probes cost USD0.306344 and the pilot USD0.211568, for **USD2.400538 all-in**. HR's lower fixed-workflow bill is not a saving produced by a learned policy. Source and HR ran in separate time blocks; this is not a new four-cell interaction test.
+
+Five exact native profiles reached 20 pairs with zero observed disagreements. Two answer profiles stopped at 16/2 and 14/2 pairs/disagreements, with persisted acquisition-time divergence-exposure disables. This explains 130 rather than 140 probes; it is not a transport omission or a current guard/admission assessment. Reference agreement is not gold correctness; five 20/0 profiles are not a 2% damage certificate, and never promoted an UNKNOWN request.
+
+The [exposure disclosure](../bench/repro/openrouter-protected-generated-2026-09-06/exposure-disclosure.json) preserves all IDs: inherited offline fake tests had generated the six pilot and first two study contexts before the checkpoint, including internal expected-value generation but no gold-driven feedback or selection. These are first prospective paid responses on a generated development draw, **not unseen-context holdout evidence**. [Current figures-v2](../bench/repro/openrouter-protected-native-learning-2026-09-06/figures-v2/rendering.json) use the verified analysis; original figures remain provenance.
+
 ## Has The Field Passed The Idea?
 
 The broad idea is crowded, but the narrower operational question remains relevant. The [verified nearest-neighbor refresh](research-inbox/2026-09-05-joint-routing-novelty-refresh.md) distinguishes what each source actually establishes:
@@ -44,7 +54,7 @@ The broad idea is crowded, but the narrower operational question remains relevan
 - AgentOpt already has opaque HTTP interception; Cognify and OPTIMAS jointly optimize heterogeneous workflow choices.
 - ApproxMLIR includes runtime-state-dependent approximation and checking/recovery; it is not a static-only strawman.
 - MESS+ learns routing online, explicitly charges exploration, and evaluates distribution shifts.
-- CORAL explicitly couples routing and prompt optimization. Its publisher abstract is verified; full methods and reproducibility remain unverified.
+- CORAL explicitly couples routing and prompt optimization. The [September 7 full-paper retrieval follow-up](research-inbox/2026-09-07-coral-full-paper-followup.md) still obtained only the publisher abstract, not full methods or a runnable artifact. This is dated retrieval evidence, not proof that those materials cannot exist.
 
 Therefore, “routing on top of JIT” is not the contribution by itself. The useful question is whether exact-plan evidence and invalidation deliver a better charged cost/quality/availability tradeoff than strong static, sequential, and joint-optimization alternatives. No matched competitive run establishes that yet.
 
@@ -53,6 +63,7 @@ Therefore, “routing on top of JIT” is not the contribution by itself. The us
 | Current result or idea | Literature neighborhood | What it proves now | What it does not prove yet |
 |---|---|---|---|
 | Typed 32-task model × CC/SD factorial | Joint workflow optimization, model/prompt interactions | A positive descriptive model-dependent quality interaction and large fixed-configuration cost reduction, with all requests and charges reconstructed. | No adaptive controller, native admission, independent CC-versus-SD attribution, public-workload generalization, or damage bound. |
+| Protected 63-task development study | Exact-plan online evidence and charged exploration | Real source-first profiling, retained guard disables, complete accounting, and a fixed source/HR comparison with a quality interval crossing zero. | No UNKNOWN primary promotion, adaptive-policy win, unseen holdout, causal rule attribution, or public-data quality evidence. |
 | `ContextCompress` on `long_context_qa` | LLMLingua, LongLLMLingua, Selective Context, tool-use compression | Runtime context rewriting can save substantial input tokens on long-context stress workloads. | It does not beat specialist compressors yet, and it does not prove broad real-task savings. |
 | `ModelDowngrade` on `gaia_router` | FrugalGPT, RouteLLM, LLMSelector, routing/cascades | Internal call-site model substitution can cut cost sharply. | Routing itself is not novel, and quality preservation needs stronger uncertainty treatment. |
 | `StateDrop` on iterative refinement | Program slicing, data-flow, liveness, memory/context systems | Stale state can be pruned for modest input-token savings. | It is not sound compiler slicing unless AgentC defines dependencies/read windows precisely. |
@@ -67,7 +78,7 @@ Therefore, “routing on top of JIT” is not the contribution by itself. The us
 | Target | Current readiness | Why |
 |---|---|---|
 | Workshop / short paper | plausible | The trace-optimizer framing, verified literature map, and two strong rule-level results are enough for useful feedback. |
-| ATC operational track | possible but rushed | Needs operational lessons, overhead, failure modes, and a tighter deployed-runtime story. |
+| MLSys 2027 research target | conditional, not ready yet | Official October 30, 2026 deadline; use the earlier 19:00 UTC / 3 PM EDT while its clock conflict is resolved. See the [verified venue map](strategy-and-venues.md). |
 | MLSys / EuroSys / strong systems venue | not yet | The fixed factorial gives a useful interaction hypothesis, but native joint admission previously failed and adaptive superiority is untested. Strong static/joint baselines, fresh-workload evaluation, charged risk/adaptation tests, and multi-host overhead/coverage evidence remain necessary. |
 | COLM / LM-facing venue | possible later | Needs clearer cost-quality frontier, stochastic evaluation, and comparisons against routing/compression baselines. |
 | Broad AI/ML main venue | weak right now | The contribution currently reads more like systems infrastructure than a new AI method. |
@@ -86,6 +97,7 @@ Therefore, “routing on top of JIT” is not the contribution by itself. The us
 - A claim that AgentC is the first runtime optimizer for LLM agents.
 - A claim that all rewrite rules are equally validated.
 - A claim that the fixed factorial proves a learned joint planner or that typed validity guarantees correctness.
+- A claim that five 20/0 native profiles establish admission or a damage guarantee, or that the 63-task fixed comparison establishes adaptive superiority.
 - A CacheHit or ParallelBranch headline contribution.
 - A strong behavior-preservation claim without paired/repeated uncertainty.
 - A StateDrop soundness claim without a concrete dependency/read-window model.
@@ -95,10 +107,16 @@ Therefore, “routing on top of JIT” is not the contribution by itself. The us
 The experiment priorities below are scientific requirements; Beads, not this document, owns task state.
 
 1. Establish public-workload generalization in a separately designed complete study; the closed partial HotpotQA run supplies no quality evidence and cannot be resumed. Use natural workload structure, keep no-op and invalid paths, and separate CC-only/SD-only effects only where the predeclared design can identify them.
-2. Verify the native protected-learning path with real source/probe observations and its full budget, without inventing provider context bounds. Primary promotion is a separate unproved transition. Then compare learned joint selection against the best fixed configuration, route-only, rewrite-only, both sequential orders, and current greedy on fresh evaluation tasks. Charge every source probe and failed attempt.
+2. Build on the completed protected source/probe diagnostic without treating it as primary promotion. That transition remains unproved and must not invent a provider context bound. Then compare learned joint selection against the best fixed configuration, route-only, rewrite-only, both sequential orders, and current greedy under a new evaluation protocol. Charge every source probe and failed attempt.
 3. Include a credible joint optimizer such as Cognify/OPTIMAS or a faithfully scoped matched control, not only a routing baseline. Disclose label access, model pools, adaptation requirements, and tuning budgets; resolve CORAL's full-methods uncertainty.
 4. Test persistent invalidation and the advertised damage contract under declared drift and restart, with no-adaptation/nonpersistent controls. A small positive quality interval is not a risk guarantee.
 5. Repeat the frozen admission-limit sweep on a quiet second host and report latency versus lost optimization coverage. Preserve the 1.2ms target; loaded-host abstention is not a free speedup.
+
+The [native context-exhaustion receipt research](research-inbox/2026-09-07-openrouter-context-exhaustion-receipts.md) only proposes a narrowly attributable failure category. It supplies neither a context-fit bound nor permission for candidate-first retry, hold release, semantic feedback, or primary admission. No new classifier is enabled by this evidence consolidation.
+
+The [September 9 public-workload proposal and dated licensing clarification](research-inbox/2026-09-09-mlsys-public-workload-contract.md) choose a natural two-call retrieval/program pipeline with deterministic execution, not added state to force rule activation. The separate FinQA offline contract `43fe7ab` passed independent synthetic-only review (`bd-6gjb.1`). Local-only research acquisition (`bd-lnai`) can proceed under the documented author-published MIT/CDLA provenance assumption; this snapshot acquires no corpus. Redistribution and external-provider sharing remain separately gated (`bd-tprq`, exact license-variant discrepancy `bd-wjbv`), and live integration (`bd-sjrg`) still requires the safe capacity/fallback path. The note also discloses published-example exposure that future enrollment must exclude. There is no new public-workload quality result, native admission, or resumption of the failed HotpotQA study.
+
+The roughly seven-week MLSys timeline makes a real public workflow and a separately reviewed safe candidate-first transition more decisive than another favorable generated result. Neither is completed or authorized by this map: candidate-first needs its own exact failure/accounting and safety review before use, and the present UNKNOWN path remains source-primary.
 
 ## Avery Read Path
 

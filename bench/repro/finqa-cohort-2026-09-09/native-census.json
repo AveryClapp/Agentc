@@ -1,0 +1,1629 @@
+{
+  "admission_or_quality_evidence": false,
+  "counts": {
+    "ContextCompress": {
+      "applied": 2,
+      "not_applicable": 132
+    },
+    "StateDrop": {
+      "not_applicable": 134
+    }
+  },
+  "labels_used": false,
+  "native_sha256": "b260a39b1baedbe0a4cc45895c6041ec5bfcfdbddb3c7f342c38ed3879fe0122",
+  "program_stage": "unmeasured; requires actual arm-specific retrieval output",
+  "provider_calls": 0,
+  "public_sha256": "7838bcb7738fb1bbd5c66b57004620d78ca05393ee2bf664e7e48dcf7cdaeceb",
+  "records": [
+    {
+      "id": "UNP/2010/page_75.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UNP/2010/page_75.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "BKNG/2018/page_34.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "BKNG/2018/page_34.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "RSG/2010/page_132.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "RSG/2010/page_132.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UNP/2012/page_74.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UNP/2012/page_74.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MRO/2012/page_18.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MRO/2012/page_18.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GS/2014/page_172.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GS/2014/page_172.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UNP/2012/page_29.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UNP/2012/page_29.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IP/2014/page_66.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IP/2014/page_66.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UNP/2006/page_55.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UNP/2006/page_55.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MSI/2005/page_64.pdf-6",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MSI/2005/page_64.pdf-6",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2015/page_111.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2015/page_111.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "L/2007/page_213.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "L/2007/page_213.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "SWKS/2011/page_82.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "SWKS/2011/page_82.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IP/2009/page_34.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IP/2009/page_34.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2016/page_18.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2016/page_18.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "C/2008/page_105.pdf-2",
+      "removed_messages": 13,
+      "rule": "ContextCompress",
+      "status": "applied"
+    },
+    {
+      "id": "C/2008/page_105.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "SLG/2017/page_110.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "SLG/2017/page_110.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAPL/2008/page_76.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAPL/2008/page_76.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "VNO/2011/page_85.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "VNO/2011/page_85.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GPN/2008/page_99.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GPN/2008/page_99.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2016/page_144.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2016/page_144.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UNP/2009/page_31.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UNP/2009/page_31.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PNC/2014/page_232.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PNC/2014/page_232.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GS/2018/page_175.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GS/2018/page_175.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "HUM/2018/page_129.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "HUM/2018/page_129.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "HII/2015/page_101.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "HII/2015/page_101.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "DRE/2009/page_36.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "DRE/2009/page_36.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MRO/2009/page_137.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MRO/2009/page_137.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AMT/2004/page_91.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AMT/2004/page_91.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LMT/2010/page_24.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LMT/2010/page_24.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETFC/2007/page_22.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETFC/2007/page_22.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "APTV/2018/page_34.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "APTV/2018/page_34.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "RSG/2016/page_69.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "RSG/2016/page_69.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PM/2014/page_112.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PM/2014/page_112.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GIS/2008/page_83.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GIS/2008/page_83.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MA/2008/page_70.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MA/2008/page_70.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2009/page_21.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2009/page_21.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "INTC/2013/page_86.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "INTC/2013/page_86.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "BLL/2010/page_39.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "BLL/2010/page_39.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "HWM/2016/page_119.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "HWM/2016/page_119.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "JPM/2014/page_127.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "JPM/2014/page_127.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ADBE/2003/page_126.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ADBE/2003/page_126.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAPL/2007/page_72.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAPL/2007/page_72.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CMCSA/2015/page_150.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CMCSA/2015/page_150.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IP/2009/page_36.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IP/2009/page_36.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "APD/2018/page_113.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "APD/2018/page_113.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAPL/2012/page_71.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAPL/2012/page_71.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ZBH/2018/page_61.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ZBH/2018/page_61.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "APD/2018/page_54.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "APD/2018/page_54.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AWK/2018/page_141.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AWK/2018/page_141.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAPL/2007/page_48.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAPL/2007/page_48.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "TFX/2018/page_74.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "TFX/2018/page_74.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CB/2009/page_220.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CB/2009/page_220.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "HII/2015/page_124.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "HII/2015/page_124.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "VTR/2007/page_97.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "VTR/2007/page_97.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "EXR/2005/page_46.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "EXR/2005/page_46.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAL/2018/page_13.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAL/2018/page_13.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UPS/2017/page_111.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UPS/2017/page_111.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MO/2016/page_76.pdf-2",
+      "removed_messages": 29,
+      "rule": "ContextCompress",
+      "status": "applied"
+    },
+    {
+      "id": "MO/2016/page_76.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ADBE/1999/page_33.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ADBE/1999/page_33.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "D/2002/page_39.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "D/2002/page_39.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GPN/2007/page_39.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GPN/2007/page_39.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "DVN/2015/page_92.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "DVN/2015/page_92.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2016/page_343.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2016/page_343.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "NKE/2009/page_81.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "NKE/2009/page_81.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GS/2014/page_167.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GS/2014/page_167.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AOS/2007/page_17.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AOS/2007/page_17.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "DISCA/2017/page_41.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "DISCA/2017/page_41.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GS/2012/page_177.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GS/2012/page_177.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AMAT/2018/page_31.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AMAT/2018/page_31.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AON/2009/page_48.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AON/2009/page_48.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AON/2010/page_115.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AON/2010/page_115.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PNC/2009/page_41.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PNC/2009/page_41.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CME/2017/page_97.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CME/2017/page_97.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IPG/2015/page_48.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IPG/2015/page_48.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PPG/2013/page_40.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PPG/2013/page_40.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAPL/2005/page_83.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAPL/2005/page_83.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MRO/2006/page_33.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MRO/2006/page_33.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2013/page_118.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2013/page_118.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IPG/2015/page_48.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IPG/2015/page_48.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "SYY/2019/page_9.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "SYY/2019/page_9.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MRO/2017/page_111.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MRO/2017/page_111.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "HII/2017/page_104.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "HII/2017/page_104.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CDNS/2012/page_30.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CDNS/2012/page_30.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2008/page_321.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2008/page_321.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MO/2012/page_44.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MO/2012/page_44.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "JPM/2005/page_37.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "JPM/2005/page_37.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LMT/2005/page_40.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LMT/2005/page_40.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CB/2010/page_88.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CB/2010/page_88.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GS/2016/page_77.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GS/2016/page_77.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "C/2010/page_223.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "C/2010/page_223.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AON/2009/page_48.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AON/2009/page_48.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "DVN/2007/page_58.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "DVN/2007/page_58.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "RE/2017/page_159.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "RE/2017/page_159.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AES/2003/page_52.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AES/2003/page_52.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IPG/2008/page_62.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IPG/2008/page_62.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UNP/2015/page_24.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UNP/2015/page_24.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LMT/2013/page_74.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LMT/2013/page_74.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "BLK/2012/page_37.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "BLK/2012/page_37.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "BLK/2013/page_124.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "BLK/2013/page_124.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GIS/2012/page_64.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "GIS/2012/page_64.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UAA/2016/page_52.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UAA/2016/page_52.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "APD/2019/page_31.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "APD/2019/page_31.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETFC/2014/page_26.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETFC/2014/page_26.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAL/2013/page_15.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AAL/2013/page_15.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LMT/2016/page_48.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LMT/2016/page_48.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IP/2005/page_19.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IP/2005/page_19.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UAA/2016/page_52.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "UAA/2016/page_52.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2011/page_324.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2011/page_324.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PNC/2011/page_78.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PNC/2011/page_78.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "BLL/2007/page_47.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "BLL/2007/page_47.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "HOLX/2015/page_98.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "HOLX/2015/page_98.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LMT/2016/page_48.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LMT/2016/page_48.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ABMD/2009/page_56.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ABMD/2009/page_56.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "JKHY/2014/page_30.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "JKHY/2014/page_30.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AON/2011/page_134.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AON/2011/page_134.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PNC/2011/page_78.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PNC/2011/page_78.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AES/2002/page_46.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AES/2002/page_46.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "TROW/2010/page_22.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "TROW/2010/page_22.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CAT/2017/page_85.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CAT/2017/page_85.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IPG/2008/page_93.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "IPG/2008/page_93.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "SLB/2012/page_44.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "SLB/2012/page_44.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "BDX/2018/page_82.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "BDX/2018/page_82.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LMT/2015/page_56.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LMT/2015/page_56.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LKQ/2018/page_83.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LKQ/2018/page_83.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CDNS/2006/page_30.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CDNS/2006/page_30.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MRO/2007/page_134.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "MRO/2007/page_134.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LLY/2018/page_63.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "LLY/2018/page_63.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PM/2017/page_99.pdf-2",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "PM/2017/page_99.pdf-2",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "SLB/2012/page_44.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "SLB/2012/page_44.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CB/2010/page_200.pdf-3",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "CB/2010/page_200.pdf-3",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2008/page_249.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "ETR/2008/page_249.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AON/2009/page_46.pdf-1",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "AON/2009/page_46.pdf-1",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    },
+    {
+      "id": "STZ/2006/page_68.pdf-4",
+      "removed_messages": 0,
+      "rule": "ContextCompress",
+      "status": "not_applicable"
+    },
+    {
+      "id": "STZ/2006/page_68.pdf-4",
+      "removed_messages": 0,
+      "rule": "StateDrop",
+      "status": "not_applicable"
+    }
+  ],
+  "selected_tasks": 134,
+  "stage": "retrieve"
+}

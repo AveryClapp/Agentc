@@ -1,0 +1,27 @@
+{
+  "comparison": "strictly greater than 8192",
+  "labels_used": false,
+  "native_census": "native-census.json",
+  "native_min_prompt_bytes": 8192,
+  "provider_calls": 0,
+  "request_content_bytes": {
+    "calibration": {
+      "above_8192_bytes": 2,
+      "message_content_bytes_max": 8406,
+      "message_content_bytes_min": 1309,
+      "tasks": 64
+    },
+    "evaluation": {
+      "above_8192_bytes": 0,
+      "message_content_bytes_max": 7359,
+      "message_content_bytes_min": 1223,
+      "tasks": 64
+    },
+    "format": {
+      "above_8192_bytes": 0,
+      "message_content_bytes_max": 5469,
+      "message_content_bytes_min": 960,
+      "tasks": 6
+    }
+  }
+}

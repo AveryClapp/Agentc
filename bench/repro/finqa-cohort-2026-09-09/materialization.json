@@ -1,0 +1,12 @@
+{
+  "calibration_count": 70,
+  "evaluation_count": 64,
+  "external_provider_sharing": "not authorized by this local acquisition",
+  "kind": "finqa-local-acquisition-v1",
+  "labels_sha256": "2f77336f91b8d2af2ddb1e348d695e80abc017c8573471c9fae4b720e96ded33",
+  "labels_state": "unscored; permission 000 is a procedural seal, not encryption",
+  "provider_calls": 0,
+  "public_sha256": "7838bcb7738fb1bbd5c66b57004620d78ca05393ee2bf664e7e48dcf7cdaeceb",
+  "selection_checkpoint": "45b81b88bd57883044278890392287fcfec577d2",
+  "selection_sha256": "f227fcd5ce262e4a50745746f4947398a241ecff617c3367d17997858c84ca88"
+}

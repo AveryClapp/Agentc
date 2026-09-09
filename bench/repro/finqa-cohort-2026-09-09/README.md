@@ -87,3 +87,50 @@ published-example exclusion, selection without gold access, report separation,
 public-before-label ordering, private sealed outputs, no silent overwrite or
 resampling, and public-only census operation without a label file. Existing
 FinQA selector/application tests remain the application contract.
+
+## Completed acquisition and applicability result
+
+Independent **bd-lnai.1** review passed the exact source/ID checkpoint
+`45b81b88bd57883044278890392287fcfec577d2`, including an actual-source replay
+that prohibited all non-question QA-field lookups. All three Figure 4 questions
+matched test-only examples, identifying ECL/2016, GPN/2010, and CME/2010. The
+Figure 7 fragment matched PNC/2013 in train. All seven exposed reports were
+excluded. The 70 train cases cover 62 reports; the 64 dev cases cover 54 different
+reports. Selected IDs and source hashes are in [selection.json](selection.json).
+
+[Materialization](materialization.json) completed after that review. The public
+bundle contains all 134 selected cases, and the separately hashed answers remain
+sealed and unscored. No provider call was made. The public-only
+[source census](public-census.json) accepted all 6,251 train and 883 dev rows.
+Median public-projection bytes were 4,233 and 4,273 respectively; maximum values
+were 16,468 and 9,469. Public projections and actual request message contents
+have different serialization overhead; neither is a provider token count.
+
+The pinned native materializer
+`b260a39b1baedbe0a4cc45895c6041ec5bfcfdbddb3c7f342c38ed3879fe0122`
+produced the following actual retrieve-stage [census](native-census.json):
+
+| Partition | Tasks | ContextCompress applied | StateDrop applied |
+| --- | ---: | ---: | ---: |
+| Format | 6 | 0 | 0 |
+| Calibration | 64 | 2 | 0 |
+| Evaluation | 64 | 0 | 0 |
+
+All other calls returned `not_applicable`. This is a negative coverage result,
+not a quality or performance result. The unchanged ContextCompress rule requires
+more than 8,192 bytes of message content; every evaluation retrieval request is
+below that threshold (maximum 7,359 bytes), as recorded in the
+[size summary](retrieve-size-summary.json). Retrieval has no state-tagged
+messages, so StateDrop has no eligible state to remove. Program-stage requests
+depend on the arm's actual retrieved evidence and were not simulated as observed
+model calls.
+
+**Do not launch a joint CC/SD efficacy study on the assumption that FinQA supplies
+rewrite opportunities.** **bd-asbk** records the required applicability and
+identifiable-comparison assessment before the paid runner **bd-sjrg**. Preserve
+this cohort and the zero-coverage evaluation result; do not lower thresholds,
+pad history, or resample to make a favorable example set. This acquisition
+establishes an objective public-workflow input contract, not adaptive superiority.
+
+Verification: **105 tests passed, one optional upstream-network test skipped**;
+Ruff passed. Independent review reproduced those tests and the real ID selection.

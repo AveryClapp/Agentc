@@ -1,0 +1,37 @@
+{
+  "explicit_reports": [
+    "AWK/2014",
+    "GRMN/2006",
+    "K/2013",
+    "PNC/2013"
+  ],
+  "notes": [
+    "Figures1-3 and intro repeat GRMN/2006; Figure5 repeats AWK/2014; Figure6 is K/2013.",
+    "PNC/2013 from Figure7 must be corroborated by public-fragment matching. Figure8 contains blank fields.",
+    "All matches exclude entire company/year reports from both enrollment partitions; test split is exposure lookup only.",
+    "Prior local exposure was the paper and official documentation, without corpus acquisition. Published question text is fingerprinted rather than reproduced."
+  ],
+  "paper_sha256": "916b3fc7eb652311914784623b8be5879b50553efff727cede70db63060b0474",
+  "paper_url": "https://aclanthology.org/2021.emnlp-main.300.pdf",
+  "public_fragments": [
+    {
+      "location": "Figure 7 screenshot",
+      "text": "table 152 analysis of commercial mortgage recourse obligations"
+    }
+  ],
+  "question_matches": [
+    {
+      "location": "Figure 4 case 1",
+      "question_sha256": "7af8ed005656428740b96323439f621465962e70e12eae540f33ccc21f34120c"
+    },
+    {
+      "location": "Figure 4 case 2",
+      "question_sha256": "0ef53231c35e8c3af2b4d39c3ab7d8c9f56dba46a6e896b97518ea1b7e7dcfeb"
+    },
+    {
+      "location": "Figure 4 case 3",
+      "question_sha256": "dd5afc2ae7a54aa170655e52522a3c8b87291bbe37cec2b9d73e7e1a98231a17"
+    }
+  ],
+  "reviewed_pages": 14
+}

@@ -1,7 +1,7 @@
 ---
 title: Claims, Gaps, and Risks
 status: active
-last-updated: 2026-09-04
+last-updated: 2026-09-09
 owner: paper-intelligence
 ---
 
@@ -24,9 +24,23 @@ Supersedes:
 
 ## Current Verdict
 
+**Joint-system efficacy remains UNPROVEN.** The next decisive comparison is learned joint selection against the strongest calibration-frozen fixed model-plus-rules configuration, charging warmup, probes, failures, and fallbacks. The 63-task generated fixed-arm difference has an interval crossing zero; its five 20/0 profiles are not a 2% damage certificate, and UNKNOWN remained source-primary. Favorable generated results alone cannot fill the public-workload or adaptive-policy gap.
+
 AgentC has a solid workshop/short-paper shape and is approaching plausibility for a systems venue short paper. The claim is now sharper: **a runtime control plane for framework-emitted, multi-step LLM agent traces that jointly considers several rewrite classes under a cost-driver compatibility policy, then abstains when evidence, risk, or local runtime capacity is insufficient.** The current controlled planner ablation shows parity with first-match, not superiority; the held-out joint-policy campaign must establish the benefit.
 
 The current evidence supports: warmup-corrected targeted savings for `ContextCompress` (36.3% input tokens rule-only, RES-001) and `ModelDowngrade` (11.4% cost rule-only, RES-002); a direct LLMLingua-2 comparison with exact paired statistics showing favorable-fixture improvement (68%→100%, p=4.7×10⁻¹⁰) and natural-prose abstention (94.9%→94.9%, p=1.0); and controlled evidence that first-match and composition modes produce the same accuracy on the current planner fixture (RES-010). Stage E0 diagnostics under `RES-013` now progress from synchronous audit through off-path persistence, thread-CPU attribution, and non-blocking admission. The default gate reduces matched C=32 p99 34–82% and raises throughput 1.86–3.83× relative to the attributed off-path run, with exact fallback/audit accounting, but C=32 p99 remains 2.33–10.19ms and 54.6–81.4% of overloaded calls abstain. The evidence does not yet support a broad claim that all eight rules are validated, that behavior is preserved in a semantics-level sense, that AgentC scales across hosts, that the joint policy beats separate/sequential controls, or that AgentC is the first optimizer for LLM agents.
+
+## Current Development Evidence And Remaining Claim Gaps
+
+The September evidence is linked by artifact and Bead rather than new IDs in the retired claim/result namespaces. The historical tables below retain their original scope; a closed rule-activation or paired-analysis gap does not close adaptive superiority or establish equivalence.
+
+- The [32-task factorial and repeat](results-experiments-and-repro.md) support a model-dependent rewrite opportunity, with the same 32 clusters retained across both realizations. Fixed HR is already the strongest aggregate configuration; neither run evaluated a learned policy.
+- The [protected development archive](../bench/repro/openrouter-protected-native-learning-2026-09-06/README.md), `bd-323l.6.13.8.6.20.5.1.3.6`, establishes completed, fully charged source-first native profiling and a separate fixed comparison on 63 generated development tasks. Source 58/63 versus HR 61/63 gives four gains, one loss, 58 ties and a +4.7619-point difference, descriptive 95% paired interval [−1.5873, 11.1111]. An interval containing zero supports neither superiority nor equivalence. Source/HR bills are USD1.666728/USD0.215898; USD2.400538 includes probes and the pilot, not just the cheaper arm.
+- UNKNOWN requests remained exact source-primary throughout. Five exact profiles reached 20 pairs/zero disagreements; the two shorter answer profiles have persisted acquisition-time exposure disables at 16/2 and 14/2. Those facts are not admission, a current guard assessment, a context-fit certificate, or task correctness. No adaptive savings were measured.
+- The [disclosed offline exposure](../bench/repro/openrouter-protected-generated-2026-09-06/exposure-disclosure.json) includes eight generated contexts before the checkpoint. IDs were preserved and there was no gold-driven feedback or selection. Use **generated development / first prospective paid responses**, never “unseen-context holdout.” Source followed by a later HR block also leaves provider/time confounding.
+- The [public follow-up](../bench/repro/openrouter-public-model-sd-2026-09-06/README.md) remains terminal **FAILED/UNSCORED**. Its 229/384 completions and full timeout allowance are accounting/operational evidence only; labels stay unopened, with no resumed acquisition or public efficacy inference.
+
+The high-priority scientific gaps are unchanged: a useful primary-promotion contract, benefit over best-static/sequential/joint baselines after charging learning, public-workload quality, and measured persistent invalidation/damage under declared changes. The [CORAL retrieval note](research-inbox/2026-09-07-coral-full-paper-followup.md) adds abstract-level conceptual overlap, not a negative novelty certificate. The [context-exhaustion receipt note](research-inbox/2026-09-07-openrouter-context-exhaustion-receipts.md) is a proposed failure-classification boundary, not implemented fallback permission or a safety certificate. Beads owns the remaining tasks.
 
 ## Safe Claims
 
@@ -55,6 +69,9 @@ The current evidence supports: warmup-corrected targeted savings for `ContextCom
 | `CacheHit` preserves behavior. | False hits, stale context, and multi-turn state sensitivity are unresolved. | CacheHit is future/conditional until correctness metrics exist. |
 | `ParallelBranch` is safe whenever siblings look independent. | Tools may have side effects or hidden dependencies. | ParallelBranch needs explicit idempotence/dependency policy. |
 | Single-run results prove behavior preservation. | Stochastic agents need repeated/paired uncertainty treatment. | Current results are evidence, not final reliability proof. |
+| Five native 20/0 profiles prove safe adaptive routing. | The protected UNKNOWN policy never promotes a candidate; reference agreement is not gold correctness and the evidence floor is not a certificate. | Real protected profiling completed, with all source/probe costs charged and guard stops retained. |
+| Fixed HR's 61/63 versus source's 58/63 proves a learned policy wins. | The comparison uses two fixed configurations, separate time blocks, generated development tasks, and an interval crossing zero. | A complete fixed-workflow diagnostic with uncertainty, not adaptive efficacy. |
+| The partial public matrix confirms or refutes generated-workload quality. | The frozen run is FAILED/UNSCORED and labels remain unopened. | Report its timeout, valid completed prefix, and retained financial exposure only. |
 
 ## Gap Register
 

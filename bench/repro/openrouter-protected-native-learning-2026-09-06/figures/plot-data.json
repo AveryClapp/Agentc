@@ -1,0 +1,71 @@
+{
+  "all_acquisition_usd": "2.400538",
+  "analysis_sha256": "0d27c6306a5584ff69de1de521055166d1be00bc23823538760c38944b64df7b",
+  "costs": {
+    "Fixed HR workflows": "0.215898",
+    "Native probes": "0.306344",
+    "Pilot": "0.211568",
+    "Source workflows": "1.666728"
+  },
+  "intervals": {
+    "HR_accuracy": {
+      "high": 1.0,
+      "low": 0.9206349206349206,
+      "mean": 0.9682539682539683
+    },
+    "HR_minus_source_accuracy": {
+      "high": 0.1111111111111111,
+      "low": -0.015873015873015872,
+      "mean": 0.047619047619047616
+    },
+    "source_accuracy": {
+      "high": 0.9841269841269841,
+      "low": 0.856746031746032,
+      "mean": 0.9206349206349206
+    }
+  },
+  "profiles": [
+    {
+      "disagreements": 0,
+      "label": "Filter: Context compression",
+      "pairs": 20
+    },
+    {
+      "disagreements": 0,
+      "label": "Filter: Model swap",
+      "pairs": 20
+    },
+    {
+      "disagreements": 0,
+      "label": "Filter: Compression + model swap",
+      "pairs": 20
+    },
+    {
+      "disagreements": 0,
+      "label": "Synthesize: Model swap",
+      "pairs": 20
+    },
+    {
+      "disagreements": 0,
+      "label": "Answer: State dropping + model swap",
+      "pairs": 20
+    },
+    {
+      "disagreements": 2,
+      "label": "Answer: Model swap",
+      "pairs": 16
+    },
+    {
+      "disagreements": 2,
+      "label": "Answer: State dropping",
+      "pairs": 14
+    }
+  ],
+  "scope": "63 generated development tasks; descriptive results, not adaptive-serving efficacy.",
+  "synthetic_preview": false,
+  "transitions": {
+    "HR_gain": 4,
+    "HR_loss": 1,
+    "tie": 58
+  }
+}

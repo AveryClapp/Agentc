@@ -1,7 +1,7 @@
 ---
 title: Strategy and Venues
 status: active
-last-updated: 2026-09-04
+last-updated: 2026-09-09
 owner: paper-intelligence
 ---
 
@@ -28,16 +28,24 @@ The default paper angle should be a narrowed `ANG-001`: **a guarded, application
 Short version:
 
 - Best current story: AgentC profiles call sites online and jointly chooses model targets and semantic rewrites under explicit abstention and damage limits.
-- Best current evidence: `ContextCompress` and `ModelDowngrade`.
+- Best current evidence: the fixed 32-task factorial/repeat, the complete protected 63-task development diagnostic, and the historical `ContextCompress`/`ModelDowngrade` isolation results. None establishes adaptive superiority; the public follow-up remains FAILED/UNSCORED.
 - Most useful caveat: `StateDrop` is promising but not yet a sound compiler-style pass.
 - Biggest experiment gap: no held-out joint routing-plus-rewrite result against route-only, rewrite-only, ordering, and static controls.
 - Biggest engineering blocker: the audit bottleneck is fixed and thread-CPU controls attribute the residual to off-CPU scheduler/GIL delay. Fail-open admission cuts matched C=32 p99 34–82%, but the loaded-host result still reaches 2.33–10.19ms and sacrifices 55–81% of optimization coverage.
+
+## Current Target: MLSys 2027 Research Track
+
+The official 2027 CFP includes agentic systems and ML runtimes. Its deadline is **October 30, 2026, 20:00 UTC**, while the official dates page gives **12:00 PM PDT = 19:00 UTC**. Both were rechecked September 9. Operate against the earlier **19:00 UTC / 3:00 PM EDT**, not AoE, until the organizers or submission system resolve the discrepancy (`bd-2r1p`). The opening clocks also differ by one hour. [Official CFP](https://mlsys.org/Conferences/2027/CallForResearchPapers); [official dates](https://mlsys.org/Conferences/2027/Dates).
+
+Research submissions require double-blind content and affiliations; tracks cannot be switched after the deadline. The limit is ten two-column pages excluding references, using the linked 2025 style; appendices are separate and due at the same deadline. LLM consultation is allowed, but solely LLM-generated paper content is prohibited outside illustrative/experimental content. This workspace remains evidence/planning, not manuscript prose. [Submission requirements](https://mlsys.org/Conferences/2027/CallForResearchPapers).
+
+The [dated venue/workload research](research-inbox/2026-09-09-mlsys-public-workload-contract.md) proposes a two-call FinQA retrieval → program-generation workflow with deterministic execution. The separate offline contract `43fe7ab` passed independent synthetic-only review (`bd-6gjb.1`); no real corpus, live driver, native admission, paid study, or new quality result is implied. Corpus acquisition is blocked on `bd-tprq` licensing clearance; TAT-QA is a separately scoped fallback, not an acquired replacement. A complete public-workload result and a contribution beyond best-static still have to be demonstrated before claiming readiness for this target.
 
 ## Venue Ladder
 
 | ID | Venue/family | Recommendation | Best framing | Current readiness | Must improve |
 |---|---|---|---|---|---|
-| `VEN-001` | MLSys | strongest long-run topical fit | guarded joint routing-and-rewrite control plane | promising but not comfortable yet | positive held-out joint-policy result, tail attribution, multi-host scaling, baselines |
+| `VEN-001` | MLSys 2027 research | current target; October 30, 2026, operate at 19:00 UTC pending clock resolution | guarded joint routing-and-rewrite control plane | promising but not ready yet | complete public-workload evidence, benefit over best-static/joint baselines, multi-host scaling |
 | `VEN-002` | Systems venues broadly | mixed | systems/runtime infrastructure | ATC/EuroSys plausible; OSDI/SOSP/NSDI weak right now | deeper systems evidence and operational realism |
 | `VEN-003` | NLP/LLM venues | possible | LM cost-quality optimizer and evaluation methodology | COLM strongest | LM-facing breadth, stochastic quality, baseline comparisons |
 | `VEN-004` | Broad AI/ML venues | weak-main, possible workshop | agent optimization method | not a main default | stronger algorithmic novelty and broad benchmarks |
@@ -45,11 +53,13 @@ Short version:
 | `VEN-006` | Efficient LLM / routing / serving workshops | strong workshop fit | cost-saving runtime layer | good if scoped | distinguish from provider serving and routing-only papers |
 | `VEN-007` | Software engineering / AI tooling | possible | agentic engineering tool/runtime | not primary | developer/task breadth |
 | `VEN-008` | HCI/tooling | not recommended now | developer-facing interface | weak | user study or interactive tooling contribution |
-| `VEN-009` | ATC 2026 operational systems track | most actionable near-term main venue | practical runtime/optimizer with operational lessons | possible but rushed | overheads, failure modes, deployment/trace story, extended abstract |
+| `VEN-009` | ATC 2026 operational systems track | historical planning lane, not the current target | practical runtime/optimizer with operational lessons | superseded by the dated MLSys 2027 target | any future cycle requires fresh official CFP verification |
 | `VEN-010` | COLM | best LM-native fit | LM runtime cost-quality optimizer | promising next cycle | broader LM-facing evaluation and cost-quality frontier |
 | `VEN-011` | ICML 2026 Agents in the Wild workshop | strong workshop fit, deadline passed | agent systems/infrastructure | missed for 2026 | use as style/feedback reference |
 
 ## Post-June 2026 Plan
+
+Except for the verified MLSys row, the windows below are retained historical watchlist entries, not current deadline claims or authorization to submit. Recheck an official CFP before selecting any alternative.
 
 | Window | Venue/lane | Current fit | Why it matters | Evidence needed |
 |---|---|---|---|---|
@@ -58,7 +68,7 @@ Short version:
 | September 2026 | EuroSys 2027 | possible but hard | Best fall systems lane if evidence matures. | overhead, scaling, multi-framework evidence, rule interactions |
 | September 2026 | NSDI 2027 | high risk | Only plausible with networked/distributed/frontiers angle. | realistic orchestration and distributed-systems relevance |
 | Late September 2026 | ICLR 2027 watch | possible | Needs reusable optimizer/runtime methodology, not just engineering. | conceptual model, broad benchmarks, surprising findings |
-| Late October 2026 | MLSys 2027 watch | strongest | Best match for agentic AI systems, ML runtimes, efficient inference. | polished artifact, end-to-end evidence, overhead, baselines |
+| October 30, 2026; earlier operating clock 19:00 UTC | MLSys 2027 research | current target, readiness conditional | Official scope includes agentic systems and ML runtimes; one-hour clock conflict remains. | complete public-workload evidence, charged comparisons beyond best-static, overhead, baselines |
 | Rolling/monthly | ARR/VLDB/SIGMOD | conditional | Fallback or demo lanes. | NLP framing for ARR; data-management framing for DB venues |
 
 ## Paper Angles
@@ -139,6 +149,8 @@ Use rule-specific workloads to isolate behavior, then make the held-out joint-po
 
 ### Results
 
+The [current result map](results-experiments-and-repro.md) additionally preserves the fixed factorial/repeat and the protected development study: source 58/63 versus fixed HR 61/63, four gains/one loss/58 ties, paired interval [−1.5873, 11.1111] points including zero, USD2.400538 all-in. Use the archived figures-v2. Source remained primary; five 20/0 profiles are neither admission nor adaptive efficacy. The closed public partial matrix remains unscored.
+
 Use `RES-001` and `RES-002` as the strongest current rule-level results. Use the complete warmup-corrected `RES-004` as promising but semantically caveated, `RES-005` as activation-boundary evidence, and `RES-006` only as diagnostic headroom until trace-query support exists. Treat `RES-010` as planner parity, not a planner win. Treat `RES-013` as a mechanism progression: off-path observability removes the dominant median bottleneck, CPU controls attribute the remaining tail, and admission bounds overload at a measurable coverage cost. High-concurrency p99 still fails the target.
 
 ### Related work
@@ -198,7 +210,7 @@ Keep limitations honest but contained:
 
 ## Next Strategy Decisions
 
-1. Treat MLSys as the primary long-run lane only if the held-out joint-policy result lands and residual tails are understood across hosts; the audit-path fix itself is complete.
+1. Plan for the verified MLSys 2027 research deadline above, while keeping readiness conditional on complete public-workload evidence, charged benefit beyond best-static, and credible systems comparisons. Resolve the official clock conflict through `bd-2r1p`; the date is not a reason to lower an experiment gate.
 2. Decide whether `CacheHit` and `ParallelBranch` stay future work.
 3. Decide whether StateDrop gets stronger evidence or stays a caveated supporting result.
 4. Keep the system contribution foregrounded: joint online choice under an explicit risk contract, supported by practical cost savings and rigorous evaluation.

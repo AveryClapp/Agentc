@@ -1,0 +1,14 @@
+{
+  "analysis_sha256": "0d27c6306a5584ff69de1de521055166d1be00bc23823538760c38944b64df7b",
+  "figure_source_sha256": "d9641bc07ae4f4c569840cb76fbd5a3d00f7606b14604406d65999b2dc9120ca",
+  "files": {
+    "01-fixed-workflow-quality.png": "df0d0e2ab89f49ec205e6e5ebe540d1f3a307bd0aba5427392b92c1dcf70e501",
+    "01-fixed-workflow-quality.svg": "1e612943c1a19567def817ca4d19439ff6fff5563ace89ca8fe39a10fb0c4339",
+    "02-all-acquisition-costs.png": "d66c25826ec49f48e0c299b7dfd41c8c08c07392c365cdcfc7042fcbd7abd749",
+    "02-all-acquisition-costs.svg": "47f70f98f03ba76cdebcd3ad612abdf6ee9aa996f25fc3b7519ae481ba6b9068",
+    "03-native-plan-learning.png": "cf6c4deaa0d3d57ac1a520db9f36f045f4a5421c7891023199b77559b2eb207b",
+    "03-native-plan-learning.svg": "55abb26bbc347fb27950e069f999a699e703a172195c43646638ad62d2905617",
+    "plot-data.json": "cfea48c0a9e02559c94d298b055bade2ee24d310cc7786c687e2a4b6eb999ed0"
+  },
+  "synthetic_preview": false
+}

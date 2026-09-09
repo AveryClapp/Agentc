@@ -1,7 +1,7 @@
 ---
 title: Evidence and Sources
 status: active
-last-updated: 2026-05-09
+last-updated: 2026-09-09
 owner: paper-intelligence
 ---
 
@@ -41,6 +41,34 @@ Preferred sources:
 | `cited` | Used in approved paper prose. | Manuscript only after approval. |
 
 No-go phrases until verified: `first`, `novel`, `state of the art`, `to our knowledge`, `no prior work`, `universally preserves quality`, `drop-in for all agent systems`.
+
+## September Evidence Snapshot And Replay Boundary
+
+The active maps preserve the [32-task fixed factorial](../bench/repro/openrouter-typed-factorial-2026-09-05/README.md), [same-question repeat](../bench/repro/openrouter-typed-factorial-repeat-2026-09-05/README.md), and terminal [public FAILED/UNSCORED archive](../bench/repro/openrouter-public-model-sd-2026-09-06/README.md). None is replaced by the newer generated development study, and the public labels remain unopened.
+
+| Imported evidence | Exact source / artifact | Scope |
+|---|---|---|
+| Protected acquisition and post-completion analysis | [Archive README](../bench/repro/openrouter-protected-native-learning-2026-09-06/README.md), raw `d6242ab`, completed archive `a609f30` | 63 development tasks, 508 study calls plus 36 pilot calls; source 58/63, fixed HR 61/63, paired interval crossing zero; full USD2.400538 acquisition bill. |
+| Exposure and selection | [Exposure disclosure](../bench/repro/openrouter-protected-generated-2026-09-06/exposure-disclosure.json), [provenance](../bench/repro/openrouter-protected-generated-2026-09-06/provenance.json) | Preserve all 69 IDs and the eight-context offline generation exposure; not an unseen holdout. |
+| Exact native mechanisms | [Control report](../bench/repro/protected-native-controls-2026-09-06.json), [native census](../bench/repro/openrouter-protected-native-learning-2026-09-06/native-profile-census.json) | Synthetic zero-loss reachability is separate from 130 actual source-paired probes and acquisition-time guard disables. No UNKNOWN primary promotion or current admission assessment. |
+| Analysis / current figures | [Analysis](../bench/repro/openrouter-protected-native-learning-2026-09-06/analysis.json), [execution record](../bench/repro/openrouter-protected-native-learning-2026-09-06/analysis-execution.json), [figures-v2](../bench/repro/openrouter-protected-native-learning-2026-09-06/figures-v2/rendering.json) | Reviewed analysis source `63bc464`, figure sources `60e32d3`/`9f522f3`; original figures retained unchanged. Local audit/analysis elapsed time is not provider latency. |
+
+The protected manifest's canonical SHA-256 is `c5a38945224decfbc1ea03b582213f992b7742c7179121529bc7a3f5de85d477`; the saved analysis raw SHA-256 is `0d27c6306a5584ff69de1de521055166d1be00bc23823538760c38944b64df7b`. [Terminal metadata](../bench/repro/openrouter-protected-native-learning-2026-09-06/terminal-snapshot.json) pins the raw ten-artifact map and original 22,310-event snapshot, raw `1abbb47dcbcd4df40932fcf5aa5ca2a99e5be03d6b66bed32832453cb9998204`, canonical `16c091d70ace784d64082fc89156780de0f9535dac66c240e7b4543bb75abdbe`. Its USD12.275019 historical uncertainty is retained, not forgiven by completion.
+
+The coherent integration (`bd-bpsv.1`) starts from `c53bd24`, imports the archive byte-for-byte, and restores only the twelve missing/differing members needed for its **exact 84-source frozen closure**, plus reviewed analysis/figure code and tests. It does not import newer batch-audit implementations, refreeze enrollment, or alter original acquisition artifacts. The native source changes are the previously reviewed protected-only prototype and exact float round-trip prerequisite, not newly relaxed guards.
+
+Source closure is necessary but not sufficient for original replay. The archive manifest pins an external protected bridge with SHA-256 `3803d2d0c8c6c804f4144a8d369f3bdd955d638f744d73db4d3f4486a3ac9d30` and typed materializer `b260a39b1baedbe0a4cc45895c6041ec5bfcfdbddb3c7f342c38ed3879fe0122`, their exact acquisition paths, and the original campaign journal. Binaries are not rebuilt or vendored here, and the original journal is **not** copied into the archive. The archived SQLite state and receipts do not substitute for that journal. Full read-only audit requires those exact dependencies; label-free synthetic regressions and figure-data verification can run separately. Do not weaken source/binary identities, create a replacement budget ledger, or retry/resume a closed phase to make replay portable.
+
+## September Research Provenance
+
+The [joint-routing refresh](research-inbox/2026-09-05-joint-routing-novelty-refresh.md) remains dated provenance, including its then-prospective experiment descriptions. The active results map, not that historical note, owns completion status.
+
+- [CORAL full-paper follow-up](research-inbox/2026-09-07-coral-full-paper-followup.md), source `059297d`: on September 7 the official Frontiers abstract was retrievable, but full methods, supplement, preprint and runnable artifact were not obtained. Promote its explicit joint prompt/router formulation as conceptual overlap with an **abstract-only** flag; do not promote abstract quantitative claims or infer absence of online learning, drift, fallback, or accounting. The note records retrieval responses and a full HTML hash; it is not a current availability or novelty certificate.
+- [OpenRouter native context-exhaustion receipt review](research-inbox/2026-09-07-openrouter-context-exhaustion-receipts.md), source `cdef03d`: primary provider/API documentation plus frozen local code support a proposed narrow failure-attribution contract. No live wire mapping or new classifier was tested. A native context-stop category does not supply a numeric capacity bound, successful semantic observation, fallback authorization, or permission to release a failed hold.
+
+Both notes remain raw research provenance, with technical claims traced to their primary links. No new active tracker document or manuscript prose is introduced; Beads owns the unfinished research and implementation gates.
+
+The [September 9 MLSys/public-workload contract note](research-inbox/2026-09-09-mlsys-public-workload-contract.md), source `05eb7bfb`, records official MLSys 2027 requirements and the unresolved one-hour deadline discrepancy, plus primary FinQA documentation/evaluator/license inspection without corpus acquisition. The separate offline contract `43fe7ab` passed independent review (`bd-6gjb.1`); its stricter duplicate-label/`none` argument policies, source-order evidence serialization, and full-public-table execution are explicit rather than blanket upstream parity. No FinQA code, corpus, live driver, native admission, or paid result is imported in this snapshot. `bd-lnai` acquisition depends on `bd-tprq` licensing clearance, `bd-sjrg` live integration depends on the safe capacity/fallback path, and `bd-2r1p` owns the deadline clarification.
 
 ## Deep Research Drops
 

@@ -1,7 +1,7 @@
 ---
 title: Results, Experiments, and Repro
 status: active
-last-updated: 2026-09-06
+last-updated: 2026-09-09
 owner: paper-intelligence
 ---
 
@@ -81,6 +81,29 @@ Manifest canonical SHA is `b5b1769028a2b81d509907a1097838802b65e1efb214c3bffda02
 
 At retirement, the original campaign contained **USD22.27594747 known charges plus USD12.275019 retained uncertainty**, zero pending or unresolved calls: USD34.55096647 committed, USD15.44903353 remaining. Retirement changes dispatch eligibility, not the financial commitment. These are dated snapshots, never a fresh USD50 allowance.
 
+### Protected source-first development study: complete, not adaptive efficacy
+
+The [protected archive](../bench/repro/openrouter-protected-native-learning-2026-09-06/README.md), raw acquisition `d6242ab` and final analysis/figures archive `a609f30`, contains 63 generated **development** tasks with complete source and fixed-HR own-history workflows. The separately frozen six-task S0/H0 format/resource pilot completed 36 calls for USD0.211568. The study completed **508 calls: 189 source, 130 native probes, 189 HR**, with no application-invalid output, new failure, ambiguous claim, or pending attempt. Every source and probe observation was real; no profiles were seeded. Candidates never entered source application history, and UNKNOWN source requests remained source-primary throughout.
+
+The predeclared experiment used 60 probes per call site and a common 256-token output cap, distinct from unchanged product defaults of 20/512. The per-plan evidence floor, exposure limit, and other numeric guards were retained. Synthetic structural controls in [the frozen control report](../bench/repro/protected-native-controls-2026-09-06.json) demonstrate reachability under zero loss, not provider-backed quality. The actual run has five 20-pair/zero-disagreement profiles and two answer profiles ending at 16/2 and 14/2. [The acquisition-time native census](../bench/repro/openrouter-protected-native-learning-2026-09-06/native-profile-census.json) records divergence-exposure disables for the latter two, explaining the 130 versus potential 140 probes. Counts and stored disables do not assert current guard status, primary admission, a damage guarantee, or correctness against gold.
+
+After independent terminal receipt/accounting review (`bd-323l.6.13.8.6.20.5.1.3.6.8`), the approved pure analysis scored all 63 paired workflows: **source 58/63, HR 61/63; four gains, one loss, 58 ties**. The +4.7619-point difference has a descriptive 95% whole-task bootstrap interval **[−1.5873, 11.1111]**, crossing zero (10,000 replicates, frozen seed 2026090605). This is not a superiority or equivalence result, and two fixed arms cannot identify a model × rule interaction. Source and HR ran as successive blocks, so time/provider effects remain uncontrolled.
+
+| Completed acquisition | Calls | Billed input / output tokens | USD |
+|---|---:|---:|---:|
+| Source workflows | 189 | 535,616 / 3,992 | 1.666728 |
+| Native probes | 130 | 229,244 / 2,214 | 0.306344 |
+| Fixed HR workflows | 189 | 195,988 / 3,982 | 0.215898 |
+| Study total | 508 | 960,848 / 10,188 | 2.188970 |
+| Format/resource pilot | 36 | See exact pilot receipts | 0.211568 |
+| All-in pilot + study | 544 | See exact phase receipts | **2.400538** |
+
+HR's approximately 87.05% lower fixed-workflow bill is not a learned-policy or all-in saving. At the exact terminal snapshot, the original 22,310-event campaign contains USD24.67648547 known charges plus **USD12.275019 unchanged historical holds**, zero pending: USD36.95150447 committed and USD13.04849553 remaining. Those dated totals preserve the failed public attempt and all older uncertainty; neither this archive nor a new checkout creates a fresh allowance.
+
+The [exposure disclosure](../bench/repro/openrouter-protected-generated-2026-09-06/exposure-disclosure.json) records inherited fake-test generation of the six pilot and first two study contexts before the checkpoint, including internal expected-value generation without gold-driven feedback or selection. All 69 prospective IDs were preserved. This supports “generated development / first prospective paid responses,” **not an unseen-context holdout**. Probe contexts were adaptively selected and are not matched randomized per-rule trials.
+
+Reproduction anchors are [manifest](../bench/repro/openrouter-protected-native-learning-2026-09-06/manifest.json) canonical `c5a38945224decfbc1ea03b582213f992b7742c7179121529bc7a3f5de85d477`, [analysis](../bench/repro/openrouter-protected-native-learning-2026-09-06/analysis.json) raw `0d27c6306a5584ff69de1de521055166d1be00bc23823538760c38944b64df7b`, and [terminal snapshot](../bench/repro/openrouter-protected-native-learning-2026-09-06/terminal-snapshot.json). [Figures-v2](../bench/repro/openrouter-protected-native-learning-2026-09-06/figures-v2/rendering.json) are current; the original figures are preserved, with no data or interval change. Analysis source `63bc464` and figure sources `60e32d3`/`9f522f3` are included with their tests and the exact 84-source acquisition closure, not newer batch-replay successors. Full native replay still requires the exact external binaries and original journal described in [the provenance map](evidence-and-sources.md); a source-complete checkout is not a portable or resumable financial campaign.
+
 ### Earlier admission failure and accounting scope
 
 The closed native QA study at archive `48e6358` (`exp/joint-input-rules`, manifest `dcb703739e460810825f0966c06371d2848a4d17346afbfea4e77c52a0548ace`) completed 1,372 paid calls at USD7.048348 but did not satisfy its frozen admission gate: no actually selected joint plan had 20 exact source-paired observations. None of its 48 protected QA questions was dispatched. This is an admission/learning-feasibility limitation, not a held-out quality failure or success, and the fixed typed factorial does not supersede it.
@@ -128,6 +151,11 @@ provider-backed learning, a context-fit certificate, a damage guarantee, or
 superiority to fixed HR. Default per-site exploration budgets and per-plan
 evidence floors must both be satisfied; probe allowance cannot be confused with
 the number of observations for a particular joint plan.
+
+The completed provider-backed development study above subsequently tests this
+protected source-first path. It supersedes “not yet exercised with providers,”
+not the prohibition on UNKNOWN primary promotion or the need for a separate
+adaptive-policy evaluation.
 
 ### Request-path engineering checkpoint (not paper evidence)
 

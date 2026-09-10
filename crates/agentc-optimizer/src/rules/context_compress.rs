@@ -10,6 +10,11 @@
 //! - Conservatively retain the first user message as well: raw SDK histories
 //!   may label the original task `Literal` rather than `UserInput`. Explicit
 //!   `UserInput` tags still protect later instructions independently of role.
+//! - Keep the latest assistant message and everything after it. Earlier
+//!   assistant exchanges (up to the next assistant message) are indivisible:
+//!   a retained observation must keep the action that produced it, and vice
+//!   versa. This is conservative for user-role shell results and ordinary chat;
+//!   it does not infer tool provenance from message text.
 //! - Extractive only (no secondary LLM summary — would blow the
 //!   overhead budget).
 //!
@@ -40,6 +45,8 @@ pub const DEFAULT_ACCURACY_BUDGET: f32 = 0.02;
 /// (e.g. token-overlap fractions) should override via
 /// `parameters.extra.dead_attention_epsilon`.
 pub const DEAD_ATTENTION_EPSILON: f32 = 1e-4;
+/// Plan evidence from independent message deletion cannot admit this rewrite.
+pub const IMPLEMENTATION_VERSION: &str = "assistant-exchanges-v1";
 
 pub struct ContextCompressRule {
     min_prompt_bytes: usize,
@@ -121,6 +128,12 @@ impl RewriteRule for ContextCompressRule {
             return None;
         }
 
+        // The current exchange is the context for the next action, even when
+        // a short/empty observation has no vocabulary in common with it.
+        if let Some(start) = call.messages.iter().rposition(|m| m.role == "assistant") {
+            drop[start..].fill(false);
+        }
+
         // Second pass: ensure at least one message per role survives.
         for role in &roles_to_keep_one {
             let any_kept = call
@@ -134,6 +147,20 @@ impl RewriteRule for ContextCompressRule {
                 if let Some(i) = call.messages.iter().position(|m| &m.role == role) {
                     drop[i] = false;
                 }
+            }
+        }
+
+        // Close retention over whole assistant exchanges after all other
+        // protections, including role recovery. Never emit an orphan result or
+        // an action whose result was removed. Prefix documents before the first
+        // assistant retain the existing extractive behavior.
+        let mut end = call.messages.len();
+        for start in (0..end).rev() {
+            if call.messages[start].role == "assistant" {
+                if drop[start..end].iter().any(|d| !d) {
+                    drop[start..end].fill(false);
+                }
+                end = start;
             }
         }
 
@@ -435,13 +462,13 @@ mod tests {
         let messages = vec![
             Message { role: "system".into(), content: "agent instructions".into() },
             Message { role: "user".into(), content: "Fix the estimator regression".into() },
-            Message { role: "assistant".into(), content: "inspect implementation".into() },
             Message { role: "user".into(), content: big("obsolete output ", 1000) },
+            Message { role: "assistant".into(), content: "inspect implementation".into() },
             Message { role: "user".into(), content: "current diagnostic".into() },
         ];
         let original = call_with(
             messages,
-            vec![1.0, 0.0, 1.0, 0.0, 1.0],
+            vec![1.0, 0.0, 0.0, 1.0, 1.0],
             vec![DepSource::Literal; 5],
             vec!["diagnostic"],
         );
@@ -459,7 +486,7 @@ mod tests {
             };
             assert_eq!(serde_json::to_value(&rewritten.messages).unwrap(), json!([
                 call.messages[0].clone(), call.messages[1].clone(),
-                call.messages[2].clone(), call.messages[4].clone(),
+                call.messages[3].clone(), call.messages[4].clone(),
             ]));
             assert_eq!(rewritten.parameters.extra, call.parameters.extra);
         }
@@ -503,6 +530,77 @@ mod tests {
             ],
             vec![0.0, 1.0], vec![DepSource::Literal; 2], vec![],
         );
+        let rule = ContextCompressRule::default();
+        assert!(rule.applies(&call, &hot_profile()));
+        assert!(rule.propose(&call, &hot_profile()).is_none());
+    }
+
+    #[test]
+    fn assistant_exchanges_are_atomic_for_every_salience_mask() {
+        let messages = vec![
+            Message { role: "system".into(), content: "instructions".into() },
+            Message { role: "user".into(), content: "task".into() },
+            Message { role: "assistant".into(), content: "old command".into() },
+            Message { role: "user".into(), content: big("old result ", 1000) },
+            Message { role: "assistant".into(), content: "second command".into() },
+            Message { role: "user".into(), content: "second result".into() },
+            Message { role: "assistant".into(), content: "current command".into() },
+            Message { role: "user".into(), content: "current result".into() },
+        ];
+        for mask in 0..256 {
+            let scores = (0..8).map(|i| if mask & (1 << i) == 0 { 0.0 } else { 1.0 }).collect();
+            let call = call_with(messages.clone(), scores, vec![DepSource::Literal; 8], vec![]);
+            let rule = ContextCompressRule::default();
+            assert!(rule.applies(&call, &hot_profile()));
+            let selected = match rule.propose(&call, &hot_profile()) {
+                Some(proposal) => {
+                    assert!((proposal.safety_check)(&call));
+                    let Plan::Rewritten { call, .. } = proposal.rewritten else { panic!("rewrite"); };
+                    call.messages
+                }
+                None => call.messages.clone(),
+            };
+            let kept = |i: usize| selected.iter().any(|m| m.content == messages[i].content);
+            assert!(kept(0) && kept(1) && kept(6) && kept(7), "mask={mask}");
+            for start in [2, 4] {
+                assert_eq!(kept(start), kept(start + 1), "mask={mask}, start={start}");
+            }
+            if mask == 0 {
+                assert_eq!(selected.len(), 4, "wholly dead old exchanges remain removable");
+            }
+        }
+    }
+
+    #[test]
+    fn multiple_observations_and_protected_clarification_keep_their_exchange() {
+        let messages = vec![
+            Message { role: "user".into(), content: "task".into() },
+            Message { role: "assistant".into(), content: "obsolete command".into() },
+            Message { role: "user".into(), content: big("obsolete result ", 1000) },
+            Message { role: "assistant".into(), content: "parallel commands".into() },
+            Message { role: "tool".into(), content: "first result".into() },
+            Message { role: "function".into(), content: "second result".into() },
+            Message { role: "user".into(), content: "clarification".into() },
+            Message { role: "assistant".into(), content: "unfinished current action".into() },
+        ];
+        let mut deps = vec![DepSource::Literal; 8];
+        deps[6] = DepSource::UserInput { span_id: [2; 8] };
+        let call = call_with(messages, vec![0.0; 8], deps, vec![]);
+        let proposal = ContextCompressRule::default().propose(&call, &hot_profile()).unwrap();
+        let Plan::Rewritten { call: selected, .. } = proposal.rewritten else { panic!("rewrite"); };
+        assert_eq!(serde_json::to_value(selected.messages).unwrap(), json!([
+            call.messages[0], call.messages[3], call.messages[4], call.messages[5],
+            call.messages[6], call.messages[7],
+        ]));
+    }
+
+    #[test]
+    fn current_exchange_only_abstains_even_with_zero_scores() {
+        let call = call_with(vec![
+            Message { role: "user".into(), content: "task".into() },
+            Message { role: "assistant".into(), content: big("current action ", 1000) },
+            Message { role: "user".into(), content: "".into() },
+        ], vec![0.0; 3], vec![DepSource::Literal; 3], vec![]);
         let rule = ContextCompressRule::default();
         assert!(rule.applies(&call, &hot_profile()));
         assert!(rule.propose(&call, &hot_profile()).is_none());

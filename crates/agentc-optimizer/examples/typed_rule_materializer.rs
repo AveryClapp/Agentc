@@ -343,6 +343,26 @@ mod tests {
     }
 
     #[test]
+    fn context_compress_keeps_current_exchange_and_drops_whole_old_exchange() {
+        let call = base(json!([
+            {"role":"system","content":"system"},
+            {"role":"user","content":"original task"},
+            {"role":"assistant","content":"old command"},
+            {"role":"user","content":"old output ".repeat(1000)},
+            {"role":"assistant","content":"current command"},
+            {"role":"user","content":""},
+        ]), json!({"attention_scores":[0,0,0,0,0,0]}));
+        let result = apply("ContextCompress", &call).unwrap();
+        assert_eq!(result["retained_indices"], json!([0, 1, 4, 5]));
+        assert_eq!(result["applied"], true);
+        let mut expected = call.clone();
+        expected["messages"] = json!([
+            call["messages"][0], call["messages"][1], call["messages"][4], call["messages"][5],
+        ]);
+        assert_eq!(result["call"], expected);
+    }
+
+    #[test]
     fn no_proposal_and_inapplicable_rule_return_exact_original_json() {
         let mut call = state_call();
         call["parameters"]["extra"]["window_state_reads"] = json!(["docs", "synthesis"]);

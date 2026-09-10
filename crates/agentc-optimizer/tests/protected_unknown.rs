@@ -657,7 +657,9 @@ fn native_context_compress_route_preserves_exact_deletion_and_schema() {
     );
     call.parameters.extra["message_deps"] = json!([{"kind":"literal"},{"kind":"literal"},{"kind":"literal"},{"kind":"literal"},{"kind":"literal"}]);
     call.input_deps = vec![DepSource::Literal; 5];
-    call.parameters.extra["attention_scores"] = json!([1.0, 0.0, 0.0, 1.0, 1.0]);
+    // Even with no overlap signal, the current assistant/observation exchange
+    // survives materialization and joint routing; the prefix document can go.
+    call.parameters.extra["attention_scores"] = json!([1.0, 0.0, 0.0, 0.0, 0.0]);
     let budget = Arc::new(Budget::new());
     let opt = Optimizer::with_budget(
         cm,

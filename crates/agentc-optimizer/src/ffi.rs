@@ -846,7 +846,11 @@ fn describe_plan(
         .filter(|rule| !matches!(rule.as_str(), "ModelDowngrade" | "CacheHit"))
         .map(|rule| RewriteApplication {
             stable_name: rule.clone(),
-            implementation_version: PLAN_IMPLEMENTATION_VERSION.to_string(),
+            implementation_version: if rule == "ContextCompress" {
+                crate::rules::context_compress::IMPLEMENTATION_VERSION.to_string()
+            } else {
+                PLAN_IMPLEMENTATION_VERSION.to_string()
+            },
             parameters: rewrite_parameters(rule, original_call, selected_call),
         })
         .collect();
@@ -2006,6 +2010,27 @@ mod tests {
             first_context.key.call_site_version,
             second_context.key.call_site_version
         );
+    }
+
+    #[test]
+    fn context_compress_exchange_semantics_start_a_new_plan_identity() {
+        let catalog = default_model_catalog().unwrap();
+        let original = observable_call("exchange-version", "task");
+        for rule in ["ContextCompress", "OutputBudget"] {
+            let plan = Plan::Rewritten {
+                rule: rule.into(), call: original.clone(), projected_savings_usd: 0.01,
+            };
+            let descriptor = describe_plan(&catalog, &original, &plan, 0.05).unwrap();
+            let mut legacy = descriptor.spec.clone();
+            legacy.rewrites[0].implementation_version = PLAN_IMPLEMENTATION_VERSION.into();
+            let old_id = legacy.execution_plan_id().unwrap();
+            let new_id = descriptor.spec.execution_plan_id().unwrap();
+            if rule == "ContextCompress" {
+                assert_ne!(old_id, new_id, "old message-deletion evidence must not admit new semantics");
+            } else {
+                assert_eq!(old_id, new_id, "unrelated plans keep their evidence identity");
+            }
+        }
     }
 
     #[test]

@@ -1,7 +1,7 @@
 ---
 title: Paper Intelligence Archive
 status: archive-index
-last-updated: 2026-05-09
+last-updated: 2026-10-10
 owner: paper-intelligence
 ---
 
@@ -26,6 +26,17 @@ This directory preserves superseded ledger and planning files from the paper-int
 `../current-fit-and-publishability.md` remains active because it is the short human-facing explanation of where the paper stands. `../references/source/` and `../research-inbox/` also remain active because they preserve raw provenance, not duplicated synthesis.
 
 ## Archive Rules
+
+The October manuscript rewrite preserves the immediately preceding sources here:
+
+| Source at archival time | Historical copy | Current source |
+|---|---|---|
+| `../../main.tex` | `2026-10-10-pre-joint-rewrite-main.tex` | `../../main.tex` |
+| `../../appendix.tex` | `2026-10-10-pre-joint-rewrite-appendix.tex` | `../../appendix.tex` |
+
+These copies describe the earlier rule-centered draft, including superseded claims
+and historical tables. They are excluded from the submission build. Use the current
+manuscript and its evidence qualifications for the current scientific argument.
 
 - Treat archived files as historical source material, not current guidance.
 - If an archived detail matters, promote it into an active top-level file instead of linking readers into the archive.

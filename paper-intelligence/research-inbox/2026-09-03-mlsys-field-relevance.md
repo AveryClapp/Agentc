@@ -1,11 +1,60 @@
 ---
 title: MLSys Field Relevance and Main-Track Readiness
 status: active
-last-updated: 2026-09-03
+last-updated: 2026-10-10
 owner: paper-intelligence
 ---
 
 # MLSys Field Relevance and Main-Track Readiness
+
+## Verified-source addendum — 2026-10-10
+
+This addendum rechecks the venue and selected nearest neighbors against primary sources. The September assessment below remains historical: it is not a fresh audit of the implementation or completed experiments. In particular, [evaluation protocol revision 12](../../bench/repro/mlsys-2027-evaluation-protocol.md) distinguishes executable engineering mechanisms from confirmatory paper evidence. Its October 1 decision date has passed; this source check does not establish whether the experimental gates passed.
+
+### Published 2027 requirements and an unresolved deadline discrepancy
+
+**MLSys 2027 requirements are published.** The CFP gives **October 30, 2026, 20:00 UTC**, while the official Dates page displays **October 30, 12:00 PM PDT**, equivalent to **19:00 UTC / 3:00 PM EDT**. These disagree by one hour. Plan for the earlier displayed cutoff until the venue resolves the discrepancy; the protocol's 20:00 UTC entry follows the CFP, not both pages. Submission opens October 19; reviews arrive January 18, responses are due January 21, and notifications arrive February 28, 2027. [2027 CFP](https://mlsys.org/Conferences/2027/CallForResearchPapers), [2027 Dates](https://mlsys.org/Conferences/2027/Dates)
+
+| Requirement | Verified 2027 rule |
+|---|---|
+| Research fit | Agentic systems and ML runtimes are named topics; selection considers novelty, quality, interest, and impact. |
+| Submission | OpenReview; all authors need complete, active profiles. Allow at least two weeks for profile creation. |
+| Format | Official 2025 MLSys style; two columns; ten pages excluding references; references list every author. |
+| Appendix | Upload separately by the paper deadline; reading it is optional for reviewers. |
+| Anonymity | Research submissions anonymize names, affiliations, acknowledgments, and identifying self-references. Violations risk desk rejection; public preprints are permitted. |
+| Artifacts | Voluntary evaluation after acceptance; it does not influence paper acceptance. |
+| Other policies | Concurrent archival conference review is prohibited, subject to stated exceptions. Author lists freeze at the deadline; author quotas apply. |
+
+These are conference rules, not inferred acceptance thresholds. The CFP still says further submission details are forthcoming. [2027 CFP](https://mlsys.org/Conferences/2027/CallForResearchPapers)
+
+The official style package uses `article`, `mlsys2025`, and the `mlsys2025` bibliography style. Its default submission mode produces anonymous author/affiliation information; `[accepted]` enables the named version. Its single-PDF appendix instruction concerns the final camera-ready and does not override the 2027 CFP's separate submission appendix. [Official style ZIP](https://media.mlsys.org/Conferences/MLSYS2025/mlsys2025style.zip)
+
+**At the initial source check**, `main.tex` used `acmart` with named authors, affiliations, and emails. The October follow-up ports it to the official anonymous MLSys style, supplies complete-author references, and rewrites the body around the current complete-plan mechanism. The compiled body fits the ten-page limit. Format progress does not establish the missing held-out scientific result.
+
+The [2027 artifact call](https://mlsys.org/Conferences/2027/CallForAEs) currently says its details have not been announced; its HTTP response was checked directly after the web reader could not access it. The [2026 artifact call](https://mlsys.org/Conferences/2026/CallForAEs) is **archival guidance only**: it assesses availability, functionality, and reproduction, and asks for requirements, validation instructions, and expected results. Its March 2026 dates and single-blind evaluation policy are not verified 2027 rules. A no-key replay path plus an explicitly costed live path remains an engineering recommendation, not a conference mandate.
+
+### Selected closest systems, reverified
+
+| System and primary evidence | Verified mechanism / evidence boundary | Consequence for Agentc — assessment |
+|---|---|---|
+| [Cognify paper](https://arxiv.org/html/2502.08056v1), [authors' repository](https://github.com/GenseeAI/cognify) | Hierarchical workflow autotuning combines structure, model/code, and prompt choices. Six workflow types are evaluated. The evaluator may be an LLM judge; ground-truth labels are not mandatory. | Generic joint optimization and support for existing agents are already occupied. Distinguish deployment-time complete-plan admission when no workflow evaluator is supplied; charge calibration/search cost fairly. |
+| [Agentix, NSDI 2026](https://www.usenix.org/conference/nsdi26/presentation/luo), [paper](https://www.usenix.org/system/files/nsdi26-luo.pdf), [Autellix preprint](https://arxiv.org/abs/2502.13965) | The same author group and serving problem appear under the earlier Autellix title and archival Agentix title. Program-aware preemption/prioritization and locality-aware engine routing improve program throughput. The paper explicitly leaves program logic unchanged while recovering execution DAGs. | Cite the archival title and avoid treating interception or dynamic trace recovery alone as new. Its serving-engine control differs from Agentc's opaque-provider boundary. |
+| [Halo, arXiv v2](https://arxiv.org/abs/2509.02121v2) | Plans structured DAGs in batch and online streaming execution; cost models account for prefill/decode, reuse, placement, and CPU/GPU work. This source verifies a preprint, not an archival acceptance. | Workflow DAG optimization is prior art; distinguish semantic request changes from shared execution and KV management. |
+| [Murakkab, OSDI 2026](https://www.usenix.org/conference/osdi26/presentation/chaudhry), [paper](https://www.usenix.org/system/files/osdi26-chaudhry.pdf) | Joint workflow/model/tool/hardware profiles and adaptive execution under SLOs. It supports proprietary hosted models and can construct workflows from dynamic natural-language requests. | Closed providers and absence of a user-specified static DAG are insufficient distinctions. Compare preservation of existing application orchestration with adoption of Murakkab's orchestrator and executor-profile platform. |
+| [AgentOpt report v2](https://arxiv.org/abs/2604.06296v2), [pinned repository](https://github.com/AgentOptimizer/agentopt/blob/08b2d2c7fe370c884d956afbe540a09abc163c27/README.md) | The report documents HTTP interception, unchanged agent code, tracking, exact caching, and evaluated model-combination search. The pinned repository additionally documents prompt/history-based per-call routing and daemon deployment; those are API capabilities, not report-level routing efficacy results. | A direct client-side comparator. The checked sources do not demonstrate Agentc's particular admission contract for model-and-semantic-rewrite alternatives; comparative value still needs measurement. |
+| [ApproxMLIR, MLSys 2026](https://proceedings.mlsys.org/paper_files/paper/2026/file/bbd3e0e9913824bbc46e7e87b11461ae-Paper-Conference.pdf) | Unified ML/non-ML approximation knobs, autotuning, state-dependent runtime decisions, and a try-check-recover contract over annotated compiled components. | Joint approximation and runtime guards are established ideas. Agentc's narrower unit is an intercepted request alternative with exact-plan online evidence. |
+
+**October implementation correction to the September assessment:** the current
+default path enumerates compatible rewrite sets crossed with model targets and
+admits exact complete-plan profiles. Its complete plan describes one call, not a
+globally optimized agent trajectory. The historical statement below that Agentc
+does not search model-by-rewrite alternatives no longer describes the default
+implementation. Confirmatory comparative benefit remains unestablished.
+See [candidate generation](../../crates/agentc-optimizer/src/planner.rs),
+[profiled dispatch](../../crates/agentc-optimizer/src/ffi.rs), and
+[exact-plan selection](../../crates/agentc-optimizer/src/execution_plan.rs).
+
+**Research judgment:** MLSys is a strong topical fit, but format readiness and research readiness are separate. The most defensible submission work is to validate the frozen online model-and-rewrite contract on independent workloads, compare against route-only/rewrite-only/static-joint and relevant external systems, and charge exploration and shadow calls in end-to-end dollars, latency, and task quality. No source above establishes that Agentc's current experiments meet that bar, and none makes the protocol's numerical go/no-go thresholds official MLSys requirements.
 
 ## Scope and method
 

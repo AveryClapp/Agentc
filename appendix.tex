@@ -1,0 +1,324 @@
+% Build main.tex first; prefix imported labels to distinguish supplement labels.
+\input{paper-preamble}
+\externaldocument[main-]{main}
+\begin{document}
+\twocolumn[
+\mlsystitle{Agentc: Supplementary Material}
+\begin{mlsysauthorlist}
+\mlsysauthor{Anonymous Authors}{anon}
+\end{mlsysauthorlist}
+\mlsysaffiliation{anon}{Anonymous Institution}
+\mlsyscorrespondingauthor{Anonymous Author}{anon.email@domain.com}
+\vskip 0.3in
+]
+\printAffiliationsAndNotice{}
+\appendix
+
+\section{Rule Mechanisms and Scope}
+\label{sec:rules}
+
+Rules construct candidates; exact-plan profiles determine admission in the current
+default path. The historical experiments in this supplement used the earlier rule
+planner. They do not validate the new selector. A retained instruction or a read-window
+check constrains a transformation but does not prove semantic equivalence.
+
+\textbf{ContextCompress.} The rule requires a prompt above 8,192 bytes and per-message
+attention scores. Its IDF-based proxy identifies low-scoring messages for extractive
+removal, subject to a minimum low-score fraction, a 50\% message-retention floor,
+role-specific retention, protected user-input provenance, and system preservation.
+The first user message is protected even if provenance is absent or incomplete.
+The rule issues no auxiliary LLM compression request.
+
+\textbf{StateDrop.} Explicit per-message state dependencies and an observed state-read
+window identify state keys absent from reads since the previous LLM call. Such
+messages are candidates for removal, subject to retention and provenance checks.
+This is runtime pruning over supplied annotations, not sound whole-program liveness
+analysis. It is unavailable to applications that supply neither state annotations
+nor an equivalent adapter signal.
+
+\textbf{Routing and output limits.} Configured compatible model targets enter the
+complete candidate specification. Evidence for routing alone cannot admit the same
+model after another rewrite. OutputBudget proposes a cap from profiled output-token
+lengths when the application has no existing cap. A new cap changes plan identity
+and needs evidence; short past outputs do not rule out future truncation.
+
+\textbf{Other mechanisms.} PromptDedup targets repeated context. Structured and
+dead-output truncation use additional structural or historical signals; no new
+end-to-end efficacy result is claimed for them here. Cached responses require their
+own policy and compatibility checks. Multi-call parallel plans are excluded from
+the single-call profiled identity contract. Application-managed concurrency remains
+outside the selector.
+
+\section{Historical Isolation Matrices}
+\label{sec:historical}
+
+Tables~\ref{tab:cc-matrix}--\ref{tab:hotpot-matrix} preserve the earlier fixture
+matrices. Positive token percentages mean reductions relative to the historical shared
+baseline. Cost differences are recorded milliUSD (mUSD, one thousandth of a dollar)
+saved within the historical measurement window; negative values mean increased
+recorded cost. These values come directly from the CSVs without reconstructing
+unavailable normalized-cost denominators.
+Input-token changes help attribute message removal, while sampling changes can
+alter output tokens even when no rewrite fires. All accuracy differences are
+observations. Neither a nonsignificant paired test nor an unchanged point estimate
+establishes task-quality non-inferiority. Warmup is excluded from these historical
+measurement windows and is not excluded from the frozen whole-system endpoint.
+
+\begin{table}[t]
+\caption{Historical ContextCompress isolation ($n=300$, length-expanded long-context QA, \texttt{gpt-4o-mini}, warmup-corrected). All historical exact McNemar $p\geq0.38$. The fixture favors removable messages; these are not current-selector outcomes.}
+\label{tab:cc-matrix}
+\small
+\begin{tabularx}{\columnwidth}{@{} L r r r @{}}
+\toprule
+Configuration & \makecell[r]{Cost saved\\(mUSD)} & \makecell[r]{Input-tok\\$\Delta$} & Acc $\Delta$ \\
+\midrule
+\textbf{all-on}                 & \textbf{53.63} & \textbf{34.0\%} & $+$0.3\,pp \\
+CacheHit-off                    & 58.43 & 37.1\% & $+$1.7\,pp \\
+\textbf{ContextCompress-off}    & \textbf{-0.01} & \textbf{0.0\%}  & $+$0.0\,pp \\
+ParallelBranch-off              & 54.27 & 34.4\% & $+$0.0\,pp \\
+ModelDowngrade-off              & 52.16 & 33.1\% & $-$1.0\,pp \\
+StateDrop-off                   & 58.18 & 36.9\% & $+$1.3\,pp \\
+\midrule
+CacheHit-only                   & -0.01 & 0.0\%  & $+$0.0\,pp \\
+\textbf{ContextCompress-only}   & \textbf{57.19} & \textbf{36.3\%} & $+$1.7\,pp \\
+ParallelBranch-only             & 0.00 & 0.0\%  & $-$1.3\,pp \\
+ModelDowngrade-only             & 0.01 & 0.0\%  & $+$0.3\,pp \\
+StateDrop-only                  & 0.01 & 0.0\%  & $-$1.0\,pp \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table*}[t]
+\caption{Historical ModelDowngrade isolation ($n=127$, routing fixture, \texttt{gpt-4o} to \texttt{gpt-4o-mini}, warmup-corrected). Baseline pass rate 15.0\%. Input-token savings are approximately zero. The observed MD-only accuracy change does not establish non-inferiority.}
+\label{tab:md-matrix}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Configuration & \makecell[r]{Cost saved\\(mUSD)} & Input-tok $\Delta$ & Acc $\Delta$ & MD fires \\
+\midrule
+all-on                          & 19.52 & $\approx$0\% & $-$1.6\,pp & 83 (32.7\%) \\
+CacheHit-off                    & 22.32 & $\approx$0\% & $-$3.9\,pp & 72 (28.3\%) \\
+ContextCompress-off             & 27.84 & $\approx$0\% & $-$1.6\,pp & 82 (32.3\%) \\
+ParallelBranch-off              & 28.82 & $\approx$0\% & $-$2.4\,pp & 83 (32.7\%) \\
+\textbf{ModelDowngrade-off}     & \textbf{1.93} & $\approx$0\% & $-$0.8\,pp & 0 (0.0\%) \\
+StateDrop-off                   & 30.82 & $\approx$0\% & $-$3.9\,pp & 83 (32.7\%) \\
+\midrule
+CacheHit-only                   & -0.58 & $\approx$0\% & $-$1.6\,pp & 0 (0.0\%) \\
+ContextCompress-only$^\dagger$  & -3.36 & $\approx$0\% & $+$1.6\,pp & 0 (0.0\%) \\
+ParallelBranch-only             & 3.43 & $\approx$0\% & $-$0.8\,pp & 0 (0.0\%) \\
+\textbf{ModelDowngrade-only}    & \textbf{11.23} & \textbf{$\approx$0\%} & $-$3.9\,pp ($p$=0.18, ns) & 65 (25.6\%) \\
+StateDrop-only$^\dagger$        & -6.60 & $\approx$0\% & $-$1.6\,pp & 0 (0.0\%) \\
+\bottomrule
+\end{tabular}
+\par\smallskip
+\footnotesize{$\dagger$CC and SD do not fire on this routing fixture (short prompts,
+no state-tagged messages). Cost fluctuations with unchanged input can reflect
+output-token sampling; input-token savings are approximately zero throughout.}
+\end{table*}
+
+\begin{table}[t]
+\caption{Historical StateDrop fixture ($n=50$, iterative refinement, \texttt{gpt-4o-mini}, warmup-corrected). StateDrop fires 177--187 times in enabled configurations and zero times when disabled. The SD-only accuracy point estimate is unchanged. Differences between configurations do not by themselves isolate every causal interaction.}
+\label{tab:sd-matrix}
+\small
+\begin{tabularx}{\columnwidth}{@{} X r r r @{}}
+\toprule
+Configuration & \makecell[r]{Cost saved\\(mUSD)} & \makecell[r]{Input-tok\\$\Delta$} & Acc $\Delta$ \\
+\midrule
+all-on                          & 6.46 & 12.0\%  & $-$4.0\,pp (ns) \\
+CacheHit-off                    & 6.35 & 12.1\%  & $-$6.0\,pp (ns) \\
+ContextCompress-off             & 6.20 & 11.8\%  & 0.0\,pp \\
+ParallelBranch-off              & 6.37 & 11.6\%  & 0.0\,pp \\
+ModelDowngrade-off              & 6.92 & 12.7\%  & $-$4.0\,pp (ns) \\
+\textbf{StateDrop-off}          & \textbf{1.81} & \textbf{2.1\%}  & $-$4.0\,pp (ns) \\
+\midrule
+CacheHit-only                   & 2.37 & 2.5\%   & 0.0\,pp \\
+ContextCompress-only            & 1.96 & 2.1\%   & 0.0\,pp \\
+ParallelBranch-only             & 0.75 & 0.7\%   & 0.0\,pp \\
+ModelDowngrade-only             & 0.80 & 0.9\%   & 0.0\,pp \\
+\textbf{StateDrop-only}         & \textbf{5.15} & \textbf{10.8\%} & \textbf{0.0\,pp} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[t]
+\caption{Historical ContextCompress on natural HotpotQA-distractor prompts ($n=300$, \texttt{gpt-4o-mini}). Median prompt size is 6,940 bytes. CC fires zero or one time per configuration. All historical McNemar $p\geq0.17$. Sparse activation limits attainable savings.}
+\label{tab:hotpot-matrix}
+\small
+\begin{tabularx}{\columnwidth}{@{} X r r r r @{}}
+\toprule
+Configuration & \makecell[r]{Input-tok\\$\Delta$} & Acc $\Delta$ & McNemar $p$ & CC/300 \\
+\midrule
+\textbf{all-on}              & $+$0.19\% & $-$1.7\,pp & 0.27 & 1 \\
+CacheHit-off                 & $+$0.19\% & $-$1.0\,pp & 0.61 & 1 \\
+\textbf{CC-off} & $\phantom{+}$0.00\% & $+$0.7\,pp & 0.79 & 0 \\
+PB-off           & $+$0.19\% & $-$1.7\,pp & 0.30 & 1 \\
+MD-off           & $+$0.19\% & $-$2.0\,pp & 0.21 & 1 \\
+StateDrop-off                & $\phantom{+}$0.00\% & $-$1.3\,pp & 0.45 & 0 \\
+\midrule
+CacheHit-only                & $\phantom{+}$0.00\% & $-$0.3\,pp & 1.00 & 0 \\
+\textbf{CC-only}& $+$0.19\% & $-$2.0\,pp & 0.18 & 1 \\
+PB-only          & $\phantom{+}$0.00\% & $-$1.0\,pp & 0.63 & 0 \\
+MD-only          & $\phantom{+}$0.00\% & $-$1.0\,pp & 0.58 & 0 \\
+StateDrop-only               & $\phantom{+}$0.00\% & $-$1.3\,pp & 0.45 & 0 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+\section{Historical Composition Observations}
+\label{sec:composition}
+
+Table~\ref{tab:mdcc-orthogonality} uses the committed warmup and rerun CSVs
+for two historical model-and-compression campaigns. The routing contribution differs
+between them. The state-and-compression fixture in Table~\ref{tab:ccsd-composition}
+has a small standalone state-pruning contribution. StateDrop fires 58 times alone
+and only once in the 90-call composed run, consistent with competition over removal
+opportunities. These observations do not establish additive quality or material
+comparative value from the current selector. The previous draft's projected-savings
+table combined figures whose source mapping was inconsistent; that table is excluded
+here. The earlier planner-ablation result is also excluded because its regeneration
+remains unresolved.
+
+\begin{table*}[t]
+\caption{Two historical model-and-compression campaigns ($n=20$ each).
+Cost is the recorded optimized total in milliUSD; accuracy is task pass rate.
+Warmup baseline cost is 199.1050\,mUSD, accuracy 80\%; rerun baseline cost is
+201.4525\,mUSD, accuracy 60\%. Results use the corresponding CSV directly,
+not projections or the retracted composed source.}
+\label{tab:mdcc-orthogonality}
+\small
+\begin{tabularx}{\textwidth}{@{} L r r r r @{}}
+\toprule
+ & \multicolumn{2}{c}{Warmup campaign} & \multicolumn{2}{c}{Rerun campaign} \\
+Configuration & Cost (mUSD) & Accuracy & Cost (mUSD) & Accuracy \\
+\midrule
+Baseline & 199.1050 & 80\% & 201.4525 & 60\% \\
+CC-only & 149.4950 & 70\% & 141.9850 & 60\% \\
+MD-only & 170.8873 & 70\% & 201.5525 & 55\% \\
+CC+MD & 124.9816 & 60\% & 142.0550 & 60\% \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\begin{table*}[t]
+\caption{Historical compression-and-state fixture ($n=30$). StateDrop alone reduces recorded input tokens by only 0.06\%. The composed token reduction is close to the additive calculation in this fixture; no material incremental gain or non-inferiority conclusion follows.}
+\label{tab:ccsd-composition}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Config & Accuracy & Acc $\Delta$ & McNemar $p$ & Tok savings \\
+\midrule
+Baseline & 60.0\% & 0.0\,pp   & ---   & 0.00\% \\
+CC only  & 63.3\% & $+$3.3\,pp & 1.000 & 32.54\% \\
+SD only  & 60.0\% & 0.0\,pp   & 1.000 & 0.06\% \\
+CC+SD    & 63.3\% & $+$3.3\,pp & 1.000 & 32.78\% \\
+\midrule
+Additive ideal & & & & 32.60\% \\
+Achieved & & & & 32.78\% (100.5\%) \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+
+\section{Autogen Paired Outcomes and Accounting Limit}
+\label{sec:autogen}
+
+The combined sidecar \path{autogen_bridge-n300-warmup.per_task.csv} has 600 rows:
+300 for CC-only and 300 for all-on, with matching task IDs and baseline outcomes.
+The extra file named \path{autogen_bridge-n300-ALLON.per_task.csv} is empty and is
+not the source for the paired tests. The valid combined source has SHA256
+\begin{quote}\small
+\path{ac57798ec689e8999896236dcdb0227c4bfe497a62d55d1378b0b22d4599db20}.
+\end{quote}
+
+\begin{table*}[t]
+\caption{Recomputed descriptive Autogen task-quality comparisons. BF is baseline
+correct / candidate wrong; FB is baseline wrong / candidate correct. Bootstrap
+intervals use 5,000 task-paired resamples and are unadjusted. Baseline is 229/300.}
+\label{tab:autogen}
+\small
+\begin{tabularx}{\textwidth}{@{} L r r r r l @{}}
+\toprule
+Configuration & Correct & BF & FB & Exact $p$ & 95\% change interval \\
+\midrule
+CC-only & 225/300 & 6 & 2 & 0.2891 & $[-3.33,+0.33]$\,pp \\
+All-on & 226/300 & 7 & 4 & 0.5488 & $[-3.33,+1.00]$\,pp \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+The summary CSV contains input-token sums of 2,211,824 for baseline, 1,636,673 for
+CC-only, and 1,901,898 for all-on. Reductions are 26.0\% and 14.0\% in these
+captured sums. The harness permits incomplete span export; original per-call
+span-count denominators are unavailable. The former 23.5\% per-call claim cannot
+be reproduced and is withdrawn. Neither these aggregates nor the paired correctness
+sidecar establishes complete-workload spending. An all-actor request ledger is
+required for the new evaluation.
+
+\section{Engineering Preflight and Reproduction}
+\label{sec:repro}
+
+The archived native preflight, \path{bench/repro/joint-planner-preflight-2026-09-04.json},
+uses four generated candidates and synthetic profiles with 20 paired observations.
+Across three 20,000-decision runs it selects the expected jointly changed identity
+60,000 times, with no fallback or unexpected identity. It measures a warm local
+selector path; it excludes provider calls, cold learning, task grading, and realistic
+storage contention. Its output is marked Stage~E0 and \texttt{paper\_evidence=false}.
+
+The no-key campaign fixture runs ten arms over 160 synthetic cells with zero network
+calls. It exercises arm isolation, canonical records, accounting namespaces, source
+and task hashes, and resume consistency. Synthetic quality and cost values cannot
+satisfy an empirical gate. The live campaign must independently pass interception,
+request-preservation, grader, and full-accounting admission. Current exploratory
+summaries are not the hierarchical, selection-adjusted confirmatory analysis.
+
+The frozen protocol is \path{bench/repro/mlsys-2027-evaluation-protocol.md}, revision
+12, SHA256
+\begin{quote}\small
+\path{82943dbb351f9154f2e3a75f01d8659d590c9a7e45797725ba0cdfbced054791}.
+\end{quote}
+No protocol change or held-out selection is implied by this manuscript rewrite.
+Historical source files below remain unchanged. Commands that invoke provider
+workers require separate budget authorization and may not reproduce past outputs
+when provider revisions have changed.
+
+\begin{table*}[t]
+\caption{Sources for active historical tables and local engineering checks.
+Historical CSVs are under \texttt{bench/paper\_results/}; commands are run from the
+repository root. Provider reruns incur cost.}
+\label{tab:repro}
+\small
+\begin{tabularx}{\textwidth}{@{} p{1.2cm} L L @{}}
+\toprule
+Evidence & Source & Regeneration or local check \\
+\midrule
+\ref{tab:cc-matrix} & \path{long_context_qa-contextcompress-n300-warmup.csv} & \path{python bench/run_lcqa_warmup_n300.py} \\
+\addlinespace
+\ref{tab:md-matrix} & \path{gaia_router-modeldowngrade-n127-warmup.csv} & \path{python bench/run_gaia_warmup.py} \\
+\addlinespace
+\ref{tab:sd-matrix} & \path{iterative_refiner-statedrop-n50-warmup.csv} & \path{python bench/run_refiner_warmup.py} \\
+\addlinespace
+\ref{tab:hotpot-matrix} & \path{hotpot_real-contextcompress-n300-warmup.csv} & \path{python bench/run_hotpot_warmup_n300.py} \\
+\addlinespace
+\ref{tab:mdcc-orthogonality} & \path{md_cc_orthogonality_warmup.csv}; \path{md_cc_orthogonality_rerun.csv} & \path{python bench/run_md_cc_orthogonality_warmup.py}; \path{python bench/run_md_cc_orthogonality_rerun.py} \\
+\addlinespace
+\ref{tab:ccsd-composition} & \path{multirule_qa-ccsd-n30-warmup.csv} & \path{python bench/run_cc_sd_subadditivity_warmup.py} \\
+\addlinespace
+\ref{tab:autogen} & \path{autogen_bridge-n300-warmup.per_task.csv}; summary \path{autogen_bridge_warmup_n300.csv} & \path{python -m bench.paired_analysis bench/paper_results/autogen_bridge-n300-warmup.per_task.csv} (paired audit); \path{python -m bench.run_autogen_warmup_n300} (provider rerun) \\
+\addlinespace
+Native preflight & Rust example and archived Stage~E0 JSON & \path{cargo run --release -p agentc-optimizer --example joint_planner_preflight --quiet} \\
+\addlinespace
+No-key campaign & \path{bench/repro/joint-campaign-fixture-e0.json} & \path{python -m bench.joint_campaign bench/repro/joint-campaign-fixture-e0.json --output /tmp/agentc-fixture} \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+The paper build uses \path{python bench/repro/build_submission.py --output /tmp/agentc-paper}
+with a new or empty output directory. It stages the sources, compiles the anonymous
+main paper and this separate supplement, and records source and artifact hashes.
+Poppler diagnostics check page counts, references, fonts, and unresolved labels.
+Compilation and local tests do not establish scientific readiness or certify an
+external submission. The implementation and experimental limits in the main paper
+remain part of the evidence contract.
+
+\end{document}

@@ -1,0 +1,149 @@
+% Build main.tex first, preserving main.aux for cross-references.
+\input{paper-preamble}
+\externaldocument{main}
+\begin{document}
+\twocolumn[
+\mlsystitle{Agentc: Supplementary Material}
+\begin{mlsysauthorlist}
+\mlsysauthor{Anonymous Authors}{anon}
+\end{mlsysauthorlist}
+\mlsysaffiliation{anon}{Anonymous Institution}
+\mlsyscorrespondingauthor{Anonymous Author}{anon.email@domain.com}
+\vskip 0.3in
+]
+\printAffiliationsAndNotice{}
+\appendix
+\section{Reproducibility}
+\label{sec:repro}
+
+\begin{table*}[t]
+\caption{Data sources and regeneration commands for all result tables.}
+\label{tab:repro}
+\small
+\begin{tabularx}{\linewidth}{p{1.7cm} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X}
+\toprule
+Table & Source & Regeneration \\
+\midrule
+
+\ref{tab:cc-matrix} &
+\texttt{long\_\allowbreak context\_\allowbreak qa-\allowbreak contextcompress-\allowbreak n300-\allowbreak warmup.csv} &
+\texttt{python bench/run\_\allowbreak lcqa\_\allowbreak warmup\_\allowbreak n300.py} \\
+
+\addlinespace
+\ref{tab:md-matrix} &
+\texttt{gaia\_\allowbreak router-\allowbreak modeldowngrade-\allowbreak n127-\allowbreak warmup.csv} &
+\texttt{python bench/run\_\allowbreak gaia\_\allowbreak warmup.py} \\
+
+\addlinespace
+\ref{tab:sd-matrix} &
+\texttt{iterative\_\allowbreak refiner-\allowbreak statedrop-\allowbreak n50-\allowbreak warmup.csv} &
+\texttt{python bench/run\_\allowbreak refiner\_\allowbreak warmup.py} \\
+
+\addlinespace
+\ref{tab:hotpot-matrix} &
+\texttt{hotpot\_\allowbreak real-\allowbreak contextcompress-\allowbreak n300-\allowbreak warmup.csv} &
+\texttt{python bench/run\_\allowbreak hotpot\_\allowbreak warmup\_\allowbreak n300.py} \\
+
+\addlinespace
+\ref{tab:oracle} &
+\texttt{traces.db} (canonical) &
+Run oracle agent; query \texttt{traces.db} as above \\
+
+\addlinespace
+\ref{tab:llmlingua-distractor}, \ref{tab:llmlingua-wikipedia} &
+\texttt{llmlingua\_\allowbreak accuracy\_\allowbreak n100.csv},
+\texttt{agentc\_\allowbreak hotpot\_\allowbreak n100.csv} (Agentc-CC row),
+\texttt{wikipedia\_\allowbreak qa\_\allowbreak comparison.csv} &
+\texttt{python -m bench.agents.llmlingua\_\allowbreak baseline} \\
+
+\addlinespace
+\ref{tab:ccsd-composition} &
+\texttt{multirule\_\allowbreak qa-\allowbreak ccsd-\allowbreak n30-\allowbreak warmup.csv} &
+\texttt{python bench/run\_\allowbreak cc\_\allowbreak sd\_\allowbreak subadditivity\_\allowbreak warmup.py} \\
+
+\addlinespace
+\ref{tab:planner-ablation} &
+\texttt{composition\_\allowbreak qa-\allowbreak planner-\allowbreak ablation-\allowbreak n50-\allowbreak warmup.csv} &
+\texttt{python bench/run\_\allowbreak planner\_\allowbreak ablation\_\allowbreak rerun.py} \\
+
+\addlinespace
+\ref{tab:summary} (cold agent row) &
+\texttt{generalization\_\allowbreak evals.csv} (support\_qa row),
+\texttt{generalization\_\allowbreak activation.csv} &
+\texttt{python -m bench.run\_\allowbreak generalization\_\allowbreak evals} \\
+
+\addlinespace
+\ref{sec:eval-cachehit} &
+\texttt{traces.db} (\texttt{plan\_audit}, \texttt{plan\_kind='cached'}) &
+Run \texttt{python -m bench.agents.batch\_\allowbreak classifier} twice; the
+in-script \texttt{agentc.shutdown()} seeds the cache between runs \\
+
+\addlinespace
+\ref{tab:summary} (research\_\allowbreak planner) &
+\texttt{research\_\allowbreak planner\_\allowbreak warmup\_\allowbreak n150.csv} &
+\texttt{python -m bench.run\_\allowbreak research\_\allowbreak planner\_\allowbreak warmup} \\
+
+\addlinespace
+\ref{tab:summary} (autogen rows) &
+\texttt{autogen\_\allowbreak bridge\_\allowbreak warmup\_\allowbreak n300.csv}; paired:
+\texttt{autogen\_\allowbreak bridge-\allowbreak n300-\allowbreak warmup.per\_\allowbreak task.csv} &
+\texttt{AB\_\allowbreak CONFIGS=...\ python -m bench.run\_\allowbreak autogen\_\allowbreak warmup\_\allowbreak n300} \\
+
+\addlinespace
+\ref{tab:guard} (SD generalization) &
+\texttt{analyst\_\allowbreak qa\_\allowbreak sd\_\allowbreak gen.csv} &
+\texttt{python -m bench.build\_\allowbreak squad\_\allowbreak fixture}; \texttt{python -m bench.run\_\allowbreak analyst\_\allowbreak sd\_\allowbreak generalization} \\
+
+\addlinespace
+\ref{tab:guard} (guard on/off), \ref{fig:metric-tradeoff} &
+\texttt{gsweep\_\allowbreak tradeoff\_\allowbreak *.csv} &
+\texttt{OPENAI\_\allowbreak API\_\allowbreak KEY=...\ bash bench/repro/guard\_\allowbreak frontier.sh};
+\texttt{python bench/paper\_\allowbreak figures/fig9\_\allowbreak metric\_\allowbreak tradeoff.py} \\
+
+\addlinespace
+\ref{tab:xmodel} &
+\texttt{gsweep\_\allowbreak \{xmodel,claude,qwen3\}\_\allowbreak *.csv} &
+\texttt{bash bench/repro/crossmodel\_\allowbreak selectivity.sh} (one invocation per model family; see \texttt{bench/repro/README.md}) \\
+
+\addlinespace
+\S\ref{sec:eval-guard} (guard overhead) &
+Stage~E0 local diagnostic (no API; not paper evidence) &
+\texttt{python -m bench.guard\_\allowbreak overhead\_\allowbreak bench} \\
+
+\addlinespace
+\ref{fig:throughput} &
+\texttt{concurrency\_\allowbreak bench\_\allowbreak summary.csv} &
+\texttt{python -m bench.run\_\allowbreak concurrency\_\allowbreak bench --concurrency 1 8 32};
+\texttt{python bench/paper\_\allowbreak figures/fig\_\allowbreak concurrency.py} \\
+
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+Token and cost figures in Table~\ref{tab:oracle} are read directly from
+\texttt{traces.db} using the queries below; no values are derived.
+
+\begin{verbatim}
+-- Baseline (real HotpotQA, n=300):
+-- Input tokens:
+SELECT SUM(input_tokens),
+       AVG(input_tokens), COUNT(*)
+FROM spans
+WHERE name =
+  'openai.chat.completions.create';
+-- Result: 520154 / 1733.85 / 300
+
+-- ContextCompress (all-on):
+-- Result: 519140 / 1730.47 / 300
+
+-- Oracle agent (supporting-only):
+-- Result: 92885 / 309.62 / 300
+
+-- Rule fire rate confirmation:
+SELECT COUNT(*) FROM plan_audit
+WHERE rule='ContextCompress'
+AND plan_kind='rewritten';
+-- Result: 1
+\end{verbatim}
+
+\end{document}

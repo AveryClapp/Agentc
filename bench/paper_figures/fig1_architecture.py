@@ -8,6 +8,8 @@ labeled "DepSource" lists the five provenance tags.
 """
 
 from pathlib import Path
+import subprocess
+import sys
 
 from graphviz import Digraph
 
@@ -19,7 +21,7 @@ def main() -> None:
     g = Digraph("arch", format="pdf")
     g.attr(
         rankdir="LR",
-        fontname="serif",
+        fontname="Times New Roman",
         fontsize="10",
         nodesep="0.35",
         ranksep="0.55",
@@ -29,11 +31,11 @@ def main() -> None:
         "node",
         shape="box",
         style="rounded",
-        fontname="serif",
+        fontname="Times New Roman",
         fontsize="10",
         margin="0.15,0.10",
     )
-    g.attr("edge", fontname="serif", fontsize="9")
+    g.attr("edge", fontname="Times New Roman", fontsize="9")
 
     # Main pipeline nodes.
     g.node("agent", "Agent Code")
@@ -90,13 +92,13 @@ def main() -> None:
         c.attr(
             label="DepSource",
             style="dashed",
-            fontname="serif",
+            fontname="Times New Roman",
             fontsize="10",
             color="gray40",
             fontcolor="gray20",
             margin="10",
         )
-        c.attr("node", shape="plaintext", fontname="monospace",
+        c.attr("node", shape="plaintext", fontname="Courier New",
                fontsize="9", margin="0.02,0.02")
         for tag in ["Literal", "UserInput", "ToolOutput",
                     "LlmOutput", "State"]:
@@ -107,12 +109,16 @@ def main() -> None:
         c.edge("dep_tooloutput", "dep_llmoutput", style="invis")
         c.edge("dep_llmoutput", "dep_state", style="invis")
 
-    g.render(
-        filename=OUT_NAME,
-        directory=str(OUT_DIR),
-        cleanup=True,
-    )
     out = OUT_DIR / f"{OUT_NAME}.pdf"
+    # Cairo on macOS encodes spaces as Type 3 fonts. Quartz embeds the
+    # actual text fonts; use explicit family names so both backends agree.
+    target = "pdf:quartz:quartz" if sys.platform == "darwin" else "pdf"
+    subprocess.run(
+        ["dot", f"-T{target}", "-o", str(out)],
+        input=g.source,
+        text=True,
+        check=True,
+    )
     print(f"wrote {out}")
 
 

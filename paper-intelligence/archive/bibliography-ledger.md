@@ -1,13 +1,17 @@
 ---
 title: Bibliography Ledger
 status: draft
-last-updated: 2026-05-09
+last-updated: 2026-10-10
 owner: paper-intelligence
 ---
 
 # Bibliography Ledger
 
-This file is the citation authority until a `references.bib` file exists. The current rows have checked blurbs in `literature-verified-blurbs.md`, but full BibTeX metadata is still pending.
+This historical ledger predates the complete bibliography restored on October
+10, 2026. The active bibliographic source is now [references.bib](../../references.bib),
+with publication/version decisions in the
+[verified recovery ledger](../research-inbox/2026-10-10-bibliography-verification.md).
+The original pending rows below are retained as historical context.
 
 | Citation Key | LIT ID | Status | Title | Authors | Year | Venue/Source | DOI/arXiv/OpenReview/URL | BibTeX Status | Read Status | Notes |
 |---|---|---|---|---|---:|---|---|---|---|---|

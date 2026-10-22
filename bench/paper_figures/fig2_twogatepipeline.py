@@ -8,6 +8,8 @@ projection on the left side.
 """
 
 from pathlib import Path
+import subprocess
+import sys
 
 from graphviz import Digraph
 
@@ -22,7 +24,7 @@ def main() -> None:
     g = Digraph("twogate", format="pdf")
     g.attr(
         rankdir="TB",
-        fontname="serif",
+        fontname="Times New Roman",
         fontsize="10",
         nodesep="0.45",
         ranksep="0.45",
@@ -32,11 +34,11 @@ def main() -> None:
         "node",
         shape="box",
         style="rounded",
-        fontname="serif",
+        fontname="Times New Roman",
         fontsize="10",
         margin="0.18,0.12",
     )
-    g.attr("edge", fontname="serif", fontsize="9")
+    g.attr("edge", fontname="Times New Roman", fontsize="9")
 
     # Main flow nodes.
     g.node("call", "Call arrives")
@@ -103,12 +105,16 @@ def main() -> None:
         color="gray", constraint="false",
     )
 
-    g.render(
-        filename=OUT_NAME,
-        directory=str(OUT_DIR),
-        cleanup=True,
-    )
     out = OUT_DIR / f"{OUT_NAME}.pdf"
+    # Cairo on macOS encodes spaces as Type 3 fonts. Quartz embeds the
+    # actual text fonts; use explicit family names so both backends agree.
+    target = "pdf:quartz:quartz" if sys.platform == "darwin" else "pdf"
+    subprocess.run(
+        ["dot", f"-T{target}", "-o", str(out)],
+        input=g.source,
+        text=True,
+        check=True,
+    )
     print(f"wrote {out}")
 
 

@@ -50,7 +50,8 @@ manifest-path = "crates/agentc-profiler/Cargo.toml"
 [tool.pytest.ini_options]
 testpaths = ["tests", "bench"]
 asyncio_mode = "auto"
-pythonpath = ["python"]
+# "." lets tests/ import the bench package regardless of collection order.
+pythonpath = ["python", "."]
 
 [tool.mypy]
 python_version = "3.12"

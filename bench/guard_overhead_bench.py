@@ -7,8 +7,9 @@ For each *fresh* sampled execution this benchmark measures:
      complete-plan profile update, the exact-plan exposure guard, and the
      synchronous SQLite durability boundary used by production.
 
-Every measured token is issued by ``optimize_observe`` for a canonical
-ContextCompress+OutputBudget plan. Replaying one token would measure the
+Every measured token is issued by ``optimize_observe`` for a native-proposed
+ContextCompress+OutputBudget plan. This synthetic benchmark does not establish
+candidate admission. Replaying one token would measure the
 idempotence fast path, not the cost of accepting a new shadow sample.
 
 The shadow provider call itself is deliberately excluded. This is a no-network
@@ -25,12 +26,14 @@ import argparse
 import json
 import os
 import platform
-import sqlite3
 import statistics
 import subprocess
+import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -43,8 +46,8 @@ from agentc._patches._optimizer_glue import _text_divergence
 
 
 _CALL_SITE = "complete-plan-guard-overhead"
-_DIVERGENCE = 0.05
-_THRESHOLD = 0.10
+_DIVERGENCE = 0.005
+_THRESHOLD = 0.01
 _DEFAULT_FRESH_TOKENS = 2_000
 _DEFAULT_METRIC_ITERS = 50_000
 _DEFAULT_WARMUP_TOKENS = 100
@@ -58,10 +61,10 @@ BASE = (
 ELAB = BASE + " The melody is widely recognized throughout the midwestern United States."
 
 
-def _call() -> dict[str, Any]:
+def _call(call_site: str = _CALL_SITE) -> dict[str, Any]:
     big_dead_context = "historical context " * 700
     return {
-        "call_site_id": _CALL_SITE,
+        "call_site_id": call_site,
         "trace_id": "0" * 32,
         "span_id": "0" * 16,
         "model": "gpt-4o",
@@ -98,7 +101,7 @@ def _call() -> dict[str, Any]:
     }
 
 
-def _outcome() -> dict[str, Any]:
+def _outcome(call_site: str = _CALL_SITE) -> dict[str, Any]:
     return {
         "input_tokens": 5_000,
         "output_tokens": 200,
@@ -106,7 +109,7 @@ def _outcome() -> dict[str, Any]:
         "cost_usd": 0.05,
         "output_is_structured": False,
         "output_is_short": False,
-        "call_site_id": _CALL_SITE,
+        "call_site_id": call_site,
     }
 
 
@@ -120,24 +123,30 @@ def _git_commit() -> str | None:
     return completed.stdout.strip() if completed.returncode == 0 else None
 
 
-def _composed_plan_json() -> str:
-    call = _call()
-    outcome = _outcome()
+def _composed_plan_json(call_site: str = _CALL_SITE) -> str:
+    call = _call(call_site)
+    outcome = _outcome(call_site)
     for _ in range(3):
         observe_outcome(plan_call(call), outcome)
     plan = plan_call(call)
-    if plan.kind != "composed" or set(plan.rules or []) != {
+    value = json.loads(plan.raw_json)
+    if plan.kind == "pass_through":
+        value = value.get("agentc_exploration_context", {}).get("candidate_plan", {})
+    if value.get("kind") != "composed" or {r["rule"] for r in value.get("rules", [])} != {
         "ContextCompress",
         "OutputBudget",
     }:
         raise RuntimeError(
             "benchmark fixture did not produce the required canonical composed plan"
         )
-    return plan.raw_json
+    threshold = value["agentc_observation_context"]["divergence_threshold"]
+    if not abs(threshold - _THRESHOLD) < 1e-8 or threshold < _DIVERGENCE:
+        raise RuntimeError(f"benchmark candidate has an unexpected threshold: {threshold}")
+    return json.dumps(value)
 
 
-def _fresh_tokens(plan_json: str, count: int) -> list[str]:
-    outcome_json = json.dumps(_outcome())
+def _fresh_tokens(plan_json: str, count: int, call_site: str = _CALL_SITE) -> list[str]:
+    outcome_json = json.dumps(_outcome(call_site))
     tokens = [
         str(_native.optimize_observe(plan_json, outcome_json)) for _ in range(count)
     ]
@@ -157,13 +166,34 @@ def _bench(fn: Callable[[], object], iters: int) -> dict[str, float]:
     return _summarize(samples)
 
 
-def _bench_fresh_tokens(tokens: Sequence[str]) -> dict[str, float]:
+def _bench_fresh_tokens(tokens: Sequence[str], workers: int = 1) -> dict[str, float]:
+    if workers > 1:
+        barrier = threading.Barrier(workers)
+
+        def measure(chunk: Sequence[str]) -> list[int]:
+            barrier.wait()
+            return _feedback_samples(chunk)
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            started = time.perf_counter_ns()
+            futures = [executor.submit(measure, tokens[i::workers]) for i in range(workers)]
+            samples = [sample for future in futures for sample in future.result()]
+            elapsed = time.perf_counter_ns() - started
+    else:
+        started = time.perf_counter_ns()
+        samples = _feedback_samples(tokens)
+        elapsed = time.perf_counter_ns() - started
+    return {**_summarize(samples), "wall_seconds": elapsed / 1e9,
+            "feedback_per_second": len(samples) * 1e9 / elapsed}
+
+
+def _feedback_samples(tokens: Sequence[str]) -> list[int]:
     samples: list[int] = []
     for token in tokens:
         t0 = time.perf_counter_ns()
         record_divergence(token, _DIVERGENCE)
         samples.append(time.perf_counter_ns() - t0)
-    return _summarize(samples)
+    return samples
 
 
 def _summarize(samples: list[int]) -> dict[str, float]:
@@ -171,59 +201,46 @@ def _summarize(samples: list[int]) -> dict[str, float]:
     return {
         "mean_us": statistics.mean(samples) / 1e3,
         "p50_us": samples[len(samples) // 2] / 1e3,
+        "p95_us": samples[min(len(samples) - 1, int(len(samples) * 0.95))] / 1e3,
         "p99_us": samples[min(len(samples) - 1, int(len(samples) * 0.99))] / 1e3,
     }
 
 
 def _verify_complete_plan_guard(
-    storage: Path, *, expected_paired_observations: int
+    storage: Path, *, expected_paired_observations: Sequence[int]
 ) -> dict[str, int | float]:
-    _native.optimize_flush()
-    with sqlite3.connect(storage / "cost_model.db") as connection:
-        guard = connection.execute(
-            "SELECT COUNT(*), MIN(divergence_threshold), "
-            "MAX(divergence_exposure), SUM(window_samples) "
-            "FROM execution_plan_guard"
-        ).fetchone()
-        legacy_rows = connection.execute(
-            "SELECT COUNT(*) FROM rule_divergence WHERE call_site_id = ?",
-            (_CALL_SITE,),
-        ).fetchone()
-        paired = connection.execute(
-            "SELECT profile.n_paired_observations, profile.paired_observations "
-            "FROM execution_plan_profile AS profile "
-            "JOIN execution_plan_guard AS guard "
-            "ON guard.call_site_version = profile.call_site_version "
-            "AND guard.execution_plan_id = profile.execution_plan_id"
-        ).fetchone()
-    if guard is None or legacy_rows is None or paired is None:
-        raise RuntimeError("guard verification query returned no row")
-    result = {
-        "plan_guard_rows": int(guard[0]),
-        "divergence_threshold": float(guard[1]),
-        "divergence_exposure": float(guard[2]),
-        "positive_exposure_events": int(guard[3]),
-        "legacy_rule_rows": int(legacy_rows[0]),
-        "lifetime_paired_observations": int(paired[0]),
-        "retained_paired_observations": int(paired[1]),
-    }
-    if result != {
-        "plan_guard_rows": 1,
-        "divergence_threshold": _THRESHOLD,
-        "divergence_exposure": 0.0,
-        "positive_exposure_events": 0,
-        "legacy_rule_rows": 0,
-        "lifetime_paired_observations": expected_paired_observations,
-        "retained_paired_observations": min(expected_paired_observations, 50),
-    }:
-        raise RuntimeError(f"benchmark did not isolate the complete-plan guard: {result}")
+    # The SDK's bundled SQLite and Python's SQLite run in separate interpreters.
+    audit = r"""
+import json,sqlite3,sys,math
+assert not any(n=='agentc' or n.startswith('agentc.') for n in sys.modules)
+with sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True) as c:
+    guards=c.execute('SELECT divergence_threshold,divergence_exposure,window_samples FROM execution_plan_guard').fetchall()
+    paired=c.execute('SELECT p.n_paired_observations,p.paired_observations FROM execution_plan_profile p JOIN execution_plan_guard g ON g.call_site_version=p.call_site_version AND g.execution_plan_id=p.execution_plan_id').fetchall()
+    expected=json.loads(sys.argv[2]);assert len(guards)==len(paired)==len(expected),(guards,paired,expected)
+    assert all(math.isclose(row[0],.01,rel_tol=0,abs_tol=1e-8) and row[1:]==(0.,0) for row in guards),guards
+    assert sorted(paired)==sorted((n,min(n,50)) for n in expected),(paired,expected)
+    legacy=c.execute('SELECT COUNT(*) FROM rule_divergence').fetchone()[0];assert legacy==0,legacy
+    assert not c.execute('PRAGMA foreign_key_check').fetchall()
+    print(json.dumps({'plan_guard_rows':len(guards),'divergence_threshold':guards[0][0],'divergence_exposure':0.,'positive_exposure_events':0,'legacy_rule_rows':legacy,'lifetime_paired_observations':sum(p[0] for p in paired),'retained_paired_observations':sum(p[1] for p in paired)}))
+"""
+    checked = subprocess.run(
+        [sys.executable, "-I", "-c", audit, str(storage / "cost_model.db"),
+         json.dumps(list(expected_paired_observations))],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    if checked.returncode:
+        raise RuntimeError(f"guard audit failed: {checked.stderr}")
+    result: dict[str, int | float] = json.loads(checked.stdout)
     return result
 
 
-def run(*, fresh_tokens: int, metric_iters: int, warmup_tokens: int) -> dict[str, Any]:
+def run(*, fresh_tokens: int, metric_iters: int, warmup_tokens: int,
+        workers: int = 1, sites: int = 1) -> dict[str, Any]:
     """Run the isolated metric and fresh-feedback measurements."""
-    if min(fresh_tokens, metric_iters, warmup_tokens) <= 0:
+    if min(fresh_tokens, metric_iters, warmup_tokens, workers, sites) <= 0:
         raise ValueError("iteration and warmup counts must be positive")
+    if fresh_tokens < max(workers, sites):
+        raise ValueError("fresh token count must cover every worker and call site")
     settings = {
         "AGENTC_ENABLED_RULES": "ContextCompress,OutputBudget",
         "AGENTC_OPTIMIZE": "1",
@@ -241,19 +258,29 @@ def run(*, fresh_tokens: int, metric_iters: int, warmup_tokens: int) -> dict[str
         with patch.dict(os.environ, settings):
             agentc.init(storage_path=str(storage))
             try:
-                plan_json = _composed_plan_json()
-                for token in _fresh_tokens(plan_json, warmup_tokens):
-                    record_divergence(token, _DIVERGENCE)
-                feedback = _bench_fresh_tokens(_fresh_tokens(plan_json, fresh_tokens))
+                tokens: list[str] = []
+                counts = [fresh_tokens // sites + int(i < fresh_tokens % sites) for i in range(sites)]
+                for i, count in enumerate(counts):
+                    site = _CALL_SITE if sites == 1 else f"{_CALL_SITE}-{i}"
+                    plan_json = _composed_plan_json(site)
+                    for token in _fresh_tokens(plan_json, warmup_tokens, site):
+                        record_divergence(token, _DIVERGENCE)
+                    tokens.extend(_fresh_tokens(plan_json, count, site))
+                feedback = _bench_fresh_tokens(tokens, workers)
+                # Final flushing must not repair a failed timed durability write.
+                expected = [warmup_tokens + n for n in counts]
                 guard_state = _verify_complete_plan_guard(
-                    storage,
-                    expected_paired_observations=warmup_tokens + fresh_tokens,
+                    storage, expected_paired_observations=expected,
                 )
             finally:
                 agentc.shutdown()
+            if guard_state != _verify_complete_plan_guard(
+                storage, expected_paired_observations=expected,
+            ):
+                raise RuntimeError("runtime shutdown changed the measured durable guard state")
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "experiment_kind": "complete_plan_guard_overhead_preflight",
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "agentc_git_commit": _git_commit(),
@@ -272,6 +299,9 @@ def run(*, fresh_tokens: int, metric_iters: int, warmup_tokens: int) -> dict[str
             "metric_iterations": metric_iters,
             "fresh_feedback_tokens": fresh_tokens,
             "feedback_warmup_tokens": warmup_tokens,
+            "concurrent_feedback_workers": workers,
+            "call_sites": sites,
+            "observed_feedback_fraction": 1.0,
         },
         "measurements_us": {
             "divergence_metric": metric,
@@ -279,6 +309,7 @@ def run(*, fresh_tokens: int, metric_iters: int, warmup_tokens: int) -> dict[str
             "estimated_combined_mean": metric["mean_us"] + feedback["mean_us"],
         },
         "validated_state": guard_state,
+        "durability_verified_before_shutdown": True,
         "timed_scope": [
             "Python normalized-containment divergence metric",
             "opaque observation-token validation",
@@ -296,6 +327,8 @@ def run(*, fresh_tokens: int, metric_iters: int, warmup_tokens: int) -> dict[str
             "This is a single-machine Stage E0 engineering measurement, not paper evidence.",
             "The benchmark uses deterministic synthetic optimizer inputs and performs no network calls.",
             "The combined mean sums separately timed metric and feedback paths; it is not an end-to-end request latency.",
+            "Every fresh token receives feedback; configured shadow sampling does not simulate unsampled production requests.",
+            "Concurrent measurements use Python threads in one runtime process; wall time includes thread startup and joining.",
             "Provider counterfactual latency and cost dominate sampled requests and must be measured separately.",
         ],
     }
@@ -324,6 +357,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--warmup-tokens", type=_positive_int, default=_DEFAULT_WARMUP_TOKENS
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--workers", type=_positive_int, default=1)
+    parser.add_argument("--sites", type=_positive_int, default=1)
     return parser.parse_args(argv)
 
 
@@ -334,6 +369,8 @@ def main(argv: list[str] | None = None) -> int:
             fresh_tokens=args.fresh_tokens,
             metric_iters=args.metric_iters,
             warmup_tokens=args.warmup_tokens,
+            workers=args.workers,
+            sites=args.sites,
         ),
         indent=2,
         sort_keys=True,

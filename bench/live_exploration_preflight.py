@@ -25,6 +25,7 @@ from unittest.mock import patch
 
 import agentc
 from agentc._patches._openai import _wrap_create
+from agentc._patches._optimizer_glue import estimate_cost_usd
 
 
 REFERENCE_CAP = 1024
@@ -43,6 +44,8 @@ def response(*, origin: str, output_tokens: int) -> SimpleNamespace:
         usage=SimpleNamespace(
             prompt_tokens=100,
             completion_tokens=output_tokens,
+            cost=estimate_cost_usd(MODEL, 100, output_tokens),
+            is_byok=False,
         ),
         choices=[
             SimpleNamespace(
@@ -113,18 +116,18 @@ def run(storage: Path) -> dict[str, Any]:
         "AGENTC_OPTIMIZE_SHADOW": "0",
     }
 
-    with patch.dict(os.environ, environment, clear=False), patch(
-        "agentc._lifecycle._apply_patches"
-    ), patch("agentc._patches._openai._write_root_span"):
+    with (
+        patch.dict(os.environ, environment, clear=False),
+        patch("agentc._lifecycle._apply_patches"),
+        patch("agentc._patches._openai._write_root_span"),
+    ):
         agentc.init(storage_path=str(storage))
         try:
             # The first three calls warm the call site. Subsequent calls remain
             # reference-visible while at most one off-path candidate runs. A
             # concurrent call is allowed to observe the active lease and skip,
             # so bound user calls rather than assuming one lease per call.
-            while (
-                len(calibration_responses) < MAX_CALIBRATION_USER_CALLS
-            ):
+            while len(calibration_responses) < MAX_CALIBRATION_USER_CALLS:
                 with provider._lock:
                     completed_provider_candidates = sum(
                         call["origin"] == "candidate"
@@ -169,9 +172,13 @@ def run(storage: Path) -> dict[str, Any]:
             agentc.shutdown()
 
     if any(result.origin != "reference" for result in calibration_responses):
-        raise RuntimeError("an unadmitted candidate became user-visible during calibration")
+        raise RuntimeError(
+            "an unadmitted candidate became user-visible during calibration"
+        )
     if admitted_response.origin != "candidate":
-        raise RuntimeError("persisted paired evidence did not admit the candidate after restart")
+        raise RuntimeError(
+            "persisted paired evidence did not admit the candidate after restart"
+        )
 
     with closing(sqlite3.connect(storage / "cost_model.db")) as connection:
         attempt = connection.execute(
@@ -189,6 +196,10 @@ def run(storage: Path) -> dict[str, Any]:
         ).fetchone()
         if profile is None:
             raise RuntimeError("leased candidate has no exact persisted plan profile")
+        incomplete_attempts = connection.execute(
+            "SELECT COUNT(*) FROM execution_plan_exploration "
+            "WHERE status IN ('failed', 'abandoned', 'reserved')"
+        ).fetchone()[0]
 
     with provider._lock:
         calls = list(provider.calls)
@@ -222,11 +233,14 @@ def run(storage: Path) -> dict[str, Any]:
             ),
             "background_candidate_calls": len(background_candidates),
             "post_restart_candidate_admitted": admitted_response.origin == "candidate",
-            "post_restart_candidate_max_tokens": main_thread_candidates[-1]["max_tokens"],
+            "post_restart_candidate_max_tokens": main_thread_candidates[-1][
+                "max_tokens"
+            ],
             "provider_calls_total": len(calls),
             "provider_reference_calls": len(reference_calls),
             "provider_candidate_calls": len(candidate_calls),
             "persisted_completed_attempts": int(attempt[1]),
+            "persisted_incomplete_attempts": int(incomplete_attempts),
             "persisted_counterfactual_cost_usd": float(attempt[2]),
             "persisted_counterfactual_latency_ms": float(attempt[3]),
             "candidate_paired_observations": int(profile[0]),
@@ -241,6 +255,7 @@ def run(storage: Path) -> dict[str, Any]:
         "claims": [
             "Every calibration response came from the immutable reference request.",
             "Exactly twenty leased candidates completed through the production adapter.",
+            "Planning-only cancellations did not consume provider-call capacity.",
             "Candidate cost, latency, and paired divergence survived native restart.",
             "The next call admitted the exact candidate from persisted evidence.",
             "This synthetic preflight validates mechanics and is not paper evidence.",

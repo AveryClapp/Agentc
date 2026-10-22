@@ -71,4 +71,6 @@ jobs:
       # install can never again turn these suites into silent skips.
       - run: python -c "import openai, anthropic; print('provider SDKs OK')"
       - run: test -x target/debug/agentc && echo "CLI binary present"
-      - run: pytest tests/ -v --tb=short
+      # Include benchmark validation, calibration, and overhead tests. These
+      # are part of the artifact's checks and must run with the SDK suites.
+      - run: pytest tests/ bench/ -v --tb=short

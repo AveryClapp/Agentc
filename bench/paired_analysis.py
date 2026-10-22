@@ -1,10 +1,14 @@
 """Paired McNemar / bootstrap analysis on per-task ablation data.
 
 Reads a ``.per_task.csv`` sidecar produced by ``bench.optimizer_ablation``
-and produces, per (agent, config), a paired test of accuracy preservation:
+and produces, per (agent, config), a paired comparison of binary task outcomes:
 
 - McNemar exact two-sided p-value on the discordant-pair count.
 - 95% bootstrap CI on the accuracy delta (optimized - baseline pass rate).
+
+Input must contain one row per task in each (agent, config) group and binary
+pass flags. Repeated trials require an analysis that accounts for task clusters;
+concatenating them here would inflate the independent sample count.
 
 Usage:
 
@@ -44,14 +48,39 @@ class PairedSummary:
 
 def _load(path: Path) -> dict[tuple[str, str], list[tuple[str, bool, bool]]]:
     grouped: dict[tuple[str, str], list[tuple[str, bool, bool]]] = defaultdict(list)
+    required = ("agent_module", "config", "task_id", "baseline_passed", "optimized_passed")
+    seen: set[tuple[str, str, str]] = set()
     with path.open(newline="") as f:
-        for row in csv.DictReader(f):
+        reader = csv.DictReader(f)
+        columns = reader.fieldnames or []
+        missing = set(required) - set(columns)
+        if missing:
+            raise ValueError(f"{path}: missing required columns: {', '.join(sorted(missing))}")
+        if len(columns) != len(set(columns)):
+            raise ValueError(f"{path}: duplicate column names")
+        for row in reader:
+            location = f"{path}: line {reader.line_num}"
+            if None in row:
+                raise ValueError(f"{location}: more values than columns")
+            for field in required:
+                value = row[field]
+                if value is None or not value.strip():
+                    raise ValueError(f"{location}: missing {field}")
+            for field in ("baseline_passed", "optimized_passed"):
+                if row[field] not in ("0", "1"):
+                    raise ValueError(f"{location}: {field} must be 0 or 1")
+            identity = (row["agent_module"], row["config"], row["task_id"])
+            if identity in seen:
+                raise ValueError(f"{location}: duplicate task in the same agent/config group")
+            seen.add(identity)
             key = (row["agent_module"], row["config"])
             grouped[key].append((
                 row["task_id"],
-                bool(int(row["baseline_passed"])),
-                bool(int(row["optimized_passed"])),
+                row["baseline_passed"] == "1",
+                row["optimized_passed"] == "1",
             ))
+    if not grouped:
+        raise ValueError(f"{path}: no paired task observations")
     return grouped
 
 
@@ -131,7 +160,10 @@ def main(argv: list[str] | None = None) -> int:
         help="optional output CSV path for the summary table",
     )
     args = ap.parse_args(argv)
-    grouped = _load(Path(args.per_task_csv))
+    try:
+        grouped = _load(Path(args.per_task_csv))
+    except (OSError, ValueError) as exc:
+        ap.error(str(exc))
     summaries: list[PairedSummary] = []
     for (agent, config), rows in sorted(grouped.items()):
         summaries.append(summarize(agent, config, rows))

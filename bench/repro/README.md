@@ -567,6 +567,8 @@ python -m bench.swebench_cohort \
   --dataset /path/to/verified.parquet \
   --agent /path/to/SWE-agent-0f3acafacabc0def8cc76b4e48acb4b6cf302cb9 \
   --evaluator /path/to/SWE-bench-02e7a74ffd0b707aab73d203fe87bdc7c76afc8e \
+  --task-assets /path/to/swe-bench-tasks-3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d \
+  --pin-images \
   --output /fresh/path/swebench-prerequisites
 ```
 
@@ -577,12 +579,48 @@ task. Gold patches, test patches and reference-test identities stay outside the
 public cohort. Failed prerequisites retain every assigned task and no score.
 The command starts no task environments and makes no provider calls.
 
-The currently frozen evaluator cannot consume the frozen legacy Parquet rows:
-they lack `image`, `eval_script`, `log_parser` and `eval_type`. The command writes
-the complete diagnostic and exits 2 for this incompatibility. Spec creation alone
-also cannot establish environment admission. A verified compatibility bridge
-and per-task grading controls remain required before acquisition; the older
-Requests development grader below does not satisfy the frozen evaluator pin.
+The frozen evaluator cannot consume the frozen legacy Parquet rows directly:
+they lack `image`, `eval_script`, `log_parser` and `eval_type`. The compatibility
+bridge verifies all 13 original fields for each selected task before adding the
+pinned task assets' evaluator metadata. It preserves the original 500-row
+universe, the 30/30/90 split, and public agent inputs. Omitting `--task-assets`
+diagnoses the original schema mismatch and exits 2.
+`--pin-images` reads public registry metadata, verifies the exact linux/amd64
+manifest bytes, and writes immutable image references without downloading
+layers. Registry failures retain every assigned task and return exit 2.
+For an offline recheck, replace `--pin-images` with
+`--image-pins /path/to/prior-audit/image-pins.json`; receipts must match the
+same cohort and bridge. Each invocation requires a fresh output directory.
+Supplying both options reuses verified receipts and queries only unresolved
+images, preserving the earlier capture in its original directory.
+These checks do not admit task environments; unchanged and gold-patch controls
+are still required before acquisition. The older Requests development grader
+below does not satisfy the frozen evaluator pin.
+
+Run those controls for the complete selected cohort using verified images
+already present in the local Docker daemon:
+
+```bash
+python -m bench.swebench_environment \
+  --dataset /path/to/verified.parquet \
+  --agent /path/to/SWE-agent-0f3acafacabc0def8cc76b4e48acb4b6cf302cb9 \
+  --evaluator /path/to/SWE-bench-02e7a74ffd0b707aab73d203fe87bdc7c76afc8e \
+  --task-assets /path/to/swe-bench-tasks-3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d \
+  --image-pins /path/to/prior-audit/image-pins.json \
+  --output /fresh/path/swebench-environment-check
+```
+
+Each control uses a fresh container and the unchanged frozen grading script.
+The checker verifies a clean repository tree equal to the frozen base; the
+image may contain the official build's additional setup commit. Admission
+requires complete reference-test coverage, preserved passing tests, an
+unresolved unchanged control, and a resolved original gold-patch control.
+Missing image pins, images absent locally, and failed controls stay in the
+150-task report. The command cannot pull images implicitly and exits 2 until
+all task environments pass. It makes no model calls and preserves raw grading
+artifacts in its private output directory. A worker can use
+`verify_environment_report` from `bench.swebench_environment` to replay saved
+admissions against their exact inputs and checker version before execution.
 
 ### Requests grading fixture (no provider calls)
 

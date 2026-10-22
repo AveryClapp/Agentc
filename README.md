@@ -1,150 +1,129 @@
 # Agentc
 
-**A JIT optimization runtime for multi-step LLM agent workloads.**
+**Evidence-guided selection of model-and-rewrite plans for LLM agent calls.**
 
-Multi-agent systems cost 4-15x more tokens than single-agent baselines. Frameworks fire LLM calls and eat the cost; few systems optimize the application-level call trace before or while it runs. Agentc sits between agent frameworks and the LLM APIs, intercepts calls as they happen, and rewrites them to be cheaper without requiring application-code changes for supported adapters.
+Multi-step LLM agents send long sequences of provider requests. A request often carries more context, a more expensive model, or a larger output limit than its step needs. Agentc sits between the agent and the provider SDK, intercepts each request, and can replace it with a cheaper complete alternative: a target model plus the ordered request rewrites that will actually execute. It exposes an alternative only when it has evidence for that exact plan. Otherwise the original request goes through unchanged. The application keeps choosing its next step and running its own tools; Agentc changes no application code for supported adapters.
 
 ```
-  Agent Frameworks       Claude Code · LangGraph · CrewAI · AutoGen
-         │               describe what to do
+  Agent code            LangGraph · CrewAI · AutoGen · plain SDK calls
+         │              chooses the next step, runs tools
          ▼
-      Agentc             intercepts calls, optimizes execution
-         │               decides how to do it cheaply
+      Agentc            intercepts each provider request,
+         │              sends an admitted plan or the original
          ▼
-      LLM APIs           Anthropic · OpenAI
-                         raw inference
+      LLM APIs          OpenAI · Anthropic · LiteLLM-routed providers
 ```
-
-Think of it like a compiler for agent workloads. Frameworks describe *what* to do. Agentc decides *how* to do it cheaply.
 
 ---
 
 ## Status
 
-The runtime, profiler, semantic memoization layer, and JIT optimizer are all implemented and pass their test suites. The `agentc` CLI ships with `record`, `traces`, `analyze`, `report`, `cache`, and `optimize` subcommands.
+**Implemented.** The runtime builds candidate plans per call site by crossing compatible rewrite sets with versioned model targets. It admits a candidate using paired observations of that exact plan, response divergence against the original, evidence freshness, and an exposure budget. Cold candidates gather evidence through bounded, leased counterfactual calls while the caller still receives the original response. The profiler, semantic memoization layer, and `agentc` CLI (`record`, `traces`, `analyze`, `report`, `cache`, `optimize`) are implemented and tested.
 
-The current joint planner crosses compatible semantic rewrite plans with
-versioned model targets, admits only complete plans with their own empirical
-evidence, and falls back to the immutable request when evidence or risk bounds
-fail. Initial evidence comes from bounded, reference-visible counterfactuals:
-the caller receives the original response while a durably leased candidate
-runs off-path. This mechanism is implemented and preflighted, but it is not yet
-an MLSys efficacy result; the held-out baseline/ablation campaign remains.
+**Engineering checks (no provider spend).** The [joint-campaign engineering check](bench/repro/README.md#joint-campaign-engineering-check-no-api-key) runs ten evaluation arms in isolated processes with zero network calls and produces hashed raw records, paired summaries, and a completion manifest. A native preflight exercises warm exact-plan selection. Both use synthetic costs and outcomes: they verify the harness and the selector's mechanics, not savings or task quality.
 
-The [joint-campaign engineering check](bench/repro/README.md#joint-campaign-engineering-check-no-api-key)
-runs all ten primary arms without API keys and produces hashed raw records,
-paired summaries, and a completion manifest. Its metrics are simulated and
-serve to verify the evaluation harness.
+**Not yet established.** Whether complete-plan selection lowers all-calls spending at acceptable task quality, compared with strong controls on independent workloads. The frozen evaluation protocol that would answer this is in [bench/repro/mlsys-2027-evaluation-protocol.md](bench/repro/mlsys-2027-evaluation-protocol.md). No confirmatory result has been reported.
 
-**Per-rule savings (purpose-built isolation workloads; warmup-corrected, rule-only configs):**
+### Historical rule experiments
 
-| Rule | Workload | n | Savings | Accuracy Δ | McNemar p |
-|---|---|---|---|---|---|
-| `ModelDowngrade` | `gaia_router` | 127 | **11.4%** cost | −3.9pp (±2.8pp SE) | 0.1797 (n.s.) |
-| `ContextCompress` | `long_context_qa` | 300 | **36.3%** input-tokens | +1.7pp (±2.8pp SE) | ≥0.39 (n.s.) |
-| `StateDrop` | `iterative_refiner` | 50 | **6.1%** cost / 10.8% input-tokens | 0.0pp | — |
+These experiments predate the current selector. They characterize individual rewrites on their earlier rule planner, often on fixtures built so a rule activates, with warmup excluded from measurement. They motivate measuring complete plans; they are not evidence of the selector's end-to-end benefit.
 
-> These are the warmup-corrected canonical numbers (see `bench/paper_results/DATA_MANIFEST.txt`).
-> An earlier version of this table published a **spurious 35.3%** for `ModelDowngrade` — a
-> cold-start measurement artifact the paper documents and disavows. The all-on `long_context_qa`
-> headline is 33.9% cost / 34.0% input-tokens.
+| Workload / configuration | Tasks | Efficiency observation | Accuracy change | Evidence boundary |
+|---|---|---|---|---|
+| Long-context QA / `ContextCompress` only | 300 | 36.3% fewer input tokens | +1.7 pp | Length-expanded fixture |
+| Routing fixture / `ModelDowngrade` only | 127 | 11.23 mUSD less recorded cost; input tokens about unchanged | -3.9 pp | Historical routing guard |
+| Iterative refinement / `StateDrop` only | 50 | 10.8% fewer input tokens | 0.0 pp | Explicit state annotations |
+| Natural HotpotQA / `ContextCompress` only | 300 | 0.19% fewer input tokens; 1 activation | -2.0 pp | Sparse activation |
+| Autogen bridge / `ContextCompress` only | 300 | 26.0% of captured input-token sum | -1.3 pp | Span completeness unverified |
+| Autogen bridge / all rules on | 300 | 14.0% of captured input-token sum | -1.0 pp | Span completeness unverified |
 
-**V2 composition and comparison results:**
-
-| Experiment | n | Result | McNemar p |
-|---|---|---|---|
-| CC vs LLMLingua-2, HotpotQA distractor | 100 | CC: 68%→**100%** (FB=32, BF=0); LLMLingua-2: 68%→53% | CC: 4.7×10⁻¹⁰; LL2: 0.0013 |
-| CC vs LLMLingua-2, Wikipedia natural prose | 39 | CC: 94.9%→**94.9%** (BF=0, FB=0, abstained); LL2: +2.6pp, 53.5% compression, 13.7s overhead | CC: 1.0; LL2: 1.0 |
-| CC+StateDrop composition, `multirule_qa` | 30 | CC-only: 32.5% tok; SD-only: 0.1%; CC+SD: **32.8% = 100.6% of the additive ideal (super-additive)** | +3.3pp; n.s. |
-| Planner ablation (first-match vs compose) | 50 | CC-only +18pp (p=0.0039); CC+OB first-match and compose are **identical** (+14pp, p=0.0156) — planner mode does not change accuracy | 0.0039 / 0.0156 |
-| Agent diversity (rag_summarizer + autogen_bridge) | — | CC fires 30–54% of hot calls; SD fires 9–24% | — |
-| Provider generalization (Anthropic Claude, HF Llama) | 50 each | CC: 98% fire / 34% tok savings (HF, measured); 0% (Anthropic single-msg). MD cost reductions are cost-model *projections* (models absent from the pricing table), not billed measurements — see paper caveat | — |
-| StateDrop negative control (all-state-read variant) | 20 | 0/320 SD fires when all state writes have matching reads; confirms unread-state precondition | — |
-| Optimizer overhead (1,818 plan decisions) | — | pass-through p50=**76µs**; rewrite p50=**120µs**; p99 tail from first-call load (excludes the async audit write) | — |
-
-`ParallelBranch` ships and emits audit rows; the latency win currently comes from the user-side `parallel_map` ThreadPoolExecutor. `CacheHit` functions as a bridge between memoized and non-memoized callers; neither is a headline paper claim yet.
-
-```
-crates/                      Rust workspace (7 crates)
-├── agentc-core              span schema, SQLite storage, hardening, embedding I/O
-├── agentc-embed             model2vec embeddings + LSH for semantic memoization
-├── agentc-memo              memoization cache: canonical keys, eviction, FFI
-├── agentc-profiler          PyO3 module: Python bindings to span writer
-├── agentc-analyzer          cost breakdown + waste detectors over stored traces
-├── agentc-optimizer         DAG IR, cost model, planner, rewrite rules, CompositionPlanner
-└── agentc-cli               `agentc` binary
-
-python/agentc/               Python SDK
-├── _patches/                wrapt-based monkey patches: anthropic, openai
-├── _provenance_frameworks/  framework adapters: langgraph, crewai, autogen
-├── _canonicalize/           per-vendor request canonicalization
-└── _intercept.py            optimizer entry point: plan → dispatch → observe
-
-bench/                       Evaluation harness
-├── agents/                  Reference agents — per-rule isolation + composition probes:
-│                            long_context_qa, long_context_qa_anthropic, long_context_qa_hf,
-│                            long_context_qa_concurrent, iterative_refiner,
-│                            iterative_refiner_allread (negative control), gaia_router,
-│                            hotpot_qa, hotpot_oracle, composition_qa, multirule_qa,
-│                            rag_summarizer, autogen_bridge, support_qa, swebench_planner,
-│                            adaptive_router, analyst_qa, batch_classifier, debug_agent,
-│                            llmlingua_baseline, multiagent_research, parallel_research,
-│                            research_planner
-├── build_*_fixture.py       public-dataset → JSON converters (hotpot, gaia,
-│                            long_context, squad, wikipedia_qa)
-├── fixtures/                (gitignored, regenerated by build_*_fixture.py)
-├── optimizer_bench.py       run an agent twice (optimizer off / on)
-├── optimizer_ablation.py    19-config sweep per agent: shared baseline +
-│                            <rule>-off ×9 + <rule>-only ×9
-├── paired_analysis.py       McNemar exact test + bootstrap CI on per_task sidecars
-├── paper_results/           committed result CSVs + summary txts
-└── scripts/                 driver shell scripts
-
-specs/                       Technical specifications
-paper-intelligence/          Paper evidence, literature, venue, and experiment ledgers
-tests/                       Python unit tests
-```
+mUSD is a thousandth of a dollar. Accuracy changes are observed pass-rate differences, not non-inferiority results. The paper's appendix maps each row to its CSV in [bench/paper_results/](bench/paper_results/), indexed by `DATA_MANIFEST.txt`.
 
 ---
 
-## The Three Components
+## How a Request Is Handled
 
-Three pieces that work together in a feedback loop.
+```
+Provider request (intercepted via SDK patch or framework adapter)
+       │
+       ▼
+  Call-site version   →  content-free identity: template shape, provider, tools, config
+       │
+       ▼
+  Candidate plans     →  compatible rewrite sets × model targets, bounded depth
+       │
+       ▼
+  Admission           →  exact-plan profile: paired evidence, divergence, freshness,
+       │                 exposure budget, expected shadow and fallback cost
+       ▼
+  Dispatch            →  admitted plan, or the original request
+       │
+       ▼
+  Observation         →  usage, latency, sampled reference comparison, guard state
+```
 
-### 1. Profiler
-Instruments any Python agent pipeline, captures every LLM call (tokens, latency, model, cost, full prompt/response, embedding), and produces structured execution traces in SQLite. Implemented in Rust via PyO3, with `wrapt`-based zero-config monkey-patching of the OpenAI and Anthropic SDKs. Spec: [specs/profiler.md](specs/profiler.md).
+Cold call sites pass through. After `AGENTC_OPTIMIZE_HOT_THRESHOLD` observations (default 3), the planner enumerates candidates. An under-observed candidate may run off-path while the original response stays user-visible (`AGENTC_OPTIMIZE_EXPLORATION`, default on; up to 20 real, potentially billed attempts per call-site version per 24 hours). A plan becomes eligible once it has 20 paired observations, its latest pair is under 24 hours old, and it passes the divergence and exposure checks. On about 2% of optimized calls (`AGENTC_OPTIMIZE_SHADOW`, default 0.02) the original request also runs, to detect drift. Both paths can incur provider cost; set `AGENTC_OPTIMIZE_EXPLORATION=0` and `AGENTC_OPTIMIZE_SHADOW=0` when no extra calls are acceptable. [CONFIG.md](CONFIG.md) lists every setting.
 
-### 2. Semantic Memoization
-Opt-in caching that deduplicates LLM inference. Exact-prompt hash lookup on the hot path; LSH over 256-dim model2vec embeddings as a secondary tier for semantically-similar prompts. Cache state piggybacks on the profiler's canonical `traces.db`. Spec: [specs/memoization.md](specs/memoization.md).
+The runtime fails open by default. The optimizer's FFI boundary traps panics (`ffi::optimize_plan`), and every patch and adapter degrades to sending the call unmodified, so a bug in Agentc does not break the agent. `AGENTC_FAIL_OPEN=false` re-raises Agentc-internal errors for debugging.
 
-### 3. Optimizer
-JIT runtime that intercepts LLM calls on hot call sites and applies cost-ranked rewrite rules subject to a per-rule accuracy budget. Nine rules ship across V1 and V2:
+### Rewrite vocabulary
 
-| Rule | Cost driver | What it does | Status |
-|---|---|---|---|
-| `CacheHit` | CallElimination | Replay output for a past prompt via the shared memoization cache | implemented, future benchmark |
-| `ContextCompress` | InputTokens | Extractively drop low-attention messages from large prompts (8KB+ gate, IDF-weighted proxy) | headline-validated |
-| `ParallelBranch` | Structural | Detect dependency-free sibling calls, emit `Plan::Parallel` for async dispatcher | implemented, observability only |
-| `ModelDowngrade` | ModelPrice | Swap to a cheaper model when the cost model says accuracy holds | headline-validated |
-| `StateDrop` | InputTokens | Prune state-tagged messages whose keys aren't in the current read window | validated (supporting) |
-| `PromptDedup` | InputTokens | Remove near-duplicate message segments via per-call IDF | V2, benchmarked |
-| `OutputBudget` | OutputTokens | Cap `max_output_tokens` at call-site p99 to prevent runaway generation | V2, benchmarked |
-| `StructuredTruncation` | InputTokens | Project out unreferenced JSON tool-output fields | V2, not yet independently benchmarked |
-| `DeadOutputTruncation` | OutputTokens | Cap output length when the result feeds a branch that is never read | V2, not yet independently benchmarked |
+Candidate plans combine a model target with these rewrites:
 
-**V2 CompositionPlanner:** classifies rules by `CostDriver`, allows orthogonal rules (different drivers = non-overlapping `Call` fields) to apply in a single pass as `Plan::Composed`. Same-driver rules are gated unless explicitly allowlisted (e.g., `StateDrop → ContextCompress`). Controlled by `AGENTC_COMPOSE=1` (default). V1 first-match behavior available via `AGENTC_COMPOSE=0`.
+| Rule | Changes | What it does |
+|---|---|---|
+| `ContextCompress` | Input tokens | Drops low-relevance messages from large prompts (8 KB gate, IDF-weighted proxy) |
+| `StateDrop` | Input tokens | Prunes state-tagged messages outside the current read window (needs `agentc.state_write()` annotations) |
+| `PromptDedup` | Input tokens | Removes near-duplicate message segments |
+| `StructuredTruncation` | Input tokens | Projects out unreferenced JSON tool-output fields |
+| `ModelDowngrade` | Model price | Routes to a cheaper model target |
+| `OutputBudget` | Output tokens | Caps the output limit at the call site's observed high quantile |
+| `DeadOutputTruncation` | Output tokens | Caps output that feeds a branch nothing reads |
+| `CacheHit` | Whole call | Replays a compatible cached response through the memoization cache |
+| `ParallelBranch` | Structure | Detects independent sibling calls and emits an audited parallel certificate |
 
-Cold calls pass through; after `hot_threshold` observations (default 3), the
-joint planner enumerates compatible model-and-rewrite candidates. An
-under-observed candidate may run in the background while the original response
-remains user-visible (`AGENTC_OPTIMIZE_EXPLORATION`, default on; 20 real and
-potentially billed attempts per call-site version per 24h). Once a plan has 20
-paired observations and satisfies the guard, it can become user-visible. On
-~2% of those optimized calls (`AGENTC_OPTIMIZE_SHADOW`, default 0.02), the
-unrewritten call runs synchronously to detect drift. Both paths can incur real
-provider cost; set `AGENTC_OPTIMIZE_EXPLORATION=0` and
-`AGENTC_OPTIMIZE_SHADOW=0` when no additional calls are acceptable. Spec:
-[specs/optimizer.md](specs/optimizer.md).
+The historical experiments above cover `ContextCompress`, `ModelDowngrade`, and `StateDrop`. The other rules are implemented and tested, and the paper makes no efficacy claim for them. `ParallelBranch` does not run calls concurrently by itself; concurrency comes from the user-side `parallel_map`.
+
+---
+
+## Components
+
+### Profiler
+Instruments a Python agent and records every LLM call (tokens, latency, model, cost, prompt and response, embedding) as structured traces in SQLite. Written in Rust behind PyO3, with `wrapt`-based patches for the OpenAI, Anthropic, and LiteLLM SDKs. Spec: [specs/profiler.md](specs/profiler.md).
+
+### Semantic memoization
+Opt-in caching of LLM responses. Exact-prompt hash lookup on the hot path, with LSH over 256-dim model2vec embeddings as a secondary tier for similar prompts. Spec: [specs/memoization.md](specs/memoization.md).
+
+### Optimizer
+Builds, admits, and dispatches complete plans as described above, and records every decision in an audit database. Spec: [specs/optimizer.md](specs/optimizer.md).
+
+Storage is three SQLite databases under `~/.agentc` (`AGENTC_STORAGE_PATH`): `traces.db` (spans and cache entries), `cost_model.db` (per-call-site and per-plan evidence), and `optimizer_audit.db` (every plan decision with the input that produced it).
+
+```
+crates/                      Rust workspace
+├── agentc-core              span schema, SQLite storage, embedding I/O
+├── agentc-embed             model2vec embeddings + LSH
+├── agentc-memo              memoization cache: canonical keys, eviction, FFI
+├── agentc-profiler          PyO3 module: Python bindings
+├── agentc-analyzer          cost breakdown + waste detectors over traces
+├── agentc-optimizer         plan identities, candidate construction, admission,
+│                            exploration, rewrite rules, provider accounting
+└── agentc-cli               `agentc` binary
+
+python/agentc/               Python SDK: SDK patches, framework adapters,
+                             request canonicalization, interception, billing
+
+bench/                       Evaluation harness
+├── agents/                  reference agents for the historical rule experiments
+├── repro/                   evaluation protocol, campaign specs, preflight records
+├── paper_results/           committed result CSVs + DATA_MANIFEST.txt
+├── paper_figures/           figure generators
+└── *_campaign_*, *_worker   joint-campaign harness: coding, tau, guard, calibration
+
+specs/                       Technical specifications
+paper-intelligence/          Literature, venue, and evidence notes for the paper
+tests/                       Python tests
+```
 
 ---
 
@@ -153,12 +132,10 @@ provider cost; set `AGENTC_OPTIMIZE_EXPLORATION=0` and
 Build the Rust workspace and install the Python SDK:
 
 ```bash
-# Build the workspace. Exclude agentc-profiler from `cargo build` — it is a PyO3
-# cdylib (pyo3/extension-module) that omits libpython symbols, so it links only
-# through maturin, not a bare cargo build.
+# agentc-profiler is a PyO3 extension module; it links through maturin, not cargo.
 cargo build --release --workspace --exclude agentc-profiler
 maturin develop --release            # builds the PyO3 extension into the active venv
-pip install -e ".[test]"             # full test/bench deps; use ".[dev,openai]" for a minimal SDK env
+pip install -e ".[test]"             # full test/bench deps; ".[dev,openai]" for a minimal SDK env
 ```
 
 Run the Python SDK and benchmark checks, matching CI:
@@ -167,7 +144,7 @@ Run the Python SDK and benchmark checks, matching CI:
 pytest tests/ bench/ -v --tb=short
 ```
 
-Profile any agent script:
+Profile an agent script:
 
 ```bash
 agentc record -- python my_agent.py
@@ -185,160 +162,49 @@ agentc optimize disable --rule ModelDowngrade --call-site 'app.*' --hours 24
 agentc optimize bench --agent path/to/agent.py
 ```
 
-Run the reference benchmark suite end-to-end:
+Rerun the historical rule experiments (warmup-corrected drivers; `run_paper_ablation.sh` is an older cold-start harness and does not reproduce them):
 
 ```bash
-# 1. Build fixtures from public datasets (HF_TOKEN required for GAIA)
-python -m bench.build_hotpot_fixture
-python -m bench.build_gaia_fixture
+python -m bench.build_hotpot_fixture       # fixtures from public datasets
+python -m bench.build_gaia_fixture         # HF_TOKEN required
 python -m bench.build_long_context_fixture
 
-# 2. Run baseline vs. optimized for one agent
-python -m bench.optimizer_bench bench.agents.rag_summarizer
-
-# 3. Per-rule ablation for one agent
-python -m bench.optimizer_ablation bench.agents.long_context_qa
-
-# 4. Reproduce the paper's headline results (WARMUP-CORRECTED drivers).
-#    These are the canonical numbers in the paper; run_paper_ablation.sh is the
-#    older cold-start harness and does NOT reproduce the paper (it lacks warmup).
-python bench/run_lcqa_warmup_n300.py     # ContextCompress, n=300  (Table 5)
-python bench/run_gaia_warmup.py          # ModelDowngrade,  n=127  (Table 6)
-python bench/run_refiner_warmup.py       # StateDrop,       n=50   (Table 7)
+python bench/run_lcqa_warmup_n300.py       # ContextCompress, n=300
+python bench/run_gaia_warmup.py            # ModelDowngrade, n=127
+python bench/run_refiner_warmup.py         # StateDrop, n=50
 ```
 
-The reference agents stub LLM calls when no API key is set, so the harness wires up cleanly without spending money. To generate real cost/accuracy numbers, copy [`.env.example`](.env.example) to `.env` and fill in the keys you need: `OPENAI_API_KEY` for the main runs, `HF_TOKEN` for GAIA, and `TOGETHER_API_KEY` (with `BENCH_OPENAI_BASE_URL`) for the cross-model / scale-up runs. `.env.example` lists what each key unlocks.
+The reference agents stub LLM calls when no API key is set, so the harness runs without spending money. For real cost and accuracy numbers, copy [`.env.example`](.env.example) to `.env` and fill in the keys you need; the file lists what each key unlocks.
 
-The frozen SWE-bench prerequisite check runs in the grader's Python environment
-with PyArrow and its existing dependencies. Supply the original Parquet and
-the pinned SWE-agent and evaluator source directories:
-
-```bash
-python -m bench.swebench_cohort \
-  --dataset /path/to/verified.parquet \
-  --agent /path/to/SWE-agent-0f3acafacabc0def8cc76b4e48acb4b6cf302cb9 \
-  --evaluator /path/to/SWE-bench-02e7a74ffd0b707aab73d203fe87bdc7c76afc8e \
-  --task-assets /path/to/swe-bench-tasks-3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d \
-  --pin-images \
-  --output /path/to/fresh-audit
-```
-
-The compatibility bridge verifies all 13 original fields for each selected
-task before adding the pinned task assets' evaluator metadata. It preserves
-the original 500-row universe, the 30/30/90 split, and public agent inputs.
-Omitting `--task-assets` diagnoses the original schema mismatch and exits 2.
-`--pin-images` reads public registry metadata, verifies the exact linux/amd64
-manifest bytes, and writes immutable image references without downloading
-layers. Registry failures retain every assigned task and return exit 2.
-For an offline recheck, replace `--pin-images` with
-`--image-pins /path/to/prior-audit/image-pins.json`; receipts must match the
-same cohort and bridge. Each invocation requires a fresh output directory.
-Supplying both options reuses verified receipts and queries only unresolved
-images, preserving the earlier capture in its original directory.
-These checks make no model calls and do not admit task environments; actual
-unchanged and gold-patch controls are still required before acquisition.
-
-Run those controls for the complete selected cohort using verified images
-already present in the local Docker daemon:
-
-```bash
-python -m bench.swebench_environment \
-  --dataset /path/to/verified.parquet \
-  --agent /path/to/SWE-agent-0f3acafacabc0def8cc76b4e48acb4b6cf302cb9 \
-  --evaluator /path/to/SWE-bench-02e7a74ffd0b707aab73d203fe87bdc7c76afc8e \
-  --task-assets /path/to/swe-bench-tasks-3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d \
-  --image-pins /path/to/prior-audit/image-pins.json \
-  --output /path/to/fresh-environment-check
-```
-
-Each control uses a fresh container and the unchanged frozen grading script.
-The checker verifies a clean repository tree equal to the frozen base; the
-image may contain the official build's additional setup commit. Admission
-requires complete reference-test coverage, preserved passing tests, an
-unresolved unchanged control, and a resolved original gold-patch control.
-Missing image pins, images absent locally, and failed controls stay in the
-150-task report. The command cannot pull images implicitly and exits 2 until
-all task environments pass. It makes no model calls and preserves raw grading
-artifacts in its private output directory. A worker can use
-`verify_environment_report` from `bench.swebench_environment` to replay saved
-admissions against their exact inputs and checker version before execution.
+The joint-campaign harness, the frozen SWE-bench and tau cohorts, guard studies, and the paper build are documented step by step in [bench/repro/README.md](bench/repro/README.md).
 
 ---
 
-## Why Models Can't Replace This
+## Scope
 
-Models keep getting better at managing their own context and tool usage. But Agentc operates on things the model literally cannot see or control:
-
-| Rule | Level | Can model training cover this by itself? |
-|---|---|---|
-| `CacheHit` | Memoization | Not without an external cache and invalidation policy |
-| `ContextCompress` | Input shaping | Not without control over what gets sent to the model |
-| `ParallelBranch` | Runtime scheduling | Not without visibility into sibling calls and side effects |
-| `ModelDowngrade` | Routing | Partially; it overlaps with learned routing, but model choice happens outside the selected model |
-| `StateDrop` | Memory management | Not without external state metadata and read/write policy |
-
-KV cache scheduling, parallel dispatch, semantic memoization, and runtime model selection are infrastructure problems. The model usually sees one request, not the full execution environment.
-
-## Architecture
-
-```
-Incoming LLM Call (intercepted via SDK monkey-patch)
-       │
-       ▼
-  DAG Builder       →   adds typed node + edges to the execution graph
-       │
-       ▼
-  Cost Model        →   scores token cost · latency · accuracy per strategy
-       │
-       ▼
-  Optimizer         →   picks cheapest strategy within the accuracy budget
-       │
-       ▼
-  Executor          →   runs the optimized call, instruments the result
-       │
-       ▼
-  Cost Model        ←   feeds real execution data back (the loop closes here)
-       │
-       ▼
-    Output
-```
-
-The cost model starts with conservative heuristics and is empirically calibrated with every execution. Agentc gets cheaper the more you use it.
-
-By default the runtime fails open: the optimizer's FFI boundary traps panics (`ffi::optimize_plan`), and every patch and framework adapter degrades to passing the call through unmodified, so a bug in Agentc does not break the user's agent. Fail-open is governed by the `fail_open` config flag (default `true`, or `AGENTC_FAIL_OPEN`); setting it to `false` re-raises Agentc-internal errors such as span-emission failures — an opt-in for debugging, not the default.
-
----
-
-## Implementation
-
-- **Rust** core for everything performance-critical: span writer, embeddings, memoization cache, optimizer planner, CLI.
-- **Python** SDK and bindings for SDK instrumentation, framework adapters, evaluation harness.
-- **PyO3 + maturin** bridges them. Single wheel, native speed where it matters.
-
-Storage is three SQLite databases under `~/.agentc`: `traces.db` (spans + cache entries), `cost_model.db` (per-call-site empirical cost model + shadow-mode divergence), and `optimizer_audit.db` (every plan decision the optimizer ever made, with the runtime input that produced it).
+Agentc works at the provider-request boundary. It needs no control over model weights, KV cache, batching, or accelerator scheduling, which is what lets it sit in front of hosted APIs. The same boundary means it cannot use those internal signals to prove two responses equivalent. Its admission screen uses response divergence from the original request as an operational proxy; task quality still has to be validated separately on benchmarks. It does not search alternative tool calls or control flow: a complete plan covers one call, not an agent's whole trajectory.
 
 ---
 
 ## Documentation
 
-- [specs/profiler.md](specs/profiler.md) - instrumentation, span schema, waste detectors
-- [specs/memoization.md](specs/memoization.md) - canonical keys, LSH, cache lifecycle
-- [specs/optimizer.md](specs/optimizer.md) - DAG IR, cost model, rule definitions, accuracy budget
-- [CONFIG.md](CONFIG.md) - every environment variable the runtime and benchmark harness read
-- [specs/future-work.md](specs/future-work.md) - items intentionally out of scope
+- [specs/optimizer.md](specs/optimizer.md): plan identities, admission, exploration, rule definitions
+- [specs/profiler.md](specs/profiler.md): instrumentation, span schema, waste detectors
+- [specs/memoization.md](specs/memoization.md): canonical keys, LSH, cache lifecycle
+- [CONFIG.md](CONFIG.md): every environment variable the runtime and harness read
+- [bench/repro/README.md](bench/repro/README.md): reproduction and campaign instructions
+- [specs/future-work.md](specs/future-work.md): items intentionally out of scope
 
 ---
 
 ## Related Work
 
-The closest system-level neighbors are Agentix/Autellix (serving-layer scheduler), Halo (batch workflow DAG optimizer over shared GPU), Murakkab (declarative resource allocation), and Cognify (offline autotuning loop) — each requires access to the serving stack, a declarative workflow format, or a labeled offline evaluator. Agentc operates at the Python SDK call site: it patches the SDK at import time and intercepts every LLM call regardless of which framework issued it, with no serving access, no application annotations beyond optional `agentc.state_write()`, and no offline evaluator.
+Several systems already optimize model allocations, prompts, and workflow configurations together, including LLMSelector, Cognify, and Murakkab. AgentOpt intercepts client-side calls to track, cache, and route them without changing agent code. Serving-layer systems such as Parrot, SGLang, Agentix (Autellix), and Halo schedule and share work inside the inference stack. Model routing (FrugalGPT, RouteLLM), prompt compression (LLMLingua, LLMLingua-2), semantic caching (GPTCache, vCache), and parallel tool execution (LLMCompiler) each have dedicated systems.
 
-Model routing (FrugalGPT, RouteLLM, LLMSelector), prompt compression (LLMLingua, LLMLingua-2, Selective Context), semantic caching (GPTCache, vCache), and parallel tool calling (LLMCompiler) are all active areas. Agentc's `ModelDowngrade`, `ContextCompress`, `CacheHit`, and `ParallelBranch` cover the same goals but as passes under one runtime policy rather than standalone systems.
-
-On the direct compression baseline: LLMLingua-2 (token-level proxy classifier, 53% reduction) degrades accuracy from 68% to 53% on HotpotQA-distractor (McNemar p=0.0013); ContextCompress improves it 68%→100% (p=4.7×10⁻¹⁰) by operating at message granularity. On natural Wikipedia prose (no injected distractors), ContextCompress correctly abstains — identical outcomes to baseline on all 39 tasks. LLMLingua-2 still compresses 53.5% of tokens with no significant accuracy gain and 13.7s overhead per task. The difference is granularity: message-level extraction vs. token-level scoring.
+Agentc studies a narrower unit: a complete alternative for one intercepted provider call, admitted only on evidence for that alternative, with bounded learning cost and the original request as the fallback.
 
 ---
 
 ## Name
 
-**Agentc**: agent compiler. The `-c` suffix nods to the compiler toolchain tradition (`rustc`, `gcc`, `clangd`). Agentc occupies the same role in the agent stack that a compiler occupies in the software stack: takes a high-level specification, produces an efficient execution plan.
+**Agentc** is short for "agent compiler", the project's original framing.

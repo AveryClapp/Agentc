@@ -1,7 +1,7 @@
 ---
 title: Maintenance Audit Findings
 status: active
-last-updated: 2026-07-17
+last-updated: 2026-10-21
 ---
 
 # Maintenance Audit Findings
@@ -593,3 +593,35 @@ is wrong." **The diagnostic refutes the premise and clears the worry:**
 **Latent hardening note (P11-7b, low pri):** the disable CLI accepts a typo'd rule name silently
 ("Disabled ContxtCompress on 1 call site"). Not a current defect (names match), but a future typo
 would yield a silent no-op `-off` config. Filed for post-submission.
+
+## Cleanup Batch (2026-10-21): archive material superseded by the October rewrite
+
+**Authority:** user approval of the 2026-10-21 census in session. MNT-032 / bd-50d
+(owned by williamboudy) only partially: three drafts tied to the archived manuscript.
+**Snapshot:** `feat/joint-plan-campaign` at `0598c03`; the October WIP was committed first
+(`22c105d`, `e8d0cc0`, `e10bbce`), so no shared dirty work overlapped the targets.
+
+| Operation | Source -> destination | Before hash |
+|---|---|---|
+| git mv | `main_trimmed.tex` -> `paper-intelligence/archive/2026-10-10-pre-joint-rewrite-main_trimmed.tex` | `cde3a54` |
+| git mv | `specs/working/HANDOFF.md` -> `specs/working/archive/2026-03-17-profiler-HANDOFF.md` | `63edbca` |
+| git mv | `specs/working/EXECUTION-STATUS.md` -> `specs/working/archive/2026-07-15-EXECUTION-STATUS.md` | `4ce912e` |
+| git mv | `paper-intelligence/{overnight-session-2026-05-10,draft-paper-edits,draft-related-work-expansion}.md` -> `paper-intelligence/archive/` | `f77298c`, `8de3f1e`, `daff542` |
+
+Moves are pure renames, so after-hashes equal before-hashes. **Consumers updated:**
+`specs/README.md` tree, `paper-intelligence/archive/README.md` index,
+`claims-gaps-and-risks.md` and `results-experiments-and-repro.md` path mentions, and the
+`agentc-cleanup-workflow` skill (its `main_trimmed.tex` rules now name `appendix.tex`).
+Historical mentions in this ledger, the remediation plan, the consolidation spec, and
+`.beads` were left as written. **Rollback:** `git mv` each destination back, or revert the commit.
+
+**Validation:** no live reference to the old paths outside archives and historical ledgers
+(`rg`); `main.tex` and `appendix.tex` still compile with tectonic; pytest collection unchanged.
+
+**Deliberately retained:**
+- `figures/fig1`-`fig9`: no longer included by the manuscript, but generator-owned
+  (`bench/paper_figures/*` write there) and cited by `bench/repro/README.md` and
+  `DATA_MANIFEST.txt`. Archiving needs a generator-path change; follow-on batch.
+- Eight bench drivers with no inbound references (`run_density_sweep.py`,
+  `run_scaleup_ablation.py`, ...) generate committed `bench/paper_results/` CSVs. Protected.
+- Remaining MNT-032 docs (`current-fit-and-publishability.md`, etc.): bd-50d owner's call.

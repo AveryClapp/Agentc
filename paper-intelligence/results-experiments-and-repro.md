@@ -156,7 +156,7 @@ the MLSys main-track assessment remains conditional.
 | `EXP-003` | ✅ done | `GAP-004` + V2 planner | CompositionPlanner ablation (V1 vs V2). | `RES-010`: V1-CC+OB −2pp (wrong pick), V2-CC+OB +0pp (corrected). V2-CC+PD dropped (model drift). | None. Four valid rows sufficient. |
 | `EXP-004` | ✅ done | design verification | Cold-start curve. | `RES-014`: first fire at obs=3, stable by obs=5. | None. |
 | `EXP-005` | ✅ done | `GAP-002` | StateDrop isolation (paired). | `RES-012`: SD-only 98% vs baseline 100%, p=1.0. | None. |
-| `EXP-006` | ✅ done | `GAP-014` | Paired McNemar / bootstrap CI across experiments. | Done for `RES-007`, `RES-008`, `RES-009`, `RES-010`, `RES-012`. Exact statsmodels tests used. | Apply exact p-values in paper draft (draft-paper-edits.md §11 has updated numbers). |
+| `EXP-006` | ✅ done | `GAP-014` | Paired McNemar / bootstrap CI across experiments. | Done for `RES-007`, `RES-008`, `RES-009`, `RES-010`, `RES-012`. Exact statsmodels tests used. | Apply exact p-values in paper draft (archive/draft-paper-edits.md §11 has updated numbers). |
 | `EXP-007` | ✅ done | `GAP-015` | Optimizer overhead measurement. | `RES-013`: p50=76µs pass-through, 120µs rewrite, p99=21ms tail. 1,818 plan decisions. | None. Paper-ready paragraph in `bench/paper_results/optimizer_overhead.txt`. |
 | `EXP-008` | ✅ done | `GAP-012` (compression only) | LLMLingua-2 direct baseline. | `RES-007` + `RES-008`: dual-regime comparison complete. | Routing (RouteLLM/FrugalGPT) and caching (vCache) baselines remain cite-only for now. |
 | `EXP-009` | open | `GAP-005` | Stronger StateDrop quality metric. | — | Low priority unless venue requires it. Current metric (substring match) is lenient but consistent. |

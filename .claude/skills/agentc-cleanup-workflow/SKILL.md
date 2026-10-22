@@ -51,7 +51,7 @@ push unless separately authorized; push always requires its own authority.
 - Change generated output through its owner generator, then verify deterministic regeneration.
   Never disguise a hand edit as regeneration.
 - A figure the manuscript includes may not be deleted or renamed until `main.tex` and
-  `main_trimmed.tex` are updated in the same batch. Both files.
+  `appendix.tex` are updated in the same batch.
 - Treat `unknown`, active shared WIP, unclear consumers, and unclear provenance as
   do-not-touch conditions.
 - Do not treat severity, age, duplication count, or a dead-reference scan as deletion authority.
@@ -105,7 +105,7 @@ add the smallest guardrail that would catch recurrence.
 | Dependency declaration | `uv lock --check`; a clean-venv `pytest --collect-only` succeeds. |
 | Repro-script fix | Run the script's first command from a clean checkout, or state precisely why not. |
 | Rust change | `cargo check --workspace`; `cargo clippy --workspace --exclude agentc-profiler`; `cargo test --workspace --exclude agentc-profiler`. |
-| Manuscript edit | The claim traces to a committed CSV; both `main.tex` and `main_trimmed.tex` updated. |
+| Manuscript edit | The claim traces to a committed CSV; `main.tex` and `appendix.tex` agree. |
 | Archive/move | Every consumer updated; no broken link; index entry recorded. |
 
 ## Stop Conditions

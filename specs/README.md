@@ -66,7 +66,7 @@ specs/
 ├── future-work.md         # out-of-scope items, organized by component
 └── working/               # research, analysis, handoffs
     ├── profiler-gap-analysis.md
-    └── HANDOFF.md
+    └── archive/           # superseded handoffs and status notes
 ```
 
 **Top-level `.md` files** are canonical — specs, the future-work backlog, and this readme. **`working/`** holds reference material (research, gap analyses, handoff notes) that informed the specs but aren't specs themselves.

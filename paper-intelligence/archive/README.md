@@ -1,7 +1,7 @@
 ---
 title: Paper Intelligence Archive
 status: archive-index
-last-updated: 2026-10-10
+last-updated: 2026-10-21
 owner: paper-intelligence
 ---
 
@@ -33,6 +33,10 @@ The October manuscript rewrite preserves the immediately preceding sources here:
 |---|---|---|
 | `../../main.tex` | `2026-10-10-pre-joint-rewrite-main.tex` | `../../main.tex` |
 | `../../appendix.tex` | `2026-10-10-pre-joint-rewrite-appendix.tex` | `../../appendix.tex` |
+| `../../main_trimmed.tex` | `2026-10-10-pre-joint-rewrite-main_trimmed.tex` | `../../main.tex` |
+| `../draft-paper-edits.md` | `draft-paper-edits.md` | `../../main.tex` |
+| `../draft-related-work-expansion.md` | `draft-related-work-expansion.md` | `../../main.tex` |
+| `../overnight-session-2026-05-10.md` | `overnight-session-2026-05-10.md` | `../../main.tex` |
 
 These copies describe the earlier rule-centered draft, including superseded claims
 and historical tables. They are excluded from the submission build. Use the current

@@ -40,13 +40,15 @@ class Plan:
     # For composed plans: list of rule names that contributed.
     rules: list[str] = field(default_factory=list)
     projected_savings_usd: float = 0.0
-    raw_json: str = "{\"kind\":\"pass_through\"}"
+    raw_json: str = '{"kind":"pass_through"}'
     # Thread-through fields for TraceOptimizer.record() and cache auto-seeding.
     trace_id: Optional[str] = None
     messages: list[dict[str, Any]] = field(default_factory=list)
     # Raw parameters dict from the call, used to compute the canonical
     # parameters_hash for cache auto-seeding in _observe_openai_outcome.
     parameters: dict[str, Any] = field(default_factory=dict)
+    # Exact adapter projection, retained for the native SDK cache key builder.
+    source_call_json: Optional[str] = None
     # Versioned routed-dispatch metadata. These fields are populated from the
     # Rust-selected call and become observation/span dimensions after dispatch.
     provider_protocol: Optional[str] = None
@@ -62,11 +64,22 @@ class Plan:
     # plan profile, runtime version, and sequence. Provider adapters must not
     # inspect or reconstruct it.
     observation_token: Optional[str] = None
+    physical_invocations: list[dict[str, str]] = field(default_factory=list)
     # Initial calibration never exposes an unadmitted candidate. Rust may
     # attach one durably leased candidate to a pass-through Plan; adapters run
     # it off-path and return the reference response unchanged.
     exploration_lease_token: Optional[str] = None
     counterfactual: Optional["Plan"] = None
+    # Experimental pre-release validation state; never serialized into SDK requests.
+    validation_request_json: Optional[str] = None
+    validation_contract_sha256: Optional[str] = None
+    validation_contract_json: Optional[str] = None
+    validation_status: Optional[str] = None
+    validation_rejected: bool = False
+    validation_uncertain_budget_usd: float = 0.0
+    inference_cost_complete: bool = True
+    reference_fallback_latency_ms: Optional[float] = None
+    additional_inference: Optional[dict[str, Any]] = None
 
     @property
     def is_pass_through(self) -> bool:
@@ -76,18 +89,55 @@ class Plan:
 PASS_THROUGH = Plan(kind="pass_through")
 
 
-def plan_call(call: dict[str, Any]) -> Plan:
+def plan_call(call: dict[str, Any], *, observation_only: bool = False) -> Plan:
+    """Plan one call and register its actual slot in an active map collector."""
+    from agentc._provider_receipts import graph_template_position, graph_discovery_position
+
+    discovery = graph_discovery_position()
+    position = discovery or graph_template_position()
+    if position is None:
+        plan = _plan_call(call, observation_only=observation_only)
+    else:
+        lease, item, logical = position
+        try:
+            call_json = json.dumps(call, allow_nan=False)
+            planner = (_native.optimize_discover_provider_graph_node if discovery
+                       else _native.optimize_materialize_provider_graph_node)
+            result = json.loads(planner(
+                lease, json.dumps({"item": item, "call": logical}), call_json,
+                observation_only,
+            ))
+            if result.get("status") != "recorded":
+                raise RuntimeError(result.get("reason", "graph template planning was rejected"))
+            plan_json = result["plan_json"]
+            plan = _hydrate_plan_source(_plan_from_dict(json.loads(plan_json), plan_json), call, call_json)
+        except BaseException as exc:
+            raise RuntimeError("frozen graph plan could not be materialized") from exc
+    from agentc._batch_observation import note_plan
+
+    note_plan(plan)
+    return plan
+
+
+def _plan_call(call: dict[str, Any], *, observation_only: bool = False) -> Plan:
     """Invoke the native optimizer on a serialized :class:`Call` dict."""
     try:
         call_json = json.dumps(call)
     except (TypeError, ValueError):
-        log.debug("plan_call: call not JSON-serializable; passing through", exc_info=True)
+        log.debug(
+            "plan_call: call not JSON-serializable; passing through", exc_info=True
+        )
         return PASS_THROUGH
 
     try:
-        plan_json = _native.optimize_plan(call_json)
+        plan_json = (
+            _native.optimize_original_provider_call(call_json)
+            if observation_only else _native.optimize_plan(call_json)
+        )
     except BaseException:
-        log.debug("plan_call: native optimize_plan raised; passing through", exc_info=True)
+        log.debug(
+            "plan_call: native optimize_plan raised; passing through", exc_info=True
+        )
         return PASS_THROUGH
 
     try:
@@ -96,12 +146,26 @@ def plan_call(call: dict[str, Any]) -> Plan:
         log.debug("plan_call: bad JSON from native; passing through: %r", plan_json)
         return PASS_THROUGH
 
-    plan = _plan_from_dict(data, plan_json)
+    return _hydrate_plan_source(_plan_from_dict(data, plan_json), call, call_json)
+
+
+def _hydrate_plan_source(plan: Plan, call: dict[str, Any], call_json: str) -> Plan:
     plan.trace_id = call.get("trace_id")
     plan.messages = list(call.get("messages") or [])
     plan.parameters = dict(call.get("parameters") or {})
+    plan.source_call_json = call_json
+    validation = (call.get("parameters", {}).get("extra", {})
+                  .get("agentc_route_context", {}).get("output_validation"))
+    if isinstance(validation, dict):
+        from agentc._output_validation import _digest
+
+        plan.validation_contract_sha256 = _digest(validation)
+        plan.validation_contract_json = json.dumps(validation, allow_nan=False)
     _hydrate_dispatch_metadata(plan, call)
     if plan.counterfactual is not None:
+        plan.counterfactual.source_call_json = call_json
+        plan.counterfactual.validation_contract_sha256 = plan.validation_contract_sha256
+        plan.counterfactual.validation_contract_json = plan.validation_contract_json
         _hydrate_dispatch_metadata(plan.counterfactual, call)
     return plan
 
@@ -123,6 +187,9 @@ def observe_outcome(plan: Plan, outcome: dict[str, Any]) -> Optional[str]:
     exact ``raw_json`` back to the FFI so the Rust side can correlate
     with its audit ring buffer.
     """
+    from agentc._batch_observation import note_outcome
+
+    note_outcome(plan, outcome)
     # A Plan is normally single-use, but clearing first makes reuse fail safe:
     # no later shadow comparison can inherit a prior execution's token.
     plan.observation_token = None
@@ -248,7 +315,11 @@ def _hydrate_exploration(plan: Plan, data: dict[str, Any]) -> None:
         return
     lease_token = context.get("lease_token")
     candidate_data = context.get("candidate_plan")
-    if not isinstance(lease_token, str) or not lease_token or not isinstance(candidate_data, dict):
+    if (
+        not isinstance(lease_token, str)
+        or not lease_token
+        or not isinstance(candidate_data, dict)
+    ):
         return
     try:
         candidate_json = json.dumps(candidate_data, separators=(",", ":"))
@@ -256,7 +327,13 @@ def _hydrate_exploration(plan: Plan, data: dict[str, Any]) -> None:
     except (TypeError, ValueError, RecursionError):
         log.debug("plan_call: malformed counterfactual envelope", exc_info=True)
         return
-    if candidate.kind not in ("rewritten", "composed") or candidate.call is None:
+    executable = (
+        candidate.kind in ("rewritten", "composed")
+        and candidate.call is not None
+        or candidate.kind == "cached"
+        and isinstance(candidate.value, dict)
+    )
+    if not executable:
         log.debug("plan_call: non-executable counterfactual ignored")
         return
     plan.exploration_lease_token = lease_token
@@ -270,8 +347,12 @@ def _hydrate_dispatch_metadata(plan: Plan, original_call: dict[str, Any]) -> Non
         extra.get("agentc_route_context") if isinstance(extra, dict) else None
     )
     if isinstance(route_context, dict):
-        plan.provider_protocol = _optional_string(route_context.get("provider_protocol"))
-        plan.provider_namespace = _optional_string(route_context.get("provider_namespace"))
+        plan.provider_protocol = _optional_string(
+            route_context.get("provider_protocol")
+        )
+        plan.provider_namespace = _optional_string(
+            route_context.get("provider_namespace")
+        )
 
     routed_call = plan.call if isinstance(plan.call, dict) else None
     routed_params = routed_call.get("parameters") if routed_call is not None else None

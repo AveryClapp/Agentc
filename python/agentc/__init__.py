@@ -41,6 +41,7 @@ from agentc._executor import dispatch  # noqa: F401
 from agentc._intercept import intercept  # noqa: F401
 from agentc._optimization_scope import optimization_scope  # noqa: F401
 from agentc._optimization_scope import optimization_scope_report  # noqa: F401
+from agentc._application_version import application_version  # noqa: F401
 
 # Provenance / state tagging surface used by ParallelBranch and StateDrop.
 from agentc._provenance import State  # noqa: F401
@@ -51,6 +52,25 @@ from agentc._provenance import state_write  # noqa: F401
 # with a thread-pool dispatch that exposes the fan-out to
 # ``ParallelBranchRule``.
 from agentc._parallel import parallel_map  # noqa: F401
+from agentc._batch_observation import ParallelObservation  # noqa: F401
+from agentc._batch_observation import ParallelComparison  # noqa: F401
+from agentc._batch_observation import compare_parallel_observations  # noqa: F401
+from agentc._batch_observation import refresh_parallel_observation  # noqa: F401
+from agentc._completion_batch import BatchPolicy  # noqa: F401
+from agentc._completion_batch import BatchSchedule  # noqa: F401
+from agentc._completion_batch import CompletionRequest  # noqa: F401
+from agentc._completion_batch import completion_batch  # noqa: F401
+from agentc._billing import BillingReconciliation  # noqa: F401
+from agentc._billing import ProviderBillingReceipt  # noqa: F401
+from agentc._billing import provider_billing_receipts  # noqa: F401
+from agentc._billing import reconcile_openrouter_generation  # noqa: F401
+from agentc._provider_tariff import TariffAccounting  # noqa: F401
+from agentc._provider_tariff import tariff_accounting  # noqa: F401
+from agentc._provider_tariff import provider_tariff_report  # noqa: F401
+from agentc._provider_tariff import provider_tariff_plan_report  # noqa: F401
+from agentc._provider_tariff import provider_original_execution  # noqa: F401
+from agentc._provider_tariff import provider_original_quality_report  # noqa: F401
+from agentc._provider_tariff import compare_original_provider_executions  # noqa: F401
 
 __all__ = [
     "__version__",
@@ -77,7 +97,27 @@ __all__ = [
     "intercept",
     "optimization_scope",
     "optimization_scope_report",
+    "application_version",
     "parallel_map",
+    "ParallelObservation",
+    "refresh_parallel_observation",
+    "ParallelComparison",
+    "compare_parallel_observations",
+    "BatchPolicy",
+    "BatchSchedule",
+    "CompletionRequest",
+    "completion_batch",
+    "BillingReconciliation",
+    "ProviderBillingReceipt",
+    "provider_billing_receipts",
+    "reconcile_openrouter_generation",
+    "TariffAccounting",
+    "tariff_accounting",
+    "provider_tariff_report",
+    "provider_tariff_plan_report",
+    "provider_original_execution",
+    "provider_original_quality_report",
+    "compare_original_provider_executions",
     "State",
     "state_read",
     "state_write",

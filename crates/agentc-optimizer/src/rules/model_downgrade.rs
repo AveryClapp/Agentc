@@ -50,6 +50,7 @@ pub struct ModelDowngradeRule {
     catalog: Option<Arc<ModelCatalog>>,
     budget: Arc<Budget>,
     probation_sampler: ShadowSampler,
+    probation_seed: Option<u64>,
     accuracy_budget: f32,
 }
 
@@ -60,6 +61,7 @@ impl ModelDowngradeRule {
             catalog: None,
             budget,
             probation_sampler: ShadowSampler::new(PROBATION_FIRE_RATE),
+            probation_seed: None,
             accuracy_budget: DEFAULT_ACCURACY_BUDGET,
         }
     }
@@ -72,12 +74,14 @@ impl ModelDowngradeRule {
             catalog: Some(catalog),
             budget,
             probation_sampler: ShadowSampler::new(PROBATION_FIRE_RATE),
+            probation_seed: None,
             accuracy_budget: DEFAULT_ACCURACY_BUDGET,
         }
     }
 
     pub fn with_probation_seed(mut self, seed: u64) -> Self {
         self.probation_sampler = ShadowSampler::with_seed(PROBATION_FIRE_RATE, seed);
+        self.probation_seed = Some(seed);
         self
     }
 
@@ -120,6 +124,37 @@ struct ResolvedRoute {
 }
 
 impl RewriteRule for ModelDowngradeRule {
+    fn identity(&self) -> Option<crate::planner::RuleIdentity> {
+        let catalog = match self.catalog.as_ref() {
+            Some(catalog) => serde_json::to_value(catalog.as_ref()).ok()?,
+            None => serde_json::json!({}),
+        };
+        let routes: Vec<_> = self
+            .routes
+            .iter()
+            .map(|route| {
+                serde_json::json!({
+                    "from": route.from, "to": route.to, "price_ratio": route.price_ratio,
+                    "max_output_tokens": route.max_output_tokens,
+                })
+            })
+            .collect();
+        crate::planner::RuleIdentity::new(
+            "catalog-routing-policy-v1",
+            self.accuracy_budget,
+            serde_json::json!({
+                "catalog_sha256": agentc_core::storage::content_hash(&agentc_core::storage::canonical_json(&catalog)),
+                "routes": routes,
+                "min_short_or_structured_fraction": MIN_SHORT_OR_STRUCTURED_FRACTION,
+                "probation_observations": PROBATION_OBSERVATIONS,
+                "probation_fire_rate": PROBATION_FIRE_RATE,
+                "probation_sampler": self.probation_seed.map(|seed| serde_json::json!({"kind": "seeded", "seed": seed}))
+                    .unwrap_or_else(|| serde_json::json!({"kind": "entropy"})),
+                "default_output_p95_ceiling": DEFAULT_DOWNGRADE_OUTPUT_P95_CEILING,
+            }),
+        )
+    }
+
     fn name(&self) -> &'static str {
         "ModelDowngrade"
     }
@@ -216,6 +251,31 @@ mod tests {
             price_ratio: 0.1,
             max_output_tokens: 128,
         }]
+    }
+
+    #[test]
+    fn routing_identity_tracks_routes_accuracy_and_probation_seed() {
+        let build = || ModelDowngradeRule::new(routes(), Arc::new(Budget::new()));
+        let baseline = build().identity().unwrap();
+        assert_eq!(baseline, build().identity().unwrap());
+        assert_ne!(
+            baseline,
+            build().with_accuracy_budget(0.04).identity().unwrap()
+        );
+        assert_ne!(baseline, build().with_probation_seed(1).identity().unwrap());
+        assert_ne!(
+            build().with_probation_seed(1).identity(),
+            build().with_probation_seed(2).identity()
+        );
+        let mut changed = routes();
+        changed[0].max_output_tokens += 1;
+        assert_ne!(
+            baseline,
+            ModelDowngradeRule::new(changed, Arc::new(Budget::new()))
+                .identity()
+                .unwrap()
+        );
+        assert!(build().with_accuracy_budget(f32::NAN).identity().is_none());
     }
 
     fn hot_profile(n: u32) -> CallSiteProfile {
@@ -374,9 +434,9 @@ mod tests {
         assert_eq!(metadata["requested_model_id"], "gpt-5.4");
         assert_eq!(metadata["provider_namespace"], "openai");
         assert_eq!(metadata["output_token_parameter"], "max_completion_tokens");
-        assert!(metadata["catalog_version"]
-            .as_str()
-            .unwrap()
-            .contains("2026-09-03"));
+        assert_eq!(
+            metadata["catalog_version"],
+            crate::model_catalog::DEFAULT_MODEL_CATALOG_VERSION
+        );
     }
 }

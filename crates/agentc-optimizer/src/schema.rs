@@ -27,6 +27,26 @@ use rusqlite::Connection;
 /// STRICT typing is used per the spec. The single-row profile table keeps its
 /// text primary key, while composite-key tables use `WITHOUT ROWID`.
 pub const COST_MODEL_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS execution_plan_readmission (
+    call_site_version TEXT NOT NULL,
+    execution_plan_id TEXT NOT NULL,
+    started_at INTEGER NOT NULL CHECK(started_at >= 0),
+    observation_floor INTEGER NOT NULL CHECK(observation_floor >= 0),
+    PRIMARY KEY (call_site_version, execution_plan_id)
+) WITHOUT ROWID, STRICT;
+
+CREATE TABLE IF NOT EXISTS execution_plan_model_alias (
+    call_site_version TEXT NOT NULL,
+    provider_protocol TEXT NOT NULL,
+    target_model_id TEXT NOT NULL,
+    declared_model_version TEXT NOT NULL,
+    price_table_version TEXT NOT NULL,
+    resolved_model_version TEXT,
+    generation INTEGER NOT NULL CHECK(generation > 0),
+    PRIMARY KEY (call_site_version, provider_protocol, target_model_id,
+                 declared_model_version, price_table_version)
+) WITHOUT ROWID, STRICT;
+
 CREATE TABLE IF NOT EXISTS call_site_profile (
     call_site_id          TEXT PRIMARY KEY NOT NULL,
     n_observations        INTEGER NOT NULL,
@@ -102,6 +122,8 @@ CREATE TABLE IF NOT EXISTS execution_plan_observation (
     output_is_structured    INTEGER NOT NULL CHECK (output_is_structured IN (0, 1)),
     output_is_short         INTEGER NOT NULL CHECK (output_is_short IN (0, 1)),
     dispatch_fallback       INTEGER NOT NULL CHECK (dispatch_fallback IN (0, 1)),
+    charged_reference_cost_usd REAL NOT NULL DEFAULT 0.0 CHECK (charged_reference_cost_usd >= 0.0 AND charged_reference_cost_usd <= cost_usd),
+    charged_reference_latency_ms REAL NOT NULL DEFAULT 0.0 CHECK (charged_reference_latency_ms >= 0.0 AND charged_reference_latency_ms <= latency_ms),
     provider_protocol       TEXT NOT NULL,
     target_model_id         TEXT NOT NULL,
     target_model_version    TEXT NOT NULL,
@@ -161,6 +183,18 @@ CREATE TABLE IF NOT EXISTS execution_plan_disabled (
     disabled_at             INTEGER NOT NULL CHECK (disabled_at >= 0),
     reenable_at             INTEGER NOT NULL CHECK (reenable_at >= disabled_at),
     PRIMARY KEY (call_site_version, execution_plan_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS execution_plan_validation_rejection (
+    call_site_version TEXT NOT NULL,
+    execution_plan_id TEXT NOT NULL,
+    execution_id TEXT NOT NULL CHECK (length(execution_id) = 32),
+    provider_protocol TEXT NOT NULL,
+    target_model_id TEXT NOT NULL,
+    target_model_version TEXT NOT NULL,
+    price_table_version TEXT NOT NULL,
+    observed_at INTEGER NOT NULL CHECK (observed_at >= 0),
+    PRIMARY KEY (call_site_version, execution_plan_id, execution_id)
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS execution_plan_exploration_site (
@@ -293,6 +327,14 @@ CREATE INDEX IF NOT EXISTS idx_audit_ts ON plan_audit(ts_us);
 pub fn ensure_cost_model_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(COST_MODEL_SCHEMA)
         .context("applying cost_model schema")?;
+    for (column, statement) in [
+        ("cost_evidence_json", "ALTER TABLE execution_plan_observation ADD COLUMN cost_evidence_json TEXT NOT NULL DEFAULT '{\"source\":\"unknown\",\"physical_invocations\":[]}'"),
+        ("charged_reference_cost_usd", "ALTER TABLE execution_plan_observation ADD COLUMN charged_reference_cost_usd REAL NOT NULL DEFAULT 0.0 CHECK (charged_reference_cost_usd >= 0.0 AND charged_reference_cost_usd <= cost_usd)"),
+        ("charged_reference_latency_ms", "ALTER TABLE execution_plan_observation ADD COLUMN charged_reference_latency_ms REAL NOT NULL DEFAULT 0.0 CHECK (charged_reference_latency_ms >= 0.0 AND charged_reference_latency_ms <= latency_ms)"),
+    ] {
+        add_column_if_missing(conn, statement, column)?;
+    }
+    add_column_if_missing(conn, "ALTER TABLE execution_plan_profile ADD COLUMN cost_sources_json TEXT NOT NULL DEFAULT '{}'", "cost_sources_json")?;
     add_column_if_missing(
         conn,
         "ALTER TABLE call_site_profile \
@@ -395,6 +437,9 @@ pub fn ensure_cost_model_schema(conn: &Connection) -> Result<()> {
     )
     .context("removing orphaned plan-guard observations")?;
     conn.execute(
+        "DELETE FROM execution_plan_validation_rejection WHERE NOT EXISTS (SELECT 1 FROM execution_plan_guard AS guard WHERE guard.call_site_version = execution_plan_validation_rejection.call_site_version AND guard.execution_plan_id = execution_plan_validation_rejection.execution_plan_id)", [],
+    ).context("removing orphaned validation rejections")?;
+    conn.execute(
         "DELETE FROM execution_plan_disabled \
          WHERE NOT EXISTS (\
             SELECT 1 FROM execution_plan_guard AS guard \
@@ -440,7 +485,7 @@ mod tests {
                               'execution_plan_profile','execution_plan_observation',\
                               'execution_plan_divergence_observation',\
                               'execution_plan_guard','execution_plan_guard_observation',\
-                              'execution_plan_disabled',\
+                              'execution_plan_disabled','execution_plan_validation_rejection',\
                               'execution_plan_exploration_site',\
                               'execution_plan_exploration','rule_divergence',\
                               'rule_divergence_observation','optimizer_disabled',\
@@ -449,7 +494,7 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(tables, 14);
+        assert_eq!(tables, 15);
     }
 
     #[test]

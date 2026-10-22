@@ -7,9 +7,9 @@ use std::time::Instant;
 use agentc_optimizer::ffi::{attach_observation_context, optimize_profiled_plan};
 use agentc_optimizer::{
     default_model_catalog, schema::ensure_cost_model_schema, Budget, Call, CostModel,
-    CostModelUpdate, DepSource, ModelDowngradeRule, Optimizer, OptimizerConfig,
-    OutputBudgetRule, Parameters, Plan, PlanGuard, PlanProfileKey, PlanProfileUpdate,
-    PlanProfiles, PlanRuntimeVersion, RewriteRule, OPENAI_CHAT_COMPLETIONS_PROTOCOL,
+    CostModelUpdate, DepSource, ModelDowngradeRule, Optimizer, OptimizerConfig, OutputBudgetRule,
+    Parameters, Plan, PlanGuard, PlanProfileKey, PlanProfileUpdate, PlanProfiles,
+    PlanRuntimeVersion, RewriteRule, OPENAI_CHAT_COMPLETIONS_PROTOCOL,
 };
 use rusqlite::Connection;
 use serde::Deserialize;
@@ -79,6 +79,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     for sequence in 0..20 {
         let observed_at_us = NOW_US - 20 + sequence;
         profiles.observe(PlanProfileUpdate {
+            cost_evidence: agentc_optimizer::cost_evidence::CostEvidence {
+                source: agentc_optimizer::cost_evidence::CostSource::ProviderReported,
+                physical_invocations: Vec::new(),
+            },
             key: reference_context.key.clone(),
             runtime_version: reference_context.runtime_version.clone(),
             input_tokens: 1_000,
@@ -92,6 +96,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             observed_at_us: Some(observed_at_us),
         })?;
         profiles.observe(PlanProfileUpdate {
+            cost_evidence: agentc_optimizer::cost_evidence::CostEvidence {
+                source: agentc_optimizer::cost_evidence::CostSource::ProviderReported,
+                physical_invocations: Vec::new(),
+            },
             key: joint_context.key.clone(),
             runtime_version: joint_context.runtime_version.clone(),
             input_tokens: 1_000,
@@ -204,11 +212,7 @@ fn decode_context(plan_json: &str) -> Result<ObservationContext, Box<dyn Error>>
 }
 
 fn percentile_ns(sorted: &[u64], percentile: usize) -> u64 {
-    let index = sorted
-        .len()
-        .saturating_mul(percentile)
-        .saturating_add(99)
-        / 100;
+    let index = sorted.len().saturating_mul(percentile).saturating_add(99) / 100;
     sorted[index.saturating_sub(1).min(sorted.len().saturating_sub(1))]
 }
 

@@ -121,7 +121,7 @@ def cache_maintenance(max_entries: int = 0) -> dict[str, int | bool]:
     ...
 
 def output_content_load(content_id: str) -> bytes | None:
-    """Load a row from the shared `output_content` table by content_id.
+    """Load payload bytes from the active process or merged canonical store.
 
     Returns None if the row is missing or the DB is not open.
     """
@@ -147,7 +147,7 @@ def canonicalize_parameters_bytes(params_json: bytes) -> bytes:
     """Canonicalize parameters via the Rust mirror adapter."""
     ...
 
-def optimize_configure(storage_path: str) -> str:
+def optimize_configure(storage_path: str, config_path: str | None = None) -> str:
     """Build a fresh native optimizer rooted at ``storage_path``.
 
     Flushes and replaces any optimizer configured by an earlier Agentc
@@ -155,8 +155,53 @@ def optimize_configure(storage_path: str) -> str:
     """
     ...
 
+def optimize_configuration() -> str:
+    """Inspect resolved optimizer settings and content-free invalid-config diagnostics."""
+    ...
+
+def optimize_text_action_comparator_version() -> str:
+    """Return the compiled text-action identity/lease contract version."""
+    ...
+
 def optimize_storage_path() -> str:
     """Return the storage path owned by the current native optimizer."""
+    ...
+
+def optimize_evaluation_policy_version() -> str:
+    """Frozen request-policy schema supported by the compiled executor."""
+    ...
+
+def optimize_provider_configuration_version() -> str:
+    """Provider request settings understood by native identity and admission."""
+    ...
+
+def optimize_application_version() -> str:
+    """Application revision declaration understood by native plan evidence."""
+    ...
+
+def optimize_divergence_metric_version(mode: str) -> str:
+    """Identity version of the output metric, including embedding fallback."""
+    ...
+
+def optimize_output_validation_version() -> str:
+    """Experimental pre-release validator identity understood by native plans."""
+    ...
+
+def optimize_record_output_validation_rejection(plan_json: str, contract_json: str, execution_id: str) -> bool:
+    """Durably record one exact-plan rejection without adding reference pairs."""
+    ...
+
+def optimize_sdk_response_cache_key(call_json: str) -> str | None:
+    """Project an eligible SDK request to its versioned native cache key JSON."""
+    ...
+
+def optimize_evaluation_planner_mode() -> str:
+    """Return the evaluation mode frozen at native optimizer configuration.
+
+    Values include joint_guarded (default), current_greedy, best_static_joint,
+    route_then_rewrite, rewrite_then_route, and invalid. Frozen controls require
+    their matching request declaration and never explore complete plans.
+    """
     ...
 
 def optimize_reset() -> None:
@@ -174,6 +219,58 @@ def optimize_plan(call_json: str) -> str:
 
 def optimize_model_catalog() -> str:
     """Return the active versioned model catalog as JSON."""
+    ...
+
+def optimize_observe_multi_call(receipt_json: str) -> str:
+    """Publish complete batch economics or retain originals awaiting billing."""
+    ...
+
+def optimize_original_provider_call(call_json: str) -> str:
+    """Issue an observation identity for an untouched call, without planning."""
+    ...
+
+def optimize_record_provider_receipt(record_json: str) -> str:
+    """Persist provider accounting or refresh an existing batch checkpoint."""
+    ...
+
+def optimize_compare_multi_call(reference_token: str, candidate_token: str) -> str:
+    """Compare two complete, bound executions and charge their acquisition once."""
+    ...
+
+def optimize_compare_provider_graph(reference_token: str, candidate_token: str) -> str:
+    """Compare saved complete graph results once, independently of billing."""
+    ...
+
+def optimize_provider_graph_sampling(request_json: str) -> str:
+    """Issue bounded prospective graph sampling or finish its original pair."""
+    ...
+
+def optimize_discover_provider_graph_node(lease_id: str, position_json: str, source_json: str, observation_only: bool) -> str:
+    """Issue and bind a native cold discovery instruction before SDK dispatch."""
+    ...
+
+def optimize_compare_provider_role_graph(reference_execution_id: str, candidate_execution_id: str) -> str:
+    """Compare complete role-graph results under the live native quality policy."""
+    ...
+
+def optimize_begin_provider_graph(request_json: str) -> str:
+    """Record a native pre-dispatch workflow start and optional frozen graph."""
+    ...
+
+def optimize_approve_provider_graph_node(lease_id: str, position_json: str, source_json: str, plan_json: str, request_sha256: str | None = None, transport_sha256: str | None = None) -> str:
+    """Bind one SDK node and guarded request before its physical dispatch."""
+    ...
+
+def optimize_describe_provider_graph_node(position_json: str, source_json: str, plan_json: str) -> str:
+    """Describe one issued physical plan without dispatch or admission."""
+    ...
+
+def optimize_materialize_provider_graph_node(lease_id: str, position_json: str, source_json: str, observation_only: bool) -> str:
+    """Materialize the exact frozen graph plan for an upcoming SDK request."""
+    ...
+
+def optimize_prepare_provider_batch(batch_json: str, options_json: str) -> str:
+    """Prepare immutable originals and admit only a fully qualified batch schedule."""
     ...
 
 def optimize_observe(plan_json: str, outcome_json: str) -> str:

@@ -111,6 +111,8 @@ def is_opted_out(extra_headers: Mapping[str, Any] | None) -> bool:
 
 def decide_optimization(
     extra_headers: Mapping[str, Any] | None = None,
+    *,
+    record: bool = True,
 ) -> OptimizationDecision:
     """Record and return the current call's optimizer eligibility decision."""
     scope = _current_scope.get()
@@ -130,9 +132,10 @@ def decide_optimization(
         eligible=eligible,
         reason=reason,
     )
-    with _report_lock:
-        key = (decision.scope, decision.scope_enabled, decision.reason)
-        _report_counts[key] = _report_counts.get(key, 0) + 1
+    if record:
+        with _report_lock:
+            key = (decision.scope, decision.scope_enabled, decision.reason)
+            _report_counts[key] = _report_counts.get(key, 0) + 1
     return decision
 
 

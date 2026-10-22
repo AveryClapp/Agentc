@@ -24,6 +24,7 @@ from typing import Any
 import wrapt
 
 from agentc._context import SpanContext, get_current_span
+from agentc._dispatch_context import DispatchKind, current_provider_dispatch, provider_dispatch
 from agentc._interception_context import interception_is_nested, interception_owner
 from agentc._span import (
     _build_span_dict,
@@ -257,8 +258,17 @@ def _plan_call(
     parent: SpanContext | None,
     decision: Any,
 ) -> tuple[Any, str | None]:
-    if not decision.eligible:
+    from agentc._batch_observation import graph_original_capture_requested
+
+    observation_only = not decision.eligible and graph_original_capture_requested()
+    if not decision.eligible and not observation_only:
         return None, None
+
+    from agentc._prepared_plan import consume_prepared_plan
+
+    prepared = None if observation_only else consume_prepared_plan(request, "litellm.completion.v1")
+    if prepared is not None:
+        return prepared
     try:
         from agentc._optimizer import plan_call
         from agentc._patches._optimizer_glue import (
@@ -276,8 +286,11 @@ def _plan_call(
             else _generate_trace_id(),
             span_id_hex=_generate_span_id(),
             provider_protocol=LITELLM_COMPLETION_PROTOCOL,
+            client=request.get("client"),
         )
-        return plan_call(call), call_site_id
+        return (
+            plan_call(call, observation_only=True) if observation_only else plan_call(call)
+        ), call_site_id
     except BaseException:
         logger.debug(
             "LiteLLM optimizer planning failed; passing through", exc_info=True
@@ -321,6 +334,9 @@ async def _call_original_async(
 
 
 def _wrap_completion(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
+    from agentc._batch_observation import note_sdk_call
+
+    note_sdk_call()
     if not _is_initialized() or interception_is_nested():
         return wrapped(*args, **kwargs)
 
@@ -340,16 +356,31 @@ def _wrap_completion(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any
     plan, call_site_id = _plan_call(request, parent, decision)
 
     def run_original() -> Any:
-        return _call_original(wrapped, args, kwargs)
+        inherited = current_provider_dispatch()
+        if plan is None and inherited is not None and inherited.kind == "validation":
+            return _call_original(wrapped, args, kwargs)
+        kind: DispatchKind = (
+            "fallback" if getattr(plan, "dispatch_fallback", False) else "primary"
+        )
+        with provider_dispatch(kind, plan=plan, primary_plan=plan):
+            return _call_original(wrapped, args, kwargs)
 
-    def run_mutated(mutated_call: dict[str, Any]) -> Any:
+    def run_mutated(
+        mutated_call: dict[str, Any], *, kind: DispatchKind = "primary"
+    ) -> Any:
         new_args, new_kwargs = _mutated_dispatch_args(
             args,
             kwargs,
             request,
             mutated_call,
         )
-        return _call_original(wrapped, new_args, new_kwargs)
+        selected = plan if kind == "primary" else getattr(plan, "counterfactual", None)
+        with provider_dispatch(kind, plan=selected, primary_plan=plan):
+            return _call_original(wrapped, new_args, new_kwargs)
+
+    def run_shadow() -> Any:
+        with provider_dispatch("shadow", primary_plan=plan):
+            return _call_original(wrapped, args, kwargs)
 
     try:
         if plan is None:
@@ -358,15 +389,22 @@ def _wrap_completion(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any
             from agentc._patches._optimizer_glue import (
                 build_outcome_openai,
                 dispatch_sync,
+                decode_cached_response,
                 maybe_explore_record,
                 maybe_shadow_record,
                 resolve_executed_model_id,
             )
 
+            from agentc._output_validation import bind_validation_request
+
+            bind_validation_request(plan, request)
             response = dispatch_sync(
                 plan,
                 run_original=run_original,
                 run_mutated=run_mutated,
+                decode_cached=lambda value: decode_cached_response(
+                    value, provider_protocol="litellm.completion.v1"
+                ),
             )
             primary_elapsed_s = time.perf_counter() - started
             if call_site_id is not None:
@@ -392,11 +430,14 @@ def _wrap_completion(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any
                 maybe_explore_record(
                     plan,
                     response,
-                    run_mutated,
+                    lambda call: run_mutated(call, kind="exploration"),
                     extract_counterfactual_outcome,
                 )
-            maybe_shadow_record(plan, call_site_id, response, run_original)
+            maybe_shadow_record(plan, call_site_id, response, run_shadow)
     except BaseException as exc:
+        from agentc._patches._optimizer_glue import dispatch_span_attributes
+
+        attrs.update(dispatch_span_attributes(plan))
         attrs["error.type"] = type(exc).__name__
         attrs["error.message"] = str(exc)
         try:
@@ -422,7 +463,8 @@ def _wrap_completion(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any
 
         executed_model = resolve_executed_model_id(plan, response, request.get("model"))
         attrs.update(dispatch_span_attributes(plan, executed_model))
-    attrs.update(_extract_response_attrs(response))
+    from agentc._patches._optimizer_glue import cache_response_attributes
+    attrs.update(cache_response_attributes(plan, _extract_response_attrs(response)))
     try:
         _emit_span(
             attrs=attrs,
@@ -446,6 +488,9 @@ async def _wrap_acompletion(
     args: Any,
     kwargs: Any,
 ) -> Any:
+    from agentc._batch_observation import note_sdk_call
+
+    note_sdk_call()
     if not _is_initialized() or interception_is_nested():
         return await wrapped(*args, **kwargs)
 
@@ -465,16 +510,31 @@ async def _wrap_acompletion(
     plan, call_site_id = _plan_call(request, parent, decision)
 
     async def run_original() -> Any:
-        return await _call_original_async(wrapped, args, kwargs)
+        inherited = current_provider_dispatch()
+        if plan is None and inherited is not None and inherited.kind == "validation":
+            return await _call_original_async(wrapped, args, kwargs)
+        kind: DispatchKind = (
+            "fallback" if getattr(plan, "dispatch_fallback", False) else "primary"
+        )
+        with provider_dispatch(kind, plan=plan, primary_plan=plan):
+            return await _call_original_async(wrapped, args, kwargs)
 
-    async def run_mutated(mutated_call: dict[str, Any]) -> Any:
+    async def run_mutated(
+        mutated_call: dict[str, Any], *, kind: DispatchKind = "primary"
+    ) -> Any:
         new_args, new_kwargs = _mutated_dispatch_args(
             args,
             kwargs,
             request,
             mutated_call,
         )
-        return await _call_original_async(wrapped, new_args, new_kwargs)
+        selected = plan if kind == "primary" else getattr(plan, "counterfactual", None)
+        with provider_dispatch(kind, plan=selected, primary_plan=plan):
+            return await _call_original_async(wrapped, new_args, new_kwargs)
+
+    async def run_shadow() -> Any:
+        with provider_dispatch("shadow", primary_plan=plan):
+            return await _call_original_async(wrapped, args, kwargs)
 
     try:
         if plan is None:
@@ -485,13 +545,20 @@ async def _wrap_acompletion(
                 build_outcome_openai,
                 maybe_explore_record_async,
                 maybe_shadow_record_async,
+                decode_cached_response,
                 resolve_executed_model_id,
             )
 
+            from agentc._output_validation import bind_validation_request
+
+            bind_validation_request(plan, request)
             response = await dispatch(
                 plan,
                 run_original=run_original,
                 run_mutated=run_mutated,
+                decode_cached=lambda value: decode_cached_response(
+                    value, provider_protocol="litellm.completion.v1"
+                ),
             )
             primary_elapsed_s = time.perf_counter() - started
             if call_site_id is not None:
@@ -517,16 +584,19 @@ async def _wrap_acompletion(
                 maybe_explore_record_async(
                     plan,
                     response,
-                    run_mutated,
+                    lambda call: run_mutated(call, kind="exploration"),
                     extract_counterfactual_outcome,
                 )
             await maybe_shadow_record_async(
                 plan,
                 call_site_id,
                 response,
-                run_original,
+                run_shadow,
             )
     except BaseException as exc:
+        from agentc._patches._optimizer_glue import dispatch_span_attributes
+
+        attrs.update(dispatch_span_attributes(plan))
         attrs["error.type"] = type(exc).__name__
         attrs["error.message"] = str(exc)
         try:
@@ -552,7 +622,8 @@ async def _wrap_acompletion(
 
         executed_model = resolve_executed_model_id(plan, response, request.get("model"))
         attrs.update(dispatch_span_attributes(plan, executed_model))
-    attrs.update(_extract_response_attrs(response))
+    from agentc._patches._optimizer_glue import cache_response_attributes
+    attrs.update(cache_response_attributes(plan, _extract_response_attrs(response)))
     try:
         _emit_span(
             attrs=attrs,

@@ -428,11 +428,7 @@ impl Budget {
     }
 
     /// Snapshot the cached disable row (for inspect/CLI output).
-    pub fn disabled_entry(
-        &self,
-        call_site_id: &str,
-        rule: &str,
-    ) -> Option<DisabledEntry> {
+    pub fn disabled_entry(&self, call_site_id: &str, rule: &str) -> Option<DisabledEntry> {
         self.disabled
             .read()
             .get(&(call_site_id.to_string(), rule.to_string()))
@@ -636,7 +632,10 @@ mod tests {
         }
         let out = b.record_sample("site", "RuleA", 0.10, 0.03, 1000);
         match out {
-            SampleOutcome::Disable { disabled_at_us, reenable_at_us } => {
+            SampleOutcome::Disable {
+                disabled_at_us,
+                reenable_at_us,
+            } => {
                 assert_eq!(disabled_at_us, 1000);
                 assert_eq!(reenable_at_us, 1000 + COOLDOWN_US);
             }
@@ -895,9 +894,7 @@ mod tests {
         restarted.flush_divergence(&mut connection).unwrap();
 
         let second_restart = Budget::new();
-        second_restart
-            .warm_divergence_from_db(&connection)
-            .unwrap();
+        second_restart.warm_divergence_from_db(&connection).unwrap();
         assert_eq!(
             second_restart
                 .get_entry("site", "RuleA")

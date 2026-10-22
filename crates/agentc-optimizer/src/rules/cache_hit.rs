@@ -26,13 +26,42 @@ pub const LSH_SIMILARITY_THRESHOLD: f32 = 0.95;
 
 /// Default accuracy budget from spec § Accuracy budget.
 pub const DEFAULT_ACCURACY_BUDGET: f32 = 0.01;
+pub const SOURCE_POLICY_VERSION: &str = "memoized-response-source-v1";
+
+/// Cache content, age and observed similarity are execution data. Only the
+/// accepted source class and its fixed gate define the evidence cohort.
+pub(crate) fn source_policy(value: &serde_json::Value) -> Option<serde_json::Value> {
+    let source = value.get("source")?.as_object()?;
+    match source.get("kind")?.as_str()? {
+        "exact" if source.len() == 1 => Some(json!({"source_class": "exact"})),
+        "lsh" if source.len() == 2 => {
+            let similarity = source.get("similarity")?.as_f64()?;
+            if !similarity.is_finite()
+                || similarity < f64::from(LSH_SIMILARITY_THRESHOLD)
+                || similarity > 1.0
+            {
+                return None;
+            }
+            Some(json!({"source_class": "lsh", "minimum_similarity": LSH_SIMILARITY_THRESHOLD}))
+        }
+        _ => None,
+    }
+}
 
 /// A `CacheKeyBuilder` knows how to turn a `Call` into the
 /// `CacheKey` that's compatible with the rest of the
 /// caching pipeline. We take it as a trait-object so tests can inject a
 /// deterministic key without pulling in the canonicalizer.
 pub trait CacheKeyBuilder: Send + Sync {
-    fn build(&self, call: &Call) -> CacheKey;
+    fn build(&self, call: &Call) -> Option<CacheKey>;
+    /// Whether keys bind the original native message shape, rather than only
+    /// its lossy DAG projection. Unsupported requests must still return None.
+    fn supports_native_messages(&self) -> bool {
+        false
+    }
+    fn identity(&self) -> Option<serde_json::Value> {
+        None
+    }
 }
 
 pub struct CacheHitRule {
@@ -40,6 +69,7 @@ pub struct CacheHitRule {
     key_builder: Arc<dyn CacheKeyBuilder>,
     now_micros: Arc<dyn Fn() -> i64 + Send + Sync>,
     accuracy_budget: f32,
+    cache_policy_version: Option<String>,
 }
 
 impl CacheHitRule {
@@ -49,16 +79,23 @@ impl CacheHitRule {
             key_builder,
             now_micros: Arc::new(default_now_micros),
             accuracy_budget: DEFAULT_ACCURACY_BUDGET,
+            cache_policy_version: None,
         }
     }
 
     pub fn with_clock(mut self, clock: Arc<dyn Fn() -> i64 + Send + Sync>) -> Self {
         self.now_micros = clock;
+        self.cache_policy_version = None;
         self
     }
 
     pub fn with_accuracy_budget(mut self, budget: f32) -> Self {
         self.accuracy_budget = budget;
+        self
+    }
+
+    pub fn with_cache_policy_version(mut self, version: impl Into<String>) -> Self {
+        self.cache_policy_version = Some(version.into());
         self
     }
 
@@ -71,8 +108,29 @@ impl CacheHitRule {
 }
 
 impl RewriteRule for CacheHitRule {
+    fn identity(&self) -> Option<crate::planner::RuleIdentity> {
+        let policy = self
+            .cache_policy_version
+            .as_ref()
+            .filter(|value| !value.is_empty())?;
+        crate::planner::RuleIdentity::new(
+            "memoized-response-lookup-v1",
+            self.accuracy_budget,
+            json!({
+                "cache_policy_version": policy,
+                "key_builder": self.key_builder.identity()?,
+                "native_message_keys": self.key_builder.supports_native_messages(),
+                "lsh_similarity_threshold": LSH_SIMILARITY_THRESHOLD,
+            }),
+        )
+    }
+
     fn name(&self) -> &'static str {
         "CacheHit"
+    }
+
+    fn preserves_native_messages(&self) -> bool {
+        self.key_builder.supports_native_messages()
     }
 
     fn applies(&self, _call: &Call, profile: &CallSiteProfile) -> bool {
@@ -84,14 +142,26 @@ impl RewriteRule for CacheHitRule {
     }
 
     fn propose(&self, call: &Call, profile: &CallSiteProfile) -> Option<Proposal> {
-        let key = self.key_builder.build(call);
+        let key = self.key_builder.build(call)?;
         let now = (self.now_micros)();
         let hit = self.cache.lookup(&key, now).ok().flatten()?;
         if !Self::passes_source_gate(&hit) {
             return None;
         }
         let projected = profile.cost_usd.mean as f32;
-        let value = cache_hit_to_plan_value(&hit);
+        let mut value = cache_hit_to_plan_value(&hit);
+        if let Some(context) = call
+            .parameters
+            .extra
+            .get(crate::model_catalog::ROUTE_CONTEXT_KEY)
+        {
+            if context.get("sdk_response_cache").is_some() {
+                value["sdk_response_cache_version"] =
+                    json!(crate::wiring::SDK_RESPONSE_CACHE_VERSION);
+                value["provider_protocol"] = context["provider_protocol"].clone();
+                value["provider_namespace"] = context["provider_namespace"].clone();
+            }
+        }
         Some(Proposal {
             rewritten: Plan::Cached { value },
             projected_savings_usd: projected,
@@ -137,8 +207,82 @@ fn default_now_micros() -> i64 {
 mod tests {
     use super::*;
     use agentc_memo::{CacheStats, CacheValue, InvalidationPattern};
-    use parking_lot::Mutex;
     use anyhow::Result;
+    use parking_lot::Mutex;
+
+    #[test]
+    fn cache_identity_requires_declared_key_and_backend_policies() {
+        struct DeclaredKey(&'static str);
+        impl CacheKeyBuilder for DeclaredKey {
+            fn build(&self, call: &Call) -> Option<CacheKey> {
+                FixedKey.build(call)
+            }
+            fn identity(&self) -> Option<serde_json::Value> {
+                Some(json!({"key_policy_version": self.0}))
+            }
+        }
+        let cache = Arc::new(StubCache::default());
+        assert!(CacheHitRule::new(cache.clone(), Arc::new(FixedKey))
+            .with_cache_policy_version("backend-v1")
+            .identity()
+            .is_none());
+        assert!(
+            CacheHitRule::new(cache.clone(), Arc::new(DeclaredKey("key-v1")))
+                .identity()
+                .is_none()
+        );
+        let configured = |key, backend| {
+            CacheHitRule::new(cache.clone(), Arc::new(DeclaredKey(key)))
+                .with_cache_policy_version(backend)
+        };
+        let baseline = configured("key-v1", "backend-v1").identity().unwrap();
+        assert_ne!(
+            baseline,
+            configured("key-v2", "backend-v1").identity().unwrap()
+        );
+        assert_ne!(
+            baseline,
+            configured("key-v1", "backend-v2").identity().unwrap()
+        );
+        assert_ne!(
+            baseline,
+            configured("key-v1", "backend-v1")
+                .with_accuracy_budget(0.02)
+                .identity()
+                .unwrap()
+        );
+        assert!(configured("key-v1", "backend-v1")
+            .with_clock(Arc::new(|| 100))
+            .identity()
+            .is_none());
+    }
+
+    #[test]
+    fn cache_native_message_support_is_explicit_and_identity_bound() {
+        struct NativeKey(bool);
+        impl CacheKeyBuilder for NativeKey {
+            fn build(&self, call: &Call) -> Option<CacheKey> {
+                FixedKey.build(call)
+            }
+            fn identity(&self) -> Option<serde_json::Value> {
+                Some(json!({"key_version":"fixture-v1"}))
+            }
+            fn supports_native_messages(&self) -> bool {
+                self.0
+            }
+        }
+        let make = |native| {
+            CacheHitRule::new(Arc::new(StubCache::default()), Arc::new(NativeKey(native)))
+                .with_cache_policy_version("backend-v1")
+        };
+        assert!(!make(false).preserves_native_messages());
+        assert!(make(true).preserves_native_messages());
+        assert_ne!(make(false).identity(), make(true).identity());
+        assert!(
+            !CacheHitRule::new(Arc::new(StubCache::default()), Arc::new(FixedKey))
+                .preserves_native_messages()
+        );
+    }
 
     fn zero_hash() -> [u8; 32] {
         [0u8; 32]
@@ -146,13 +290,13 @@ mod tests {
 
     struct FixedKey;
     impl CacheKeyBuilder for FixedKey {
-        fn build(&self, call: &Call) -> CacheKey {
-            CacheKey {
+        fn build(&self, call: &Call) -> Option<CacheKey> {
+            Some(CacheKey {
                 prompt_hash: zero_hash(),
                 model: call.model.clone(),
                 parameters_hash: zero_hash(),
                 call_site_id: call.call_site_id.clone(),
-            }
+            })
         }
     }
 
@@ -166,20 +310,10 @@ mod tests {
         }
     }
     impl Cache for StubCache {
-        fn lookup(
-            &self,
-            _key: &CacheKey,
-            _now: i64,
-        ) -> Result<Option<CacheHit>> {
+        fn lookup(&self, _key: &CacheKey, _now: i64) -> Result<Option<CacheHit>> {
             Ok(self.next.lock().clone())
         }
-        fn insert(
-            &self,
-            _key: &CacheKey,
-            _value: &CacheValue,
-            _ttl: i64,
-            _now: i64,
-        ) -> Result<()> {
+        fn insert(&self, _key: &CacheKey, _value: &CacheValue, _ttl: i64, _now: i64) -> Result<()> {
             Ok(())
         }
         fn invalidate(&self, _pattern: &InvalidationPattern) -> Result<u64> {

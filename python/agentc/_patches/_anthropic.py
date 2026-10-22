@@ -183,6 +183,8 @@ def _plan_anthropic_call(
     kwargs: dict[str, Any],
     parent: SpanContext | None,
     decision: Any | None = None,
+    *,
+    client: Any = None,
 ) -> tuple[Any, str | None]:
     """Build a Call dict and ask the optimizer for a Plan (Anthropic).
 
@@ -203,8 +205,17 @@ def _plan_anthropic_call(
 
     if decision is None:
         decision = decide_optimization(kwargs.get("extra_headers"))
-    if not decision.eligible:
+    from agentc._batch_observation import graph_original_capture_requested
+
+    observation_only = not decision.eligible and graph_original_capture_requested()
+    if not decision.eligible and not observation_only:
         return None, None
+
+    from agentc._prepared_plan import consume_prepared_plan
+
+    prepared = None if observation_only else consume_prepared_plan(kwargs, "anthropic.messages.v1")
+    if prepared is not None:
+        return prepared
 
     try:
         call_site_id = derive_call_site_id()
@@ -215,8 +226,9 @@ def _plan_anthropic_call(
             call_site_id=call_site_id,
             trace_id_hex=trace_id_hex,
             span_id_hex=span_id_hex,
+            client=client,
         )
-        plan = plan_call(call)
+        plan = plan_call(call, observation_only=True) if observation_only else plan_call(call)
     except BaseException:
         logger.debug("optimizer planning failed (anthropic); falling through", exc_info=True)
         return None, None
@@ -252,12 +264,22 @@ def _observe_anthropic_outcome(
     except BaseException:
         logger.debug("optimizer observe failed (anthropic); skipping", exc_info=True)
 
+    from agentc._response_cache import seed_response
+
+    seed_response(plan, response)
+
 
 # --- Sync wrappers ---
 
 
 def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
+    from agentc._provider_receipts import instrument_provider
+
+    wrapped = instrument_provider(wrapped, instance, "anthropic.messages.v1")
     """Wrapper for Messages.create (sync, non-streaming)."""
+    from agentc._batch_observation import note_sdk_call
+
+    note_sdk_call()
     if not _is_initialized():
         return wrapped(*args, **kwargs)
     from agentc._interception_context import interception_is_nested
@@ -275,7 +297,9 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
 
     decision = decide_optimization(kwargs.get("extra_headers"))
     req_attrs.update(decision.span_attributes())
-    plan, call_site_id = _plan_anthropic_call(kwargs, parent, decision)
+    sdk_client = getattr(instance, "_client", None)
+    planning_options = {"client": sdk_client} if sdk_client is not None else {}
+    plan, call_site_id = _plan_anthropic_call(kwargs, parent, decision, **planning_options)
 
     try:
         if plan is not None:
@@ -283,19 +307,36 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
                 apply_call_mutations_anthropic,
                 build_outcome_anthropic,
                 dispatch_sync,
+                decode_cached_response,
                 maybe_explore_record,
                 maybe_shadow_record,
                 resolve_executed_model_id,
             )
 
             def _run_original() -> Any:
-                return wrapped(*args, **kwargs)
+                from agentc._dispatch_context import sdk_dispatch
+
+                with sdk_dispatch(plan):
+                    return wrapped(*args, **kwargs)
 
             def _run_mutated(mutated_call: dict[str, Any]) -> Any:
                 new_kwargs = apply_call_mutations_anthropic(kwargs, mutated_call)
-                return wrapped(*args, **new_kwargs)
+                from agentc._dispatch_context import sdk_dispatch
 
-            response = dispatch_sync(plan, run_original=_run_original, run_mutated=_run_mutated)
+                with sdk_dispatch(plan, mutated=True):
+                    return wrapped(*args, **new_kwargs)
+
+            from agentc._output_validation import bind_validation_request
+
+            bind_validation_request(plan, kwargs)
+            response = dispatch_sync(
+                plan,
+                run_original=_run_original,
+                run_mutated=_run_mutated,
+                decode_cached=lambda value: decode_cached_response(
+                    value, provider_protocol="anthropic.messages.v1"
+                ),
+            )
             primary_elapsed_s = _time.perf_counter() - t0
             if call_site_id is not None:
                 _observe_anthropic_outcome(
@@ -336,6 +377,9 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
         else:
             response = wrapped(*args, **kwargs)
     except BaseException as exc:
+        from agentc._patches._optimizer_glue import dispatch_span_attributes
+
+        req_attrs.update(dispatch_span_attributes(plan))
         end_time = _now_us()
         req_attrs["error.type"] = type(exc).__name__
         req_attrs["error.message"] = str(exc)
@@ -365,7 +409,8 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
         executed_model = resolve_executed_model_id(plan, response, kwargs.get("model"))
         req_attrs.update(dispatch_span_attributes(plan, executed_model))
 
-    resp_attrs = _extract_response_attrs(response)
+    from agentc._patches._optimizer_glue import cache_response_attributes
+    resp_attrs = cache_response_attributes(plan, _extract_response_attrs(response))
     req_attrs.update(resp_attrs)
     output_msgs = _extract_output_messages(response)
 
@@ -390,6 +435,12 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
 
 def _wrap_stream(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
     """Wrapper for Messages.stream (sync streaming)."""
+    from agentc._provider_receipts import reject_unjournaled_graph_dispatch
+
+    reject_unjournaled_graph_dispatch()
+    from agentc._batch_observation import note_sdk_call
+
+    note_sdk_call()
     if not _is_initialized():
         return wrapped(*args, **kwargs)
     from agentc._interception_context import interception_is_nested
@@ -522,7 +573,13 @@ class _WrappedStream:
 
 
 async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
+    from agentc._provider_receipts import instrument_provider
+
+    wrapped = instrument_provider(wrapped, instance, "anthropic.messages.v1", asynchronous=True)
     """Wrapper for AsyncMessages.create (async, non-streaming)."""
+    from agentc._batch_observation import note_sdk_call
+
+    note_sdk_call()
     if not _is_initialized():
         return await wrapped(*args, **kwargs)
     from agentc._interception_context import interception_is_nested
@@ -539,7 +596,9 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
 
     decision = decide_optimization(kwargs.get("extra_headers"))
     req_attrs.update(decision.span_attributes())
-    plan, call_site_id = _plan_anthropic_call(kwargs, parent, decision)
+    sdk_client = getattr(instance, "_client", None)
+    planning_options = {"client": sdk_client} if sdk_client is not None else {}
+    plan, call_site_id = _plan_anthropic_call(kwargs, parent, decision, **planning_options)
 
     try:
         if plan is not None:
@@ -549,17 +608,34 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
                 build_outcome_anthropic,
                 maybe_explore_record_async,
                 maybe_shadow_record_async,
+                decode_cached_response,
                 resolve_executed_model_id,
             )
 
             async def _run_original() -> Any:
-                return await wrapped(*args, **kwargs)
+                from agentc._dispatch_context import sdk_dispatch
+
+                with sdk_dispatch(plan):
+                    return await wrapped(*args, **kwargs)
 
             async def _run_mutated(mutated_call: dict[str, Any]) -> Any:
                 new_kwargs = apply_call_mutations_anthropic(kwargs, mutated_call)
-                return await wrapped(*args, **new_kwargs)
+                from agentc._dispatch_context import sdk_dispatch
 
-            response = await dispatch(plan, run_original=_run_original, run_mutated=_run_mutated)
+                with sdk_dispatch(plan, mutated=True):
+                    return await wrapped(*args, **new_kwargs)
+
+            from agentc._output_validation import bind_validation_request
+
+            bind_validation_request(plan, kwargs)
+            response = await dispatch(
+                plan,
+                run_original=_run_original,
+                run_mutated=_run_mutated,
+                decode_cached=lambda value: decode_cached_response(
+                    value, provider_protocol="anthropic.messages.v1"
+                ),
+            )
             primary_end_time = _now_us()
             if call_site_id is not None:
                 _observe_anthropic_outcome(
@@ -602,6 +678,9 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
         else:
             response = await wrapped(*args, **kwargs)
     except BaseException as exc:
+        from agentc._patches._optimizer_glue import dispatch_span_attributes
+
+        req_attrs.update(dispatch_span_attributes(plan))
         end_time = _now_us()
         req_attrs["error.type"] = type(exc).__name__
         req_attrs["error.message"] = str(exc)
@@ -631,7 +710,8 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
         executed_model = resolve_executed_model_id(plan, response, kwargs.get("model"))
         req_attrs.update(dispatch_span_attributes(plan, executed_model))
 
-    resp_attrs = _extract_response_attrs(response)
+    from agentc._patches._optimizer_glue import cache_response_attributes
+    resp_attrs = cache_response_attributes(plan, _extract_response_attrs(response))
     req_attrs.update(resp_attrs)
     output_msgs = _extract_output_messages(response)
 
@@ -661,6 +741,12 @@ def _wrap_stream_async(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> A
     returns an AsyncMessageStreamManager (not a coroutine), so the wrapper must
     also return a context manager directly, not a coroutine.
     """
+    from agentc._provider_receipts import reject_unjournaled_graph_dispatch
+
+    reject_unjournaled_graph_dispatch()
+    from agentc._batch_observation import note_sdk_call
+
+    note_sdk_call()
     if not _is_initialized():
         return wrapped(*args, **kwargs)
     from agentc._interception_context import interception_is_nested

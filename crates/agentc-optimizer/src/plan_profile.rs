@@ -195,8 +195,10 @@ impl PlanRuntimeVersion {
 }
 
 /// One completed execution of exactly one plan.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlanProfileUpdate {
+    #[serde(default)]
+    pub cost_evidence: crate::cost_evidence::CostEvidence,
     pub key: PlanProfileKey,
     pub runtime_version: PlanRuntimeVersion,
     pub input_tokens: u32,
@@ -210,6 +212,35 @@ pub struct PlanProfileUpdate {
     pub dispatch_fallback: bool,
     /// `None` uses the current system clock; tests and replay should pin it.
     pub observed_at_us: Option<i64>,
+}
+
+/// Reference fallback work already included in a measured execution total.
+/// Counterfactual rejection predicts a fallback but has not incurred this work.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ChargedReferenceFallback {
+    pub cost_usd: f64,
+    pub latency_ms: f64,
+}
+
+impl ChargedReferenceFallback {
+    fn validate(self, update: &PlanProfileUpdate) -> Result<(), PlanProfileUpdateError> {
+        for (name, value, total) in [
+            ("charged_reference_cost_usd", self.cost_usd, update.cost_usd),
+            (
+                "charged_reference_latency_ms",
+                self.latency_ms,
+                update.latency_ms,
+            ),
+        ] {
+            if !is_nonnegative_finite(value)
+                || value > total
+                || (!update.dispatch_fallback && value != 0.0)
+            {
+                return Err(PlanProfileUpdateError::InvalidNumber(name));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Correlation token for a completed execution that may later receive a
@@ -247,6 +278,9 @@ impl PlanProfileUpdate {
         }
         if !is_nonnegative_finite(self.cost_usd) {
             return Err(PlanProfileUpdateError::InvalidNumber("cost_usd"));
+        }
+        if !self.cost_evidence.validate(self.cost_usd) {
+            return Err(PlanProfileUpdateError::InvalidNumber("cost_evidence"));
         }
         if self
             .divergence
@@ -316,6 +350,7 @@ impl Error for PlanProfileUpdateError {}
 /// prompts or model outputs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlanProfileSample {
+    pub cost_evidence: crate::cost_evidence::CostEvidence,
     pub sequence: u64,
     pub input_tokens: u32,
     pub output_tokens: u32,
@@ -324,6 +359,7 @@ pub struct PlanProfileSample {
     pub output_is_structured: bool,
     pub output_is_short: bool,
     pub dispatch_fallback: bool,
+    pub charged_reference_fallback: ChargedReferenceFallback,
     pub runtime_version: PlanRuntimeVersion,
     pub observed_at_us: i64,
 }
@@ -342,6 +378,7 @@ pub struct PlanDivergenceSample {
 /// Bounded statistics for one exact call-site-version/plan pair.
 #[derive(Debug, Clone)]
 pub struct PlanProfile {
+    pub cost_sources: crate::cost_evidence::CostSourceCounts,
     pub key: PlanProfileKey,
     /// Lifetime count for reporting; never used as an admission evidence count.
     pub n_observations: u64,
@@ -353,6 +390,8 @@ pub struct PlanProfile {
     pub output_tokens: WelfordStats,
     pub latency_ms: WelfordStats,
     pub cost_usd: WelfordStats,
+    pub charged_reference_cost_usd: WelfordStats,
+    pub charged_reference_latency_ms: WelfordStats,
     pub output_token_p95: f64,
     pub output_token_p99: f64,
     pub output_is_structured: f64,
@@ -364,12 +403,15 @@ pub struct PlanProfile {
     pub last_paired_at_us: Option<i64>,
     samples: Arc<VecDeque<PlanProfileSample>>,
     divergence_samples: Arc<VecDeque<PlanDivergenceSample>>,
+    readmission_started_at_us: Option<i64>,
+    evidence_observation_floor: u64,
     generation: u64,
 }
 
 impl PlanProfile {
     fn new(key: PlanProfileKey, runtime_version: PlanRuntimeVersion) -> Self {
         Self {
+            cost_sources: Default::default(),
             key,
             n_observations: 0,
             n_paired_observations: 0,
@@ -379,6 +421,8 @@ impl PlanProfile {
             output_tokens: WelfordStats::default(),
             latency_ms: WelfordStats::default(),
             cost_usd: WelfordStats::default(),
+            charged_reference_cost_usd: WelfordStats::default(),
+            charged_reference_latency_ms: WelfordStats::default(),
             output_token_p95: 0.0,
             output_token_p99: 0.0,
             output_is_structured: 0.0,
@@ -390,6 +434,8 @@ impl PlanProfile {
             last_paired_at_us: None,
             samples: Arc::new(VecDeque::new()),
             divergence_samples: Arc::new(VecDeque::new()),
+            readmission_started_at_us: None,
+            evidence_observation_floor: 0,
             generation: 0,
         }
     }
@@ -405,13 +451,78 @@ impl PlanProfile {
     pub fn is_current(&self, runtime_version: &PlanRuntimeVersion) -> bool {
         self.runtime_version == *runtime_version
     }
+
+    pub fn measured_cost_complete(&self) -> bool {
+        self.window_observations > 0
+            && self.cost_sources.unknown == 0
+            && self.cost_sources.estimated == 0
+    }
 }
 
 /// Concurrent in-memory profile store with exact-window SQLite persistence.
 pub struct PlanProfiles {
+    aliases: crate::model_alias::ModelAliases,
     map: Arc<DashMap<PlanProfileKey, PlanProfile>>,
     dirty: Arc<RwLock<HashMap<PlanProfileKey, u64>>>,
     window_size: usize,
+}
+
+pub(crate) struct DirtyProfiles {
+    profiles: Vec<(PlanProfileKey, u64, PlanProfile)>,
+    aliases: Vec<(crate::model_alias::AliasKey, crate::model_alias::Resolution)>,
+}
+
+impl DirtyProfiles {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.profiles.is_empty() && self.aliases.is_empty()
+    }
+
+    pub(crate) fn persist(&self, transaction: &rusqlite::Transaction<'_>) -> AnyResult<()> {
+        crate::model_alias::ModelAliases::persist(transaction, &self.aliases)?;
+        for (key, _, profile) in &self.profiles {
+            persist_profile(transaction, profile).with_context(|| {
+                format!(
+                    "persist plan profile {}/{}",
+                    key.call_site_version, key.execution_plan_id
+                )
+            })?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn acknowledge(self, store: &PlanProfiles) -> usize {
+        store.aliases.mark_persisted(&self.aliases);
+        let mut dirty = store.dirty.write();
+        for (key, generation, _) in &self.profiles {
+            if dirty.get(key).copied() == Some(*generation) {
+                dirty.remove(key);
+            }
+        }
+        self.profiles.len()
+    }
+}
+
+/// Persisted predecessor of a journaled observation. Recovery cannot move an
+/// old execution across runtime drift, window changes or cold re-admission.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicationBoundary {
+    runtime: Option<PlanRuntimeVersion>,
+    observations: u64,
+    paired_observations: u64,
+    cohort: Option<i64>,
+    observation_floor: u64,
+}
+
+impl PublicationBoundary {
+    fn from_profile(profile: Option<&PlanProfile>) -> Self {
+        Self {
+            runtime: profile.map(|p| p.runtime_version.clone()),
+            observations: profile.map_or(0, |p| p.n_observations),
+            paired_observations: profile.map_or(0, |p| p.n_paired_observations),
+            cohort: profile.and_then(|p| p.readmission_started_at_us),
+            observation_floor: profile.map_or(0, |p| p.evidence_observation_floor),
+        }
+    }
 }
 
 impl Default for PlanProfiles {
@@ -430,6 +541,7 @@ impl PlanProfiles {
     /// Zero is coerced to one so bad configuration cannot erase all evidence.
     pub fn with_window(window_size: u32) -> Self {
         Self {
+            aliases: crate::model_alias::ModelAliases::new(),
             map: Arc::new(DashMap::new()),
             dirty: Arc::new(RwLock::new(HashMap::new())),
             window_size: window_size.max(1) as usize,
@@ -445,6 +557,17 @@ impl PlanProfiles {
         self.map
             .get(key)
             .and_then(|profile| profile.is_current(runtime_version).then(|| profile.clone()))
+    }
+
+    /// Resolve only a catalog-declared provider alias before exact lookup.
+    /// Immutable targets continue to use `get` and its strict version match.
+    pub fn get_provider_alias(
+        &self,
+        key: &PlanProfileKey,
+        runtime_version: &PlanRuntimeVersion,
+    ) -> Option<PlanProfile> {
+        let resolved = self.aliases.for_planning(key, runtime_version)?;
+        self.get(key, &resolved)
     }
 
     /// Return a snapshot without a version check for reporting and diagnostics.
@@ -464,13 +587,128 @@ impl PlanProfiles {
         self.dirty.read().len()
     }
 
+    pub fn publication_boundary(&self, key: &PlanProfileKey) -> PublicationBoundary {
+        PublicationBoundary::from_profile(self.map.get(key).as_deref())
+    }
+
+    /// Stage one observation while holding its key, commit all derived SQLite
+    /// state together, then expose the committed profile in memory. Failed
+    /// storage never leaves an uncommitted observation available to planning.
+    pub(crate) fn publish_atomic<T>(
+        &self,
+        conn: &mut Connection,
+        boundary: &PublicationBoundary,
+        update: PlanProfileUpdate,
+        publish: impl FnOnce(&Connection, &PlanProfiles, &PlanObservationToken) -> AnyResult<T>,
+    ) -> AnyResult<T> {
+        use dashmap::mapref::entry::Entry;
+        let key = update.key.clone();
+        let mut entry = self.map.entry(key.clone());
+        let prior = match &entry {
+            Entry::Occupied(value) => Some(value.get().clone()),
+            Entry::Vacant(_) => None,
+        };
+        if PublicationBoundary::from_profile(prior.as_ref()) != *boundary {
+            anyhow::bail!("provider publication predecessor has retired");
+        }
+        let staged = Self::with_window(self.window_size as u32);
+        if let Some(profile) = prior {
+            staged.map.insert(key.clone(), profile);
+        }
+        let observation = staged.observe(update)?;
+        let committed = staged
+            .get_for_reporting(&key)
+            .context("staged profile missing")?;
+        let transaction = conn.transaction()?;
+        persist_profile(&transaction, &committed)?;
+        let result = publish(&transaction, &staged, &observation)?;
+        transaction.commit()?;
+        match &mut entry {
+            Entry::Occupied(value) => {
+                value.insert(committed);
+            }
+            Entry::Vacant(_) => {
+                entry.or_insert(committed);
+            }
+        }
+        self.dirty.write().remove(&key);
+        Ok(result)
+    }
+
+    /// Bound used by journals that derive the same paired-evidence window.
+    pub fn retained_window_size(&self) -> usize {
+        self.window_size
+    }
+
+    /// Begin an independent cold evidence cohort once per disable cooldown.
+    /// Lifetime accounting and sequence numbers remain monotonic, so delayed
+    /// feedback from executions in the previous cohort cannot become evidence.
+    pub fn begin_readmission(
+        &self,
+        key: &PlanProfileKey,
+        runtime: &PlanRuntimeVersion,
+        started_at_us: i64,
+    ) -> bool {
+        if started_at_us < 0 || runtime.validate().is_err() {
+            return false;
+        }
+        let mut profile = self
+            .map
+            .entry(key.clone())
+            .or_insert_with(|| PlanProfile::new(key.clone(), runtime.clone()));
+        if profile
+            .readmission_started_at_us
+            .is_some_and(|start| start >= started_at_us)
+        {
+            return false;
+        }
+        profile.readmission_started_at_us = Some(started_at_us);
+        profile.evidence_observation_floor = profile.n_observations;
+        Arc::make_mut(&mut profile.samples).clear();
+        Arc::make_mut(&mut profile.divergence_samples).clear();
+        recompute_window(&mut profile);
+        profile.generation = profile.generation.saturating_add(1);
+        let generation = profile.generation;
+        drop(profile);
+        self.dirty.write().insert(key.clone(), generation);
+        true
+    }
+
+    pub fn accepts_execution_started_at(
+        &self,
+        key: &PlanProfileKey,
+        started_at_us: Option<i64>,
+    ) -> bool {
+        self.map
+            .get(key)
+            .and_then(|profile| profile.readmission_started_at_us)
+            .is_none_or(|boundary| started_at_us.is_some_and(|start| start >= boundary))
+    }
+
+    /// A stable cohort binding for issued plan envelopes. Unlike a per-call
+    /// timestamp, this changes only when cold re-admission starts again.
+    pub fn evidence_cohort_started_at_us(&self, key: &PlanProfileKey) -> Option<i64> {
+        self.map
+            .get(key)
+            .and_then(|profile| profile.readmission_started_at_us)
+    }
+
     /// Record one completed plan execution and return its correlation token.
     pub fn observe(
         &self,
         update: PlanProfileUpdate,
     ) -> Result<PlanObservationToken, PlanProfileUpdateError> {
+        self.observe_with_charged_reference(update, ChargedReferenceFallback::default())
+    }
+
+    pub fn observe_with_charged_reference(
+        &self,
+        update: PlanProfileUpdate,
+        charge: ChargedReferenceFallback,
+    ) -> Result<PlanObservationToken, PlanProfileUpdateError> {
         let observed_at_us = update.observed_at_us.unwrap_or_else(now_micros);
         update.validate(observed_at_us)?;
+        charge.validate(&update)?;
         let key = update.key.clone();
         let (generation, sequence) = {
             let mut profile = self
@@ -483,7 +721,13 @@ impl PlanProfiles {
                 profile.runtime_version = update.runtime_version.clone();
                 recompute_window(&mut profile);
             }
-            let sequence = apply_update(&mut profile, &update, observed_at_us, self.window_size)?;
+            let sequence = apply_update(
+                &mut profile,
+                &update,
+                charge,
+                observed_at_us,
+                self.window_size,
+            )?;
             (profile.generation, sequence)
         };
         self.dirty.write().insert(key, generation);
@@ -492,6 +736,42 @@ impl PlanProfiles {
             runtime_version: update.runtime_version,
             sequence,
         })
+    }
+
+    /// Record an actual provider response while retaining its requested alias
+    /// cohort. A fallback is cost feedback, not evidence of alias resolution.
+    pub fn observe_provider_outcome(
+        &self,
+        update: PlanProfileUpdate,
+        planned: &PlanRuntimeVersion,
+    ) -> Result<PlanObservationToken, PlanProfileUpdateError> {
+        self.observe_provider_outcome_with_charged_reference(
+            update,
+            planned,
+            ChargedReferenceFallback::default(),
+        )
+    }
+
+    pub fn observe_provider_outcome_with_charged_reference(
+        &self,
+        update: PlanProfileUpdate,
+        planned: &PlanRuntimeVersion,
+        charge: ChargedReferenceFallback,
+    ) -> Result<PlanObservationToken, PlanProfileUpdateError> {
+        planned.validate()?;
+        update.validate(update.observed_at_us.unwrap_or_else(now_micros))?;
+        charge.validate(&update)?;
+        if update.runtime_version.provider_protocol != planned.provider_protocol
+            || update.runtime_version.target_model_id != planned.target_model_id
+            || update.runtime_version.price_table_version != planned.price_table_version
+        {
+            return Err(PlanProfileUpdateError::RuntimeVersionMismatch);
+        }
+        if !update.dispatch_fallback {
+            self.aliases
+                .observe(&update.key, planned, &update.runtime_version);
+        }
+        self.observe_with_charged_reference(update, charge)
     }
 
     /// Attach an asynchronously completed reference comparison to one plan
@@ -533,7 +813,10 @@ impl PlanProfiles {
             if profile.runtime_version != observation.runtime_version {
                 return Err(PlanProfileUpdateError::RuntimeVersionMismatch);
             }
-            if observation.sequence == 0 || observation.sequence > profile.n_observations {
+            if observation.sequence <= profile.evidence_observation_floor
+                || observation.sequence == 0
+                || observation.sequence > profile.n_observations
+            {
                 return Err(PlanProfileUpdateError::InvalidObservationSequence);
             }
             if let Some(existing) = profile
@@ -564,6 +847,7 @@ impl PlanProfiles {
 
     /// Hydrate all plan profiles from their exact retained observations.
     pub fn warm_from_db(&self, conn: &Connection) -> AnyResult<usize> {
+        self.aliases.warm(conn)?;
         let persisted = load_persisted_summaries(conn)?;
         let mut count = 0usize;
 
@@ -579,6 +863,17 @@ impl PlanProfiles {
                     })?,
             };
             let persisted_runtime = summary.runtime_version()?;
+            let readmission = conn
+                .query_row(
+                    "SELECT started_at, observation_floor FROM execution_plan_readmission \
+                 WHERE call_site_version = ?1 AND execution_plan_id = ?2",
+                    params![
+                        key.call_site_version.as_str(),
+                        key.execution_plan_id.as_str()
+                    ],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                )
+                .optional()?;
             let mut samples = load_samples(conn, &key)?;
             let mut divergence_samples = load_divergence_samples(conn, &key)?;
             let mut normalized = false;
@@ -613,6 +908,15 @@ impl PlanProfiles {
             }
 
             let mut profile = PlanProfile::new(key.clone(), persisted_runtime);
+            if let Some((started_at_us, floor)) = readmission {
+                if started_at_us < 0 || floor < 0 || floor as u64 > n_observations {
+                    anyhow::bail!("persisted readmission boundary is invalid");
+                }
+                profile.readmission_started_at_us = Some(started_at_us);
+                profile.evidence_observation_floor = floor as u64;
+                samples.retain(|sample| sample.sequence > floor as u64);
+                divergence_samples.retain(|sample| sample.plan_observation_sequence > floor as u64);
+            }
             profile.n_observations = n_observations;
             profile.n_paired_observations = n_paired_observations;
             profile.samples = Arc::new(samples);
@@ -642,6 +946,18 @@ impl PlanProfiles {
     where
         F: FnOnce(),
     {
+        let snapshot = self.snapshot_dirty();
+        if snapshot.is_empty() {
+            return Ok(0);
+        }
+        let transaction = conn.transaction().context("begin plan-profile flush")?;
+        snapshot.persist(&transaction)?;
+        transaction.commit().context("commit plan-profile flush")?;
+        before_clear();
+        Ok(snapshot.acknowledge(self))
+    }
+
+    pub(crate) fn snapshot_dirty(&self) -> DirtyProfiles {
         let dirty_generations: Vec<(PlanProfileKey, u64)> = {
             let guard = self.dirty.read();
             guard
@@ -649,9 +965,7 @@ impl PlanProfiles {
                 .map(|(key, generation)| (key.clone(), *generation))
                 .collect()
         };
-        if dirty_generations.is_empty() {
-            return Ok(0);
-        }
+        let aliases = self.aliases.dirty_snapshot();
         let snapshots: Vec<(PlanProfileKey, u64, PlanProfile)> = dirty_generations
             .into_iter()
             .filter_map(|(key, generation)| {
@@ -661,25 +975,10 @@ impl PlanProfiles {
             })
             .collect();
 
-        let transaction = conn.transaction().context("begin plan-profile flush")?;
-        for (key, _, profile) in &snapshots {
-            persist_profile(&transaction, profile).with_context(|| {
-                format!(
-                    "persist plan profile {}/{}",
-                    key.call_site_version, key.execution_plan_id
-                )
-            })?;
+        DirtyProfiles {
+            profiles: snapshots,
+            aliases,
         }
-        transaction.commit().context("commit plan-profile flush")?;
-
-        before_clear();
-        let mut guard = self.dirty.write();
-        for (key, generation, _) in &snapshots {
-            if guard.get(key).copied() == Some(*generation) {
-                guard.remove(key);
-            }
-        }
-        Ok(snapshots.len())
     }
 }
 
@@ -693,6 +992,7 @@ fn now_micros() -> i64 {
 fn apply_update(
     profile: &mut PlanProfile,
     update: &PlanProfileUpdate,
+    charge: ChargedReferenceFallback,
     observed_at_us: i64,
     window_size: usize,
 ) -> Result<u64, PlanProfileUpdateError> {
@@ -702,6 +1002,7 @@ fn apply_update(
         .ok_or(PlanProfileUpdateError::ObservationCountOverflow)?;
     let sequence = profile.n_observations;
     Arc::make_mut(&mut profile.samples).push_back(PlanProfileSample {
+        cost_evidence: update.cost_evidence.clone(),
         sequence,
         input_tokens: update.input_tokens,
         output_tokens: update.output_tokens,
@@ -710,6 +1011,7 @@ fn apply_update(
         output_is_structured: update.output_is_structured,
         output_is_short: update.output_is_short,
         dispatch_fallback: update.dispatch_fallback,
+        charged_reference_fallback: charge,
         runtime_version: update.runtime_version.clone(),
         observed_at_us,
     });
@@ -755,6 +1057,9 @@ fn recompute_window(profile: &mut PlanProfile) {
     profile.output_tokens = WelfordStats::default();
     profile.latency_ms = WelfordStats::default();
     profile.cost_usd = WelfordStats::default();
+    profile.cost_sources = Default::default();
+    profile.charged_reference_cost_usd = WelfordStats::default();
+    profile.charged_reference_latency_ms = WelfordStats::default();
 
     let mut output_tokens = Vec::with_capacity(profile.samples.len());
     let mut structured = 0usize;
@@ -762,10 +1067,17 @@ fn recompute_window(profile: &mut PlanProfile) {
     let mut fallbacks = 0usize;
     let mut updated_at_us = 0i64;
     for sample in profile.samples.iter() {
+        profile.cost_sources.add(sample.cost_evidence.source);
         profile.input_tokens.update(sample.input_tokens as f64);
         profile.output_tokens.update(sample.output_tokens as f64);
         profile.latency_ms.update(sample.latency_ms);
         profile.cost_usd.update(sample.cost_usd);
+        profile
+            .charged_reference_cost_usd
+            .update(sample.charged_reference_fallback.cost_usd);
+        profile
+            .charged_reference_latency_ms
+            .update(sample.charged_reference_fallback.latency_ms);
         output_tokens.push(sample.output_tokens);
         structured += usize::from(sample.output_is_structured);
         short += usize::from(sample.output_is_short);
@@ -815,7 +1127,7 @@ fn nearest_rank(sorted: &[u32], percentile: usize) -> u32 {
     sorted[rank.saturating_sub(1).min(sorted.len() - 1)]
 }
 
-fn conformal_upper_quantile(values: &mut [f64], coverage: f64) -> Option<f64> {
+pub(crate) fn conformal_upper_quantile(values: &mut [f64], coverage: f64) -> Option<f64> {
     if values.is_empty() {
         return None;
     }
@@ -925,6 +1237,7 @@ fn load_persisted_summaries(conn: &Connection) -> AnyResult<Vec<PersistedSummary
 
 #[derive(Debug)]
 struct RawSample {
+    cost_evidence_json: String,
     sequence: i64,
     input_tokens: i64,
     output_tokens: i64,
@@ -938,6 +1251,8 @@ struct RawSample {
     target_model_version: String,
     price_table_version: String,
     observed_at_us: i64,
+    charged_reference_cost_usd: f64,
+    charged_reference_latency_ms: f64,
 }
 
 fn load_samples(conn: &Connection, key: &PlanProfileKey) -> AnyResult<VecDeque<PlanProfileSample>> {
@@ -946,7 +1261,7 @@ fn load_samples(conn: &Connection, key: &PlanProfileKey) -> AnyResult<VecDeque<P
             "SELECT sample_sequence, input_tokens, output_tokens, latency_ms, cost_usd, \
                     output_is_structured, output_is_short, dispatch_fallback, \
                     provider_protocol, target_model_id, target_model_version, \
-                    price_table_version, observed_at \
+                    price_table_version, observed_at, charged_reference_cost_usd, charged_reference_latency_ms, cost_evidence_json \
              FROM execution_plan_observation \
              WHERE call_site_version = ?1 AND execution_plan_id = ?2 \
              ORDER BY sample_sequence",
@@ -960,6 +1275,7 @@ fn load_samples(conn: &Connection, key: &PlanProfileKey) -> AnyResult<VecDeque<P
             ],
             |row| {
                 Ok(RawSample {
+                    cost_evidence_json: row.get(15)?,
                     sequence: row.get(0)?,
                     input_tokens: row.get(1)?,
                     output_tokens: row.get(2)?,
@@ -973,6 +1289,8 @@ fn load_samples(conn: &Connection, key: &PlanProfileKey) -> AnyResult<VecDeque<P
                     target_model_version: row.get(10)?,
                     price_table_version: row.get(11)?,
                     observed_at_us: row.get(12)?,
+                    charged_reference_cost_usd: row.get(13)?,
+                    charged_reference_latency_ms: row.get(14)?,
                 })
             },
         )?
@@ -990,6 +1308,8 @@ fn load_samples(conn: &Connection, key: &PlanProfileKey) -> AnyResult<VecDeque<P
                 .validate()
                 .context("validate retained plan-observation version")?;
             let converted = PlanProfileSample {
+                cost_evidence: serde_json::from_str(&sample.cost_evidence_json)
+                    .context("invalid cost evidence")?,
                 sequence: u64::try_from(sample.sequence)
                     .context("negative retained plan-observation sequence")?,
                 input_tokens: u32::try_from(sample.input_tokens)
@@ -1001,6 +1321,10 @@ fn load_samples(conn: &Connection, key: &PlanProfileKey) -> AnyResult<VecDeque<P
                 output_is_structured: sample.output_is_structured != 0,
                 output_is_short: sample.output_is_short != 0,
                 dispatch_fallback: sample.dispatch_fallback != 0,
+                charged_reference_fallback: ChargedReferenceFallback {
+                    cost_usd: sample.charged_reference_cost_usd,
+                    latency_ms: sample.charged_reference_latency_ms,
+                },
                 runtime_version,
                 observed_at_us: sample.observed_at_us,
             };
@@ -1090,6 +1414,23 @@ fn load_divergence_samples(
 }
 
 fn validate_loaded_sample(sample: &PlanProfileSample) -> AnyResult<()> {
+    if !sample.cost_evidence.validate(sample.cost_usd) {
+        anyhow::bail!("retained cost evidence is invalid");
+    }
+    for (value, total) in [
+        (sample.charged_reference_fallback.cost_usd, sample.cost_usd),
+        (
+            sample.charged_reference_fallback.latency_ms,
+            sample.latency_ms,
+        ),
+    ] {
+        if !is_nonnegative_finite(value)
+            || value > total
+            || (!sample.dispatch_fallback && value != 0.0)
+        {
+            anyhow::bail!("retained reference fallback charge is invalid");
+        }
+    }
     if sample.sequence == 0 {
         anyhow::bail!("retained plan-observation sequence must be positive");
     }
@@ -1102,31 +1443,93 @@ fn validate_loaded_sample(sample: &PlanProfileSample) -> AnyResult<()> {
     Ok(())
 }
 
-fn persist_profile(conn: &Connection, profile: &PlanProfile) -> AnyResult<()> {
-    conn.execute(
-        "DELETE FROM execution_plan_observation \
-         WHERE call_site_version = ?1 AND execution_plan_id = ?2",
-        params![
-            profile.key.call_site_version.as_str(),
-            profile.key.execution_plan_id.as_str()
-        ],
+/// Table and column names come only from the fixed persistence statements.
+pub(crate) fn prune_retained(
+    conn: &Connection,
+    key: &PlanProfileKey,
+    table: &str,
+    column: &str,
+    sequences: impl Iterator<Item = u64>,
+) -> AnyResult<()> {
+    let sequences = sequences
+        .map(i64::try_from)
+        .collect::<Result<Vec<_>, _>>()
+        .context("retained sequence exceeds SQLite")?;
+    conn.prepare_cached(
+        &format!("DELETE FROM {table} WHERE call_site_version=?1 AND execution_plan_id=?2 AND {column} NOT IN (SELECT value FROM json_each(?3))"),
+    )?.execute(
+        params![key.call_site_version.as_str(), key.execution_plan_id.as_str(), serde_json::to_string(&sequences)?],
     )?;
-    conn.execute(
-        "DELETE FROM execution_plan_divergence_observation \
-         WHERE call_site_version = ?1 AND execution_plan_id = ?2",
-        params![
-            profile.key.call_site_version.as_str(),
-            profile.key.execution_plan_id.as_str()
-        ],
+    Ok(())
+}
+
+fn persist_profile(conn: &Connection, profile: &PlanProfile) -> AnyResult<()> {
+    if let Some(started_at_us) = profile.readmission_started_at_us {
+        conn.execute(
+            "INSERT INTO execution_plan_readmission \
+             (call_site_version, execution_plan_id, started_at, observation_floor) \
+             VALUES (?1, ?2, ?3, ?4) ON CONFLICT(call_site_version, execution_plan_id) \
+             DO UPDATE SET started_at = excluded.started_at, observation_floor = excluded.observation_floor",
+            params![profile.key.call_site_version.as_str(), profile.key.execution_plan_id.as_str(),
+                started_at_us, i64::try_from(profile.evidence_observation_floor)?],
+        )?;
+    }
+    prune_retained(
+        conn,
+        &profile.key,
+        "execution_plan_observation",
+        "sample_sequence",
+        profile.samples.iter().map(|sample| sample.sequence),
+    )?;
+    prune_retained(
+        conn,
+        &profile.key,
+        "execution_plan_divergence_observation",
+        "sample_sequence",
+        profile
+            .divergence_samples
+            .iter()
+            .map(|sample| sample.sequence),
     )?;
     {
-        let mut statement = conn.prepare(
+        let mut statement = conn.prepare_cached(
             "INSERT INTO execution_plan_observation (\
                 call_site_version, execution_plan_id, sample_sequence, input_tokens, \
                 output_tokens, latency_ms, cost_usd, output_is_structured, output_is_short, \
                 dispatch_fallback, provider_protocol, target_model_id, \
-                target_model_version, price_table_version, observed_at\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                target_model_version, price_table_version, observed_at, \
+                charged_reference_cost_usd, charged_reference_latency_ms, cost_evidence_json\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18) ON CONFLICT(call_site_version, execution_plan_id, sample_sequence) DO UPDATE SET \
+                input_tokens=excluded.input_tokens, \
+                output_tokens=excluded.output_tokens, \
+                latency_ms=excluded.latency_ms, \
+                cost_usd=excluded.cost_usd, \
+                output_is_structured=excluded.output_is_structured, \
+                output_is_short=excluded.output_is_short, \
+                dispatch_fallback=excluded.dispatch_fallback, \
+                provider_protocol=excluded.provider_protocol, \
+                target_model_id=excluded.target_model_id, \
+                target_model_version=excluded.target_model_version, \
+                price_table_version=excluded.price_table_version, \
+                observed_at=excluded.observed_at, \
+                charged_reference_cost_usd=excluded.charged_reference_cost_usd, \
+                charged_reference_latency_ms=excluded.charged_reference_latency_ms, \
+                cost_evidence_json=excluded.cost_evidence_json \
+             WHERE execution_plan_observation.input_tokens IS NOT excluded.input_tokens OR \
+                   execution_plan_observation.output_tokens IS NOT excluded.output_tokens OR \
+                   execution_plan_observation.latency_ms IS NOT excluded.latency_ms OR \
+                   execution_plan_observation.cost_usd IS NOT excluded.cost_usd OR \
+                   execution_plan_observation.output_is_structured IS NOT excluded.output_is_structured OR \
+                   execution_plan_observation.output_is_short IS NOT excluded.output_is_short OR \
+                   execution_plan_observation.dispatch_fallback IS NOT excluded.dispatch_fallback OR \
+                   execution_plan_observation.provider_protocol IS NOT excluded.provider_protocol OR \
+                   execution_plan_observation.target_model_id IS NOT excluded.target_model_id OR \
+                   execution_plan_observation.target_model_version IS NOT excluded.target_model_version OR \
+                   execution_plan_observation.price_table_version IS NOT excluded.price_table_version OR \
+                   execution_plan_observation.observed_at IS NOT excluded.observed_at OR \
+                   execution_plan_observation.charged_reference_cost_usd IS NOT excluded.charged_reference_cost_usd OR \
+                   execution_plan_observation.charged_reference_latency_ms IS NOT excluded.charged_reference_latency_ms OR \
+                   execution_plan_observation.cost_evidence_json IS NOT excluded.cost_evidence_json",
         )?;
         for sample in profile.samples.iter() {
             statement.execute(params![
@@ -1145,16 +1548,33 @@ fn persist_profile(conn: &Connection, profile: &PlanProfile) -> AnyResult<()> {
                 sample.runtime_version.target_model_version,
                 sample.runtime_version.price_table_version,
                 sample.observed_at_us,
+                sample.charged_reference_fallback.cost_usd,
+                sample.charged_reference_fallback.latency_ms,
+                serde_json::to_string(&sample.cost_evidence)?,
             ])?;
         }
     }
     {
-        let mut statement = conn.prepare(
+        let mut statement = conn.prepare_cached(
             "INSERT INTO execution_plan_divergence_observation (\
                 call_site_version, execution_plan_id, sample_sequence, \
                 plan_observation_sequence, divergence, provider_protocol, target_model_id, \
                 target_model_version, price_table_version, observed_at\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) ON CONFLICT(call_site_version, execution_plan_id, sample_sequence) DO UPDATE SET \
+                plan_observation_sequence=excluded.plan_observation_sequence, \
+                divergence=excluded.divergence, \
+                provider_protocol=excluded.provider_protocol, \
+                target_model_id=excluded.target_model_id, \
+                target_model_version=excluded.target_model_version, \
+                price_table_version=excluded.price_table_version, \
+                observed_at=excluded.observed_at \
+             WHERE execution_plan_divergence_observation.plan_observation_sequence IS NOT excluded.plan_observation_sequence OR \
+                   execution_plan_divergence_observation.divergence IS NOT excluded.divergence OR \
+                   execution_plan_divergence_observation.provider_protocol IS NOT excluded.provider_protocol OR \
+                   execution_plan_divergence_observation.target_model_id IS NOT excluded.target_model_id OR \
+                   execution_plan_divergence_observation.target_model_version IS NOT excluded.target_model_version OR \
+                   execution_plan_divergence_observation.price_table_version IS NOT excluded.price_table_version OR \
+                   execution_plan_divergence_observation.observed_at IS NOT excluded.observed_at",
         )?;
         for sample in profile.divergence_samples.iter() {
             statement.execute(params![
@@ -1182,11 +1602,11 @@ fn persist_profile(conn: &Connection, profile: &PlanProfile) -> AnyResult<()> {
             cost_usd_mean, cost_usd_var, output_token_p95, output_token_p99, \
             output_is_structured, output_is_short, divergence_upper_p95, \
             dispatch_fallback_rate, provider_protocol, target_model_id, target_model_version, \
-            price_table_version, updated_at, last_paired_at\
+            price_table_version, updated_at, last_paired_at, cost_sources_json\
          ) VALUES (\
             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, \
             ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, \
-            ?25, ?26\
+            ?25, ?26, ?27\
          ) ON CONFLICT(call_site_version, execution_plan_id) DO UPDATE SET \
             n_observations = excluded.n_observations, \
             n_paired_observations = excluded.n_paired_observations, \
@@ -1211,7 +1631,8 @@ fn persist_profile(conn: &Connection, profile: &PlanProfile) -> AnyResult<()> {
             target_model_version = excluded.target_model_version, \
             price_table_version = excluded.price_table_version, \
             updated_at = excluded.updated_at, \
-            last_paired_at = excluded.last_paired_at",
+            last_paired_at = excluded.last_paired_at, \
+            cost_sources_json = excluded.cost_sources_json",
         params![
             profile.key.call_site_version.as_str(),
             profile.key.execution_plan_id.as_str(),
@@ -1241,6 +1662,7 @@ fn persist_profile(conn: &Connection, profile: &PlanProfile) -> AnyResult<()> {
             profile.runtime_version.price_table_version,
             profile.updated_at_us,
             profile.last_paired_at_us,
+            serde_json::to_string(&profile.cost_sources)?,
         ],
     )?;
     Ok(())
@@ -1373,6 +1795,7 @@ mod tests {
         observed_at_us: i64,
     ) -> PlanProfileUpdate {
         PlanProfileUpdate {
+            cost_evidence: Default::default(),
             key,
             runtime_version: runtime("model-v1"),
             input_tokens: output_tokens * 2,
@@ -1385,6 +1808,110 @@ mod tests {
             dispatch_fallback: false,
             observed_at_us: Some(observed_at_us),
         }
+    }
+
+    #[test]
+    fn charged_reference_work_persists_and_expires_with_the_execution_window() {
+        let profiles = PlanProfiles::with_window(2);
+        let k = key("charged-reference", 1);
+        let mut measured = update(k.clone(), 10, Some(0.0), 1);
+        measured.dispatch_fallback = true;
+        let charge = ChargedReferenceFallback {
+            cost_usd: 0.0005,
+            latency_ms: 30.0,
+        };
+        profiles
+            .observe_with_charged_reference(measured, charge)
+            .unwrap();
+        profiles
+            .observe(update(k.clone(), 10, Some(0.0), 2))
+            .unwrap();
+        let profile = profiles.get_for_reporting(&k).unwrap();
+        assert_eq!(profile.charged_reference_cost_usd.mean, 0.00025);
+        assert_eq!(profile.charged_reference_latency_ms.mean, 15.0);
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&conn).unwrap();
+        profiles.flush_dirty(&mut conn).unwrap();
+        let restarted = PlanProfiles::with_window(2);
+        restarted.warm_from_db(&conn).unwrap();
+        let loaded = restarted.get_for_reporting(&k).unwrap();
+        assert_eq!(loaded.retained_samples(), profile.retained_samples());
+        assert_eq!(
+            loaded.charged_reference_cost_usd.mean,
+            profile.charged_reference_cost_usd.mean
+        );
+        assert_eq!(
+            loaded.charged_reference_cost_usd.variance(),
+            profile.charged_reference_cost_usd.variance()
+        );
+        restarted
+            .observe(update(k.clone(), 10, Some(0.0), 3))
+            .unwrap();
+        let expired = restarted.get_for_reporting(&k).unwrap();
+        assert_eq!(expired.charged_reference_cost_usd.mean, 0.0);
+        assert_eq!(expired.dispatch_fallback_rate, 0.0);
+    }
+
+    #[test]
+    fn invalid_reference_credit_never_mutates_profiles_or_aliases() {
+        let profiles = PlanProfiles::new();
+        let k = key("invalid-credit", 1);
+        let original = update(k.clone(), 10, None, 1);
+        for charge in [
+            ChargedReferenceFallback {
+                cost_usd: -1.0,
+                latency_ms: 0.0,
+            },
+            ChargedReferenceFallback {
+                cost_usd: 0.002,
+                latency_ms: 0.0,
+            },
+            ChargedReferenceFallback {
+                cost_usd: 0.0,
+                latency_ms: f64::NAN,
+            },
+            ChargedReferenceFallback {
+                cost_usd: 0.0,
+                latency_ms: 101.0,
+            },
+            ChargedReferenceFallback {
+                cost_usd: 0.0001,
+                latency_ms: 1.0,
+            },
+        ] {
+            assert!(profiles
+                .observe_provider_outcome_with_charged_reference(
+                    original.clone(),
+                    &original.runtime_version,
+                    charge
+                )
+                .is_err());
+            assert!(profiles.get_for_reporting(&k).is_none());
+            assert_eq!(profiles.dirty_len(), 0);
+        }
+    }
+
+    #[test]
+    fn legacy_reference_charges_migrate_to_zero_without_invented_credit() {
+        let profiles = PlanProfiles::new();
+        let k = key("legacy-reference-charge", 1);
+        let mut measured = update(k.clone(), 10, None, 1);
+        measured.dispatch_fallback = true;
+        profiles.observe(measured).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_cost_model_schema(&conn).unwrap();
+        profiles.flush_dirty(&mut conn).unwrap();
+        conn.execute_batch("ALTER TABLE execution_plan_observation DROP COLUMN charged_reference_cost_usd; ALTER TABLE execution_plan_observation DROP COLUMN charged_reference_latency_ms;").unwrap();
+        ensure_cost_model_schema(&conn).unwrap();
+        ensure_cost_model_schema(&conn).unwrap();
+        let restarted = PlanProfiles::new();
+        restarted.warm_from_db(&conn).unwrap();
+        let loaded = restarted.get_for_reporting(&k).unwrap();
+        assert_eq!(loaded.cost_usd.mean, 0.001);
+        assert_eq!(loaded.dispatch_fallback_rate, 1.0);
+        assert_eq!(loaded.charged_reference_cost_usd.mean, 0.0);
+        assert_eq!(loaded.charged_reference_latency_ms.mean, 0.0);
+        assert_eq!(loaded.n_observations, 1);
     }
 
     #[test]
@@ -1500,6 +2027,73 @@ mod tests {
         assert_eq!(profile.output_token_p99, 30.0);
         assert_eq!(profile.divergence_upper_p95, Some(0.9));
         assert_eq!(profile.updated_at_us, 4);
+    }
+
+    #[test]
+    fn readmission_discards_old_evidence_and_rejects_delayed_pairs_after_restart() {
+        let profiles = PlanProfiles::new();
+        let profile_key = key("readmission", 1);
+        let old = profiles
+            .observe(update(profile_key.clone(), 100, Some(0.9), 1))
+            .unwrap();
+        assert!(profiles.begin_readmission(&profile_key, &runtime("v1"), 10));
+        assert!(!profiles.begin_readmission(&profile_key, &runtime("v1"), 10));
+        let empty = profiles.get_for_reporting(&profile_key).unwrap();
+        assert_eq!(empty.n_observations, 1);
+        assert_eq!(empty.n_paired_observations, 1);
+        assert_eq!(empty.window_observations, 0);
+        assert_eq!(empty.paired_observations, 0);
+        assert!(!profiles.accepts_execution_started_at(&profile_key, None));
+        assert!(!profiles.accepts_execution_started_at(&profile_key, Some(9)));
+        assert!(profiles.accepts_execution_started_at(&profile_key, Some(10)));
+        let fresh = profiles
+            .observe(update(profile_key.clone(), 20, Some(0.0), 11))
+            .unwrap();
+        assert_eq!(fresh.sequence(), 2);
+        let mut conn = fresh_conn();
+        profiles.flush_dirty(&mut conn).unwrap();
+        let restarted = PlanProfiles::new();
+        restarted.warm_from_db(&conn).unwrap();
+        assert!(!restarted.begin_readmission(&profile_key, &runtime("v1"), 10));
+        assert_eq!(
+            restarted.record_divergence(&old, 0.0, Some(12)),
+            Err(PlanProfileUpdateError::InvalidObservationSequence)
+        );
+        let profile = restarted.get_for_reporting(&profile_key).unwrap();
+        assert_eq!(profile.paired_observations, 1);
+        assert_eq!(profile.divergence_upper_p95, Some(0.0));
+        assert!(restarted.begin_readmission(&profile_key, &runtime("v1"), 30));
+        assert_eq!(
+            restarted
+                .get_for_reporting(&profile_key)
+                .unwrap()
+                .paired_observations,
+            0
+        );
+        assert_eq!(
+            restarted.record_divergence(&fresh, 0.0, Some(31)),
+            Err(PlanProfileUpdateError::InvalidObservationSequence)
+        );
+    }
+
+    #[test]
+    fn readmission_boundary_survives_restart_without_any_previous_profile() {
+        let profiles = PlanProfiles::new();
+        let profile_key = key("missing-profile", 1);
+        assert!(profiles.begin_readmission(&profile_key, &runtime("v1"), 10));
+        let mut conn = fresh_conn();
+        profiles.flush_dirty(&mut conn).unwrap();
+        let restarted = PlanProfiles::new();
+        restarted.warm_from_db(&conn).unwrap();
+        assert!(!restarted.accepts_execution_started_at(&profile_key, Some(9)));
+        assert!(!restarted.begin_readmission(&profile_key, &runtime("v1"), 10));
+        assert_eq!(
+            restarted
+                .get_for_reporting(&profile_key)
+                .unwrap()
+                .n_observations,
+            0
+        );
     }
 
     #[test]

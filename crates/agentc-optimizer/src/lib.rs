@@ -12,18 +12,48 @@
 
 pub mod audit;
 pub mod budget;
+pub mod calibrated_policy;
 pub mod composition;
 pub mod config;
+pub mod cost_evidence;
 pub mod cost_model;
 pub mod dag;
 pub mod dag_context;
 pub mod execution_plan;
 pub mod exploration;
+pub mod feedback;
 pub mod ffi;
+mod model_alias;
 pub mod model_catalog;
+pub mod multi_call;
+pub mod multi_call_comparison;
 pub mod plan_guard;
 pub mod plan_profile;
 pub mod planner;
+pub mod prepared_batch;
+pub mod provider_economics;
+pub mod provider_execution;
+pub mod provider_graph;
+pub mod provider_graph_acquisition;
+pub mod provider_graph_campaign;
+pub mod provider_graph_admission;
+mod provider_graph_archive;
+pub mod provider_graph_comparison;
+pub mod provider_graph_deployment;
+pub mod provider_graph_economics;
+pub mod provider_graph_quality;
+pub mod provider_graph_preparation;
+pub mod provider_graph_sampling;
+pub mod provider_graph_roles;
+pub mod provider_graph_role_comparison;
+pub mod provider_interval_profiles;
+pub mod provider_publication;
+pub mod provider_quality;
+pub mod provider_receipts;
+pub mod provider_reconciliation;
+pub mod provider_tariff;
+pub mod provider_tariff_admission;
+pub mod provider_usage;
 pub mod reporting;
 pub mod rules;
 pub mod schema;
@@ -45,12 +75,12 @@ pub use execution_plan::{
     EXECUTION_PLAN_SCHEMA_VERSION,
 };
 pub use exploration::{
-    CounterfactualFeedback, CounterfactualLabel, ExplorationCandidate, ExplorationCompletion,
-    ExplorationController, ExplorationDecision, ExplorationError, ExplorationLease,
-    ExplorationPolicy, ExplorationPolicyError, ExplorationReason, ExplorationSiteSnapshot,
-    DEFAULT_CONCURRENT_COUNTERFACTUAL_CAP, DEFAULT_EXPLORATION_CALL_CAP,
-    DEFAULT_EXPLORATION_EVIDENCE_TARGET, DEFAULT_EXPLORATION_LEASE_US,
-    DEFAULT_EXPLORATION_SEED, EXPLORATION_WINDOW_US,
+    CounterfactualFeedback, CounterfactualLabel, ExplorationAllocation, ExplorationCandidate,
+    ExplorationCompletion, ExplorationController, ExplorationDecision, ExplorationError,
+    ExplorationLease, ExplorationPolicy, ExplorationPolicyError, ExplorationReason,
+    ExplorationSiteSnapshot, DEFAULT_CONCURRENT_COUNTERFACTUAL_CAP, DEFAULT_EXPLORATION_CALL_CAP,
+    DEFAULT_EXPLORATION_EVIDENCE_TARGET, DEFAULT_EXPLORATION_LEASE_US, DEFAULT_EXPLORATION_SEED,
+    EXPLORATION_WINDOW_US,
 };
 pub use model_catalog::{
     default_model_catalog, CatalogError, ModelCapabilities, ModelCatalog, ModelPrice,
@@ -71,7 +101,7 @@ pub use plan_profile::{
     CALL_SITE_VERSION_SCHEMA_VERSION, DEFAULT_PLAN_PROFILE_WINDOW,
 };
 pub use planner::{
-    CostDriver, Optimizer, Plan, Proposal, RewriteRule, RuleApplication,
+    CostDriver, Optimizer, Plan, Proposal, RewriteRule, RuleApplication, RuleIdentity,
     MAX_JOINT_REWRITE_DEPTH,
 };
 pub use reporting::{

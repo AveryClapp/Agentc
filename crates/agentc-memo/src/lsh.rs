@@ -224,9 +224,9 @@ mod tests {
 
     fn unit_embedding(seed: u32) -> [f32; EMBEDDING_DIM] {
         let mut e = [0f32; EMBEDDING_DIM];
-        for i in 0..EMBEDDING_DIM {
+        for (i, value) in e.iter_mut().enumerate() {
             let v = ((i as u32).wrapping_mul(2654435761) ^ seed) as i32 as f32;
-            e[i] = v / 1_000_000.0;
+            *value = v / 1_000_000.0;
         }
         let norm: f32 = e.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {

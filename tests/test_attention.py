@@ -16,7 +16,6 @@ import agentc
 from agentc import _attention
 from agentc._attention import (
     _clear_cache,
-    _last_user_tokens,
     _prior_trace_tokens,
     _salient_signal,
     _tokenize,
@@ -45,6 +44,28 @@ def initialized(tmp_path: Path) -> Any:
 
 
 # --- Tokenizer ---
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [None, 3, "null", "true", "42", '"message"', '{"content":"word"}', "[broken"],
+)
+def test_invalid_history_shapes_cannot_supply_attention(raw: Any) -> None:
+    assert _attention._decode_messages(raw) == []
+    with patch.object(
+        _attention,
+        "_read_prior_spans",
+        return_value=[{"span_id": "invalid", "input_messages": raw}],
+    ):
+        assert _prior_trace_tokens("malformed-history") == set()
+
+
+@pytest.mark.parametrize(
+    "encode", [lambda x: x, json.dumps, lambda x: json.dumps(x).encode()]
+)
+def test_message_lists_survive_history_decoding(encode: Any) -> None:
+    messages = [{"role": "user", "content": "pelican migration"}]
+    assert _attention._decode_messages(encode(messages)) == messages
 
 
 class TestTokenize:

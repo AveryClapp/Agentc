@@ -39,13 +39,13 @@ fn observe_hot(cm: &CostModel, site: &str, n: u32) {
 
 struct FixedKey;
 impl CacheKeyBuilder for FixedKey {
-    fn build(&self, call: &Call) -> CacheKey {
-        CacheKey {
+    fn build(&self, call: &Call) -> Option<CacheKey> {
+        Some(CacheKey {
             prompt_hash: [0u8; 32],
             model: call.model.clone(),
             parameters_hash: [0u8; 32],
             call_site_id: call.call_site_id.clone(),
-        }
+        })
     }
 }
 

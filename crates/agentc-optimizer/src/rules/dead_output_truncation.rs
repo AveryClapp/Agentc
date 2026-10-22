@@ -28,7 +28,9 @@ pub struct DeadOutputTruncationRule {
 
 impl Default for DeadOutputTruncationRule {
     fn default() -> Self {
-        Self { accuracy_budget: DEFAULT_ACCURACY_BUDGET }
+        Self {
+            accuracy_budget: DEFAULT_ACCURACY_BUDGET,
+        }
     }
 }
 
@@ -42,6 +44,16 @@ fn is_dead_branch(call: &Call) -> bool {
 }
 
 impl RewriteRule for DeadOutputTruncationRule {
+    fn identity(&self) -> Option<crate::planner::RuleIdentity> {
+        crate::planner::RuleIdentity::new(
+            "dead-output-cap-v1",
+            self.accuracy_budget,
+            serde_json::json!({
+                "max_dead_output_tokens": MAX_DEAD_OUTPUT_TOKENS,
+            }),
+        )
+    }
+
     fn name(&self) -> &'static str {
         "DeadOutputTruncation"
     }
@@ -165,9 +177,7 @@ mod tests {
 
     #[test]
     fn fires_when_existing_cap_is_loose() {
-        assert!(
-            DeadOutputTruncationRule::default().applies(&capped_dead_call(500), &hot_profile())
-        );
+        assert!(DeadOutputTruncationRule::default().applies(&capped_dead_call(500), &hot_profile()));
     }
 
     #[test]
@@ -184,7 +194,10 @@ mod tests {
             .expect("must propose");
         match &prop.rewritten {
             Plan::Rewritten { call, .. } => {
-                assert_eq!(call.parameters.max_output_tokens, Some(MAX_DEAD_OUTPUT_TOKENS));
+                assert_eq!(
+                    call.parameters.max_output_tokens,
+                    Some(MAX_DEAD_OUTPUT_TOKENS)
+                );
             }
             _ => panic!("expected Rewritten"),
         }
@@ -210,6 +223,8 @@ mod tests {
 
     #[test]
     fn live_call_returns_no_proposal() {
-        assert!(DeadOutputTruncationRule::default().propose(&live_call(), &hot_profile()).is_none());
+        assert!(DeadOutputTruncationRule::default()
+            .propose(&live_call(), &hot_profile())
+            .is_none());
     }
 }

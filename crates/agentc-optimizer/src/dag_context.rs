@@ -59,11 +59,7 @@ pub struct DagSpan {
 /// This is the raw SQLite call — the LRU wrapper below is what the
 /// planner hot path should use so repeat lookups within a trace don't
 /// pay the query cost twice.
-pub fn recent_spans(
-    conn: &Connection,
-    trace_id_hex: &str,
-    limit: usize,
-) -> Result<Vec<DagSpan>> {
+pub fn recent_spans(conn: &Connection, trace_id_hex: &str, limit: usize) -> Result<Vec<DagSpan>> {
     let mut stmt = conn
         .prepare_cached(
             "SELECT span_id, kind, name, attributes, start_time, end_time, \

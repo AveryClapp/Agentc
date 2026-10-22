@@ -1044,10 +1044,15 @@ mod tests {
         cm.observe_rule_set("site", &["ContextCompress", "OutputBudget"], 0.06);
         cm.observe_rule_set("site", &["StateDrop"], 0.02);
 
-        let combined =
-            cm.get_rule_set_stats("site", &["ContextCompress", "OutputBudget"]).unwrap();
+        let combined = cm
+            .get_rule_set_stats("site", &["ContextCompress", "OutputBudget"])
+            .unwrap();
         assert_eq!(combined.n, 2);
-        assert!((combined.mean - 0.055).abs() < 0.001, "mean={}", combined.mean);
+        assert!(
+            (combined.mean - 0.055).abs() < 0.001,
+            "mean={}",
+            combined.mean
+        );
 
         let solo = cm.get_rule_set_stats("site", &["StateDrop"]).unwrap();
         assert_eq!(solo.n, 1);

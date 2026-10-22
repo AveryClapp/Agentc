@@ -188,6 +188,7 @@ pub enum PlanIdentityError {
     EmptyField(&'static str),
     InvalidDigest,
     Serialization(String),
+    InvalidMultiCallPlan(String),
 }
 
 impl fmt::Display for PlanIdentityError {
@@ -200,6 +201,7 @@ impl fmt::Display for PlanIdentityError {
             Self::Serialization(message) => {
                 write!(formatter, "execution-plan serialization failed: {message}")
             }
+            Self::InvalidMultiCallPlan(message) => formatter.write_str(message),
         }
     }
 }
@@ -229,17 +231,34 @@ pub struct PlanAdmission {
 
 /// A complete alternative passed to the selector.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CandidatePlan {
+pub struct CandidatePlan<S = ExecutionPlanSpec> {
     pub id: ExecutionPlanId,
-    pub spec: ExecutionPlanSpec,
+    pub spec: S,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimate: Option<PlanEstimate>,
     pub admission: PlanAdmission,
 }
 
-impl CandidatePlan {
+/// Semantic operations needed by the same constrained selector for a single
+/// call or a complete independently executable provider batch.
+pub trait PlanSemantics {
+    fn execution_plan_id(&self) -> Result<ExecutionPlanId, PlanIdentityError>;
+    fn mutation_count(&self) -> usize;
+}
+
+impl PlanSemantics for ExecutionPlanSpec {
+    fn execution_plan_id(&self) -> Result<ExecutionPlanId, PlanIdentityError> {
+        ExecutionPlanSpec::execution_plan_id(self)
+    }
+
+    fn mutation_count(&self) -> usize {
+        usize::from(self.target_model_id != self.requested_model_id) + self.rewrites.len()
+    }
+}
+
+impl<S: PlanSemantics> CandidatePlan<S> {
     pub fn new(
-        spec: ExecutionPlanSpec,
+        spec: S,
         estimate: Option<PlanEstimate>,
         admission: PlanAdmission,
     ) -> Result<Self, PlanIdentityError> {
@@ -253,8 +272,7 @@ impl CandidatePlan {
     }
 
     pub fn mutation_count(&self) -> usize {
-        let model_mutation = usize::from(self.spec.target_model_id != self.spec.requested_model_id);
-        model_mutation + self.spec.rewrites.len()
+        self.spec.mutation_count()
     }
 }
 
@@ -293,7 +311,8 @@ impl Default for SelectionPolicy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SelectionPolicyError {
     ZeroEvidenceFloor,
     NegativeClock,
@@ -360,7 +379,8 @@ fn is_nonnegative_finite(value: f64) -> bool {
     value.is_finite() && value >= 0.0
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "reason", rename_all = "snake_case")]
 pub enum CandidateRejectionReason {
     RequestIncompatible,
     Disabled,
@@ -405,24 +425,26 @@ pub enum CandidateRejectionReason {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CandidateRejection {
     pub plan_id: ExecutionPlanId,
     pub reason: CandidateRejectionReason,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SelectionReason {
     BestAdmissibleAlternative,
     NoAdmissibleAlternative,
     InvalidPolicy(SelectionPolicyError),
+    AcquisitionCostsIncomplete,
 }
 
 /// Deterministic selector output. `selected` always points to either one of the
 /// supplied alternatives or the separately supplied immutable reference plan.
 #[derive(Debug)]
-pub struct Selection<'a> {
-    pub selected: &'a CandidatePlan,
+pub struct Selection<'a, S = ExecutionPlanSpec> {
+    pub selected: &'a CandidatePlan<S>,
     pub selected_reference: bool,
     pub reason: SelectionReason,
     pub rejections: Vec<CandidateRejection>,
@@ -430,11 +452,11 @@ pub struct Selection<'a> {
 }
 
 /// Select the best admissible alternative, or return `reference` unchanged.
-pub fn select_candidate<'a>(
-    reference: &'a CandidatePlan,
-    alternatives: &'a [CandidatePlan],
+pub fn select_candidate<'a, S: PlanSemantics>(
+    reference: &'a CandidatePlan<S>,
+    alternatives: &'a [CandidatePlan<S>],
     policy: &SelectionPolicy,
-) -> Selection<'a> {
+) -> Selection<'a, S> {
     if let Err(error) = policy.validate() {
         return Selection {
             selected: reference,
@@ -480,8 +502,9 @@ pub fn select_candidate<'a>(
     }
 }
 
-fn rejection_reason(
-    candidate: &CandidatePlan,
+/// Shared admission classification; callers must validate the policy first.
+pub(crate) fn rejection_reason<S: PlanSemantics>(
+    candidate: &CandidatePlan<S>,
     policy: &SelectionPolicy,
 ) -> Option<CandidateRejectionReason> {
     if !candidate.admission.request_compatible {
@@ -590,9 +613,9 @@ fn rejection_reason(
     None
 }
 
-fn compare_admissible(
-    left: &CandidatePlan,
-    right: &CandidatePlan,
+fn compare_admissible<S: PlanSemantics>(
+    left: &CandidatePlan<S>,
+    right: &CandidatePlan<S>,
     objective: SelectionObjective,
 ) -> Ordering {
     let left_estimate = left.estimate.as_ref().expect("admitted plan has estimate");

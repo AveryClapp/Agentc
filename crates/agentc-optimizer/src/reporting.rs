@@ -616,10 +616,7 @@ pub fn render_report(r: &OptimizerReport) -> String {
         r.overhead_mean_ms, r.overhead_p99_ms
     );
     let _ = writeln!(out);
-    let _ = writeln!(
-        out,
-        "Rule firings:       applied   skipped   projected"
-    );
+    let _ = writeln!(out, "Rule firings:       applied   skipped   projected");
     for rule in &r.rules {
         let _ = writeln!(
             out,
@@ -654,10 +651,7 @@ pub fn render_report(r: &OptimizerReport) -> String {
             );
         }
         None => {
-            let _ = writeln!(
-                out,
-                "Accuracy divergence:  —       (no shadow samples)"
-            );
+            let _ = writeln!(out, "Accuracy divergence:  —       (no shadow samples)");
         }
     }
     out
@@ -722,11 +716,7 @@ pub fn render_inspect(i: &CallSiteInspect) -> String {
     let _ = writeln!(out, "  Accuracy:");
     match i.accuracy.divergence {
         Some(d) => {
-            let _ = writeln!(
-                out,
-                "    Shadow divergence     {}",
-                format_pct_1(d)
-            );
+            let _ = writeln!(out, "    Shadow divergence     {}", format_pct_1(d));
         }
         None => {
             let _ = writeln!(out, "    Shadow divergence     —");
@@ -834,10 +824,31 @@ mod tests {
             audit(100, "site.a", PlanKind::PassThrough, None, None, 400),
             audit(200, "site.a", PlanKind::PassThrough, None, None, 500),
             // Hot pass-through: pass_through WITH rule label.
-            audit(300, "site.a", PlanKind::PassThrough, Some("CacheHit"), None, 600),
+            audit(
+                300,
+                "site.a",
+                PlanKind::PassThrough,
+                Some("CacheHit"),
+                None,
+                600,
+            ),
             // Hot optimized.
-            audit(400, "site.a", PlanKind::Cached, Some("CacheHit"), Some(0.02), 700),
-            audit(500, "site.a", PlanKind::Rewritten, Some("ModelDowngrade"), Some(0.01), 800),
+            audit(
+                400,
+                "site.a",
+                PlanKind::Cached,
+                Some("CacheHit"),
+                Some(0.02),
+                700,
+            ),
+            audit(
+                500,
+                "site.a",
+                PlanKind::Rewritten,
+                Some("ModelDowngrade"),
+                Some(0.01),
+                800,
+            ),
         ];
         insert_batch(&mut a, &rows).unwrap();
         let r = build_report(&a, None, 10_000, 24).unwrap();
@@ -850,11 +861,7 @@ mod tests {
         assert_eq!(ch.applied, 1);
         assert_eq!(ch.skipped, 1);
         assert!((ch.savings_usd - 0.02).abs() < 1e-9);
-        let md = r
-            .rules
-            .iter()
-            .find(|x| x.rule == "ModelDowngrade")
-            .unwrap();
+        let md = r.rules.iter().find(|x| x.rule == "ModelDowngrade").unwrap();
         assert_eq!(md.applied, 1);
         assert_eq!(md.skipped, 0);
     }
@@ -862,7 +869,14 @@ mod tests {
     #[test]
     fn report_window_filters_out_old_rows() {
         let mut a = fresh_audit();
-        let old = audit(100, "site.a", PlanKind::Cached, Some("CacheHit"), Some(1.0), 0);
+        let old = audit(
+            100,
+            "site.a",
+            PlanKind::Cached,
+            Some("CacheHit"),
+            Some(1.0),
+            0,
+        );
         let recent = audit(
             10_000,
             "site.a",
@@ -890,12 +904,23 @@ mod tests {
             .collect();
         // p99 index = ceil(0.99*100) - 1 = 99 - 1 = 98 → value 990 µs.
         // Append a giant outlier; it becomes the new p99.
-        rows.push(audit(101, "site", PlanKind::PassThrough, None, None, 1_000_000));
+        rows.push(audit(
+            101,
+            "site",
+            PlanKind::PassThrough,
+            None,
+            None,
+            1_000_000,
+        ));
         insert_batch(&mut a, &rows).unwrap();
         let r = build_report(&a, None, 1_000_000, 24).unwrap();
         // 101 rows sorted: [10, 20, ..., 1000, 1_000_000]. p99 idx =
         // ceil(0.99 * 101) - 1 = 99 → overhead_us[99] = 1000 → 1.0 ms.
-        assert!((r.overhead_p99_ms - 1.0).abs() < 1e-9, "got {}", r.overhead_p99_ms);
+        assert!(
+            (r.overhead_p99_ms - 1.0).abs() < 1e-9,
+            "got {}",
+            r.overhead_p99_ms
+        );
     }
 
     #[test]
@@ -1026,10 +1051,16 @@ mod tests {
         }
         insert_batch(&mut a, &rows).unwrap();
 
-        let i = build_inspect(&c, &a, "app.planner", 20, 10_000).unwrap().unwrap();
+        let i = build_inspect(&c, &a, "app.planner", 20, 10_000)
+            .unwrap()
+            .unwrap();
         assert_eq!(i.call_site_id, "app.planner");
         assert_eq!(i.total_invocations, 10);
-        let ch = i.firing_rates.iter().find(|r| r.rule == "CacheHit").unwrap();
+        let ch = i
+            .firing_rates
+            .iter()
+            .find(|r| r.rule == "CacheHit")
+            .unwrap();
         assert!((ch.fire_rate - 0.6).abs() < 1e-9);
         let md = i
             .firing_rates
@@ -1233,13 +1264,28 @@ mod tests {
             },
         };
         let s = render_inspect(&i);
-        assert!(s.starts_with("Call site: app.agents.planner:plan_next_step\n"), "{s}");
+        assert!(
+            s.starts_with("Call site: app.agents.planner:plan_next_step\n"),
+            "{s}"
+        );
         assert!(s.contains("Total invocations:       1,847"), "{s}");
-        assert!(s.contains("Cost model confidence:   0.92   (well sampled)"), "{s}");
-        assert!(s.contains("Baseline cost:           $0.0241 per call"), "{s}");
-        assert!(s.contains("Observed cost:           $0.0097 per call"), "{s}");
+        assert!(
+            s.contains("Cost model confidence:   0.92   (well sampled)"),
+            "{s}"
+        );
+        assert!(
+            s.contains("Baseline cost:           $0.0241 per call"),
+            "{s}"
+        );
+        assert!(
+            s.contains("Observed cost:           $0.0097 per call"),
+            "{s}"
+        );
         assert!(s.contains("Savings:                 59.8%"), "{s}");
-        assert!(s.contains("CacheHit            fires 58% of the time"), "{s}");
+        assert!(
+            s.contains("CacheHit            fires 58% of the time"),
+            "{s}"
+        );
         assert!(
             s.contains("ModelDowngrade      fires 31% of the time (to gpt-4o-mini)"),
             "{s}"

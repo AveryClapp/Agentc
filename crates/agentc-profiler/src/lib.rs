@@ -23,11 +23,13 @@ use agentc_optimizer::{
     config::OptimizerConfig,
     cost_model::CostModel,
     ffi::{
+        cancel_embedded_exploration as rust_cancel_embedded_exploration,
         complete_profiled_exploration as rust_complete_exploration,
-        fail_embedded_exploration as rust_fail_embedded_exploration,
-        fail_profiled_exploration as rust_fail_exploration,
-        optimize_observe as rust_observe, optimize_profiled_plan as rust_profiled_plan,
-        record_observation_divergence, reserve_profiled_exploration as rust_reserve_exploration,
+        fail_profiled_exploration as rust_fail_exploration, guard_and_attach_observation_context,
+        optimize_frozen_policy as rust_frozen_policy, optimize_observe as rust_observe,
+        optimize_plan as rust_projected_plan,
+        optimize_profiled_plan_with_audit as rust_profiled_plan, record_observation_divergence,
+        reserve_profiled_exploration as rust_reserve_exploration, unavailable_selection_audit,
         DivergenceAttribution, PASS_THROUGH_JSON,
     },
     model_catalog::{default_model_catalog, ModelCatalog},
@@ -136,10 +138,11 @@ fn build_span_input(dict: &Bound<'_, PyDict>) -> PyResult<SpanInput> {
     let status = opt_str(dict, "status")?.unwrap_or_else(|| "OK".to_string());
 
     let attributes_json = opt_str(dict, "attributes")?.unwrap_or_else(|| "{}".to_string());
-    let attrs_parsed: serde_json::Value =
-        serde_json::from_str(&attributes_json).unwrap_or(serde_json::Value::Object(Default::default()));
+    let attrs_parsed: serde_json::Value = serde_json::from_str(&attributes_json)
+        .unwrap_or(serde_json::Value::Object(Default::default()));
 
-    let model = opt_str(dict, "model")?.or_else(|| attrs_str(&attrs_parsed, "gen_ai.response.model"))
+    let model = opt_str(dict, "model")?
+        .or_else(|| attrs_str(&attrs_parsed, "gen_ai.response.model"))
         .or_else(|| attrs_str(&attrs_parsed, "gen_ai.request.model"));
     let provider =
         opt_str(dict, "provider")?.or_else(|| attrs_str(&attrs_parsed, "gen_ai.provider.name"));
@@ -195,9 +198,9 @@ fn write_span(py: Python<'_>, span_dict: &Bound<'_, PyAny>) -> PyResult<()> {
     let input = build_span_input(dict)?;
 
     py.allow_threads(|| -> PyResult<()> {
-        let mut guard = state()
-            .lock()
-            .map_err(|e| PyRuntimeError::new_err(format!("write_span: state lock poisoned: {e}")))?;
+        let mut guard = state().lock().map_err(|e| {
+            PyRuntimeError::new_err(format!("write_span: state lock poisoned: {e}"))
+        })?;
         let opts = guard.opts;
         let Some(ref conn) = guard.conn else {
             // No DB configured — fail-open, silently drop.
@@ -247,11 +250,7 @@ fn create_db(
 /// Returns a list of dicts, each representing a span. If the DB does not exist,
 /// returns an empty list (not an error).
 #[pyfunction]
-fn query_spans_by_trace(
-    py: Python<'_>,
-    db_path: &str,
-    trace_id: &str,
-) -> PyResult<Py<PyList>> {
+fn query_spans_by_trace(py: Python<'_>, db_path: &str, trace_id: &str) -> PyResult<Py<PyList>> {
     let path = Path::new(db_path);
     if !path.exists() {
         return Ok(PyList::empty_bound(py).unbind());
@@ -365,7 +364,10 @@ fn read_trace_content_rows(
 }
 
 /// Convert a `Span` into a Python dict (no compression/embedding round-trip; raw fields).
-fn span_to_pydict<'py>(py: Python<'py>, span: &agentc_core::span::Span) -> PyResult<Bound<'py, PyDict>> {
+fn span_to_pydict<'py>(
+    py: Python<'py>,
+    span: &agentc_core::span::Span,
+) -> PyResult<Bound<'py, PyDict>> {
     let d = PyDict::new_bound(py);
     d.set_item("span_id", &span.span_id)?;
     d.set_item("trace_id", &span.trace_id)?;
@@ -492,9 +494,9 @@ fn cache_insert(
 ) -> PyResult<()> {
     let embedding_vec = embedding.and_then(decode_embedding_bytes);
     py.allow_threads(|| -> PyResult<()> {
-        let mut guard = state()
-            .lock()
-            .map_err(|e| PyRuntimeError::new_err(format!("cache_insert: state lock poisoned: {e}")))?;
+        let mut guard = state().lock().map_err(|e| {
+            PyRuntimeError::new_err(format!("cache_insert: state lock poisoned: {e}"))
+        })?;
         let Some(conn) = guard.conn.as_mut() else {
             // No DB — fail-open; the call is opt-in, a miss is safe.
             return Ok(());
@@ -614,14 +616,33 @@ fn output_content_load<'py>(
 ) -> PyResult<Option<Bound<'py, PyBytes>>> {
     let content_id = content_id.to_string();
     let result = py.allow_threads(|| -> Option<Vec<u8>> {
-        let guard = state().lock().ok()?;
-        let conn = guard.conn.as_ref()?;
-        conn.query_row(
-            "SELECT content_text FROM output_content WHERE content_id = ?1",
-            rusqlite::params![content_id],
-            |row| row.get::<_, Vec<u8>>(0),
+        let local = {
+            let guard = state().lock().ok()?;
+            let conn = guard.conn.as_ref()?;
+            conn.query_row(
+                "SELECT content_text FROM output_content WHERE content_id = ?1",
+                rusqlite::params![content_id],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .ok()
+        };
+        if local.is_some() {
+            return local;
+        }
+        // Read merged payloads with the same SQLite library as their writer;
+        // do not create a missing store or hold the capture mutex during I/O.
+        let canonical = Connection::open_with_flags(
+            agentc_core::merge::canonical_db_path(),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
         )
-        .ok()
+        .ok()?;
+        canonical
+            .query_row(
+                "SELECT content_text FROM output_content WHERE content_id = ?1",
+                rusqlite::params![content_id],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .ok()
     });
     Ok(result.map(|bytes| PyBytes::new_bound(py, &bytes)))
 }
@@ -630,10 +651,7 @@ fn output_content_load<'py>(
 /// `cache_lookup` / `cache_insert`. Returns `None` if the embedder is
 /// unavailable — the decorator treats that as "skip LSH".
 #[pyfunction]
-fn embed_text_bytes<'py>(
-    py: Python<'py>,
-    text: &str,
-) -> PyResult<Option<Bound<'py, PyBytes>>> {
+fn embed_text_bytes<'py>(py: Python<'py>, text: &str) -> PyResult<Option<Bound<'py, PyBytes>>> {
     let embedding = py.allow_threads(|| agentc_embed::embed_text_f32(text));
     let Some(vec) = embedding else {
         return Ok(None);
@@ -700,6 +718,8 @@ struct OptimizerState {
     model_catalog: Option<Arc<ModelCatalog>>,
     exploration_controller: ExplorationController,
     exploration_enabled: bool,
+    evaluation_planner_mode: EvaluationPlannerMode,
+    selection_audit_enabled: bool,
     #[allow(dead_code)]
     budget: Arc<Budget>,
     audit: Option<Mutex<Connection>>,
@@ -724,20 +744,16 @@ fn optimizer_slot() -> &'static RwLock<Option<Arc<OptimizerState>>> {
     OPTIMIZER.get_or_init(|| RwLock::new(None))
 }
 
-fn exploration_enabled_from_env() -> bool {
-    match std::env::var("AGENTC_OPTIMIZE_EXPLORATION") {
-        Ok(value) => !matches!(
-            value.trim().to_ascii_lowercase().as_str(),
-            "0" | "false" | "no" | "off"
-        ),
-        Err(_) => true,
-    }
-}
-
-fn build_optimizer_state(
-    storage: std::path::PathBuf,
-    config: OptimizerConfig,
-) -> OptimizerState {
+fn build_optimizer_state(storage: std::path::PathBuf, config: OptimizerConfig) -> OptimizerState {
+    let evaluation_planner_mode = evaluation_planner_mode_from_env();
+    let selection_audit_enabled = std::env::var("AGENTC_OPTIMIZE_SELECTION_AUDIT")
+        .ok()
+        .is_some_and(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true"));
+    // Resolve once per lifecycle. Invalid allocation disables optional probes
+    // while leaving primary execution and all durable budgets intact.
+    let exploration_enabled = config.enabled && config.exploration.enabled;
+    let exploration_controller =
+        ExplorationController::with_policy(config.exploration_policy()).unwrap_or_default();
     match build_optimizer(&storage, config.clone()) {
         Ok(Wired {
             optimizer,
@@ -753,14 +769,42 @@ fn build_optimizer_state(
             let cost_db = Connection::open(storage.join("cost_model.db"))
                 .ok()
                 .map(Mutex::new);
+            if let Some(database) = &cost_db {
+                if let Ok(mut conn) = database.lock() {
+                    if let Err(error) =
+                        agentc_optimizer::provider_reconciliation::recover_pending(&mut conn)
+                    {
+                        eprintln!(
+                            "[agentc-profiler] billing reconciliation recovery failed: {error}"
+                        );
+                    }
+                    if let Err(error) = agentc_optimizer::provider_publication::recover_pending(
+                        &mut conn,
+                        &plan_profiles,
+                    ) {
+                        eprintln!(
+                            "[agentc-profiler] provider publication recovery failed: {error}"
+                        );
+                    }
+                    if let Err(error) = agentc_optimizer::multi_call_comparison::replay_pairs(
+                        &mut conn,
+                        &plan_profiles,
+                        &plan_guard,
+                    ) {
+                        eprintln!("[agentc-profiler] map comparison recovery failed: {error}");
+                    }
+                }
+            }
             OptimizerState {
                 optimizer,
                 cost_model,
                 plan_profiles,
                 plan_guard,
                 model_catalog: Some(model_catalog),
-                exploration_controller: ExplorationController::new(),
-                exploration_enabled: exploration_enabled_from_env(),
+                exploration_controller,
+                exploration_enabled,
+                evaluation_planner_mode,
+                selection_audit_enabled,
                 budget,
                 audit: Some(Mutex::new(audit_conn)),
                 cost_db,
@@ -781,8 +825,10 @@ fn build_optimizer_state(
                 plan_profiles,
                 plan_guard,
                 model_catalog: default_model_catalog().ok().map(Arc::new),
-                exploration_controller: ExplorationController::new(),
-                exploration_enabled: exploration_enabled_from_env(),
+                exploration_controller,
+                exploration_enabled,
+                evaluation_planner_mode,
+                selection_audit_enabled,
                 budget,
                 audit: None,
                 cost_db: None,
@@ -806,10 +852,9 @@ fn optimizer_state() -> Arc<OptimizerState> {
     if let Some(state) = slot.as_ref() {
         return Arc::clone(state);
     }
-    let state = Arc::new(build_optimizer_state(
-        resolve_storage_dir(),
-        OptimizerConfig::from_env(),
-    ));
+    let storage = resolve_storage_dir();
+    let config = OptimizerConfig::from_storage(&storage);
+    let state = Arc::new(build_optimizer_state(storage, config));
     *slot = Some(Arc::clone(&state));
     state
 }
@@ -837,8 +882,8 @@ fn flush_optimizer_state(state: &OptimizerState) {
 
 /// Configure a fresh optimizer at the lifecycle's resolved storage path.
 /// Replaces any prior process-local optimizer after flushing its dirty state.
-#[pyfunction]
-fn optimize_configure(py: Python<'_>, storage_path: &str) -> String {
+#[pyfunction(signature = (storage_path, config_path=None))]
+fn optimize_configure(py: Python<'_>, storage_path: &str, config_path: Option<&str>) -> String {
     let storage = std::path::PathBuf::from(storage_path);
     py.allow_threads(|| {
         let mut slot = optimizer_slot()
@@ -847,14 +892,23 @@ fn optimize_configure(py: Python<'_>, storage_path: &str) -> String {
         if let Some(previous) = slot.as_ref() {
             flush_optimizer_state(previous);
         }
-        let state = Arc::new(build_optimizer_state(
-            storage,
-            OptimizerConfig::from_env(),
-        ));
+        let config = config_path
+            .map(std::path::Path::new)
+            .map(OptimizerConfig::from_file)
+            .unwrap_or_else(|| OptimizerConfig::from_storage(&storage));
+        let state = Arc::new(build_optimizer_state(storage, config));
         let resolved = state.storage_dir.to_string_lossy().into_owned();
         *slot = Some(state);
         resolved
     })
+}
+
+#[pyfunction]
+fn optimize_configuration() -> String {
+    let state = optimizer_state();
+    serde_json::json!({"configuration": state.optimizer.config(),
+        "configuration_error": state.optimizer.config().configuration_error})
+    .to_string()
 }
 
 /// Return the storage path owned by the current native optimizer.
@@ -892,6 +946,149 @@ where
         .unwrap_or_else(|_| PASS_THROUGH_JSON.to_string())
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EvaluationPlannerMode {
+    JointGuarded,
+    CurrentGreedy,
+    Frozen(agentc_optimizer::calibrated_policy::Mode),
+    Invalid,
+}
+
+fn evaluation_planner_mode_from_env() -> EvaluationPlannerMode {
+    match std::env::var("AGENTC_EVAL_PLANNER_MODE")
+        .ok()
+        .as_deref()
+        .map(str::trim)
+    {
+        None | Some("") | Some("joint_guarded") => EvaluationPlannerMode::JointGuarded,
+        Some("current_greedy") => EvaluationPlannerMode::CurrentGreedy,
+        Some("best_static_joint") => EvaluationPlannerMode::Frozen(
+            agentc_optimizer::calibrated_policy::Mode::BestStaticJoint,
+        ),
+        Some("route_then_rewrite") => EvaluationPlannerMode::Frozen(
+            agentc_optimizer::calibrated_policy::Mode::RouteThenRewrite,
+        ),
+        Some("rewrite_then_route") => EvaluationPlannerMode::Frozen(
+            agentc_optimizer::calibrated_policy::Mode::RewriteThenRoute,
+        ),
+        Some(_) => EvaluationPlannerMode::Invalid,
+    }
+}
+
+/// Report the text action contract supported by the compiled identity/lease gate.
+#[pyfunction]
+fn optimize_text_action_comparator_version() -> &'static str {
+    agentc_optimizer::ffi::TEXT_ACTION_COMPARATOR_VERSION
+}
+
+#[pyfunction]
+fn optimize_evaluation_policy_version() -> &'static str {
+    agentc_optimizer::calibrated_policy::VERSION
+}
+
+#[pyfunction]
+fn optimize_provider_configuration_version() -> &'static str {
+    agentc_optimizer::model_catalog::PROVIDER_CONFIGURATION_VERSION
+}
+
+#[pyfunction]
+fn optimize_application_version() -> &'static str {
+    agentc_optimizer::model_catalog::APPLICATION_VERSION
+}
+
+#[pyfunction]
+fn optimize_output_validation_version() -> &'static str {
+    agentc_optimizer::model_catalog::OUTPUT_VALIDATION_VERSION
+}
+
+#[pyfunction]
+fn optimize_record_output_validation_rejection(
+    py: Python<'_>,
+    plan_json: &str,
+    contract_json: &str,
+    execution_id: &str,
+) -> bool {
+    py.allow_threads(|| {
+        std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let state = optimizer_state();
+            let Some(mutex) = state.cost_db.as_ref() else {
+                return false;
+            };
+            let Ok(mut conn) = mutex.lock() else {
+                return false;
+            };
+            match agentc_optimizer::ffi::record_output_validation_rejection(
+                &state.plan_profiles,
+                &state.plan_guard,
+                &mut conn,
+                plan_json,
+                contract_json,
+                execution_id,
+                now_us_i64(),
+            ) {
+                Ok(()) => true,
+                Err(error) => {
+                    eprintln!("[agentc-profiler] validation rejection persistence failed: {error}");
+                    false
+                }
+            }
+        }))
+        .unwrap_or(false)
+    })
+}
+
+#[pyfunction]
+fn optimize_divergence_metric_version(mode: &str) -> &'static str {
+    agentc_optimizer::ffi::divergence_metric_version(mode)
+}
+
+/// Pure request-key projection; does not initialize storage or the optimizer.
+#[pyfunction]
+fn optimize_sdk_response_cache_key(call_json: &str) -> Option<String> {
+    let call: agentc_optimizer::Call = serde_json::from_str(call_json).ok()?;
+    let key = agentc_optimizer::wiring::sdk_response_cache_key(&call)?;
+    let request = agentc_optimizer::RequestRequirements::from_call(&call)?;
+    serde_json::to_string(&serde_json::json!({
+        "version": agentc_optimizer::wiring::SDK_RESPONSE_CACHE_VERSION,
+        "prompt_hash": key.prompt_hash_hex(), "parameters_hash": key.parameters_hash_hex(),
+        "model": key.model, "call_site_id": key.call_site_id,
+        "provider_protocol": request.provider_protocol, "provider_namespace": request.provider_namespace,
+    })).ok()
+}
+
+/// Return the evaluation mode frozen when this optimizer was configured.
+#[pyfunction]
+fn optimize_evaluation_planner_mode() -> &'static str {
+    match optimizer_state().evaluation_planner_mode {
+        EvaluationPlannerMode::JointGuarded => "joint_guarded",
+        EvaluationPlannerMode::CurrentGreedy => "current_greedy",
+        EvaluationPlannerMode::Frozen(mode) => mode.as_str(),
+        EvaluationPlannerMode::Invalid => "invalid",
+    }
+}
+
+fn projected_greedy_plan(state: &OptimizerState, call_json: &str, now_us: i64) -> String {
+    let plan_json = rust_projected_plan(&state.optimizer, call_json);
+    let threshold = serde_json::from_str::<Plan>(&plan_json)
+        .ok()
+        .map(|plan| state.optimizer.divergence_threshold_for_plan(&plan))
+        .unwrap_or(0.05);
+    let guarded = guard_and_attach_observation_context(
+        state.model_catalog.as_deref(),
+        &state.plan_guard,
+        call_json,
+        &plan_json,
+        threshold,
+        now_us,
+    );
+    unavailable_selection_audit(
+        guarded,
+        "current_greedy",
+        "complete_plans_not_enumerated",
+        state.selection_audit_enabled,
+    )
+}
+
 /// Plan an intercepted LLM call. JSON-in, JSON-out; any panic on the Rust
 /// side is swallowed and the caller receives `{"kind":"pass_through"}`.
 ///
@@ -906,22 +1103,42 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
     py.allow_threads(|| {
         let state = optimizer_state();
         let t0 = std::time::Instant::now();
+        let bound_call = agentc_optimizer::ffi::bind_sampling_policy(
+            call_json,
+            state.optimizer.config().shadow_rate,
+        );
+        let call_json = bound_call.as_str();
         let max_overhead_us = if state.optimizer.config().max_overhead_ms.is_finite() {
             (state.optimizer.config().max_overhead_ms.max(0.0) * 1_000.0) as u128
         } else {
             0
         };
-        let primary_plan_json = guard_plan_fail_safe(|| {
-            rust_profiled_plan(
+        let primary_plan_json = guard_plan_fail_safe(|| match state.evaluation_planner_mode {
+            EvaluationPlannerMode::CurrentGreedy => {
+                projected_greedy_plan(&state, call_json, now_us_i64())
+            }
+            EvaluationPlannerMode::Invalid => PASS_THROUGH_JSON.to_string(),
+            EvaluationPlannerMode::Frozen(mode) => rust_frozen_policy(
+                &state.optimizer,
+                state.model_catalog.as_deref(),
+                &state.plan_guard,
+                call_json,
+                mode,
+                now_us_i64(),
+                state.selection_audit_enabled,
+            ),
+            EvaluationPlannerMode::JointGuarded => rust_profiled_plan(
                 &state.optimizer,
                 state.model_catalog.as_deref(),
                 &state.plan_profiles,
                 &state.plan_guard,
                 call_json,
                 now_us_i64(),
-            )
+                state.selection_audit_enabled,
+            ),
         });
-        let plan_json = if state.exploration_enabled
+        let plan_json = if state.evaluation_planner_mode == EvaluationPlannerMode::JointGuarded
+            && state.exploration_enabled
             && t0.elapsed().as_micros() <= max_overhead_us
         {
             state
@@ -949,14 +1166,13 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
                         if explored != primary_plan_json
                             && t0.elapsed().as_micros() > max_overhead_us
                         {
-                            // Reservation is already durable. Close it before
-                            // stripping the envelope so no untracked active
-                            // lease blocks future calibration.
-                            let _ = rust_fail_embedded_exploration(
+                            // No envelope has crossed into Python/provider
+                            // dispatch. Cancel this planning-only reservation
+                            // without consuming the rolling provider-call cap.
+                            let _ = rust_cancel_embedded_exploration(
                                 &state.exploration_controller,
                                 &mut connection,
                                 &explored,
-                                now_us_i64(),
                             );
                             primary_plan_json.clone()
                         } else {
@@ -977,6 +1193,18 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
         }));
 
         plan_json
+    })
+}
+
+#[pyfunction]
+fn optimize_original_provider_call(py: Python<'_>, call_json: &str) -> String {
+    py.allow_threads(|| {
+        guard_plan_fail_safe(|| {
+            let state = optimizer_state();
+            agentc_optimizer::ffi::attach_observation_context(
+                state.model_catalog.as_deref(), call_json, PASS_THROUGH_JSON, 0.0,
+            )
+        })
     })
 }
 
@@ -1001,18 +1229,22 @@ fn optimize_model_catalog(py: Python<'_>) -> String {
 /// missing is treated as "pass-through, no rule" — we'd rather log a
 /// partial truth than skip the row entirely.
 fn write_plan_audit(state: &OptimizerState, call_json: &str, plan_json: &str, overhead_us: i64) {
-    let Some(audit_mu) = state.audit.as_ref() else { return; };
+    let Some(audit_mu) = state.audit.as_ref() else {
+        return;
+    };
 
     // Pull call_site_id + span_id from the call. If the call is malformed
     // we already returned PassThrough; record it as such with empty IDs so
     // the audit row count still tracks invocations.
     let (call_site_id, span_id) = match serde_json::from_str::<serde_json::Value>(call_json) {
         Ok(v) => {
-            let site = v.get("call_site_id")
+            let site = v
+                .get("call_site_id")
                 .and_then(|x| x.as_str())
                 .unwrap_or("")
                 .to_string();
-            let span = v.get("span_id")
+            let span = v
+                .get("span_id")
                 .and_then(|x| x.as_str())
                 .map(|s| decode_hex8(s).unwrap_or([0u8; 8]))
                 .unwrap_or([0u8; 8]);
@@ -1029,17 +1261,29 @@ fn write_plan_audit(state: &OptimizerState, call_json: &str, plan_json: &str, ov
     let (plan_kind, rule, projected) = match &plan {
         Plan::PassThrough => (PlanKind::PassThrough, None, None),
         Plan::Cached { .. } => (PlanKind::Cached, None, None),
-        Plan::Rewritten { rule, projected_savings_usd, .. } => (
+        Plan::Rewritten {
+            rule,
+            projected_savings_usd,
+            ..
+        } => (
             PlanKind::Rewritten,
             Some(rule.clone()),
             Some(*projected_savings_usd as f64),
         ),
-        Plan::Parallel { rule, projected_savings_usd, .. } => (
+        Plan::Parallel {
+            rule,
+            projected_savings_usd,
+            ..
+        } => (
             PlanKind::Parallel,
             Some(rule.clone()),
             Some(*projected_savings_usd as f64),
         ),
-        Plan::Composed { rules, net_savings_usd, .. } => (
+        Plan::Composed {
+            rules,
+            net_savings_usd,
+            ..
+        } => (
             PlanKind::Composed,
             rules.first().map(|r| r.rule.clone()),
             Some(*net_savings_usd as f64),
@@ -1059,7 +1303,9 @@ fn write_plan_audit(state: &OptimizerState, call_json: &str, plan_json: &str, ov
         shadow_divergence: None,
     };
 
-    let Ok(conn) = audit_mu.lock() else { return; };
+    let Ok(conn) = audit_mu.lock() else {
+        return;
+    };
     if let Err(e) = audit_insert(&conn, &row) {
         eprintln!("[agentc-profiler] plan_audit insert failed: {e}");
     }
@@ -1134,6 +1380,520 @@ fn optimize_observe(py: Python<'_>, plan_json: &str, outcome_json: &str) -> Stri
             }
         }
         observation_token
+    })
+}
+
+/// Persist one provider-dispatch journal operation without manufacturing plan evidence.
+#[pyfunction]
+fn optimize_record_provider_receipt(py: Python<'_>, record_json: &str) -> String {
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let database = state.cost_db.as_ref().ok_or_else(|| "provider receipt store is unavailable".to_string())?;
+            let mut conn = database.lock().map_err(|_| "provider receipt store is unavailable".to_string())?;
+            let command: serde_json::Value = serde_json::from_str(record_json).map_err(|error| error.to_string())?;
+            if command.get("operation").and_then(serde_json::Value::as_str) == Some("begin_call") {
+                let config = state.optimizer.config();
+                let policy = agentc_optimizer::provider_graph_quality::Policy {
+                    divergence_threshold: config.selection.global_divergence_threshold.unwrap_or(0.0),
+                    exposure_budget: config.selection.divergence_exposure_budget,
+                    min_pairs: config.selection.min_plan_evidence.max(20) as usize,
+                };
+                let batch = command.get("batch_id").and_then(serde_json::Value::as_str).ok_or("batch identity missing")?;
+                agentc_optimizer::provider_graph_role_comparison::verify_dispatch_policy(&conn, batch, policy, state.plan_profiles.retained_window_size()).map_err(|e|e.to_string())?;
+                agentc_optimizer::provider_graph_deployment::verify_dispatch_policy(&conn, batch, policy, &config.selection_policy(now_us_i64()), state.plan_profiles.retained_window_size()).map_err(|e|e.to_string())?;
+            }
+            if command.get("operation").and_then(serde_json::Value::as_str) == Some("begin_graph_deployment") {
+                let config=state.optimizer.config();
+                let policy=agentc_optimizer::provider_graph_quality::Policy {divergence_threshold:config.selection.global_divergence_threshold.unwrap_or(0.0),exposure_budget:config.selection.divergence_exposure_budget,min_pairs:config.selection.min_plan_evidence.max(20) as usize};
+                let request=serde_json::from_value(command.get("request").cloned().ok_or("deployment request missing")?).map_err(|e|e.to_string())?;
+                agentc_optimizer::provider_graph_deployment::validate_sdk_policy(&request,policy,&config.selection_policy(now_us_i64()),state.plan_profiles.retained_window_size()).map_err(|e|e.to_string())?;
+            }
+            if command.get("operation").and_then(serde_json::Value::as_str) == Some("finish_primary_graph_deployment") {
+                if command.as_object().is_none_or(|value|value.len()!=3) { return Err("primary completion accepts its original lease and callback result".into()); }
+                let lease=command.get("lease_id").and_then(serde_json::Value::as_str).ok_or("primary lease identity missing")?;
+                let comparison=serde_json::from_value(command.get("comparison").cloned().ok_or("primary callback result missing")?).map_err(|e|e.to_string())?;
+                let config=state.optimizer.config();
+                let policy=agentc_optimizer::provider_graph_quality::Policy {divergence_threshold:config.selection.global_divergence_threshold.unwrap_or(0.0),exposure_budget:config.selection.divergence_exposure_budget,min_pairs:config.selection.min_plan_evidence.max(20) as usize};
+                let prepared=agentc_optimizer::provider_graph_preparation::load(&conn,lease).map_err(|e|e.to_string())?;
+                agentc_optimizer::provider_graph_deployment::verify_dispatch_policy(&conn,&prepared.batch_id,policy,&config.selection_policy(now_us_i64()),state.plan_profiles.retained_window_size()).map_err(|e|e.to_string())?;
+                let execution=agentc_optimizer::provider_graph_deployment::finish_primary(&mut conn,&state.plan_profiles,lease,comparison,now_us_i64()).map_err(|e|e.to_string())?;
+                return Ok(serde_json::json!({"status":"recorded","execution":execution,"admission":"guarded_primary_deployment"}).to_string());
+            }
+            if command.get("operation").and_then(serde_json::Value::as_str) == Some("original_provider_execution") {
+                if command.as_object().is_none_or(|value| value.len()!=2) {
+                    return Err("original execution lookup accepts only its batch identity".into());
+                }
+                let batch=command.get("batch_id").and_then(serde_json::Value::as_str).ok_or("batch identity missing")?;
+                let execution=agentc_optimizer::provider_execution::register(&conn,batch).map_err(|error|error.to_string())?;
+                return Ok(serde_json::json!({"status":"recorded","execution":execution,"admission":"observe_only"}).to_string());
+            }
+            if command.get("operation").and_then(serde_json::Value::as_str) == Some("compare_original_provider_executions") {
+                if command.as_object().is_none_or(|value| value.len()!=3) {
+                    return Err("original comparison accepts only its two original execution identities".into());
+                }
+                let reference=command.get("reference_execution_id").and_then(serde_json::Value::as_str).ok_or("reference identity missing")?;
+                let candidate=command.get("candidate_execution_id").and_then(serde_json::Value::as_str).ok_or("candidate identity missing")?;
+                let at=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|error|error.to_string())?.as_micros().min(i64::MAX as u128) as i64;
+                let pair=agentc_optimizer::provider_execution::compare(&mut conn,reference,candidate,at).map_err(|error|error.to_string())?;
+                return Ok(serde_json::json!({"status":"recorded","pair":pair,"admission":"observe_only"}).to_string());
+            }
+            if command.get("operation").and_then(serde_json::Value::as_str) == Some("original_provider_quality") {
+                if command.as_object().is_none_or(|value|value.len()!=2) { return Err("original quality lookup accepts only its batch identity".into()); }
+                let batch=command.get("batch_id").and_then(serde_json::Value::as_str).ok_or("batch identity missing")?;
+                let execution=agentc_optimizer::provider_execution::register(&conn,batch).map_err(|e|e.to_string())?;
+                let quality=if let Some(execution)=&execution {
+                    agentc_optimizer::provider_quality::window(&conn,&execution.key,&execution.runtime_version,state.plan_profiles.retained_window_size(),now_us_i64()).map_err(|e|e.to_string())?
+                } else { None };
+                return Ok(serde_json::json!({"status":"recorded","execution":execution,"quality_window":quality,"admission":"observe_only"}).to_string());
+            }
+            if command.get("operation").and_then(serde_json::Value::as_str) == Some("tariff_plan_profile") {
+                if command.as_object().is_none_or(|value| value.len() != 2) {
+                    return Err("tariff plan report accepts only the original batch identity".into());
+                }
+                let id = command.get("batch_id").and_then(serde_json::Value::as_str).ok_or("batch identity missing")?;
+                let observation = agentc_optimizer::provider_interval_profiles::publish(&mut conn, id).map_err(|error|error.to_string())?;
+                let window = if let Some(observation) = &observation {
+                    agentc_optimizer::provider_interval_profiles::window(
+                        &conn, &observation.key, &observation.runtime_version, state.plan_profiles.retained_window_size(),
+                    ).map_err(|error|error.to_string())?
+                } else { None };
+                return Ok(serde_json::json!({"status":"recorded","observation":observation,"window":window,
+                    "quality_evidence":"separate_original_comparisons_required","admission":"observe_only"}).to_string());
+            }
+            if command.get("operation").and_then(serde_json::Value::as_str) == Some("publish_batch") {
+                if command.as_object().is_none_or(|value| value.len() != 2) {
+                    return Err("publication refresh accepts only the original batch identity".into());
+                }
+                let id = command.get("batch_id").and_then(serde_json::Value::as_str).ok_or("batch identity missing")?;
+                return agentc_optimizer::provider_publication::publish(&mut conn, &state.plan_profiles, id).map_err(|error| error.to_string());
+            }
+            match agentc_optimizer::provider_receipts::handle_json(&mut conn, record_json) {
+                Ok(value) => Ok(value),
+                Err(error) => match agentc_optimizer::provider_graph_campaign::binding_abstention(&error) {
+                    Some(value) => Ok(value),
+                    None => Err(error.to_string()),
+                },
+            }
+        }));
+        match result {
+            Ok(Ok(value)) => value,
+            Ok(Err(reason)) => serde_json::json!({"status":"abstained","reason":reason}).to_string(),
+            Err(_) => serde_json::json!({"status":"abstained","reason":"provider receipt persistence failed"}).to_string(),
+        }
+    })
+}
+
+/// Observe real ordered-map calls without exposing a single-call feedback
+/// token or enabling automatic callback reordering/replay.
+#[pyfunction]
+fn optimize_observe_multi_call(py: Python<'_>, receipt_json: &str) -> String {
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let catalog = state
+                .model_catalog
+                .as_ref()
+                .ok_or("map model catalog is unavailable")?;
+            if let Some(database) = &state.cost_db {
+                let mut conn = database
+                    .lock()
+                    .map_err(|_| "map comparison store is unavailable".to_string())?;
+                agentc_optimizer::ffi::optimize_observe_multi_call_with_comparison(
+                    catalog,
+                    &state.plan_profiles,
+                    &mut conn,
+                    receipt_json,
+                )
+            } else {
+                agentc_optimizer::ffi::optimize_observe_multi_call(
+                    catalog,
+                    &state.plan_profiles,
+                    receipt_json,
+                )
+            }
+        }));
+        match result {
+            Ok(Ok(receipt)) => {
+                flush_optimizer_state(&state);
+                receipt
+            }
+            Ok(Err(reason)) => {
+                serde_json::json!({"status":"abstained","reason":reason}).to_string()
+            }
+            Err(_) => {
+                serde_json::json!({"status":"abstained","reason":"native map observation failed"})
+                    .to_string()
+            }
+        }
+    })
+}
+
+#[pyfunction]
+fn optimize_compare_multi_call(
+    py: Python<'_>,
+    reference_token: &str,
+    candidate_token: &str,
+) -> String {
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| -> Result<String, String> {
+            let database = state
+                .cost_db
+                .as_ref()
+                .ok_or_else(|| "map comparison store is unavailable".to_string())?;
+            let mut conn = database
+                .lock()
+                .map_err(|_| "map comparison store is unavailable".to_string())?;
+            let result = agentc_optimizer::multi_call_comparison::compare_executions(
+                &mut conn,
+                &state.plan_profiles,
+                &state.plan_guard,
+                reference_token,
+                candidate_token,
+                now_us_i64(),
+            )
+            .map_err(|error| error.to_string())?;
+            serde_json::to_string(&result).map_err(|error| error.to_string())
+        }));
+        match result {
+            Ok(Ok(receipt)) => receipt,
+            Ok(Err(reason)) => {
+                serde_json::json!({"status":"abstained","reason":reason.to_string()}).to_string()
+            }
+            Err(_) => {
+                serde_json::json!({"status":"abstained","reason":"native map comparison failed"})
+                    .to_string()
+            }
+        }
+    })
+}
+
+#[pyfunction]
+fn optimize_provider_graph_sampling(py: Python<'_>, request_json: &str) -> String {
+    py.allow_threads(|| {
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| -> Result<String, String> {
+            let state = optimizer_state();
+            let config = state.optimizer.config();
+            let database = state.cost_db.as_ref().ok_or("sampling store is unavailable")?;
+            let mut conn = database.lock().map_err(|_| "sampling store is unavailable")?;
+            let command: agentc_optimizer::provider_graph_sampling::Command = serde_json::from_str(request_json).map_err(|e| e.to_string())?;
+            let quality = agentc_optimizer::provider_graph_quality::Policy {
+                divergence_threshold: config.selection.global_divergence_threshold.unwrap_or(0.0),
+                exposure_budget: config.selection.divergence_exposure_budget,
+                min_pairs: config.selection.min_plan_evidence.max(20) as usize,
+            };
+            let value = match command {
+                agentc_optimizer::provider_graph_sampling::Command::Begin { request } => {
+                    if !config.enabled { return Err("graph sampling requires the enabled optimizer".into()); }
+                    if let Some(deployment) = &request.deployment {
+                        agentc_optimizer::provider_graph_deployment::validate_sdk_admission(&deployment.policy,state.plan_profiles.retained_window_size(),quality,&config.selection_policy(now_us_i64()),state.plan_profiles.retained_window_size()).map_err(|e|e.to_string())?;
+                    }
+                    let outcome = agentc_optimizer::provider_graph_sampling::begin(&mut conn, *request, quality, state.plan_profiles.retained_window_size(), now_us_i64()).map_err(|e| e.to_string())?;
+                    serde_json::to_value(outcome).map_err(|e| e.to_string())?
+                }
+                agentc_optimizer::provider_graph_sampling::Command::Finish { ticket_id } => {
+                    let outcome = agentc_optimizer::provider_graph_sampling::finish(&mut conn, &ticket_id, now_us_i64(), quality, state.plan_profiles.retained_window_size()).map_err(|e| e.to_string())?;
+                    serde_json::to_value(outcome).map_err(|e| e.to_string())?
+                }
+                agentc_optimizer::provider_graph_sampling::Command::Commitments { ticket_id } => {
+                    let outcome=agentc_optimizer::provider_graph_sampling::commitment_report(&conn,&ticket_id).map_err(|e|e.to_string())?;
+                    serde_json::json!({"commitments":outcome})
+                }
+            };
+            Ok(serde_json::json!({"status":"recorded","sampling":value}).to_string())
+        }));
+        match result {
+            Ok(Ok(value)) => value,
+            Ok(Err(reason)) => serde_json::json!({"status":"abstained","reason":reason}).to_string(),
+            Err(_) => serde_json::json!({"status":"abstained","reason":"native graph sampling failed"}).to_string(),
+        }
+    })
+}
+
+#[pyfunction]
+fn optimize_compare_provider_graph(
+    py: Python<'_>,
+    reference_token: &str,
+    candidate_token: &str,
+) -> String {
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| -> Result<String, String> {
+            let database = state.cost_db.as_ref().ok_or("graph comparison store is unavailable")?;
+            let mut conn = database.lock().map_err(|_| "graph comparison store is unavailable")?;
+            let config=state.optimizer.config();
+            let policy=agentc_optimizer::provider_graph_quality::Policy {
+                divergence_threshold:config.selection.global_divergence_threshold.unwrap_or(0.0),
+                exposure_budget:config.selection.divergence_exposure_budget,
+                min_pairs:config.selection.min_plan_evidence.max(20) as usize,
+            };
+            let outcome = agentc_optimizer::provider_graph_comparison::compare_with_policy(
+                &mut conn, reference_token, candidate_token, now_us_i64(),
+                state.plan_profiles.retained_window_size(),
+                policy,
+            ).map_err(|error| error.to_string())?;
+            serde_json::to_string(&outcome).map_err(|error| error.to_string())
+        }));
+        match result {
+            Ok(Ok(receipt)) => receipt,
+            Ok(Err(reason)) => serde_json::json!({"status":"abstained","reason":reason}).to_string(),
+            Err(_) => serde_json::json!({"status":"abstained","reason":"native graph comparison failed"}).to_string(),
+        }
+    })
+}
+
+#[pyfunction]
+fn optimize_compare_provider_role_graph(
+    py: Python<'_>,
+    reference_token: &str,
+    candidate_token: &str,
+) -> String {
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| -> Result<String, String> {
+            let database = state
+                .cost_db
+                .as_ref()
+                .ok_or("graph comparison store is unavailable")?;
+            let mut conn = database
+                .lock()
+                .map_err(|_| "graph comparison store is unavailable")?;
+            let config = state.optimizer.config();
+            let policy = agentc_optimizer::provider_graph_quality::Policy {
+                divergence_threshold: config.selection.global_divergence_threshold.unwrap_or(0.0),
+                exposure_budget: config.selection.divergence_exposure_budget,
+                min_pairs: config.selection.min_plan_evidence.max(20) as usize,
+            };
+            let outcome = agentc_optimizer::provider_graph_role_comparison::compare_with_policy(
+                &mut conn,
+                reference_token,
+                candidate_token,
+                now_us_i64(),
+                state.plan_profiles.retained_window_size(),
+                policy,
+            )
+            .map_err(|error| error.to_string())?;
+            serde_json::to_string(&outcome).map_err(|error| error.to_string())
+        }));
+        match result {
+            Ok(Ok(receipt)) => receipt,
+            Ok(Err(reason)) => {
+                serde_json::json!({"status":"abstained","reason":reason}).to_string()
+            }
+            Err(_) => {
+                serde_json::json!({"status":"abstained","reason":"native graph comparison failed"})
+                    .to_string()
+            }
+        }
+    })
+}
+
+#[pyfunction]
+fn optimize_begin_provider_graph(py: Python<'_>, request_json: &str) -> String {
+    py.allow_threads(|| {
+        let result=std::panic::catch_unwind(AssertUnwindSafe(||->Result<String,String>{
+            let state=optimizer_state();let config=state.optimizer.config();
+            let policy=agentc_optimizer::provider_graph_quality::Policy {divergence_threshold:config.selection.global_divergence_threshold.unwrap_or(0.0),exposure_budget:config.selection.divergence_exposure_budget,min_pairs:config.selection.min_plan_evidence.max(20) as usize};
+            let database=state.cost_db.as_ref().ok_or("graph preparation store is unavailable")?;
+            let mut conn=database.lock().map_err(|_|"graph preparation store is unavailable")?;
+            let request=serde_json::from_str(request_json).map_err(|e|e.to_string())?;
+            let lease=match agentc_optimizer::provider_graph_preparation::begin(&mut conn,request,policy,state.plan_profiles.retained_window_size(),now_us_i64()) {
+                Ok(lease) => lease,
+                Err(error) => match agentc_optimizer::provider_graph_campaign::binding_abstention(&error) {
+                    Some(value) => return Ok(value),
+                    None => return Err(error.to_string()),
+                },
+            };
+            Ok(serde_json::json!({"status":"recorded","lease_id":lease.lease_id,"started_at_us":lease.started_at_us,"template":lease.template.is_some(),"admission":"acquisition_only"}).to_string())
+        }));
+        match result {Ok(Ok(value))=>value,Ok(Err(reason))=>serde_json::json!({"status":"abstained","reason":reason}).to_string(),Err(_)=>serde_json::json!({"status":"abstained","reason":"native graph preparation failed"}).to_string()}
+    })
+}
+
+#[pyfunction]
+fn optimize_discover_provider_graph_node(
+    py:Python<'_>,lease_id:&str,position_json:&str,source_json:&str,observation_only:bool,
+)->String {
+    py.allow_threads(|| {
+        let result=std::panic::catch_unwind(AssertUnwindSafe(||->Result<String,String>{
+            let state=optimizer_state();
+            let database=state.cost_db.as_ref().ok_or("discovery store is unavailable")?;
+            let catalog=state.model_catalog.as_deref().ok_or("discovery catalog is unavailable")?;
+            let mut conn=database.lock().map_err(|_|"discovery store is unavailable")?;
+            let lease=agentc_optimizer::provider_graph_preparation::load(&conn,lease_id).map_err(|e|e.to_string())?;
+            if lease.window_size!=state.plan_profiles.retained_window_size(){return Err("discovery window changed".into());}
+            let position=serde_json::from_str(position_json).map_err(|e|e.to_string())?;
+            let raw=agentc_optimizer::provider_graph_sampling::plan_discovery(&mut conn,&state.optimizer,catalog,lease_id,position,source_json,observation_only).map_err(|e|e.to_string())?;
+            Ok(serde_json::json!({"status":"recorded","plan_json":raw}).to_string())
+        }));
+        match result {Ok(Ok(value))=>value,Ok(Err(reason))=>serde_json::json!({"status":"abstained","reason":reason}).to_string(),Err(_)=>serde_json::json!({"status":"abstained","reason":"native graph discovery failed"}).to_string()}
+    })
+}
+
+#[pyfunction]
+fn optimize_materialize_provider_graph_node(
+    py:Python<'_>,lease_id:&str,position_json:&str,source_json:&str,observation_only:bool,
+)->String {
+    py.allow_threads(|| {
+        let result=std::panic::catch_unwind(AssertUnwindSafe(||->Result<String,String>{
+            let state=optimizer_state();let config=state.optimizer.config();
+            let policy=agentc_optimizer::provider_graph_quality::Policy {divergence_threshold:config.selection.global_divergence_threshold.unwrap_or(0.0),exposure_budget:config.selection.divergence_exposure_budget,min_pairs:config.selection.min_plan_evidence.max(20) as usize};
+            let catalog=state.model_catalog.as_deref().ok_or("template catalog is unavailable")?;
+            let database=state.cost_db.as_ref().ok_or("template preparation store is unavailable")?;
+            let conn=database.lock().map_err(|_|"template preparation store is unavailable")?;
+            let position=serde_json::from_str(position_json).map_err(|e|e.to_string())?;
+            let lease=agentc_optimizer::provider_graph_preparation::load(&conn,lease_id).map_err(|e|e.to_string())?;
+            agentc_optimizer::provider_graph_deployment::verify_dispatch_policy(&conn,&lease.batch_id,policy,&config.selection_policy(now_us_i64()),state.plan_profiles.retained_window_size()).map_err(|e|e.to_string())?;
+            let tx=conn.unchecked_transaction().map_err(|e|e.to_string())?;
+            let template=agentc_optimizer::provider_graph_preparation::template_for_dispatch(&tx,lease_id,position,policy,state.plan_profiles.retained_window_size(),now_us_i64()).map_err(|e|e.to_string())?;
+            let plan=agentc_optimizer::ffi::materialize_graph_node(&state.optimizer,catalog,&template,position,source_json,observation_only).map_err(|e|e.to_string())?;
+            tx.commit().map_err(|e|e.to_string())?;
+            Ok(serde_json::json!({"status":"recorded","plan_json":plan}).to_string())
+        }));
+        match result {Ok(Ok(value))=>value,Ok(Err(reason))=>serde_json::json!({"status":"abstained","reason":reason}).to_string(),Err(_)=>serde_json::json!({"status":"abstained","reason":"native template planning failed"}).to_string()}
+    })
+}
+
+#[pyfunction]
+fn optimize_describe_provider_graph_node(
+    py: Python<'_>,
+    position_json: &str,
+    source_json: &str,
+    plan_json: &str,
+) -> String {
+    py.allow_threads(|| {
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| -> Result<String, String> {
+            let state = optimizer_state();
+            let catalog = state.model_catalog.as_deref().ok_or("graph preparation catalog is unavailable")?;
+            let position = serde_json::from_str(position_json).map_err(|e| e.to_string())?;
+            let node = agentc_optimizer::ffi::prepared_graph_node(catalog, position, source_json, plan_json)?;
+            Ok(serde_json::json!({"status":"recorded","node":node,"admission":"descriptor_only"}).to_string())
+        }));
+        match result {
+            Ok(Ok(value)) => value,
+            Ok(Err(reason)) => serde_json::json!({"status":"abstained","reason":reason}).to_string(),
+            Err(_) => serde_json::json!({"status":"abstained","reason":"native graph node description failed"}).to_string(),
+        }
+    })
+}
+
+#[pyfunction(signature = (lease_id, position_json, source_json, plan_json, request_sha256=None, transport_sha256=None))]
+fn optimize_approve_provider_graph_node(
+    py: Python<'_>,
+    lease_id: &str,
+    position_json: &str,
+    source_json: &str,
+    plan_json: &str,
+    request_sha256: Option<&str>,
+    transport_sha256: Option<&str>,
+) -> String {
+    py.allow_threads(|| {
+        let result=std::panic::catch_unwind(AssertUnwindSafe(||->Result<String,String>{
+            let state=optimizer_state();let config=state.optimizer.config();
+            let policy=agentc_optimizer::provider_graph_quality::Policy {divergence_threshold:config.selection.global_divergence_threshold.unwrap_or(0.0),exposure_budget:config.selection.divergence_exposure_budget,min_pairs:config.selection.min_plan_evidence.max(20) as usize};
+            let catalog=state.model_catalog.as_deref().ok_or("graph preparation catalog is unavailable")?;
+            let position=serde_json::from_str(position_json).map_err(|e|e.to_string())?;
+            let node=agentc_optimizer::ffi::prepared_graph_node(catalog,position,source_json,plan_json)?;
+            let database=state.cost_db.as_ref().ok_or("graph preparation store is unavailable")?;
+            let mut conn=database.lock().map_err(|_|"graph preparation store is unavailable")?;
+            let lease=agentc_optimizer::provider_graph_preparation::load(&conn,lease_id).map_err(|e|e.to_string())?;
+            if lease.deployment_id.is_some() {
+                agentc_optimizer::provider_graph_deployment::verify_dispatch_policy(&conn,&lease.batch_id,policy,&config.selection_policy(now_us_i64()),state.plan_profiles.retained_window_size()).map_err(|e|e.to_string())?;
+                let binding=agentc_optimizer::provider_graph_deployment::PrimaryBinding {
+                    node,request_sha256:request_sha256.ok_or("guarded primary request fingerprint is missing")?.into(),
+                    transport_sha256:transport_sha256.ok_or("guarded primary transport fingerprint is missing")?.into(),
+                };
+                agentc_optimizer::provider_graph_deployment::approve_primary_node(&mut conn,lease_id,&binding,policy,state.plan_profiles.retained_window_size(),now_us_i64()).map_err(|e|e.to_string())?;
+            } else {
+                agentc_optimizer::provider_graph_preparation::approve_node(&mut conn,lease_id,&node,policy,state.plan_profiles.retained_window_size(),now_us_i64()).map_err(|e|e.to_string())?;
+            }
+            Ok(serde_json::json!({"status":"recorded"}).to_string())
+        }));
+        match result {Ok(Ok(value))=>value,Ok(Err(reason))=>serde_json::json!({"status":"abstained","reason":reason}).to_string(),Err(_)=>serde_json::json!({"status":"abstained","reason":"native graph node approval failed"}).to_string()}
+    })
+}
+
+#[pyfunction]
+fn optimize_prepare_provider_batch(py: Python<'_>, batch_json: &str, options_json: &str) -> String {
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        let started = std::time::Instant::now();
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| -> Result<String,String> {
+            let request = serde_json::from_str(batch_json).map_err(|error| error.to_string())?;
+            let options: agentc_optimizer::prepared_batch::PreparedBatchOptions = serde_json::from_str(options_json).map_err(|error| error.to_string())?;
+            if options.max_workers == 0 || options.max_workers > agentc_optimizer::prepared_batch::MAX_PREPARED_BATCH_WORKERS
+                || options.remaining_batches == 0 || !matches!(options.mode.as_str(),"guarded"|"reference"|"candidate") {
+                return Err("prepared batch options are invalid".into());
+            }
+            let catalog = state.model_catalog.as_ref().ok_or("prepared batch catalog is unavailable")?;
+            let prepared = agentc_optimizer::ffi::prepare_provider_batch(catalog,&state.plan_profiles,request)?;
+            let mut workers = if options.mode == "candidate" { options.max_workers.min(prepared.spec.item_count) } else { 1 };
+            let mut schedule = serde_json::json!({"max_workers":workers,"selected_reference":workers==1,"reason":format!("explicit_{}",options.mode)});
+            if options.mode == "guarded" {
+                let config = state.optimizer.config();
+                if !options.scope_eligible || !config.enabled {
+                    schedule["reason"] = serde_json::json!("optimization_excluded");
+                } else if !prepared.catalog_qualified {
+                    schedule["reason"] = serde_json::json!("model_catalog_unqualified");
+                } else if !prepared.aliases_resolved {
+                    schedule["reason"] = serde_json::json!("provider_alias_unresolved");
+                } else {
+                    let database = state.cost_db.as_ref().ok_or("prepared batch store is unavailable")?;
+                    let mut conn = database.lock().map_err(|_| "prepared batch store is unavailable")?;
+                    let policy = agentc_optimizer::SelectionPolicy {
+                        objective:options.objective,min_paired_observations:config.selection.min_plan_evidence,
+                        now_us:now_us_i64(),max_profile_age_us:(config.selection.plan_profile_freshness_hours*3_600_000_000.0) as i64,
+                        divergence_exposure_budget:config.selection.divergence_exposure_budget,
+                        max_expected_cost_usd:options.max_expected_cost_usd,max_expected_latency_ms:options.max_expected_latency_ms,
+                    };
+                    let selected = if let Some(tariff) = &options.tariff_policy {
+                        let selected=agentc_optimizer::provider_tariff_admission::select(
+                            &mut conn,&state.plan_guard,
+                            agentc_optimizer::provider_tariff_admission::Request {
+                                reference:&prepared.spec,runtime:&prepared.runtime,max_workers:options.max_workers,
+                                remaining_batches:options.remaining_batches,window_size:state.plan_profiles.retained_window_size(),
+                                policy:&policy,tariff,
+                            },
+                        ).map_err(|error|error.to_string())?;
+                        workers=selected.max_workers;
+                        serde_json::to_value(selected).map_err(|error|error.to_string())?
+                    } else {
+                    let selected = agentc_optimizer::prepared_batch::select_prepared_schedule(
+                        &mut conn,&state.plan_profiles,&state.plan_guard,
+                        agentc_optimizer::prepared_batch::PreparedScheduleRequest {
+                            reference:&prepared.spec,runtime:&prepared.runtime,
+                            max_workers:options.max_workers,remaining_batches:options.remaining_batches,policy:&policy,
+                        },
+                    ).map_err(|error| error.to_string())?;
+                    workers = selected.max_workers;
+                    serde_json::to_value(selected).map_err(|error| error.to_string())?
+                    };
+                    schedule = selected;
+                    if started.elapsed().as_secs_f64()*1000.0 > config.max_overhead_ms.max(0.0) as f64 {
+                        workers = 1;
+                        schedule["max_workers"] = serde_json::json!(1);
+                        schedule["selected_reference"] = serde_json::json!(true);
+                        schedule["selected_key"] = serde_json::to_value(prepared.spec.profile_key().map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
+                        schedule["reason"] = serde_json::json!("planning_overhead_budget");
+                    }
+                }
+            }
+            let id=options.provider_receipt_batch_id.as_deref().ok_or("provider economic batch identity is required")?;
+            let database=state.cost_db.as_ref().ok_or("provider economic store is unavailable")?;
+            let mut conn=database.lock().map_err(|_| "provider economic store is unavailable")?;
+            let enrolled=agentc_optimizer::provider_economics::enroll_batch(&mut conn,id,&prepared.spec,
+                if options.mode=="guarded" { agentc_optimizer::provider_economics::Phase::Deployment } else { agentc_optimizer::provider_economics::Phase::Acquisition }
+            ).map_err(|error|error.to_string())?;
+            if !enrolled { return Err("provider economic batch was already enrolled".into()); }
+            serde_json::to_string(&serde_json::json!({"status":"prepared","plans":prepared.plans,"max_workers":workers,"schedule":schedule,"provider_receipt_batch_id":id}))
+                .map_err(|error| error.to_string())
+        }));
+        match result {
+            Ok(Ok(result)) => result,
+            Ok(Err(reason)) => serde_json::json!({"status":"abstained","reason":reason}).to_string(),
+            Err(_) => serde_json::json!({"status":"abstained","reason":"prepared batch planning failed"}).to_string(),
+        }
     })
 }
 
@@ -1259,11 +2019,12 @@ fn persist_divergence_state(
     if let Err(error) = state.budget.flush_divergence(connection) {
         eprintln!("[agentc-profiler] divergence flush failed: {error}");
     }
-    if let Err(error) = state.plan_guard.flush_dirty(connection) {
-        eprintln!("[agentc-profiler] plan_guard flush failed: {error}");
-    }
-    if let Err(error) = state.plan_profiles.flush_dirty(connection) {
-        eprintln!("[agentc-profiler] plan_profiles flush failed: {error}");
+    if let Err(error) = agentc_optimizer::feedback::flush(
+        connection,
+        &state.plan_profiles,
+        &state.plan_guard,
+    ) {
+        eprintln!("[agentc-profiler] complete-plan feedback flush failed: {error}");
     }
 }
 
@@ -1321,14 +2082,8 @@ fn optimize_complete_exploration(
                 now,
             ) {
                 Ok(Some(attribution)) => {
-                    let disable =
-                        apply_divergence_guards(&state, &attribution, divergence, now);
-                    persist_divergence_state(
-                        &state,
-                        &mut connection,
-                        &attribution,
-                        disable,
-                    );
+                    let disable = apply_divergence_guards(&state, &attribution, divergence, now);
+                    persist_divergence_state(&state, &mut connection, &attribution, disable);
                     true
                 }
                 Ok(None) => true,
@@ -1402,12 +2157,44 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(canonicalize_prompt_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(canonicalize_parameters_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_configure, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_configuration, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_evaluation_planner_mode, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_evaluation_policy_version, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        optimize_provider_configuration_version,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(optimize_application_version, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_output_validation_version, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_divergence_metric_version, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_sdk_response_cache_key, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_storage_path, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_reset, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_plan, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        optimize_text_action_comparator_version,
+        m
+    )?)?;
     m.add_function(wrap_pyfunction!(optimize_model_catalog, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_observe, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_observe_multi_call, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_record_provider_receipt, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_compare_multi_call, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_compare_provider_graph, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_provider_graph_sampling, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_compare_provider_role_graph, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_begin_provider_graph, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_describe_provider_graph_node, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_approve_provider_graph_node, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_materialize_provider_graph_node, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_discover_provider_graph_node, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_original_provider_call, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_prepare_provider_batch, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_record_divergence, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        optimize_record_output_validation_rejection,
+        m
+    )?)?;
     m.add_function(wrap_pyfunction!(optimize_complete_exploration, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_fail_exploration, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_flush, m)?)?;

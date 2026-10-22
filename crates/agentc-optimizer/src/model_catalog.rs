@@ -20,9 +20,27 @@ pub const LITELLM_COMPLETION_PROTOCOL: &str = "litellm.completion.v1";
 pub const ROUTE_CONTEXT_KEY: &str = "agentc_route_context";
 pub const ROUTED_TARGET_KEY: &str = "agentc_routed_target";
 
-pub const DEFAULT_MODEL_CATALOG_VERSION: &str = "agentc-model-catalog-2026-09-03-r1";
-pub const DEFAULT_PRICE_TABLE_VERSION: &str = "agentc-price-table-2026-09-03-r1";
+pub const DEFAULT_MODEL_CATALOG_VERSION: &str = "agentc-model-catalog-2026-10-12-r3";
+pub const DEFAULT_PRICE_TABLE_VERSION: &str = "agentc-price-table-2026-10-12-r2";
 pub const DEFAULT_CATALOG_OBSERVED_AT_UTC: &str = "2026-09-03T00:00:00Z";
+
+/// A catalog observation is a cohort label, not a served binary revision. Its
+/// original exact router slug may be reported by the provider. Immutable
+/// revisions still require an exact served label; a different route is drift.
+pub(crate) fn reported_revision_matches(
+    runtime: &crate::plan_profile::PlanRuntimeVersion,
+    reported: Option<&str>,
+) -> bool {
+    reported.is_some_and(|model| {
+        model == runtime.target_model_version
+            || model == runtime.target_model_id
+                && runtime.target_model_version
+                    == format!(
+                        "{}@{}",
+                        runtime.target_model_id, DEFAULT_MODEL_CATALOG_VERSION
+                    )
+    })
+}
 
 const OPENAI_GPT_54_SOURCE: &str = "https://developers.openai.com/api/docs/models/gpt-5.4";
 const OPENAI_GPT_54_MINI_SOURCE: &str =
@@ -150,10 +168,184 @@ pub struct RequestRequirements {
     pub streaming: bool,
 }
 
+pub const PROVIDER_ENDPOINT_KEY: &str = "provider_endpoint";
+pub const PROVIDER_ENDPOINT_VERSION: &str = "provider-endpoint-v1";
+
+fn provider_endpoint_valid(call: &Call) -> bool {
+    let Some(context) = call
+        .parameters
+        .extra
+        .get(ROUTE_CONTEXT_KEY)
+        .and_then(serde_json::Value::as_object)
+    else {
+        return false;
+    };
+    let namespace = context
+        .get("provider_namespace")
+        .and_then(serde_json::Value::as_str);
+    let protocol = context
+        .get("provider_protocol")
+        .and_then(serde_json::Value::as_str);
+    let Some(value) = context.get(PROVIDER_ENDPOINT_KEY) else {
+        return namespace != Some("openrouter");
+    };
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    let Some(hash) = object.get("sha256").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    if object.len() != 4
+        || object.get("version").and_then(serde_json::Value::as_str)
+            != Some(PROVIDER_ENDPOINT_VERSION)
+        || object.get("namespace").and_then(serde_json::Value::as_str) != namespace
+        || hash.len() != 64
+        || !hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return false;
+    }
+    if object.get("supported").and_then(serde_json::Value::as_bool) == Some(false) {
+        return namespace == Some(format!("unqualified:{hash}").as_str());
+    }
+    if object.get("supported").and_then(serde_json::Value::as_bool) != Some(true) {
+        return false;
+    }
+    let endpoint = match (namespace, protocol) {
+        (Some("openai"), Some(OPENAI_CHAT_COMPLETIONS_PROTOCOL | LITELLM_COMPLETION_PROTOCOL)) => {
+            "https://api.openai.com/v1"
+        }
+        (
+            Some("openrouter"),
+            Some(OPENAI_CHAT_COMPLETIONS_PROTOCOL | LITELLM_COMPLETION_PROTOCOL),
+        ) => "https://openrouter.ai/api/v1",
+        (Some("anthropic"), Some(ANTHROPIC_MESSAGES_PROTOCOL)) => "https://api.anthropic.com",
+        _ => return false,
+    };
+    hash == agentc_core::storage::content_hash(&format!("billing-scope-v1\0{endpoint}"))
+}
+
+pub const PROVIDER_CONFIGURATION_VERSION: &str = "provider-request-config-v1";
+pub const PROVIDER_CONFIGURATION_KEY: &str = "provider_configuration";
+pub const OUTPUT_VALIDATION_VERSION: &str = "pre-release-validation-v2";
+pub const OUTPUT_VALIDATION_KEY: &str = "output_validation";
+pub const APPLICATION_VERSION: &str = "application-version-v1";
+pub const APPLICATION_VERSION_KEY: &str = "application_version";
+
+/// Declared application revisions form distinct evidence cohorts. Absence
+/// preserves legacy identity; an invalid declaration cannot become absence.
+pub fn application_version_supported(call: &Call) -> bool {
+    let Some(declaration) = call
+        .parameters
+        .extra
+        .get(ROUTE_CONTEXT_KEY)
+        .and_then(|context| context.get(APPLICATION_VERSION_KEY))
+    else {
+        return true;
+    };
+    let Some(object) = declaration.as_object() else {
+        return false;
+    };
+    object.len() == 2
+        && object.get("version").and_then(serde_json::Value::as_str) == Some(APPLICATION_VERSION)
+        && object
+            .get("sha256")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|hash| {
+                hash.len() == 64
+                    && hash
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            })
+}
+
+pub fn output_validation_supported(call: &Call) -> bool {
+    let Some(value) = call
+        .parameters
+        .extra
+        .get(ROUTE_CONTEXT_KEY)
+        .and_then(|context| context.get(OUTPUT_VALIDATION_KEY))
+    else {
+        return true;
+    };
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    object.len() == 6
+        && object.get("version").and_then(serde_json::Value::as_str)
+            == Some(OUTPUT_VALIDATION_VERSION)
+        && object.get("supported").and_then(serde_json::Value::as_bool) == Some(true)
+        && object
+            .get("validator_id")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|id| {
+                !id.is_empty()
+                    && id.len() <= 128
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"_.:-".contains(&b))
+            })
+        && object
+            .get("configuration_sha256")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|hash| {
+                hash.len() == 64
+                    && hash
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            })
+        && object
+            .get("model_version")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|v| !v.trim().is_empty())
+        && object
+            .get("max_cost_usd")
+            .and_then(serde_json::Value::as_f64)
+            .is_some_and(|v| v.is_finite() && v >= 0.0)
+}
+
+/// An adapter declaration is either complete for this version or ineligible.
+/// Legacy native-only callers have no provider extension payload; their older
+/// identity remains distinct from every versioned SDK declaration.
+pub fn provider_configuration_supported(call: &Call) -> bool {
+    let Some(declaration) = call
+        .parameters
+        .extra
+        .get(ROUTE_CONTEXT_KEY)
+        .and_then(|context| context.get(PROVIDER_CONFIGURATION_KEY))
+    else {
+        return true;
+    };
+    let Some(object) = declaration.as_object() else {
+        return false;
+    };
+    object.len() == 3
+        && object.get("version").and_then(serde_json::Value::as_str)
+            == Some(PROVIDER_CONFIGURATION_VERSION)
+        && object.get("supported").and_then(serde_json::Value::as_bool) == Some(true)
+        && object
+            .get("sha256")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|hash| {
+                hash.len() == 64
+                    && hash
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            })
+}
+
 impl RequestRequirements {
     /// Read the provider-owned request facts attached by a Python adapter.
     /// Missing or malformed context means the catalog abstains.
     pub fn from_call(call: &Call) -> Option<Self> {
+        if !provider_configuration_supported(call)
+            || !output_validation_supported(call)
+            || !application_version_supported(call)
+            || !provider_endpoint_valid(call)
+        {
+            return None;
+        }
         let context = call
             .parameters
             .extra
@@ -513,7 +705,7 @@ impl fmt::Display for CatalogError {
 impl Error for CatalogError {}
 
 pub fn default_model_catalog() -> Result<ModelCatalog, CatalogError> {
-    let targets = vec![
+    let mut targets = vec![
         target(
             OPENAI_CHAT_COMPLETIONS_PROTOCOL,
             "openai",
@@ -631,10 +823,68 @@ pub fn default_model_catalog() -> Result<ModelCatalog, CatalogError> {
         ),
     ];
 
+    // LiteLLM is a distinct adapter protocol. Explicitly register qualified
+    // OpenAI identities rather than treating a LiteLLM request as a direct
+    // SDK request or silently routing across credential namespaces. These
+    // targets reuse the existing pinned provider facts and price observation;
+    // only the catalog version changes to cold-start previous plan evidence.
+    let litellm_openai: Vec<_> = targets
+        .iter()
+        .filter(|target| target.adapter_protocol == OPENAI_CHAT_COMPLETIONS_PROTOCOL)
+        .cloned()
+        .map(|mut target| {
+            target.adapter_protocol = LITELLM_COMPLETION_PROTOCOL.to_string();
+            target.model_id = format!("openai/{}", target.model_id);
+            target.model_version = format!("openai/{}", target.model_version);
+            target.aliases = target
+                .aliases
+                .iter()
+                .map(|alias| format!("openai/{alias}"))
+                .collect();
+            target
+        })
+        .collect();
+    targets.extend(litellm_openai);
+
+    // Router slugs identify an observed catalog cohort, never a provider-pinned
+    // binary. The original request keeps its exact slug and endpoint namespace.
+    for (model, input, output, cached) in [
+        ("openai/gpt-4o", 2.50, 10.00, 1.25),
+        ("openai/gpt-4o-mini", 0.15, 0.60, 0.075),
+    ] {
+        let mut router = target(
+            OPENAI_CHAT_COMPLETIONS_PROTOCOL,
+            "openrouter",
+            model,
+            ModelRevisionKind::CatalogObservation,
+            &[],
+            "openrouter-gpt-4o",
+            128_000,
+            16_384,
+            OutputTokenParameter::MaxTokens,
+            all_capabilities(true),
+            price(
+                input,
+                output,
+                Some(cached),
+                "https://openrouter.ai/api/v1/models",
+            ),
+            "https://openrouter.ai/api/v1/models",
+        );
+        router.price.observed_at_utc = "2026-10-12T14:31:09Z".into();
+        router.provenance.observed_at_utc = router.price.observed_at_utc.clone();
+        let mut adapted = router.clone();
+        adapted.adapter_protocol = LITELLM_COMPLETION_PROTOCOL.into();
+        adapted.model_id = format!("openai/{}", router.model_id);
+        adapted.model_version = format!("openai/{}", router.model_version);
+        targets.push(router);
+        targets.push(adapted);
+    }
+
     ModelCatalog::new(
         DEFAULT_MODEL_CATALOG_VERSION,
         DEFAULT_PRICE_TABLE_VERSION,
-        DEFAULT_CATALOG_OBSERVED_AT_UTC,
+        "2026-10-12T14:31:09Z",
         targets,
     )
 }
@@ -786,6 +1036,60 @@ mod tests {
     }
 
     #[test]
+    fn served_router_alias_matches_its_catalog_cohort_without_relaxing_pinned_revisions() {
+        let mut runtime = crate::plan_profile::PlanRuntimeVersion {
+            provider_protocol: OPENAI_CHAT_COMPLETIONS_PROTOCOL.into(),
+            target_model_id: "openai/gpt-4o-mini".into(),
+            target_model_version: format!("openai/gpt-4o-mini@{DEFAULT_MODEL_CATALOG_VERSION}"),
+            price_table_version: DEFAULT_PRICE_TABLE_VERSION.into(),
+        };
+        assert!(reported_revision_matches(
+            &runtime,
+            Some("openai/gpt-4o-mini")
+        ));
+        assert!(!reported_revision_matches(&runtime, Some("openai/gpt-4o")));
+        assert!(!reported_revision_matches(&runtime, None));
+        runtime.target_model_id = "gpt-4o-mini".into();
+        runtime.target_model_version = "gpt-4o-mini-2024-07-18".into();
+        assert!(!reported_revision_matches(&runtime, Some("gpt-4o-mini")));
+        assert!(reported_revision_matches(
+            &runtime,
+            Some("gpt-4o-mini-2024-07-18")
+        ));
+    }
+
+    #[test]
+    fn litellm_openai_routing_stays_qualified_and_in_its_protocol() {
+        let catalog = default_model_catalog().unwrap();
+        let request = call(LITELLM_COMPLETION_PROTOCOL, "openai", "openai/gpt-4o");
+        let choices = catalog.cheaper_targets(&request);
+        assert_eq!(choices.len(), 1);
+        assert_eq!(choices[0].0.model_id, "openai/gpt-4o-mini-2024-07-18");
+        assert_eq!(choices[0].0.adapter_protocol, LITELLM_COMPLETION_PROTOCOL);
+        assert_eq!(choices[0].0.provider_namespace, "openai");
+        let route = catalog.routed_target(&request, choices[0].0).unwrap();
+        assert_eq!(route.provider_protocol, LITELLM_COMPLETION_PROTOCOL);
+        assert_eq!(route.target_model_id, choices[0].0.model_id);
+        assert!(catalog
+            .resolve(
+                OPENAI_CHAT_COMPLETIONS_PROTOCOL,
+                "openai",
+                &route.target_model_id
+            )
+            .is_none());
+        assert!(catalog
+            .resolve(
+                LITELLM_COMPLETION_PROTOCOL,
+                "together_ai",
+                &route.target_model_id
+            )
+            .is_none());
+        assert!(catalog
+            .resolve(LITELLM_COMPLETION_PROTOCOL, "openai", "gpt-4o")
+            .is_none());
+    }
+
+    #[test]
     fn every_supported_adapter_enumerates_two_real_targets() {
         let catalog = default_model_catalog().unwrap();
         for protocol in [
@@ -873,9 +1177,14 @@ mod tests {
     #[test]
     fn cross_provider_litellm_request_abstains() {
         let catalog = default_model_catalog().unwrap();
-        let request = call(LITELLM_COMPLETION_PROTOCOL, "openai", "openai/gpt-5.4");
-        assert!(catalog.compatible_targets(&request).is_empty());
-        assert!(catalog.cheaper_targets(&request).is_empty());
+        for (namespace, model) in [
+            ("together_ai", "openai/gpt-5.4"),
+            ("openai", "together_ai/zai-org/GLM-5.3"),
+        ] {
+            let request = call(LITELLM_COMPLETION_PROTOCOL, namespace, model);
+            assert!(catalog.compatible_targets(&request).is_empty());
+            assert!(catalog.cheaper_targets(&request).is_empty());
+        }
     }
 
     #[test]

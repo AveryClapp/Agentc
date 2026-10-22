@@ -1,7 +1,7 @@
-//! Persistent, bounded exploration for cold execution plans.
+//! Persistent, bounded exploration for cold or refresh-requiring execution plans.
 //!
 //! The controller never chooses a user-visible candidate. Every decision
-//! returns the immutable reference result and may additionally lease one cold
+//! returns the immutable reference result and may additionally lease one eligible
 //! plan for counterfactual execution. A lease is committed to SQLite before
 //! provider work starts, so crashes cannot erase spend from the rolling cap.
 //! Output divergence and optional evaluation-only task-quality labels remain
@@ -23,7 +23,7 @@ pub const EXPLORATION_WINDOW_US: i64 = 24 * 60 * 60 * 1_000_000;
 pub const DEFAULT_EXPLORATION_CALL_CAP: u32 = 20;
 /// Maximum live counterfactuals at one call site.
 pub const DEFAULT_CONCURRENT_COUNTERFACTUAL_CAP: u32 = 1;
-/// Evidence count at which a plan is no longer a cold exploration candidate.
+/// Evidence count at which only stale/rejected plans remain exploration candidates.
 pub const DEFAULT_EXPLORATION_EVIDENCE_TARGET: u32 = 20;
 /// Conservative duration after which a lost lease no longer consumes a
 /// concurrency slot. It still consumes one call from the rolling spend cap.
@@ -32,9 +32,24 @@ pub const DEFAULT_EXPLORATION_LEASE_US: i64 = 10 * 60 * 1_000_000;
 /// it in their manifest.
 pub const DEFAULT_EXPLORATION_SEED: u64 = 0x4147_454e_5443_0001;
 
+/// Allocation affects evidence acquisition only, never plan admission.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExplorationAllocation {
+    /// Historical policy: spread probes over the least-observed plans.
+    /// Missing fields in historical serialized policies retain this behavior.
+    #[default]
+    LeastEvidence,
+    /// Prefer reliable attempts, then finish the closest evidence cohort.
+    /// Projected savings break equal-progress ties; they are not evidence.
+    CompletionFirst,
+}
+
 /// Limits shared by all candidate plans at a call site.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExplorationPolicy {
+    #[serde(default)]
+    pub allocation: ExplorationAllocation,
     pub seed: u64,
     pub max_calls_per_site: u32,
     pub max_concurrent_per_site: u32,
@@ -51,6 +66,7 @@ pub struct ExplorationPolicy {
 impl Default for ExplorationPolicy {
     fn default() -> Self {
         Self {
+            allocation: ExplorationAllocation::CompletionFirst,
             seed: DEFAULT_EXPLORATION_SEED,
             max_calls_per_site: DEFAULT_EXPLORATION_CALL_CAP,
             max_concurrent_per_site: DEFAULT_CONCURRENT_COUNTERFACTUAL_CAP,
@@ -84,14 +100,13 @@ impl fmt::Display for ExplorationPolicyError {
             Self::ZeroEvidenceTarget => {
                 formatter.write_str("exploration evidence target must be positive")
             }
-            Self::InvalidWindow => {
-                formatter.write_str("exploration window must be positive")
-            }
+            Self::InvalidWindow => formatter.write_str("exploration window must be positive"),
             Self::InvalidLeaseDuration => formatter.write_str(
                 "exploration lease duration must be positive and no larger than the window",
             ),
-            Self::InvalidDivergenceExposureBudget => formatter
-                .write_str("divergence exposure budget must be finite and non-negative"),
+            Self::InvalidDivergenceExposureBudget => {
+                formatter.write_str("divergence exposure budget must be finite and non-negative")
+            }
             Self::InvalidTaskDamageBudget => {
                 formatter.write_str("task damage budget must be finite and non-negative")
             }
@@ -137,6 +152,13 @@ impl ExplorationPolicy {
 pub struct ExplorationCandidate {
     pub key: PlanProfileKey,
     pub paired_observations: u32,
+    /// Admission rejects stale or excessive-divergence evidence. This allows
+    /// another comparison past the evidence target; it never bypasses request,
+    /// disable, exposure or spend limits, or admits a user-visible result.
+    pub refresh_required: bool,
+    /// Rule-local utility prior used only to allocate cold probes. Zero means
+    /// unknown; user-visible selection still requires exact paired evidence.
+    pub projected_savings_usd: f64,
     pub request_compatible: bool,
     pub forbidden: bool,
     pub disabled: bool,
@@ -330,9 +352,7 @@ impl ExplorationController {
             now_us,
         ) {
             Ok(decision) => decision,
-            Err(_) => {
-                ExplorationDecision::reference_only(ExplorationReason::PersistenceFailure)
-            }
+            Err(_) => ExplorationDecision::reference_only(ExplorationReason::PersistenceFailure),
         }
     }
 
@@ -371,21 +391,21 @@ impl ExplorationController {
         for candidate in candidates {
             if candidate.key.call_site_version != *call_site_version
                 || candidate.key.execution_plan_id == *reference_plan_id
-                || candidate.paired_observations >= self.policy.evidence_target
+                || (candidate.paired_observations >= self.policy.evidence_target
+                    && !candidate.refresh_required)
                 || !candidate.request_compatible
                 || candidate.forbidden
                 || candidate.disabled
                 || !is_unit_fraction(candidate.divergence_threshold)
                 || !is_nonnegative_finite(candidate.divergence_exposure)
+                || (self.policy.allocation == ExplorationAllocation::CompletionFirst
+                    && !is_nonnegative_finite(candidate.projected_savings_usd))
             {
                 continue;
             }
 
-            let (attempts, persisted_exposure, task_damage) = plan_window_totals(
-                &transaction,
-                &candidate.key,
-                cutoff,
-            )?;
+            let (attempts, failures, persisted_exposure, task_damage) =
+                plan_window_totals(&transaction, &candidate.key, cutoff)?;
             let effective_exposure = candidate.divergence_exposure.max(persisted_exposure);
             if effective_exposure >= self.policy.divergence_exposure_budget {
                 continue;
@@ -401,24 +421,46 @@ impl ExplorationController {
             eligible.push((
                 candidate,
                 attempts,
+                failures,
                 deterministic_priority(
                     self.policy.seed,
                     call_site_version,
                     &candidate.key,
-                    calls_in_window.saturating_add(1),
+                    match self.policy.allocation {
+                        ExplorationAllocation::LeastEvidence => calls_in_window.saturating_add(1),
+                        ExplorationAllocation::CompletionFirst => 0,
+                    },
                 ),
             ));
         }
 
         eligible.sort_by(|left, right| {
-            left.0
-                .paired_observations
-                .cmp(&right.0.paired_observations)
-                .then_with(|| left.1.cmp(&right.1))
-                .then_with(|| left.2.cmp(&right.2))
-                .then_with(|| left.0.key.execution_plan_id.cmp(&right.0.key.execution_plan_id))
+            match self.policy.allocation {
+                ExplorationAllocation::LeastEvidence => left
+                    .0
+                    .paired_observations
+                    .cmp(&right.0.paired_observations)
+                    .then_with(|| left.1.cmp(&right.1)),
+                ExplorationAllocation::CompletionFirst => left
+                    .2
+                    .cmp(&right.2)
+                    .then_with(|| right.0.paired_observations.cmp(&left.0.paired_observations))
+                    .then_with(|| {
+                        right
+                            .0
+                            .projected_savings_usd
+                            .total_cmp(&left.0.projected_savings_usd)
+                    }),
+            }
+            .then_with(|| left.3.cmp(&right.3))
+            .then_with(|| {
+                left.0
+                    .key
+                    .execution_plan_id
+                    .cmp(&right.0.key.execution_plan_id)
+            })
         });
-        let Some((selected, _, _)) = eligible.first() else {
+        let Some((selected, _, _, _)) = eligible.first() else {
             transaction.commit().map_err(persistence)?;
             return Ok(ExplorationDecision::reference_only(
                 ExplorationReason::NoEligibleCandidate,
@@ -569,6 +611,44 @@ impl ExplorationController {
         Ok(ExplorationCompletion::Recorded)
     }
 
+    /// Cancel an exact reservation known not to have crossed the dispatch
+    /// boundary. Its sequence remains allocated, but it consumes no provider
+    /// call or concurrency allowance. Never use this for adapter failures:
+    /// once the envelope has left the native planner, provider work may exist.
+    pub fn cancel_unstarted(
+        &self,
+        conn: &mut Connection,
+        lease: &ExplorationLease,
+    ) -> Result<(), ExplorationError> {
+        let transaction = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(persistence)?;
+        let Some(row) = load_attempt(&transaction, lease)? else {
+            return Err(ExplorationError::LeaseNotFound);
+        };
+        if !row.matches_lease(lease) {
+            return Err(ExplorationError::LeaseMismatch);
+        }
+        if row.status != "reserved" {
+            return Err(ExplorationError::LeaseNotActive);
+        }
+        let deleted = transaction
+            .execute(
+                "DELETE FROM execution_plan_exploration \
+                 WHERE call_site_version = ?1 AND exploration_sequence = ?2 \
+                       AND status = 'reserved'",
+                params![
+                    lease.key.call_site_version.as_str(),
+                    to_sqlite_u64(lease.sequence)?
+                ],
+            )
+            .map_err(persistence)?;
+        if deleted != 1 {
+            return Err(persistence("unstarted exploration lease was not canceled"));
+        }
+        transaction.commit().map_err(persistence)
+    }
+
     pub fn snapshot(
         &self,
         conn: &Connection,
@@ -675,10 +755,12 @@ fn plan_window_totals(
     transaction: &Transaction<'_>,
     key: &PlanProfileKey,
     cutoff: i64,
-) -> Result<(u64, f64, f64), ExplorationError> {
-    let (attempts, exposure, damage) = transaction
+) -> Result<(u64, u64, f64, f64), ExplorationError> {
+    let (attempts, failures, exposure, damage) = transaction
         .query_row(
-            "SELECT COUNT(*), COALESCE(SUM(divergence_exposure), 0.0), \
+            "SELECT COUNT(*), \
+                    COALESCE(SUM(CASE WHEN status IN ('failed', 'abandoned') THEN 1 ELSE 0 END), 0), \
+                    COALESCE(SUM(divergence_exposure), 0.0), \
                     COALESCE(SUM(task_damage), 0.0) \
              FROM execution_plan_exploration \
              WHERE call_site_version = ?1 AND execution_plan_id = ?2 AND started_at > ?3",
@@ -690,8 +772,9 @@ fn plan_window_totals(
             |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
-                    row.get::<_, f64>(1)?,
+                    row.get::<_, i64>(1)?,
                     row.get::<_, f64>(2)?,
+                    row.get::<_, f64>(3)?,
                 ))
             },
         )
@@ -701,6 +784,7 @@ fn plan_window_totals(
     }
     Ok((
         u64::try_from(attempts).map_err(|error| persistence(error.to_string()))?,
+        u64::try_from(failures).map_err(|error| persistence(error.to_string()))?,
         exposure,
         damage,
     ))
@@ -781,10 +865,7 @@ impl StoredAttempt {
     fn matches_feedback(&self, feedback: &NormalizedFeedback) -> bool {
         self.feedback_kind == feedback.kind
             && same_optional_f64(self.divergence, Some(feedback.divergence))
-            && same_optional_f64(
-                self.divergence_exposure,
-                Some(feedback.divergence_exposure),
-            )
+            && same_optional_f64(self.divergence_exposure, Some(feedback.divergence_exposure))
             && same_optional_f64(self.reference_quality, feedback.reference_quality)
             && same_optional_f64(self.candidate_quality, feedback.candidate_quality)
             && same_optional_f64(self.task_damage, feedback.task_damage)
@@ -951,6 +1032,8 @@ mod tests {
                 .unwrap(),
             },
             paired_observations: 0,
+            refresh_required: false,
+            projected_savings_usd: 0.0,
             request_compatible: true,
             forbidden: false,
             disabled: false,
@@ -971,6 +1054,7 @@ mod tests {
 
     fn policy() -> ExplorationPolicy {
         ExplorationPolicy {
+            allocation: ExplorationAllocation::CompletionFirst,
             seed: 7,
             max_calls_per_site: 3,
             max_concurrent_per_site: 1,
@@ -992,8 +1076,9 @@ mod tests {
     }
 
     #[test]
-    fn defaults_match_frozen_contract() {
+    fn default_limits_preserve_the_damage_and_spend_contract() {
         let policy = ExplorationPolicy::default();
+        assert_eq!(policy.allocation, ExplorationAllocation::CompletionFirst);
         assert_eq!(policy.max_calls_per_site, 20);
         assert_eq!(policy.max_concurrent_per_site, 1);
         assert_eq!(policy.evidence_target, 20);
@@ -1001,6 +1086,434 @@ mod tests {
         assert_eq!(policy.divergence_exposure_budget, 1.0);
         assert_eq!(policy.task_damage_budget, None);
         policy.validate().unwrap();
+    }
+
+    #[test]
+    fn twenty_probes_finish_one_cohort_instead_of_splitting_seven_seven_six() {
+        for allocation in [
+            ExplorationAllocation::CompletionFirst,
+            ExplorationAllocation::LeastEvidence,
+        ] {
+            let policy = ExplorationPolicy {
+                allocation,
+                ..ExplorationPolicy::default()
+            };
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("cost_model.db");
+            let mut conn = Connection::open(&path).unwrap();
+            ensure_cost_model_schema(&conn).unwrap();
+            let call_site = site(14);
+            let mut candidates = vec![
+                candidate(&call_site, 1),
+                candidate(&call_site, 2),
+                candidate(&call_site, 3),
+            ];
+            let mut controller = ExplorationController::with_policy(policy.clone()).unwrap();
+            for offset in 0..20 {
+                if offset == 10 {
+                    drop(conn);
+                    conn = Connection::open(&path).unwrap();
+                    controller = ExplorationController::with_policy(policy.clone()).unwrap();
+                    candidates.reverse();
+                }
+                let decision = controller.decide_and_reserve(
+                    &mut conn,
+                    &call_site,
+                    &reference_plan_id(),
+                    &candidates,
+                    NOW_US + offset * 10,
+                );
+                assert!(decision.return_reference);
+                let lease = decision.counterfactual.unwrap();
+                controller
+                    .complete(
+                        &mut conn,
+                        &lease,
+                        &observation_feedback(0.0),
+                        NOW_US + offset * 10 + 1,
+                    )
+                    .unwrap();
+                candidates
+                    .iter_mut()
+                    .find(|candidate| candidate.key == lease.key)
+                    .unwrap()
+                    .paired_observations += 1;
+            }
+            let mut counts: Vec<_> = candidates
+                .iter()
+                .map(|candidate| candidate.paired_observations)
+                .collect();
+            counts.sort();
+            assert_eq!(
+                counts,
+                match allocation {
+                    ExplorationAllocation::CompletionFirst => vec![0, 0, 20],
+                    ExplorationAllocation::LeastEvidence => vec![6, 7, 7],
+                }
+            );
+            let decision = controller.decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id(),
+                &candidates,
+                NOW_US + 210,
+            );
+            assert_eq!(decision.reason, ExplorationReason::CallCapExhausted);
+            let snapshot = controller
+                .snapshot(&conn, &call_site, NOW_US + 210)
+                .unwrap();
+            assert_eq!(snapshot.calls_in_window, 20);
+            assert_eq!(snapshot.completed_calls, 20);
+        }
+    }
+
+    #[test]
+    fn projection_breaks_cold_ties_but_cannot_displace_progress_or_admit_a_plan() {
+        let call_site = site(15);
+        let mut modest = candidate(&call_site, 1);
+        modest.projected_savings_usd = 0.001;
+        let mut promising = candidate(&call_site, 2);
+        promising.projected_savings_usd = 0.01;
+        let mut conn = connection();
+        let controller = ExplorationController::new();
+        let first = controller.decide_and_reserve(
+            &mut conn,
+            &call_site,
+            &reference_plan_id(),
+            &[modest.clone(), promising.clone()],
+            NOW_US,
+        );
+        assert!(first.return_reference);
+        assert_eq!(first.counterfactual.as_ref().unwrap().key, promising.key);
+        controller
+            .complete(
+                &mut conn,
+                first.counterfactual.as_ref().unwrap(),
+                &observation_feedback(0.0),
+                NOW_US + 1,
+            )
+            .unwrap();
+        promising.paired_observations = 1;
+        // A changed estimate must not start a fresh cohort every arrival.
+        modest.projected_savings_usd = 100.0;
+        let second = controller.decide_and_reserve(
+            &mut conn,
+            &call_site,
+            &reference_plan_id(),
+            &[modest, promising.clone()],
+            NOW_US + 2,
+        );
+        assert_eq!(second.counterfactual.unwrap().key, promising.key);
+    }
+
+    #[test]
+    fn equal_prior_focus_survives_delayed_profile_updates() {
+        let call_site = site(16);
+        let candidates = vec![
+            candidate(&call_site, 1),
+            candidate(&call_site, 2),
+            candidate(&call_site, 3),
+        ];
+        let mut conn = connection();
+        let controller = ExplorationController::new();
+        let mut selected = None;
+        for offset in 0..4 {
+            let lease = controller
+                .decide_and_reserve(
+                    &mut conn,
+                    &call_site,
+                    &reference_plan_id(),
+                    &candidates,
+                    NOW_US + offset * 10,
+                )
+                .counterfactual
+                .unwrap();
+            assert_eq!(selected.get_or_insert(lease.key.clone()), &lease.key);
+            controller
+                .complete(
+                    &mut conn,
+                    &lease,
+                    &observation_feedback(0.0),
+                    NOW_US + offset * 10 + 1,
+                )
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn failed_or_abandoned_cohorts_yield_to_reliable_candidates_after_restart() {
+        for abandoned in [false, true] {
+            let call_site = site(17);
+            let mut broken = candidate(&call_site, 1);
+            broken.paired_observations = 10;
+            broken.projected_savings_usd = 100.0;
+            let reliable = candidate(&call_site, 2);
+            // Use a larger evidence target so the partial cohort is cold.
+            let mut limits = policy();
+            limits.evidence_target = 20;
+            let controller = ExplorationController::with_policy(limits.clone()).unwrap();
+            let mut conn = connection();
+            let first = controller
+                .decide_and_reserve(
+                    &mut conn,
+                    &call_site,
+                    &reference_plan_id(),
+                    &[broken.clone(), reliable.clone()],
+                    NOW_US,
+                )
+                .counterfactual
+                .unwrap();
+            assert_eq!(first.key, broken.key);
+            if !abandoned {
+                controller.fail(&mut conn, &first, NOW_US + 1).unwrap();
+            }
+            let restarted = ExplorationController::with_policy(limits).unwrap();
+            let second = restarted
+                .decide_and_reserve(
+                    &mut conn,
+                    &call_site,
+                    &reference_plan_id(),
+                    &[broken, reliable.clone()],
+                    NOW_US + 101,
+                )
+                .counterfactual
+                .unwrap();
+            assert_eq!(second.key, reliable.key);
+            let snapshot = restarted.snapshot(&conn, &call_site, NOW_US + 101).unwrap();
+            assert_eq!(snapshot.calls_in_window, 2);
+            assert_eq!(snapshot.failed_calls, u32::from(!abandoned));
+            assert_eq!(snapshot.abandoned_calls, u32::from(abandoned));
+        }
+    }
+
+    #[test]
+    fn invalid_projection_cannot_receive_completion_first_probes() {
+        let call_site = site(18);
+        for prior in [f64::NAN, f64::INFINITY, -1.0] {
+            let mut invalid = candidate(&call_site, 1);
+            invalid.projected_savings_usd = prior;
+            let safe = candidate(&call_site, 2);
+            let mut conn = connection();
+            let decision = ExplorationController::new().decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id(),
+                &[invalid, safe.clone()],
+                NOW_US,
+            );
+            assert_eq!(decision.counterfactual.unwrap().key, safe.key);
+        }
+    }
+
+    #[test]
+    fn serialized_historical_policy_retains_its_allocator() {
+        let mut value = serde_json::to_value(ExplorationPolicy::default()).unwrap();
+        value.as_object_mut().unwrap().remove("allocation");
+        let historical: ExplorationPolicy = serde_json::from_value(value).unwrap();
+        assert_eq!(historical.allocation, ExplorationAllocation::LeastEvidence);
+        let current = ExplorationPolicy::default();
+        assert_eq!(
+            serde_json::from_str::<ExplorationPolicy>(&serde_json::to_string(&current).unwrap())
+                .unwrap(),
+            current
+        );
+    }
+
+    #[test]
+    fn default_rule_thresholds_round_trip_exactly_without_accepting_tampering() {
+        let call_site = site(19);
+        for threshold in [0.01_f32, 0.03_f32, 0.05_f32, 0.1_f32] {
+            let mut candidate = candidate(&call_site, 1);
+            candidate.divergence_threshold = f64::from(threshold);
+            let mut conn = connection();
+            let controller = ExplorationController::new();
+            let lease = controller
+                .decide_and_reserve(
+                    &mut conn,
+                    &call_site,
+                    &reference_plan_id(),
+                    &[candidate],
+                    NOW_US,
+                )
+                .counterfactual
+                .unwrap();
+            let transported: ExplorationLease =
+                serde_json::from_str(&serde_json::to_string(&lease).unwrap()).unwrap();
+            assert_eq!(
+                transported.divergence_threshold.to_bits(),
+                f64::from(threshold).to_bits()
+            );
+            let mut altered = transported.clone();
+            altered.divergence_threshold =
+                f64::from_bits(altered.divergence_threshold.to_bits() + 1);
+            assert_eq!(
+                controller.complete(&mut conn, &altered, &observation_feedback(0.0), NOW_US + 1),
+                Err(ExplorationError::LeaseMismatch)
+            );
+            assert_eq!(
+                controller
+                    .complete(
+                        &mut conn,
+                        &transported,
+                        &observation_feedback(0.0),
+                        NOW_US + 1
+                    )
+                    .unwrap(),
+                ExplorationCompletion::Recorded
+            );
+            assert_eq!(
+                controller
+                    .complete(
+                        &mut conn,
+                        &transported,
+                        &observation_feedback(0.0),
+                        NOW_US + 2
+                    )
+                    .unwrap(),
+                ExplorationCompletion::AlreadyRecorded
+            );
+        }
+    }
+
+    #[test]
+    fn refresh_never_bypasses_candidate_safety_filters() {
+        let call_site = site(20);
+        let mut refresh = candidate(&call_site, 1);
+        refresh.paired_observations = policy().evidence_target;
+        refresh.refresh_required = true;
+        for blocked in 0..9 {
+            let mut candidate = refresh.clone();
+            match blocked {
+                0 => candidate.forbidden = true,
+                1 => candidate.request_compatible = false,
+                2 => candidate.disabled = true,
+                3 => candidate.divergence_exposure = policy().divergence_exposure_budget,
+                4 => candidate.divergence_exposure = f64::NAN,
+                5 => candidate.divergence_threshold = f64::NAN,
+                6 => candidate.key.call_site_version = site(21),
+                7 => candidate.key.execution_plan_id = reference_plan_id(),
+                8 => candidate.projected_savings_usd = f64::INFINITY,
+                _ => unreachable!(),
+            }
+            let mut conn = connection();
+            let decision = ExplorationController::with_policy(policy())
+                .unwrap()
+                .decide_and_reserve(
+                    &mut conn,
+                    &call_site,
+                    &reference_plan_id(),
+                    &[candidate],
+                    NOW_US,
+                );
+            assert!(decision.return_reference);
+            assert!(decision.counterfactual.is_none(), "safety filter {blocked}");
+            assert_eq!(decision.reason, ExplorationReason::NoEligibleCandidate);
+        }
+    }
+
+    #[test]
+    fn refresh_keeps_concurrency_and_durable_call_caps() {
+        let call_site = site(22);
+        let mut refresh = candidate(&call_site, 1);
+        refresh.paired_observations = policy().evidence_target;
+        refresh.refresh_required = true;
+        let candidates = [refresh];
+        let mut conn = connection();
+        for attempt in 0..policy().max_calls_per_site {
+            let controller = ExplorationController::with_policy(policy()).unwrap();
+            let now_us = NOW_US + i64::from(attempt) * 2;
+            let lease = controller
+                .decide_and_reserve(
+                    &mut conn,
+                    &call_site,
+                    &reference_plan_id(),
+                    &candidates,
+                    now_us,
+                )
+                .counterfactual
+                .unwrap();
+            let concurrent = controller.decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id(),
+                &candidates,
+                now_us,
+            );
+            assert!(concurrent.counterfactual.is_none());
+            assert_eq!(
+                concurrent.reason,
+                if attempt + 1 == policy().max_calls_per_site {
+                    ExplorationReason::CallCapExhausted
+                } else {
+                    ExplorationReason::ConcurrencyCapReached
+                }
+            );
+            controller
+                .complete(&mut conn, &lease, &observation_feedback(0.0), now_us + 1)
+                .unwrap();
+        }
+        let capped = ExplorationController::with_policy(policy())
+            .unwrap()
+            .decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id(),
+                &candidates,
+                NOW_US + 10,
+            );
+        assert!(capped.counterfactual.is_none());
+        assert_eq!(capped.reason, ExplorationReason::CallCapExhausted);
+        assert_eq!(candidates[0].paired_observations, policy().evidence_target);
+    }
+
+    #[test]
+    fn refresh_respects_persisted_exposure_and_optional_task_damage_independently() {
+        for labeled_damage in [false, true] {
+            let call_site = site(23);
+            let mut refresh = candidate(&call_site, 1);
+            refresh.paired_observations = policy().evidence_target;
+            refresh.refresh_required = true;
+            let candidates = [refresh];
+            let mut conn = connection();
+            let controller = ExplorationController::with_policy(policy()).unwrap();
+            let lease = controller
+                .decide_and_reserve(
+                    &mut conn,
+                    &call_site,
+                    &reference_plan_id(),
+                    &candidates,
+                    NOW_US,
+                )
+                .counterfactual
+                .unwrap();
+            let feedback = CounterfactualFeedback {
+                divergence: if labeled_damage { 0.0 } else { 0.7 },
+                label: if labeled_damage {
+                    CounterfactualLabel::TaskQuality {
+                        reference_quality: 1.0,
+                        candidate_quality: 0.0,
+                    }
+                } else {
+                    CounterfactualLabel::ObservationOnly
+                },
+                ..observation_feedback(0.0)
+            };
+            controller
+                .complete(&mut conn, &lease, &feedback, NOW_US + 1)
+                .unwrap();
+            // The caller supplies zero exposure; durable feedback must still block.
+            let blocked = ExplorationController::with_policy(policy())
+                .unwrap()
+                .decide_and_reserve(
+                    &mut conn,
+                    &call_site,
+                    &reference_plan_id(),
+                    &candidates,
+                    NOW_US + 2,
+                );
+            assert!(blocked.counterfactual.is_none());
+            assert_eq!(blocked.reason, ExplorationReason::NoEligibleCandidate);
+        }
     }
 
     #[test]
@@ -1111,6 +1624,187 @@ mod tests {
     }
 
     #[test]
+    fn cancel_unstarted_releases_caps_without_reusing_a_sequence() {
+        let call_site = site(30);
+        let candidates = [candidate(&call_site, 1)];
+        let strict = ExplorationPolicy {
+            max_calls_per_site: 1,
+            ..policy()
+        };
+        let controller = ExplorationController::with_policy(strict.clone()).unwrap();
+        let mut conn = connection();
+        let first = controller
+            .decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id(),
+                &candidates,
+                NOW_US,
+            )
+            .counterfactual
+            .unwrap();
+        controller.cancel_unstarted(&mut conn, &first).unwrap();
+        let empty = controller.snapshot(&conn, &call_site, NOW_US + 1).unwrap();
+        assert_eq!(empty.calls_in_window, 0);
+        assert_eq!(empty.active_leases, 0);
+        assert_eq!(empty.failed_calls, 0);
+        assert_eq!(
+            controller.cancel_unstarted(&mut conn, &first).unwrap_err(),
+            ExplorationError::LeaseNotFound
+        );
+
+        let restarted = ExplorationController::with_policy(strict).unwrap();
+        let second = restarted
+            .decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id(),
+                &candidates,
+                NOW_US + 2,
+            )
+            .counterfactual
+            .unwrap();
+        assert!(second.sequence > first.sequence);
+        assert_eq!(
+            restarted
+                .complete(&mut conn, &first, &observation_feedback(0.0), NOW_US + 3)
+                .unwrap_err(),
+            ExplorationError::LeaseNotFound
+        );
+        assert_eq!(
+            restarted
+                .snapshot(&conn, &call_site, NOW_US + 3)
+                .unwrap()
+                .active_leases,
+            1
+        );
+        restarted
+            .complete(&mut conn, &second, &observation_feedback(0.0), NOW_US + 4)
+            .unwrap();
+        assert_eq!(
+            restarted.cancel_unstarted(&mut conn, &second).unwrap_err(),
+            ExplorationError::LeaseNotActive
+        );
+        let completed = restarted.snapshot(&conn, &call_site, NOW_US + 5).unwrap();
+        assert_eq!(completed.calls_in_window, 1);
+        assert_eq!(completed.completed_calls, 1);
+        assert_eq!(
+            restarted
+                .decide_and_reserve(
+                    &mut conn,
+                    &call_site,
+                    &reference_plan_id(),
+                    &candidates,
+                    NOW_US + 6,
+                )
+                .reason,
+            ExplorationReason::CallCapExhausted
+        );
+    }
+
+    #[test]
+    fn cancel_unstarted_rejects_tampering_and_preserves_other_leases() {
+        let call_site = site(31);
+        let other_site = site(32);
+        let controller = ExplorationController::new();
+        let mut conn = connection();
+        let first = controller
+            .decide_and_reserve(
+                &mut conn,
+                &call_site,
+                &reference_plan_id(),
+                &[candidate(&call_site, 1)],
+                NOW_US,
+            )
+            .counterfactual
+            .unwrap();
+        let other = controller
+            .decide_and_reserve(
+                &mut conn,
+                &other_site,
+                &reference_plan_id(),
+                &[candidate(&other_site, 2)],
+                NOW_US,
+            )
+            .counterfactual
+            .unwrap();
+        for field in 0..4 {
+            let mut forged = first.clone();
+            match field {
+                0 => forged.key.execution_plan_id = other.key.execution_plan_id.clone(),
+                1 => forged.started_at_us += 1,
+                2 => forged.expires_at_us += 1,
+                _ => forged.divergence_threshold += 0.01,
+            }
+            assert_eq!(
+                controller.cancel_unstarted(&mut conn, &forged).unwrap_err(),
+                ExplorationError::LeaseMismatch
+            );
+        }
+        controller.cancel_unstarted(&mut conn, &first).unwrap();
+        assert_eq!(
+            controller
+                .snapshot(&conn, &other_site, NOW_US + 1)
+                .unwrap()
+                .active_leases,
+            1
+        );
+        controller
+            .complete(&mut conn, &other, &observation_feedback(0.0), NOW_US + 2)
+            .unwrap();
+    }
+
+    #[test]
+    fn cancel_unstarted_cannot_erase_failed_or_abandoned_provider_allowances() {
+        for failed in [true, false] {
+            let call_site = site(33);
+            let mut conn = connection();
+            let strict = ExplorationPolicy {
+                max_calls_per_site: 1,
+                ..policy()
+            };
+            let controller = ExplorationController::with_policy(strict).unwrap();
+            let candidates = [candidate(&call_site, 1)];
+            let lease = controller
+                .decide_and_reserve(
+                    &mut conn,
+                    &call_site,
+                    &reference_plan_id(),
+                    &candidates,
+                    NOW_US,
+                )
+                .counterfactual
+                .unwrap();
+            let next_time = if failed {
+                controller.fail(&mut conn, &lease, NOW_US + 1).unwrap();
+                NOW_US + 2
+            } else {
+                lease.expires_at_us + 1
+            };
+            assert_eq!(
+                controller
+                    .decide_and_reserve(
+                        &mut conn,
+                        &call_site,
+                        &reference_plan_id(),
+                        &candidates,
+                        next_time,
+                    )
+                    .reason,
+                ExplorationReason::CallCapExhausted
+            );
+            assert_eq!(
+                controller.cancel_unstarted(&mut conn, &lease).unwrap_err(),
+                ExplorationError::LeaseNotActive
+            );
+            let retained = controller.snapshot(&conn, &call_site, next_time).unwrap();
+            assert_eq!(retained.calls_in_window, 1);
+            assert_eq!(retained.failed_calls, u32::from(failed));
+            assert_eq!(retained.abandoned_calls, u32::from(!failed));
+        }
+    }
+
+    #[test]
     fn one_live_counterfactual_is_enforced_and_failure_releases_it() {
         let call_site = site(3);
         let candidates = vec![candidate(&call_site, 1)];
@@ -1209,12 +1903,7 @@ mod tests {
                 .counterfactual
                 .unwrap();
             controller
-                .complete(
-                    &mut conn,
-                    &lease,
-                    &observation_feedback(0.2),
-                    NOW_US + 1,
-                )
+                .complete(&mut conn, &lease, &observation_feedback(0.2), NOW_US + 1)
                 .unwrap();
         }
 
@@ -1279,7 +1968,9 @@ mod tests {
             NOW_US + 101,
         );
         assert_eq!(next.reason, ExplorationReason::CandidateReserved);
-        let snapshot = controller.snapshot(&conn, &call_site, NOW_US + 101).unwrap();
+        let snapshot = controller
+            .snapshot(&conn, &call_site, NOW_US + 101)
+            .unwrap();
         assert_eq!(snapshot.calls_in_window, 2);
         assert_eq!(snapshot.active_leases, 1);
         assert_eq!(snapshot.abandoned_calls, 1);
@@ -1424,12 +2115,7 @@ mod tests {
         );
         assert_eq!(
             controller
-                .complete(
-                    &mut conn,
-                    &lease,
-                    &observation_feedback(0.3),
-                    NOW_US + 3,
-                )
+                .complete(&mut conn, &lease, &observation_feedback(0.3), NOW_US + 3,)
                 .unwrap_err(),
             ExplorationError::ConflictingFeedback
         );
@@ -1461,7 +2147,10 @@ mod tests {
             .unwrap_err();
         assert_eq!(error, ExplorationError::InvalidDivergence);
         assert_eq!(
-            controller.snapshot(&conn, &call_site, NOW_US + 1).unwrap().active_leases,
+            controller
+                .snapshot(&conn, &call_site, NOW_US + 1)
+                .unwrap()
+                .active_leases,
             1
         );
     }

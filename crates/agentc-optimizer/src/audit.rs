@@ -152,8 +152,11 @@ pub fn prune(conn: &mut Connection, cap: i64) -> Result<u64> {
 }
 
 fn prune_under(tx: &Transaction<'_>, cutoff_id: i64) -> Result<()> {
-    tx.execute("DELETE FROM plan_audit WHERE audit_id < ?1", params![cutoff_id])
-        .context("delete rows below cutoff")?;
+    tx.execute(
+        "DELETE FROM plan_audit WHERE audit_id < ?1",
+        params![cutoff_id],
+    )
+    .context("delete rows below cutoff")?;
     Ok(())
 }
 

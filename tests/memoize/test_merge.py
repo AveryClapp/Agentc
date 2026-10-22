@@ -10,7 +10,6 @@ Exit criteria for bd-1kw:
 
 from __future__ import annotations
 
-import hashlib
 import os
 import sqlite3
 import subprocess
@@ -19,6 +18,14 @@ import textwrap
 from pathlib import Path
 
 import pytest
+
+import agentc
+
+
+def _sdk_pythonpath() -> str:
+    # Children must exercise the same SDK and native ABI as this process.
+    # An installed wheel need not have a matching extension in the checkout.
+    return str(Path(agentc.__file__).resolve().parent.parent)
 
 
 def _child_script(home: Path, tag: int, call_site: str) -> str:
@@ -44,7 +51,7 @@ def _run_child(home: Path, tag: int, call_site: str) -> None:
     code = _child_script(home, tag, call_site)
     env = os.environ.copy()
     env["HOME"] = str(home)
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "python")
+    env["PYTHONPATH"] = _sdk_pythonpath()
     result = subprocess.run(
         [sys.executable, "-c", code],
         env=env,
@@ -93,7 +100,7 @@ def test_two_processes_insert_same_key_collapses_after_merge(home: Path):
     # process too to make sure any stragglers are folded.
     env = os.environ.copy()
     env["HOME"] = str(home)
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "python")
+    env["PYTHONPATH"] = _sdk_pythonpath()
     subprocess.run(
         [
             sys.executable,
@@ -139,7 +146,7 @@ def test_merge_is_idempotent_for_memoization_tables(home: Path):
 
     env = os.environ.copy()
     env["HOME"] = str(home)
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "python")
+    env["PYTHONPATH"] = _sdk_pythonpath()
 
     # Run merge twice — the second pass should not double-count.
     for _ in range(2):

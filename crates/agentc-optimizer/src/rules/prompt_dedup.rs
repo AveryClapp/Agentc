@@ -39,11 +39,24 @@ pub struct PromptDedupRule {
 
 impl Default for PromptDedupRule {
     fn default() -> Self {
-        Self { accuracy_budget: DEFAULT_ACCURACY_BUDGET }
+        Self {
+            accuracy_budget: DEFAULT_ACCURACY_BUDGET,
+        }
     }
 }
 
 impl RewriteRule for PromptDedupRule {
+    fn identity(&self) -> Option<crate::planner::RuleIdentity> {
+        crate::planner::RuleIdentity::new(
+            "prompt-jaccard-dedup-v1",
+            self.accuracy_budget,
+            serde_json::json!({
+                "min_token_count": MIN_TOKEN_COUNT,
+                "jaccard_threshold": JACCARD_THRESHOLD,
+            }),
+        )
+    }
+
     fn name(&self) -> &'static str {
         "PromptDedup"
     }
@@ -185,7 +198,10 @@ impl RewriteRule for PromptDedupRule {
             .map(|(_, m)| m.clone())
             .collect();
 
-        let rewritten_call = Call { messages: new_messages, ..call.clone() };
+        let rewritten_call = Call {
+            messages: new_messages,
+            ..call.clone()
+        };
         let drop_count = drop.len();
         Some(Proposal {
             rewritten: Plan::Rewritten {
@@ -219,7 +235,11 @@ fn jaccard(a: &[String], b: &[String]) -> f64 {
     let set_b: HashSet<&str> = b.iter().map(String::as_str).collect();
     let intersection = set_a.intersection(&set_b).count();
     let union = set_a.union(&set_b).count();
-    if union == 0 { 0.0 } else { intersection as f64 / union as f64 }
+    if union == 0 {
+        0.0
+    } else {
+        intersection as f64 / union as f64
+    }
 }
 
 fn extract_message_deps(call: &Call) -> Vec<Option<DepSource>> {
@@ -231,8 +251,7 @@ fn extract_message_deps(call: &Call) -> Vec<Option<DepSource>> {
         .cloned();
     match v {
         Some(val) => {
-            let deps: Vec<DepSource> =
-                serde_json::from_value(val).unwrap_or_default();
+            let deps: Vec<DepSource> = serde_json::from_value(val).unwrap_or_default();
             deps.into_iter().map(Some).collect()
         }
         None => vec![None; call.messages.len()],
@@ -268,7 +287,10 @@ mod tests {
             model: "gpt-4o".into(),
             messages: msgs
                 .iter()
-                .map(|(role, content)| Message { role: role.to_string(), content: content.to_string() })
+                .map(|(role, content)| Message {
+                    role: role.to_string(),
+                    content: content.to_string(),
+                })
                 .collect(),
             parameters: Parameters::default(),
             tools: vec![],
@@ -317,11 +339,7 @@ mod tests {
                 {"kind": "literal"},
             ]
         });
-        let mut call = make_call(&[
-            ("system", "sys"),
-            ("user", &blob),
-            ("user", &blob),
-        ]);
+        let mut call = make_call(&[("system", "sys"), ("user", &blob), ("user", &blob)]);
         call.parameters.extra = extra;
         let rule = PromptDedupRule::default();
         let prop = rule.propose(&call, &hot_profile()).expect("must fire");
@@ -334,11 +352,7 @@ mod tests {
     #[test]
     fn short_messages_are_never_deduped() {
         // Each "message" is shorter than MIN_TOKEN_COUNT tokens.
-        let call = make_call(&[
-            ("system", "Short."),
-            ("user", "Short."),
-            ("user", "Short."),
-        ]);
+        let call = make_call(&[("system", "Short."), ("user", "Short."), ("user", "Short.")]);
         assert!(!PromptDedupRule::default().applies(&call, &hot_profile()));
     }
 
@@ -347,11 +361,7 @@ mod tests {
         // 14-word vocabulary: adding one word gives Jaccard = 14/15 ≈ 0.933 ≥ 0.92.
         let base = long("alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima november oscar ");
         let variant = format!("{base} uniqueword");
-        let call = make_call(&[
-            ("system", "sys"),
-            ("user", &base),
-            ("user", &variant),
-        ]);
+        let call = make_call(&[("system", "sys"), ("user", &base), ("user", &variant)]);
         let rule = PromptDedupRule::default();
         assert!(rule.applies(&call, &hot_profile()));
     }

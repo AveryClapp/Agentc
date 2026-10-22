@@ -59,7 +59,7 @@ def test_parallel_map_singleton_degrades_serial():
     from agentc._parallel import get_parallel_peer
 
     seen: list[dict | None] = []
-    out = agentc.parallel_map(lambda x: (seen.append(get_parallel_peer()) or x), ["only"])
+    out = agentc.parallel_map(lambda x: seen.append(get_parallel_peer()) or x, ["only"])
     assert out == ["only"]
     assert seen == [None]
 
@@ -102,7 +102,10 @@ def test_build_call_dict_threads_tag_and_peer():
         d = build_call_dict_openai(
             kwargs, call_site_id="cs", trace_id_hex="0" * 32, span_id_hex="0" * 16
         )
-        assert d["parameters"]["extra"]["parallel_peer"]["input_deps"][0]["kind"] == "user_input"
+        assert (
+            d["parameters"]["extra"]["parallel_peer"]["input_deps"][0]["kind"]
+            == "user_input"
+        )
     finally:
         _set_peer(None)
 
@@ -112,12 +115,8 @@ def test_parallel_branch_fires_and_audits(storage):
     produces a ``Plan::Parallel`` proposal with ``rule=ParallelBranch``,
     and the corresponding audit row lands in ``optimizer_audit.db``.
 
-    Run in a subprocess: ``agentc.init()`` reads ``AGENTC_STORAGE_PATH``
-    on first init and doesn't fully reset on subsequent init/shutdown
-    cycles within the same Python process. If any earlier test in the
-    suite already initialized agentc, our monkeypatched env wouldn't
-    take effect. Subprocess isolation gives this test a fresh
-    interpreter where its env is the only env."""
+    A fresh subprocess verifies the native proposal and async provider
+    boundary with its storage path installed before Agentc imports."""
     import subprocess
     import sqlite3
     import sys
@@ -168,6 +167,29 @@ try:
         f"expected rule ParallelBranch, got {getattr(plan, 'rule', None)}"
     assert len(getattr(plan, "calls", [])) == 2, \\
         f"expected 2 calls, got {len(getattr(plan, 'calls', []))}"
+    assert plan.projected_savings_usd == 0.0, \\
+        f"parallel dispatch must not invent dollar savings: {plan.projected_savings_usd}"
+    # A real native certificate must preserve the single-response async API.
+    # The driver has already scheduled each input; dispatching its synthetic
+    # peer again would duplicate provider calls and return the wrong shape.
+    import asyncio
+    from agentc._executor import dispatch
+
+    reference = object()
+    dispatched = {"original": 0, "mutated": 0}
+
+    async def original():
+        dispatched["original"] += 1
+        return reference
+
+    async def mutated(call):
+        dispatched["mutated"] += 1
+        raise AssertionError("native certificate must not dispatch a peer")
+
+    result = asyncio.run(dispatch(plan, run_original=original, run_mutated=mutated))
+    assert result is reference
+    assert dispatched == {"original": 1, "mutated": 0}
+    assert plan.dispatch_fallback_reason == "parallel_observe_only"
     observe_outcome(plan, warm_out)
 finally:
     agentc.shutdown()
@@ -181,6 +203,7 @@ finally:
             # selector currently excludes multi-call plans until it has a
             # compatible paired comparator and admission path.
             "AGENTC_COMPOSE": "0",
+            "AGENTC_ENABLED_RULES": "ParallelBranch",
         },
         capture_output=True,
         text=True,
@@ -195,7 +218,9 @@ finally:
     assert os.path.exists(db), "audit DB should exist after shutdown"
     conn = sqlite3.connect(db)
     rows = conn.execute(
-        "select rule, plan_kind from plan_audit where rule = 'ParallelBranch'"
+        "select rule, plan_kind, projected_savings_usd from plan_audit "
+        "where rule = 'ParallelBranch'"
     ).fetchall()
     assert rows, "expected ≥1 ParallelBranch audit row"
     assert all(r[1] == "parallel" for r in rows)
+    assert all(r[2] == 0.0 for r in rows)

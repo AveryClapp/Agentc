@@ -21,6 +21,7 @@
 //! exact complete-plan evidence. [`Optimizer::plan`] remains directly callable
 //! by evaluation code for the historical composition and first-match baselines.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -35,6 +36,45 @@ use crate::model_catalog::{ModelCatalog, ModelTarget, RequestRequirements};
 /// Frozen bound from the joint execution-planning contract. Model routing is
 /// an additional target choice and does not consume semantic rewrite depth.
 pub const MAX_JOINT_REWRITE_DEPTH: usize = 3;
+
+/// Content-free implementation and configuration owned by the rewrite rule.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuleIdentity {
+    pub implementation_version: String,
+    pub parameters: serde_json::Value,
+}
+
+pub const RULE_IDENTITIES_KEY: &str = "agentc_rule_identities";
+
+impl RuleIdentity {
+    pub fn new(version: &str, accuracy_budget: f32, parameters: serde_json::Value) -> Option<Self> {
+        if version.is_empty()
+            || !accuracy_budget.is_finite()
+            || !(0.0..=1.0).contains(&accuracy_budget)
+            || !parameters.is_object()
+        {
+            return None;
+        }
+        fn complete(value: &serde_json::Value) -> bool {
+            match value {
+                serde_json::Value::Null => false,
+                serde_json::Value::Array(items) => items.iter().all(complete),
+                serde_json::Value::Object(items) => items.values().all(complete),
+                _ => true,
+            }
+        }
+        if !complete(&parameters) {
+            return None;
+        }
+        Some(Self {
+            implementation_version: version.to_string(),
+            parameters: serde_json::json!({
+                "accuracy_budget": accuracy_budget, "settings": parameters,
+            }),
+        })
+    }
+}
 
 /// Per-rule attribution inside a `Plan::Composed`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,9 +140,10 @@ impl Plan {
     pub fn rule_names(&self) -> Vec<String> {
         match self {
             Plan::Rewritten { rule, .. } | Plan::Parallel { rule, .. } => vec![rule.clone()],
-            Plan::Composed { rules, .. } => {
-                rules.iter().map(|application| application.rule.clone()).collect()
-            }
+            Plan::Composed { rules, .. } => rules
+                .iter()
+                .map(|application| application.rule.clone())
+                .collect(),
             Plan::Cached { .. } => vec!["CacheHit".to_string()],
             Plan::PassThrough => Vec::new(),
         }
@@ -135,8 +176,7 @@ pub struct Proposal {
     pub safety_check: Box<dyn Fn(&Call) -> bool + Send + Sync>,
 }
 
-/// Trait implemented by each of the five rewrite rules (`CacheHit`,
-/// `ContextCompress`, `ParallelBranch`, `ModelDowngrade`, `StateDrop`).
+/// Trait implemented by rewrite rules.
 ///
 /// O2 ships the trait and planner plumbing; the concrete rules are filed
 /// under separate beads (O5 in particular).
@@ -144,6 +184,13 @@ pub trait RewriteRule: Send + Sync {
     /// Stable name — used in audit rows and the `agentc optimize inspect`
     /// readout. Must never change once a rule ships.
     fn name(&self) -> &'static str;
+
+    /// Unknown implementations cannot share production complete-plan evidence.
+    /// Include settings that affect applicability, mutation or safety; never
+    /// include prompts, response contents, state values or storage paths.
+    fn identity(&self) -> Option<RuleIdentity> {
+        None
+    }
 
     /// Cheap predicate: does this rule even look at this call?
     fn applies(&self, call: &Call, profile: &CallSiteProfile) -> bool;
@@ -173,8 +220,25 @@ pub trait RewriteRule: Send + Sync {
 pub struct Optimizer {
     cost_model: Arc<CostModel>,
     rules: Vec<Box<dyn RewriteRule>>,
+    rule_identities: BTreeMap<String, Option<RuleIdentity>>,
     config: OptimizerConfig,
     budget: Arc<Budget>,
+}
+
+/// Why the complete-plan generator stopped. A cold or budget-limited search
+/// cannot establish that a request has no natural optimization opportunity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateSearchStatus {
+    Complete,
+    Disabled,
+    ColdCallSite,
+    OverheadBudget,
+}
+
+pub struct CandidateSearch {
+    pub plans: Vec<Plan>,
+    pub status: CandidateSearchStatus,
 }
 
 impl Optimizer {
@@ -196,7 +260,25 @@ impl Optimizer {
         config: OptimizerConfig,
         budget: Arc<Budget>,
     ) -> Self {
-        Self { cost_model, rules, config, budget }
+        let mut rule_identities = BTreeMap::new();
+        for rule in &rules {
+            let name = rule.name().to_string();
+            match rule_identities.entry(name) {
+                std::collections::btree_map::Entry::Occupied(mut entry) => {
+                    entry.insert(None);
+                }
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert(rule.identity());
+                }
+            }
+        }
+        Self {
+            cost_model,
+            rules,
+            rule_identities,
+            config,
+            budget,
+        }
     }
 
     /// Construct an optimizer with no rules (fail-open pass-through for
@@ -233,10 +315,9 @@ impl Optimizer {
     /// environment value wins; otherwise the strictest constituent rule
     /// budget applies to this complete plan only.
     pub fn divergence_threshold_for_plan(&self, plan: &Plan) -> f64 {
-        std::env::var("AGENTC_SHADOW_DIVERGENCE_BUDGET")
-            .ok()
-            .and_then(|value| value.trim().parse::<f64>().ok())
-            .filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
+        self.config
+            .selection
+            .global_divergence_threshold
             .or_else(|| {
                 plan.rule_names()
                     .iter()
@@ -251,7 +332,49 @@ impl Optimizer {
     /// Add a rule post-construction (primarily for tests that want to
     /// inject a mock rule into an otherwise stock optimizer).
     pub fn push_rule(&mut self, rule: Box<dyn RewriteRule>) {
+        let name = rule.name().to_string();
+        let identity = if self.rule_identities.contains_key(&name) {
+            None
+        } else {
+            rule.identity()
+        };
+        self.rule_identities.insert(name, identity);
         self.rules.push(rule);
+    }
+
+    /// Bind only the rules in this complete plan, so enabling an unrelated
+    /// candidate does not invalidate an already learned incumbent.
+    pub fn bind_rule_identities(&self, plan: &mut Plan) {
+        let identities: Option<BTreeMap<_, _>> = plan
+            .rule_names()
+            .into_iter()
+            .map(|name| {
+                self.rule_identities
+                    .get(&name)
+                    .cloned()
+                    .flatten()
+                    .map(|identity| (name, identity))
+            })
+            .collect();
+        let declaration = serde_json::json!({"schema_version": 1, "rules": identities});
+        match plan {
+            Plan::Rewritten { call, .. } | Plan::Composed { call, .. } => {
+                call.parameters.extra[RULE_IDENTITIES_KEY] = declaration;
+            }
+            Plan::Cached { value } => {
+                if let Some(value) = value.as_object_mut() {
+                    value.insert(RULE_IDENTITIES_KEY.to_string(), declaration);
+                } else {
+                    *plan = Plan::PassThrough;
+                }
+            }
+            Plan::Parallel { calls, .. } => {
+                for call in calls {
+                    call.parameters.extra[RULE_IDENTITIES_KEY] = declaration.clone();
+                }
+            }
+            Plan::PassThrough => {}
+        }
     }
 
     /// Enumerate the bounded complete-plan search space used by the empirical
@@ -259,9 +382,21 @@ impl Optimizer {
     /// projections only produce concrete mutations; they never rank the
     /// returned plans.
     pub fn candidate_plans(&self, call: &Call, catalog: &ModelCatalog) -> Vec<Plan> {
-        let reference = || vec![Plan::PassThrough];
-        if !self.config.enabled {
-            return reference();
+        self.candidate_search(call, catalog).plans
+    }
+
+    /// The same bounded search, with its actual completion status. No second
+    /// enumeration or rule evaluation is performed for telemetry.
+    pub fn candidate_search(&self, call: &Call, catalog: &ModelCatalog) -> CandidateSearch {
+        let reference = |status| CandidateSearch {
+            plans: vec![Plan::PassThrough],
+            status,
+        };
+        if !self.config.enabled
+            || !crate::model_catalog::provider_configuration_supported(call)
+            || !crate::model_catalog::application_version_supported(call)
+        {
+            return reference(CandidateSearchStatus::Disabled);
         }
 
         let deadline = Instant::now();
@@ -271,7 +406,7 @@ impl Optimizer {
             .get(&call.call_site_id)
             .unwrap_or_else(|| CallSiteProfile::new(call.call_site_id.clone()));
         if profile.window_observations < self.config.hot_threshold {
-            return reference();
+            return reference(CandidateSearchStatus::ColdCallSite);
         }
 
         let now_us = now_us();
@@ -286,7 +421,10 @@ impl Optimizer {
             if rule.name() == "ModelDowngrade" {
                 continue;
             }
-            if self.budget.is_disabled(&call.call_site_id, rule.name(), now_us) {
+            if self
+                .budget
+                .is_disabled(&call.call_site_id, rule.name(), now_us)
+            {
                 continue;
             }
             if call.has_opaque_native_messages() && !rule.preserves_native_messages() {
@@ -300,7 +438,7 @@ impl Optimizer {
                 }
             }
             if deadline.elapsed().as_micros() > max_overhead_us {
-                return reference();
+                return reference(CandidateSearchStatus::OverheadBudget);
             }
         }
 
@@ -308,7 +446,7 @@ impl Optimizer {
         semantic_plans.extend(crate::composition::enumerate_compatible_plans(
             proposals,
             call,
-            MAX_JOINT_REWRITE_DEPTH,
+            self.config.selection.max_rewrite_depth,
         ));
 
         let requirements = RequestRequirements::from_call(call);
@@ -325,8 +463,7 @@ impl Optimizer {
             if !routing_enabled {
                 continue;
             }
-            let (Some(source), Some(candidate_call)) =
-                (source, single_call(call, &semantic_plan))
+            let (Some(source), Some(candidate_call)) = (source, single_call(call, &semantic_plan))
             else {
                 continue;
             };
@@ -335,21 +472,35 @@ impl Optimizer {
                     continue;
                 }
                 let projected_savings = projected_routing_savings(&profile, source, target);
-                if let Some(routed) =
-                    route_semantic_plan(&semantic_plan, candidate_call, target, catalog, projected_savings)
-                {
+                if let Some(routed) = route_semantic_plan(
+                    &semantic_plan,
+                    candidate_call,
+                    target,
+                    catalog,
+                    projected_savings,
+                ) {
                     plans.push(routed);
                 }
                 if deadline.elapsed().as_micros() > max_overhead_us {
-                    return reference();
+                    return reference(CandidateSearchStatus::OverheadBudget);
                 }
             }
         }
 
         if deadline.elapsed().as_micros() > max_overhead_us {
-            reference()
+            reference(CandidateSearchStatus::OverheadBudget)
         } else {
-            plans
+            for plan in &mut plans {
+                self.bind_rule_identities(plan);
+            }
+            if deadline.elapsed().as_micros() > max_overhead_us {
+                reference(CandidateSearchStatus::OverheadBudget)
+            } else {
+                CandidateSearch {
+                    plans,
+                    status: CandidateSearchStatus::Complete,
+                }
+            }
         }
     }
 
@@ -357,6 +508,11 @@ impl Optimizer {
     /// caught at the FFI boundary in `agentc-profiler`; internally we just
     /// return `PassThrough` on any ambiguous state).
     pub fn plan(&self, call: &Call) -> Plan {
+        if !crate::model_catalog::provider_configuration_supported(call)
+            || !crate::model_catalog::application_version_supported(call)
+        {
+            return Plan::PassThrough;
+        }
         // Step 1 — master switch.
         if !self.config.enabled {
             return Plan::PassThrough;
@@ -389,7 +545,10 @@ impl Optimizer {
         let now_us = now_us();
         let mut proposals: Vec<(String, Proposal)> = Vec::with_capacity(self.rules.len());
         for rule in &self.rules {
-            if self.budget.is_disabled(&call.call_site_id, rule.name(), now_us) {
+            if self
+                .budget
+                .is_disabled(&call.call_site_id, rule.name(), now_us)
+            {
                 continue;
             }
             if call.has_opaque_native_messages() && !rule.preserves_native_messages() {
@@ -421,8 +580,8 @@ impl Optimizer {
 
         // Step 5 — either V2 composition or V1 first-match-wins.
         // `AGENTC_COMPOSE=0` disables composition for baseline comparisons.
-        
-        if self.config.compose {
+
+        let mut plan = if self.config.compose {
             let result = crate::composition::compose_proposals(proposals, call);
             if deadline.elapsed().as_micros() > max_overhead_us {
                 return Plan::PassThrough;
@@ -440,6 +599,12 @@ impl Optimizer {
                     }
                 })
                 .unwrap_or(Plan::PassThrough)
+        };
+        self.bind_rule_identities(&mut plan);
+        if deadline.elapsed().as_micros() > max_overhead_us {
+            Plan::PassThrough
+        } else {
+            plan
         }
     }
 }
@@ -457,11 +622,9 @@ fn projected_routing_savings(
     source: &ModelTarget,
     target: &ModelTarget,
 ) -> f32 {
-    let source_price = profile.input_tokens.mean
-        * source.price.input_per_million_tokens_usd
+    let source_price = profile.input_tokens.mean * source.price.input_per_million_tokens_usd
         + profile.output_tokens.mean * source.price.output_per_million_tokens_usd;
-    let target_price = profile.input_tokens.mean
-        * target.price.input_per_million_tokens_usd
+    let target_price = profile.input_tokens.mean * target.price.input_per_million_tokens_usd
         + profile.output_tokens.mean * target.price.output_per_million_tokens_usd;
     if source_price <= 0.0 || !source_price.is_finite() || !target_price.is_finite() {
         return 0.0;
@@ -695,7 +858,13 @@ mod tests {
     fn disabled_optimizer_short_circuits() {
         let cm = Arc::new(CostModel::new());
         observe(&cm, "site", 50);
-        let opt = Optimizer::empty(cm, OptimizerConfig { enabled: false, ..Default::default() });
+        let opt = Optimizer::empty(
+            cm,
+            OptimizerConfig {
+                enabled: false,
+                ..Default::default()
+            },
+        );
         assert!(matches!(opt.plan(&sample_call("site")), Plan::PassThrough));
     }
 
@@ -740,7 +909,10 @@ mod tests {
         for _ in 0..crate::budget::BREACH_STREAK {
             budget.record_sample("site", "AlwaysFires", 1.0, 0.05, now);
         }
-        assert!(budget.is_disabled("site", "AlwaysFires", now), "guard should have disabled it");
+        assert!(
+            budget.is_disabled("site", "AlwaysFires", now),
+            "guard should have disabled it"
+        );
 
         // The gate must now suppress the rule → pass-through.
         assert!(
@@ -768,7 +940,11 @@ mod tests {
         );
         let plan = opt.plan(&sample_call("site"));
         match plan {
-            Plan::Rewritten { rule, projected_savings_usd, .. } => {
+            Plan::Rewritten {
+                rule,
+                projected_savings_usd,
+                ..
+            } => {
                 assert_eq!(rule, "AlwaysFires");
                 assert!((projected_savings_usd - 0.5).abs() < 1e-6);
             }
@@ -824,10 +1000,7 @@ mod tests {
         // projects 0.5 but passes. The planner must pick AlwaysFires.
         let opt = Optimizer::new(
             cm,
-            vec![
-                Box::new(UnsafeRule),
-                Box::new(AlwaysFires { savings: 0.5 }),
-            ],
+            vec![Box::new(UnsafeRule), Box::new(AlwaysFires { savings: 0.5 })],
             OptimizerConfig::default(),
         );
         match opt.plan(&sample_call("site")) {
@@ -843,7 +1016,10 @@ mod tests {
         let opt = Optimizer::new(
             cm,
             vec![Box::new(SlowRule), Box::new(AlwaysFires { savings: 1.0 })],
-            OptimizerConfig { max_overhead_ms: 1.0, ..Default::default() },
+            OptimizerConfig {
+                max_overhead_ms: 1.0,
+                ..Default::default()
+            },
         );
         // SlowRule sleeps 20ms which exceeds the 1ms budget.
         let plan = opt.plan(&sample_call("site"));

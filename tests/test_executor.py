@@ -17,6 +17,42 @@ from agentc._executor import dispatch
 from agentc._optimizer import Plan
 
 
+class FatalStop(BaseException):
+    pass
+
+
+@pytest.mark.parametrize("kind", ["rewritten", "composed", "cached"])
+@pytest.mark.parametrize("error_type", [FatalStop, asyncio.CancelledError])
+@pytest.mark.asyncio
+async def test_abort_signals_never_dispatch_a_fallback(kind, error_type):
+    calls = {"original": 0, "mutated": 0}
+    plan = Plan(
+        kind=kind,
+        call={"model": "fixture"},
+        calls=[{"model": "fixture"}],
+        value="cached",
+    )
+
+    async def original():
+        calls["original"] += 1
+        return "unwanted fallback"
+
+    async def mutated(call):
+        calls["mutated"] += 1
+        raise error_type()
+
+    def decode(value):
+        raise error_type()
+
+    with pytest.raises(error_type):
+        await dispatch(
+            plan, run_original=original, run_mutated=mutated, decode_cached=decode
+        )
+    assert calls["original"] == 0
+    assert calls["mutated"] == (0 if kind == "cached" else 1)
+    assert plan.dispatch_fallback is False
+
+
 @pytest.mark.asyncio
 async def test_pass_through_runs_original_once():
     calls = {"original": 0, "mutated": 0}
@@ -185,54 +221,88 @@ async def test_composed_falls_back_exactly_once_on_failure():
 
 
 @pytest.mark.asyncio
-async def test_parallel_dispatches_all_calls_concurrently():
-    completed = []
+@pytest.mark.parametrize("branches", [[], [{"id": "base"}, {"id": "peer"}]])
+@pytest.mark.parametrize("validation_contract", [None, "fixture-contract"])
+async def test_parallel_certificate_returns_one_original_response(
+    branches, validation_contract
+):
+    reference = object()
+    calls = {"original": 0, "mutated": 0}
 
-    async def original() -> str:
-        return "orig"
+    async def original():
+        calls["original"] += 1
+        return reference
 
-    async def mutated(c):
-        await asyncio.sleep(0.05)
-        completed.append(c["id"])
-        return c["id"]
+    async def mutated(call):
+        calls["mutated"] += 1
+        raise AssertionError("an independence certificate must not dispatch a peer")
 
     plan = Plan(
         kind="parallel",
         rule="ParallelBranch",
-        calls=[{"id": "a"}, {"id": "b"}, {"id": "c"}],
+        calls=branches,
+        validation_contract_sha256=validation_contract,
     )
-
-    import time
-    t0 = time.monotonic()
     out = await dispatch(plan, run_original=original, run_mutated=mutated)
-    elapsed = time.monotonic() - t0
-    assert sorted(out) == ["a", "b", "c"]
-    # Concurrent → ~50ms, not 150ms.
-    assert elapsed < 0.12, f"parallel dispatch took {elapsed:.3f}s"
+    assert out is reference
+    assert calls == {"original": 1, "mutated": 0}
+    assert plan.dispatch_fallback_reason == "parallel_observe_only"
+    assert plan.reference_fallback_latency_ms >= 0
 
 
 @pytest.mark.asyncio
-async def test_parallel_falls_back_on_any_failure():
+@pytest.mark.parametrize(
+    "error_type", [RuntimeError, FatalStop, asyncio.CancelledError]
+)
+async def test_parallel_certificate_preserves_original_failure(error_type):
+    calls = {"original": 0, "mutated": 0}
+    failure = error_type("reference failed")
+
+    async def original():
+        calls["original"] += 1
+        raise failure
+
+    async def mutated(call):
+        calls["mutated"] += 1
+        raise AssertionError("a failed reference must not dispatch peers")
+
+    plan = Plan(kind="parallel", calls=[{"id": "base"}, {"id": "peer"}])
+    with pytest.raises(error_type) as exc:
+        await dispatch(plan, run_original=original, run_mutated=mutated)
+    assert exc.value is failure
+    assert calls == {"original": 1, "mutated": 0}
+    assert plan.dispatch_fallback_reason == "parallel_observe_only"
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_sync_parallel_certificate_preserves_the_original_call(fails):
+    from agentc._patches._optimizer_glue import dispatch_sync
+
+    reference = object()
+    failure = RuntimeError("reference failed")
     calls = {"original": 0, "mutated": 0}
 
-    async def original() -> str:
+    def original():
         calls["original"] += 1
-        return "fallback"
+        if fails:
+            raise failure
+        return reference
 
-    async def mutated(c):
+    def mutated(call):
         calls["mutated"] += 1
-        if c["id"] == "b":
-            raise RuntimeError("boom")
-        return c["id"]
+        raise AssertionError("an independence certificate must not dispatch a peer")
 
-    plan = Plan(
-        kind="parallel",
-        rule="ParallelBranch",
-        calls=[{"id": "a"}, {"id": "b"}],
-    )
-    out = await dispatch(plan, run_original=original, run_mutated=mutated)
-    assert out == "fallback"
-    assert calls["original"] == 1
+    plan = Plan(kind="parallel", calls=[{"id": "base"}, {"id": "peer"}])
+    if fails:
+        with pytest.raises(RuntimeError) as exc:
+            dispatch_sync(plan, run_original=original, run_mutated=mutated)
+        assert exc.value is failure
+    else:
+        assert (
+            dispatch_sync(plan, run_original=original, run_mutated=mutated) is reference
+        )
+    assert calls == {"original": 1, "mutated": 0}
+    assert plan.dispatch_fallback_reason == "parallel_observe_only"
 
 
 @pytest.mark.asyncio

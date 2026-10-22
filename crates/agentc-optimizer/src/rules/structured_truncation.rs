@@ -36,17 +36,29 @@ pub struct StructuredTruncationRule {
 
 impl Default for StructuredTruncationRule {
     fn default() -> Self {
-        Self { accuracy_budget: DEFAULT_ACCURACY_BUDGET }
+        Self {
+            accuracy_budget: DEFAULT_ACCURACY_BUDGET,
+        }
     }
 }
 
 impl RewriteRule for StructuredTruncationRule {
+    fn identity(&self) -> Option<crate::planner::RuleIdentity> {
+        crate::planner::RuleIdentity::new(
+            "structured-tool-key-projection-v1",
+            self.accuracy_budget,
+            serde_json::json!({}),
+        )
+    }
+
     fn name(&self) -> &'static str {
         "StructuredTruncation"
     }
 
     fn applies(&self, call: &Call, _profile: &CallSiteProfile) -> bool {
-        let Some(deps) = extract_message_deps(call) else { return false };
+        let Some(deps) = extract_message_deps(call) else {
+            return false;
+        };
         if deps.len() != call.messages.len() {
             return false;
         }
@@ -72,9 +84,7 @@ impl RewriteRule for StructuredTruncationRule {
             .messages
             .iter()
             .zip(&message_deps)
-            .rfind(|(msg, dep)| {
-                msg.role == "user" && !matches!(dep, DepSource::ToolOutput { .. })
-            })
+            .rfind(|(msg, dep)| msg.role == "user" && !matches!(dep, DepSource::ToolOutput { .. }))
             .map(|(msg, _)| msg.content.as_str())
             .unwrap_or("");
 
@@ -117,7 +127,10 @@ impl RewriteRule for StructuredTruncationRule {
                 continue;
             }
             dropped_bytes += removed;
-            new_messages[i] = Message { role: msg.role.clone(), content: new_content };
+            new_messages[i] = Message {
+                role: msg.role.clone(),
+                content: new_content,
+            };
             referenced_per_msg.push((i, referenced));
         }
 
@@ -128,7 +141,10 @@ impl RewriteRule for StructuredTruncationRule {
         let dropped_frac = dropped_bytes as f32 / total_input_bytes.max(1) as f32;
         let projected = profile.cost_usd.mean as f32 * dropped_frac;
 
-        let rewritten_call = Call { messages: new_messages, ..call.clone() };
+        let rewritten_call = Call {
+            messages: new_messages,
+            ..call.clone()
+        };
         Some(Proposal {
             rewritten: Plan::Rewritten {
                 rule: self.name().to_string(),
@@ -141,10 +157,16 @@ impl RewriteRule for StructuredTruncationRule {
                 // Re-verify: the referenced keys we planned to keep still
                 // exist in the original call (guards against mutation between
                 // propose() and safety_check()).
-                let Some(deps) = extract_message_deps(call) else { return false };
+                let Some(deps) = extract_message_deps(call) else {
+                    return false;
+                };
                 for (i, referenced) in &referenced_per_msg {
-                    let Some(msg) = call.messages.get(*i) else { return false };
-                    let Some(dep) = deps.get(*i) else { return false };
+                    let Some(msg) = call.messages.get(*i) else {
+                        return false;
+                    };
+                    let Some(dep) = deps.get(*i) else {
+                        return false;
+                    };
                     if !matches!(dep, DepSource::ToolOutput { .. }) {
                         return false;
                     }
@@ -165,12 +187,20 @@ impl RewriteRule for StructuredTruncationRule {
 }
 
 fn extract_message_deps(call: &Call) -> Option<Vec<DepSource>> {
-    let v = call.parameters.extra.as_object()?.get("message_deps")?.clone();
+    let v = call
+        .parameters
+        .extra
+        .as_object()?
+        .get("message_deps")?
+        .clone();
     serde_json::from_value::<Vec<DepSource>>(v).ok()
 }
 
 fn keys_referenced_in(salient: &str, keys: &[String]) -> HashSet<String> {
-    keys.iter().filter(|k| salient.contains(k.as_str())).cloned().collect()
+    keys.iter()
+        .filter(|k| salient.contains(k.as_str()))
+        .cloned()
+        .collect()
 }
 
 #[cfg(test)]
@@ -195,7 +225,10 @@ mod tests {
             span_id: [0u8; 8],
             model: "gpt-4o".into(),
             messages,
-            parameters: Parameters { extra, ..Default::default() },
+            parameters: Parameters {
+                extra,
+                ..Default::default()
+            },
             tools: vec![],
             input_deps: vec![],
             occurrence_ix: 0,
@@ -218,7 +251,10 @@ mod tests {
     #[test]
     fn no_tool_output_deps_does_not_apply() {
         let call = call_with(
-            vec![Message { role: "user".into(), content: "{\"a\":1,\"b\":2}".into() }],
+            vec![Message {
+                role: "user".into(),
+                content: "{\"a\":1,\"b\":2}".into(),
+            }],
             vec![DepSource::Literal],
         );
         assert!(!StructuredTruncationRule::default().applies(&call, &hot_profile(0.01)));
@@ -228,8 +264,14 @@ mod tests {
     fn unreferenced_keys_are_dropped() {
         let call = call_with(
             vec![
-                Message { role: "user".into(), content: tool_json_large() },
-                Message { role: "user".into(), content: "The answer label is: label".into() },
+                Message {
+                    role: "user".into(),
+                    content: tool_json_large(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "The answer label is: label".into(),
+                },
             ],
             vec![tool_dep(), DepSource::Literal],
         );
@@ -238,10 +280,21 @@ mod tests {
         match &prop.rewritten {
             Plan::Rewritten { call, .. } => {
                 let obj: Value = serde_json::from_str(&call.messages[0].content).unwrap();
-                let keys: Vec<&str> = obj.as_object().unwrap().keys().map(String::as_str).collect();
+                let keys: Vec<&str> = obj
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .map(String::as_str)
+                    .collect();
                 assert!(keys.contains(&"label"), "referenced key must survive");
-                assert!(!keys.contains(&"raw_text"), "unreferenced key must be dropped");
-                assert!(!keys.contains(&"debug_trace"), "unreferenced key must be dropped");
+                assert!(
+                    !keys.contains(&"raw_text"),
+                    "unreferenced key must be dropped"
+                );
+                assert!(
+                    !keys.contains(&"debug_trace"),
+                    "unreferenced key must be dropped"
+                );
             }
             _ => panic!("expected Rewritten"),
         }
@@ -254,20 +307,34 @@ mod tests {
     fn all_keys_referenced_does_not_fire() {
         let call = call_with(
             vec![
-                Message { role: "user".into(), content: "{\"a\":1,\"b\":2}".into() },
-                Message { role: "user".into(), content: "give me a and b please".into() },
+                Message {
+                    role: "user".into(),
+                    content: "{\"a\":1,\"b\":2}".into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "give me a and b please".into(),
+                },
             ],
             vec![tool_dep(), DepSource::Literal],
         );
-        assert!(StructuredTruncationRule::default().propose(&call, &hot_profile(0.02)).is_none());
+        assert!(StructuredTruncationRule::default()
+            .propose(&call, &hot_profile(0.02))
+            .is_none());
     }
 
     #[test]
     fn non_json_tool_output_is_skipped() {
         let call = call_with(
             vec![
-                Message { role: "user".into(), content: "not json at all".into() },
-                Message { role: "user".into(), content: "any question".into() },
+                Message {
+                    role: "user".into(),
+                    content: "not json at all".into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "any question".into(),
+                },
             ],
             vec![tool_dep(), DepSource::Literal],
         );
@@ -278,7 +345,10 @@ mod tests {
     fn no_consumer_message_does_not_fire() {
         // Only message is the ToolOutput itself — no salient consumer.
         let call = call_with(
-            vec![Message { role: "user".into(), content: tool_json_large() }],
+            vec![Message {
+                role: "user".into(),
+                content: tool_json_large(),
+            }],
             vec![tool_dep()],
         );
         let rule = StructuredTruncationRule::default();
@@ -291,8 +361,14 @@ mod tests {
         // System message tagged ToolOutput must not fire.
         let call = call_with(
             vec![
-                Message { role: "system".into(), content: "{\"a\":1,\"b\":2}".into() },
-                Message { role: "user".into(), content: "tell me about a".into() },
+                Message {
+                    role: "system".into(),
+                    content: "{\"a\":1,\"b\":2}".into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "tell me about a".into(),
+                },
             ],
             vec![tool_dep(), DepSource::Literal],
         );
@@ -304,8 +380,14 @@ mod tests {
         // Only 1 key — even if unreferenced there is nothing to project.
         let call = call_with(
             vec![
-                Message { role: "user".into(), content: "{\"only\":1}".into() },
-                Message { role: "user".into(), content: "nothing relevant here".into() },
+                Message {
+                    role: "user".into(),
+                    content: "{\"only\":1}".into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "nothing relevant here".into(),
+                },
             ],
             vec![tool_dep(), DepSource::Literal],
         );
@@ -319,8 +401,14 @@ mod tests {
     fn safety_check_fails_if_key_removed_from_original() {
         let call = call_with(
             vec![
-                Message { role: "user".into(), content: tool_json_large() },
-                Message { role: "user".into(), content: "label please".into() },
+                Message {
+                    role: "user".into(),
+                    content: tool_json_large(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "label please".into(),
+                },
             ],
             vec![tool_dep(), DepSource::Literal],
         );
@@ -334,10 +422,16 @@ mod tests {
                     role: "user".into(),
                     content: json!({"raw_text": "x"}).to_string(),
                 },
-                Message { role: "user".into(), content: "label please".into() },
+                Message {
+                    role: "user".into(),
+                    content: "label please".into(),
+                },
             ],
             vec![tool_dep(), DepSource::Literal],
         );
-        assert!(!(prop.safety_check)(&mutated), "safety must fail when referenced key is gone");
+        assert!(
+            !(prop.safety_check)(&mutated),
+            "safety must fail when referenced key is gone"
+        );
     }
 }

@@ -112,14 +112,57 @@ impl Call {
     }
 }
 
+/// Keep per-message annotations aligned when a rewrite removes messages.
+/// Indices come from the rule's own retention mask, so duplicate message text
+/// never substitutes for message identity. Malformed annotations stay invalid.
+pub(crate) fn retain_message_annotations(
+    call: &mut Call,
+    retained: &[usize],
+    original_count: usize,
+) {
+    for name in ["message_deps", "attention_scores"] {
+        if let Some(values) = call
+            .parameters
+            .extra
+            .get_mut(name)
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            if values.len() == original_count {
+                *values = retained
+                    .iter()
+                    .map(|index| values[*index].clone())
+                    .collect();
+            }
+        }
+    }
+}
+
 /// Measured result of executing a [`Plan`]. Fed into
 /// `Optimizer::observe` after the user-visible response lands.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Outcome {
+    #[serde(default)]
+    pub cost_source: crate::multi_call::InferenceCostSource,
+    #[serde(default)]
+    pub physical_invocations: Vec<crate::cost_evidence::PhysicalInvocation>,
     pub input_tokens: u32,
     pub output_tokens: u32,
     pub latency_ms: f64,
     pub cost_usd: f64,
+    /// Physical inference work in addition to the response returned to the caller
+    /// (for example a validator or a rejected candidate). Cached response usage
+    /// is normalized independently; this work must still be charged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub additional_inference: Option<AdditionalInference>,
+    #[serde(default)]
+    pub validation_rejected: bool,
+    /// Missing validator billing cannot qualify as measured plan economics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inference_cost_complete: Option<bool>,
+    /// Measured duration of an actual reference retry, already included in
+    /// latency_ms. Missing legacy durations receive no latency credit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_fallback_latency_ms: Option<f64>,
     /// True if the output parsed as JSON.
     #[serde(default)]
     pub output_is_structured: bool,
@@ -153,6 +196,68 @@ pub struct Outcome {
     pub catalog_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub executed_model_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdditionalInference {
+    #[serde(default)]
+    pub cost_source: crate::multi_call::InferenceCostSource,
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub cost_usd: f64,
+}
+
+impl Outcome {
+    pub fn cost_evidence(&self) -> crate::cost_evidence::CostEvidence {
+        let mut source = crate::cost_evidence::CostSource::from(&self.cost_source);
+        if let Some(extra) = &self.additional_inference {
+            source = source.combine(crate::cost_evidence::CostSource::from(&extra.cost_source));
+        }
+        crate::cost_evidence::CostEvidence {
+            source,
+            physical_invocations: self.physical_invocations.clone(),
+        }
+    }
+    /// Validate before any observation or durable lease mutation occurs.
+    pub fn including_additional_inference(&self) -> Result<Self, String> {
+        if !self.cost_evidence().validate(self.cost_usd) {
+            return Err("execution cost provenance is invalid".into());
+        }
+        if !self.latency_ms.is_finite() || self.latency_ms < 0.0 {
+            return Err("execution latency must be finite and nonnegative".into());
+        }
+        if self.reference_fallback_latency_ms.is_some_and(|value| {
+            !self.dispatch_fallback || !value.is_finite() || value < 0.0 || value > self.latency_ms
+        }) {
+            return Err("reference fallback duration is invalid".into());
+        }
+        if self.inference_cost_complete == Some(false) {
+            return Err("inference cost is incomplete".into());
+        }
+        if !self.cost_usd.is_finite() || self.cost_usd < 0.0 {
+            return Err("response cost must be finite and nonnegative".into());
+        }
+        let mut total = self.clone();
+        if let Some(extra) = &self.additional_inference {
+            if !extra.cost_usd.is_finite() || extra.cost_usd < 0.0 {
+                return Err("additional inference cost must be finite and nonnegative".into());
+            }
+            total.input_tokens = self
+                .input_tokens
+                .checked_add(extra.input_tokens)
+                .ok_or("total input tokens overflow")?;
+            total.output_tokens = self
+                .output_tokens
+                .checked_add(extra.output_tokens)
+                .ok_or("total output tokens overflow")?;
+            total.cost_usd += extra.cost_usd;
+            if !total.cost_usd.is_finite() {
+                return Err("total inference cost overflow".into());
+            }
+        }
+        Ok(total)
+    }
 }
 
 mod serde_hex8 {
@@ -265,6 +370,8 @@ mod tests {
     #[test]
     fn outcome_roundtrips_through_json() {
         let outcome = Outcome {
+            cost_source: Default::default(),
+            physical_invocations: Vec::new(),
             input_tokens: 200,
             output_tokens: 50,
             latency_ms: 123.4,
@@ -282,6 +389,39 @@ mod tests {
         assert!(back.output_is_short);
         assert!(back.dispatch_fallback);
         assert_eq!(back.target_model_id, outcome.target_model_id);
+    }
+
+    #[test]
+    fn execution_totals_reject_overflow_and_preserve_legacy_defaults() {
+        let legacy: Outcome = serde_json::from_str(
+            r#"{"input_tokens":1,"output_tokens":2,"cost_usd":0.001,"latency_ms":1}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            legacy
+                .including_additional_inference()
+                .unwrap()
+                .input_tokens,
+            1
+        );
+        let mut overflow = legacy.clone();
+        overflow.additional_inference = Some(AdditionalInference {
+            cost_source: Default::default(),
+            input_tokens: u32::MAX,
+            output_tokens: 0,
+            cost_usd: 0.001,
+        });
+        assert!(overflow.including_additional_inference().is_err());
+        overflow.additional_inference.as_mut().unwrap().input_tokens = 0;
+        overflow
+            .additional_inference
+            .as_mut()
+            .unwrap()
+            .output_tokens = u32::MAX;
+        assert!(overflow.including_additional_inference().is_err());
+        overflow.additional_inference = None;
+        overflow.inference_cost_complete = Some(false);
+        assert!(overflow.including_additional_inference().is_err());
     }
 
     #[test]

@@ -27,11 +27,25 @@ pub struct OutputBudgetRule {
 
 impl Default for OutputBudgetRule {
     fn default() -> Self {
-        Self { accuracy_budget: DEFAULT_ACCURACY_BUDGET }
+        Self {
+            accuracy_budget: DEFAULT_ACCURACY_BUDGET,
+        }
     }
 }
 
 impl RewriteRule for OutputBudgetRule {
+    fn identity(&self) -> Option<crate::planner::RuleIdentity> {
+        crate::planner::RuleIdentity::new(
+            "output-p99-cap-v1",
+            self.accuracy_budget,
+            serde_json::json!({
+                "p99_safety_multiple": P99_SAFETY_MULTIPLE,
+                "min_output_cap": MIN_OUTPUT_CAP,
+                "assumed_uncapped_tokens": ASSUMED_UNCAPPED_TOKENS,
+            }),
+        )
+    }
+
     fn name(&self) -> &'static str {
         "OutputBudget"
     }
@@ -41,8 +55,7 @@ impl RewriteRule for OutputBudgetRule {
         if p99 <= 0.0 {
             return false;
         }
-        let proposed_cap =
-            ((p99 * P99_SAFETY_MULTIPLE).ceil() as u32).max(MIN_OUTPUT_CAP);
+        let proposed_cap = ((p99 * P99_SAFETY_MULTIPLE).ceil() as u32).max(MIN_OUTPUT_CAP);
         match call.parameters.max_output_tokens {
             Some(current) => {
                 if current < p99 as u32 {
@@ -60,7 +73,10 @@ impl RewriteRule for OutputBudgetRule {
             return None;
         }
         let cap = ((p99 * P99_SAFETY_MULTIPLE).ceil() as u32).max(MIN_OUTPUT_CAP);
-        let baseline = call.parameters.max_output_tokens.unwrap_or(ASSUMED_UNCAPPED_TOKENS);
+        let baseline = call
+            .parameters
+            .max_output_tokens
+            .unwrap_or(ASSUMED_UNCAPPED_TOKENS);
         if baseline <= cap {
             return None;
         }
@@ -134,7 +150,9 @@ mod tests {
 
     #[test]
     fn fires_when_unbounded_and_p99_is_positive() {
-        assert!(OutputBudgetRule::default().applies(&unbounded_call(), &hot_profile_with_p99(100.0)));
+        assert!(
+            OutputBudgetRule::default().applies(&unbounded_call(), &hot_profile_with_p99(100.0))
+        );
     }
 
     #[test]
@@ -150,19 +168,25 @@ mod tests {
     #[test]
     fn does_not_fire_when_existing_cap_below_p99() {
         // cap=50, p99=100 → existing cap already cuts into the p99 range → unsafe.
-        assert!(!OutputBudgetRule::default().applies(&capped_call(50), &hot_profile_with_p99(100.0)));
+        assert!(
+            !OutputBudgetRule::default().applies(&capped_call(50), &hot_profile_with_p99(100.0))
+        );
     }
 
     #[test]
     fn does_not_fire_when_existing_cap_already_tight() {
         // proposed = ceil(100 * 1.2) = 120; cap=120 → no improvement.
-        assert!(!OutputBudgetRule::default().applies(&capped_call(120), &hot_profile_with_p99(100.0)));
+        assert!(
+            !OutputBudgetRule::default().applies(&capped_call(120), &hot_profile_with_p99(100.0))
+        );
     }
 
     #[test]
     fn fires_when_existing_cap_is_loose() {
         // proposed = 120; cap=500 → 500 > 120 → fires.
-        assert!(OutputBudgetRule::default().applies(&capped_call(500), &hot_profile_with_p99(100.0)));
+        assert!(
+            OutputBudgetRule::default().applies(&capped_call(500), &hot_profile_with_p99(100.0))
+        );
     }
 
     #[test]

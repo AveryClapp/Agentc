@@ -68,7 +68,7 @@ def install() -> bool:
         return original(self, *new_args, **new_kwargs)
 
     try:
-        StateGraph.add_node = _patched_add_node  # type: ignore[method-assign]
+        StateGraph.add_node = _patched_add_node
     except BaseException:
         log.debug("langgraph: failed to patch StateGraph.add_node", exc_info=True)
         return False
@@ -86,10 +86,10 @@ def uninstall() -> None:
         return
 
     try:
-        from langgraph.graph import StateGraph  # type: ignore[import-not-found]
+        from langgraph.graph import StateGraph
 
         if _original_add_node is not None:
-            StateGraph.add_node = _original_add_node  # type: ignore[method-assign]
+            StateGraph.add_node = _original_add_node
     except BaseException:
         log.debug("langgraph uninstall failed", exc_info=True)
 

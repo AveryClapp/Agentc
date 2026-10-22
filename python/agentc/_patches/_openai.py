@@ -203,6 +203,8 @@ def _plan_openai_call(
     kwargs: dict[str, Any],
     parent: SpanContext | None,
     decision: Any | None = None,
+    *,
+    client: Any = None,
 ) -> tuple[Any, str | None]:
     """Build a Call dict and ask the optimizer for a Plan.
 
@@ -223,8 +225,17 @@ def _plan_openai_call(
 
     if decision is None:
         decision = decide_optimization(kwargs.get("extra_headers"))
-    if not decision.eligible:
+    from agentc._batch_observation import graph_original_capture_requested
+
+    observation_only = not decision.eligible and graph_original_capture_requested()
+    if not decision.eligible and not observation_only:
         return None, None
+
+    from agentc._prepared_plan import consume_prepared_plan
+
+    prepared = None if observation_only else consume_prepared_plan(kwargs, "openai.chat.completions.v1")
+    if prepared is not None:
+        return prepared
 
     try:
         call_site_id = derive_call_site_id()
@@ -235,8 +246,9 @@ def _plan_openai_call(
             call_site_id=call_site_id,
             trace_id_hex=trace_id_hex,
             span_id_hex=span_id_hex,
+            client=client,
         )
-        plan = plan_call(call)
+        plan = plan_call(call, observation_only=True) if observation_only else plan_call(call)
     except BaseException:
         logger.debug("optimizer planning failed; falling through", exc_info=True)
         return None, None
@@ -304,46 +316,9 @@ def _observe_openai_outcome(
         # StateDrop/DeadOutputTruncation/PrefixAlign never receive their keys.
         log_degraded("trace_record_failed", "trace optimizer will not learn from this call (openai)")
 
-    # Auto-seed the memoization cache on pass-through calls so CacheHitRule
-    # can serve identical subsequent calls without hitting the model.
-    # Only seeds when the plan was pass-through (not already a cache hit or
-    # rewritten) to avoid redundant writes.
-    if getattr(plan, "kind", None) == "pass_through":
-        try:
-            import pickle
+    from agentc._response_cache import seed_response
 
-            from agentc._canonicalize import parameters_hash as _ph_params
-            from agentc._canonicalize import prompt_hash as _ph_prompt
-            from agentc._patches._optimizer_glue import estimate_cost_usd
-            from agentc._writer import CacheInsertMsg, enqueue_cache_insert
-
-            model_str = str(getattr(response, "model", None) or kwargs.get("model", "") or "")
-            usage = getattr(response, "usage", None)
-            input_toks = int(getattr(usage, "prompt_tokens", 0) or 0)
-            output_toks = int(getattr(usage, "completion_tokens", 0) or 0)
-
-            p_hash = _ph_prompt(list(getattr(plan, "messages", [])), "openai")
-            param_hash = _ph_params(dict(getattr(plan, "parameters", {})))
-            output_bytes = pickle.dumps(response, protocol=pickle.HIGHEST_PROTOCOL)
-
-            enqueue_cache_insert(
-                CacheInsertMsg(
-                    prompt_hash=p_hash,
-                    model=model_str,
-                    parameters_hash=param_hash,
-                    call_site_id=call_site_id,
-                    output_bytes=output_bytes,
-                    input_tokens=input_toks,
-                    output_tokens=output_toks,
-                    recorded_cost_usd=float(estimate_cost_usd(model_str, input_toks, output_toks)),
-                    ttl_seconds=3600,
-                    embedding=None,
-                )
-            )
-        except BaseException:
-            # Degradation: without a seed the memoization cache never fills,
-            # so CacheHitRule has nothing to hit.
-            log_degraded("cache_autoseed_failed", "memoization cache not seeded for this call (openai)")
+    seed_response(plan, response)
 
 
 # --- Sync wrapper ---
@@ -351,6 +326,12 @@ def _observe_openai_outcome(
 
 def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
     """Wrapper for Completions.create (sync)."""
+    from agentc._provider_receipts import instrument_provider
+
+    wrapped = instrument_provider(wrapped, instance, "openai.chat.completions.v1")
+    from agentc._batch_observation import note_sdk_call
+
+    note_sdk_call()
     if not _is_initialized():
         return wrapped(*args, **kwargs)
     from agentc._interception_context import interception_is_nested
@@ -372,7 +353,9 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
 
     decision = decide_optimization(kwargs.get("extra_headers"))
     req_attrs.update(decision.span_attributes())
-    plan, call_site_id = _plan_openai_call(kwargs, parent, decision)
+    sdk_client = getattr(instance, "_client", None)
+    planning_options = {"client": sdk_client} if sdk_client is not None else {}
+    plan, call_site_id = _plan_openai_call(kwargs, parent, decision, **planning_options)
 
     # Non-streaming
     try:
@@ -381,56 +364,35 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
                 apply_call_mutations_openai,
                 build_outcome_openai,
                 dispatch_sync,
+                decode_cached_response,
                 maybe_explore_record,
                 maybe_shadow_record,
                 resolve_executed_model_id,
             )
 
             def _run_original() -> Any:
-                return wrapped(*args, **kwargs)
+                from agentc._dispatch_context import sdk_dispatch
+
+                with sdk_dispatch(plan):
+                    return wrapped(*args, **kwargs)
 
             def _run_mutated(mutated_call: dict[str, Any]) -> Any:
                 new_kwargs = apply_call_mutations_openai(kwargs, mutated_call)
-                return wrapped(*args, **new_kwargs)
+                from agentc._dispatch_context import sdk_dispatch
 
-            def _decode_cached_openai(value: Any) -> Any:
-                import pickle
-                content_id = value.get("output_content_id") if isinstance(value, dict) else None
-                if not content_id:
-                    return None
-                try:
-                    from agentc._native import output_content_load
-                    raw = output_content_load(content_id)
-                    # output_content_load only reads the per-process DB. For
-                    # cross-run cache hits the content lives in traces.db
-                    # (merged from a prior session). Fall back to a direct
-                    # read of the canonical DB in that case.
-                    if raw is None:
-                        import os as _os
-                        import sqlite3 as _sqlite3
-                        from pathlib import Path as _Path
-                        _sp = _os.environ.get("AGENTC_STORAGE_PATH", str(_Path.home() / ".agentc"))
-                        traces_db = _Path(_sp) / "traces.db"
-                        if traces_db.exists():
-                            with _sqlite3.connect(str(traces_db)) as _conn:
-                                row = _conn.execute(
-                                    "SELECT content_text FROM output_content WHERE content_id = ?",
-                                    (content_id,),
-                                ).fetchone()
-                                if row:
-                                    raw = row[0]
-                    if raw is None:
-                        return None
-                    return pickle.loads(raw)
-                except BaseException:
-                    logger.debug("decode_cached_openai failed; will fall back", exc_info=True)
-                    return None
+                with sdk_dispatch(plan, mutated=True):
+                    return wrapped(*args, **new_kwargs)
 
+            from agentc._output_validation import bind_validation_request
+
+            bind_validation_request(plan, kwargs)
             response = dispatch_sync(
                 plan,
                 run_original=_run_original,
                 run_mutated=_run_mutated,
-                decode_cached=_decode_cached_openai,
+                decode_cached=lambda value: decode_cached_response(
+                    value, provider_protocol="openai.chat.completions.v1"
+                ),
             )
             primary_end_time = _now_us()
             if call_site_id is not None:
@@ -472,6 +434,9 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
         else:
             response = wrapped(*args, **kwargs)
     except BaseException as exc:
+        from agentc._patches._optimizer_glue import dispatch_span_attributes
+
+        req_attrs.update(dispatch_span_attributes(plan))
         end_time = _now_us()
         req_attrs["error.type"] = type(exc).__name__
         req_attrs["error.message"] = str(exc)
@@ -501,7 +466,8 @@ def _wrap_create(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
         executed_model = resolve_executed_model_id(plan, response, kwargs.get("model"))
         req_attrs.update(dispatch_span_attributes(plan, executed_model))
 
-    resp_attrs = _extract_response_attrs(response)
+    from agentc._patches._optimizer_glue import cache_response_attributes
+    resp_attrs = cache_response_attributes(plan, _extract_response_attrs(response))
     req_attrs.update(resp_attrs)
     output_msgs = _extract_output_messages(response)
 
@@ -668,6 +634,12 @@ class _StreamingIterator:
 
 async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any) -> Any:
     """Wrapper for AsyncCompletions.create (async)."""
+    from agentc._provider_receipts import instrument_provider
+
+    wrapped = instrument_provider(wrapped, instance, "openai.chat.completions.v1", asynchronous=True)
+    from agentc._batch_observation import note_sdk_call
+
+    note_sdk_call()
     if not _is_initialized():
         return await wrapped(*args, **kwargs)
     from agentc._interception_context import interception_is_nested
@@ -684,7 +656,9 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
 
     decision = decide_optimization(kwargs.get("extra_headers"))
     req_attrs.update(decision.span_attributes())
-    plan, call_site_id = _plan_openai_call(kwargs, parent, decision)
+    sdk_client = getattr(instance, "_client", None)
+    planning_options = {"client": sdk_client} if sdk_client is not None else {}
+    plan, call_site_id = _plan_openai_call(kwargs, parent, decision, **planning_options)
 
     # For now, handle non-streaming only (async streaming is similar pattern)
     try:
@@ -695,17 +669,34 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
                 build_outcome_openai,
                 maybe_explore_record_async,
                 maybe_shadow_record_async,
+                decode_cached_response,
                 resolve_executed_model_id,
             )
 
             async def _run_original() -> Any:
-                return await wrapped(*args, **kwargs)
+                from agentc._dispatch_context import sdk_dispatch
+
+                with sdk_dispatch(plan):
+                    return await wrapped(*args, **kwargs)
 
             async def _run_mutated(mutated_call: dict[str, Any]) -> Any:
                 new_kwargs = apply_call_mutations_openai(kwargs, mutated_call)
-                return await wrapped(*args, **new_kwargs)
+                from agentc._dispatch_context import sdk_dispatch
 
-            response = await dispatch(plan, run_original=_run_original, run_mutated=_run_mutated)
+                with sdk_dispatch(plan, mutated=True):
+                    return await wrapped(*args, **new_kwargs)
+
+            from agentc._output_validation import bind_validation_request
+
+            bind_validation_request(plan, kwargs)
+            response = await dispatch(
+                plan,
+                run_original=_run_original,
+                run_mutated=_run_mutated,
+                decode_cached=lambda value: decode_cached_response(
+                    value, provider_protocol="openai.chat.completions.v1"
+                ),
+            )
             primary_end_time = _now_us()
             if call_site_id is not None:
                 _observe_openai_outcome(
@@ -748,6 +739,9 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
         else:
             response = await wrapped(*args, **kwargs)
     except BaseException as exc:
+        from agentc._patches._optimizer_glue import dispatch_span_attributes
+
+        req_attrs.update(dispatch_span_attributes(plan))
         end_time = _now_us()
         req_attrs["error.type"] = type(exc).__name__
         req_attrs["error.message"] = str(exc)
@@ -777,7 +771,8 @@ async def _wrap_create_async(wrapped: Any, instance: Any, args: Any, kwargs: Any
         executed_model = resolve_executed_model_id(plan, response, kwargs.get("model"))
         req_attrs.update(dispatch_span_attributes(plan, executed_model))
 
-    resp_attrs = _extract_response_attrs(response)
+    from agentc._patches._optimizer_glue import cache_response_attributes
+    resp_attrs = cache_response_attributes(plan, _extract_response_attrs(response))
     req_attrs.update(resp_attrs)
     output_msgs = _extract_output_messages(response)
 

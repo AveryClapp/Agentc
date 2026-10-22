@@ -288,8 +288,9 @@ pub fn compose_proposals(proposals: Vec<(String, Proposal)>, call: &Call) -> Com
             break;
         }
         // Reject explicitly unsafe pairings with already-selected rules.
-        let explicitly_unsafe =
-            selected.iter().any(|(sel_name, _)| is_explicit_unsafe(sel_name, &name));
+        let explicitly_unsafe = selected
+            .iter()
+            .any(|(sel_name, _)| is_explicit_unsafe(sel_name, &name));
         if explicitly_unsafe {
             unselected.push((name, prop));
             continue;
@@ -340,7 +341,12 @@ pub fn compose_proposals(proposals: Vec<(String, Proposal)>, call: &Call) -> Com
         if !(prop.safety_check)(&current_call) {
             continue;
         }
-        if let Plan::Rewritten { call: rewritten, projected_savings_usd, .. } = &prop.rewritten {
+        if let Plan::Rewritten {
+            call: rewritten,
+            projected_savings_usd,
+            ..
+        } = &prop.rewritten
+        {
             current_call = apply_rewrite(&current_call, rewritten);
             net_savings += projected_savings_usd;
             rules_applied.push(RuleApplication {
@@ -380,15 +386,23 @@ pub fn compose_proposals(proposals: Vec<(String, Proposal)>, call: &Call) -> Com
 }
 
 fn passthrough() -> CompositionResult {
-    CompositionResult { plan: Plan::PassThrough, rules_applied: vec![], net_savings_usd: 0.0 }
+    CompositionResult {
+        plan: Plan::PassThrough,
+        rules_applied: vec![],
+        net_savings_usd: 0.0,
+    }
 }
 
 fn is_explicit_safe(a: &str, b: &str) -> bool {
-    EXPLICIT_SAFE.iter().any(|(x, y)| (*x == a && *y == b) || (*x == b && *y == a))
+    EXPLICIT_SAFE
+        .iter()
+        .any(|(x, y)| (*x == a && *y == b) || (*x == b && *y == a))
 }
 
 fn is_explicit_unsafe(a: &str, b: &str) -> bool {
-    EXPLICIT_UNSAFE.iter().any(|(x, y)| (*x == a && *y == b) || (*x == b && *y == a))
+    EXPLICIT_UNSAFE
+        .iter()
+        .any(|(x, y)| (*x == a && *y == b) || (*x == b && *y == a))
 }
 
 /// Merge mutations from `proposed` into `current` by field.
@@ -407,7 +421,10 @@ fn apply_rewrite(current: &Call, proposed: &Call) -> Call {
     if proposed.model != current.model {
         result.model = proposed.model.clone();
     }
-    match (current.parameters.max_output_tokens, proposed.parameters.max_output_tokens) {
+    match (
+        current.parameters.max_output_tokens,
+        proposed.parameters.max_output_tokens,
+    ) {
         (Some(a), Some(b)) => result.parameters.max_output_tokens = Some(a.min(b)),
         (None, Some(b)) => result.parameters.max_output_tokens = Some(b),
         _ => {}
@@ -430,8 +447,14 @@ mod tests {
             span_id: [0u8; 8],
             model: "gpt-4o".into(),
             messages: vec![
-                Message { role: "system".into(), content: "sys".into() },
-                Message { role: "user".into(), content: "hello".into() },
+                Message {
+                    role: "system".into(),
+                    content: "sys".into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "hello".into(),
+                },
             ],
             parameters: Parameters::default(),
             tools: vec![],
@@ -524,19 +547,16 @@ mod tests {
                     0.5,
                     compressed_to_same_shape,
                 ),
-                rewritten_prop(
-                    "PromptDedup",
-                    CostDriver::InputTokens,
-                    0.3,
-                    deduplicated,
-                ),
+                rewritten_prop("PromptDedup", CostDriver::InputTokens, 0.3, deduplicated),
             ],
             &original,
             3,
         );
 
         assert_eq!(plans.len(), 2, "both solo plans remain available");
-        assert!(plans.iter().all(|plan| !matches!(plan, Plan::Composed { .. })));
+        assert!(plans
+            .iter()
+            .all(|plan| !matches!(plan, Plan::Composed { .. })));
     }
 
     #[test]
@@ -547,8 +567,14 @@ mod tests {
         ];
         let result = compose_proposals(proposals, &make_call());
         assert_eq!(result.rules_applied.len(), 2);
-        assert!(result.rules_applied.iter().any(|r| r.rule == "ContextCompress"));
-        assert!(result.rules_applied.iter().any(|r| r.rule == "OutputBudget"));
+        assert!(result
+            .rules_applied
+            .iter()
+            .any(|r| r.rule == "ContextCompress"));
+        assert!(result
+            .rules_applied
+            .iter()
+            .any(|r| r.rule == "OutputBudget"));
     }
 
     #[test]
@@ -564,8 +590,15 @@ mod tests {
             make_prop("DeadOutputTruncation", CostDriver::OutputTokens, 0.3),
         ];
         let result = compose_proposals(proposals, &make_call());
-        assert_eq!(result.rules_applied.len(), 1, "same-driver pair must not compose");
-        assert_eq!(result.rules_applied[0].rule, "OutputBudget", "highest savings wins the slot");
+        assert_eq!(
+            result.rules_applied.len(),
+            1,
+            "same-driver pair must not compose"
+        );
+        assert_eq!(
+            result.rules_applied[0].rule, "OutputBudget",
+            "highest savings wins the slot"
+        );
     }
 
     #[test]
@@ -617,7 +650,11 @@ mod tests {
         let proposals = vec![make_prop("OutputBudget", CostDriver::OutputTokens, 0.4)];
         let result = compose_proposals(proposals, &make_call());
         assert_eq!(result.rules_applied.len(), 1);
-        assert!(matches!(result.plan, Plan::Rewritten { .. }), "expected Rewritten, got {:?}", result.plan);
+        assert!(
+            matches!(result.plan, Plan::Rewritten { .. }),
+            "expected Rewritten, got {:?}",
+            result.plan
+        );
     }
 
     #[test]
@@ -670,7 +707,10 @@ mod tests {
 
         // A "StateDrop-like" rule proposes 1 message (drops one).
         let mut sd_rewritten = original.clone();
-        sd_rewritten.messages = vec![Message { role: "system".into(), content: "sys".into() }];
+        sd_rewritten.messages = vec![Message {
+            role: "system".into(),
+            content: "sys".into(),
+        }];
         let sd_prop = (
             "StateDrop".to_string(),
             Proposal {
@@ -707,7 +747,11 @@ mod tests {
         match &result.plan {
             Plan::Composed { call, rules, .. } => {
                 // SD ran first (sort_key 0 < 4). Its 1-message result must survive.
-                assert_eq!(call.messages.len(), 1, "OB must not restore SD-dropped messages");
+                assert_eq!(
+                    call.messages.len(),
+                    1,
+                    "OB must not restore SD-dropped messages"
+                );
                 // OB's parameter cap must be applied.
                 assert_eq!(call.parameters.max_output_tokens, Some(64));
                 assert_eq!(rules.len(), 2);

@@ -12,7 +12,7 @@ import logging
 import queue
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger("agentc")
 
@@ -293,17 +293,20 @@ def _flush_batch(
     Catches BaseException (not just Exception) because PyO3 PanicException
     inherits from BaseException. A Rust panic must not crash the writer thread.
     """
-    cache_insert_fn = None
+    cache_insert_fn: Callable[
+        [bytes, str, bytes, str, bytes, int, int, float, int, bytes | None], None
+    ] | None = None
     for item in batch:
         if isinstance(item, CacheInsertMsg):
             if cache_insert_fn is None:
                 try:
-                    from agentc._native import cache_insert as cache_insert_fn  # type: ignore[no-redef]
+                    from agentc._native import cache_insert
+                    cache_insert_fn = cache_insert
                 except ImportError:
                     logger.debug("cache_insert FFI unavailable; dropping cache messages")
                     continue
             try:
-                cache_insert_fn(  # type: ignore[misc]
+                cache_insert_fn(
                     item.prompt_hash,
                     item.model,
                     item.parameters_hash,

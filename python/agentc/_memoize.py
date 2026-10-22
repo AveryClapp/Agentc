@@ -14,7 +14,7 @@ import os
 import pickle
 from typing import Any, Callable
 
-from agentc._canonicalize import canonicalize_prompt, parameters_hash, prompt_hash
+from agentc._canonicalize import parameters_hash, prompt_hash
 from agentc._writer import CacheInsertMsg, enqueue_cache_insert
 
 logger = logging.getLogger("agentc")
@@ -130,7 +130,7 @@ def _deserialize_hit(hit: dict[str, Any]) -> Any | None:
         content_id = hit.get("output_content_id")
         if not content_id:
             return None
-        from agentc._native import output_content_load  # type: ignore[attr-defined]
+        from agentc._native import output_content_load
 
         raw = output_content_load(content_id)
         if raw is None:

@@ -17,18 +17,21 @@ use rusqlite::Connection;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use agentc_memo::canonical::{canonicalize_parameters, canonicalize_prompt};
 use agentc_memo::key::{CacheKey, HASH_LEN};
 use agentc_memo::SqliteCache;
 
 use crate::budget::Budget;
 use crate::config::OptimizerConfig;
+use crate::cost_model::CallSiteProfile;
 use crate::cost_model::CostModel;
 use crate::dag::Call;
-use crate::model_catalog::{default_model_catalog, ModelCatalog};
+use crate::model_catalog::{
+    default_model_catalog, ModelCatalog, RequestRequirements, PROVIDER_CONFIGURATION_KEY,
+    ROUTE_CONTEXT_KEY,
+};
 use crate::plan_guard::PlanGuard;
 use crate::plan_profile::PlanProfiles;
-use crate::planner::{Optimizer, RewriteRule};
+use crate::planner::{Optimizer, Proposal, RewriteRule, RuleIdentity};
 use crate::rules::cache_hit::CacheKeyBuilder;
 use crate::rules::{
     CacheHitRule, ContextCompressRule, DeadOutputTruncationRule, ModelDowngradeRule,
@@ -36,45 +39,103 @@ use crate::rules::{
 };
 use crate::schema::{ensure_audit_schema, ensure_cost_model_schema};
 
-/// Canonical-bytes-based `CacheKeyBuilder`. Hashes the call's messages and
-/// parameters via the same canonicalizer used by the `@memoize` decorator,
-/// so a cached response inserted by `@memoize` is reachable through the
-/// optimizer's `CacheHit` rule and vice-versa.
-struct CanonicalKeyBuilder {
-    provider: String,
+pub const SDK_RESPONSE_CACHE_VERSION: &str = "optimizer-sdk-response-cache-v1";
+
+/// Shared by production lookup and SDK seeding. Legacy function cache entries
+/// retain their old namespace and cannot satisfy this request contract.
+pub fn sdk_response_cache_key(call: &Call) -> Option<CacheKey> {
+    let request = RequestRequirements::from_call(call)?;
+    if ![
+        crate::model_catalog::OPENAI_CHAT_COMPLETIONS_PROTOCOL,
+        crate::model_catalog::ANTHROPIC_MESSAGES_PROTOCOL,
+        crate::model_catalog::LITELLM_COMPLETION_PROTOCOL,
+    ]
+    .contains(&request.provider_protocol.as_str())
+    {
+        return None;
+    }
+    if request.streaming
+        || request.image_input
+        || call.model.is_empty()
+        || call.call_site_id.is_empty()
+    {
+        return None;
+    }
+    let context = call.parameters.extra.get(ROUTE_CONTEXT_KEY)?.as_object()?;
+    let configuration = context.get(PROVIDER_CONFIGURATION_KEY)?;
+    let declaration = context.get("sdk_response_cache")?.as_object()?;
+    if declaration.len() != 4
+        || declaration.get("version")?.as_str()? != SDK_RESPONSE_CACHE_VERSION
+        || !declaration.get("supported")?.as_bool()?
+    {
+        return None;
+    }
+    let digest = |name| {
+        let value = declaration.get(name)?.as_str()?;
+        (value.len() == 64
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
+        .then_some(value)
+    };
+    let messages = digest("message_sha256")?;
+    let shapes = digest("shape_sha256")?;
+    let mut parameters = call.parameters.clone();
+    parameters.extra = Value::Null;
+    let contracts: serde_json::Map<String, Value> = [
+        "structured_output_schema_version",
+        "tool_settings_version",
+        "tool_action_comparator_version",
+        "text_action_comparator_version",
+        "text_action_settings_version",
+        "text_action_contract_supported",
+        "frozen_request_policy",
+    ]
+    .into_iter()
+    .filter_map(|name| {
+        context
+            .get(name)
+            .map(|value| (name.to_string(), value.clone()))
+    })
+    .collect();
+    let prompt = serde_json::to_vec(
+        &serde_json::json!({"version":SDK_RESPONSE_CACHE_VERSION,"messages":messages}),
+    )
+    .ok()?;
+    let settings = serde_json::to_vec(&serde_json::json!({
+        "version":SDK_RESPONSE_CACHE_VERSION,
+        "call_site_id":call.call_site_id,
+        "provider_protocol":request.provider_protocol,"provider_namespace":request.provider_namespace,
+        "parameters":parameters,"provider_configuration":configuration,"response_shape":shapes,
+        "contracts":contracts,
+    })).ok()?;
+    Some(CacheKey {
+        prompt_hash: sha256_arr(&prompt),
+        model: call.model.clone(),
+        parameters_hash: sha256_arr(&settings),
+        call_site_id: call.call_site_id.clone(),
+    })
 }
 
-impl CacheKeyBuilder for CanonicalKeyBuilder {
-    fn build(&self, call: &Call) -> CacheKey {
-        let messages = serde_json::to_value(&call.messages).unwrap_or(Value::Null);
-        let prompt_bytes = canonicalize_prompt(&messages, &self.provider);
-        let prompt_hash = sha256_arr(&prompt_bytes);
+struct SdkResponseKeyBuilder;
 
-        let params = serde_json::to_value(&call.parameters).unwrap_or(Value::Null);
-        let params_bytes = canonicalize_parameters(&params);
-        let parameters_hash = sha256_arr(&params_bytes);
+impl CacheKeyBuilder for SdkResponseKeyBuilder {
+    fn supports_native_messages(&self) -> bool {
+        // The SDK declares a digest of original messages. No projected DAG
+        // text is used, and opaque or incomplete declarations return None.
+        true
+    }
+    fn identity(&self) -> Option<Value> {
+        Some(serde_json::json!({"implementation_version": SDK_RESPONSE_CACHE_VERSION}))
+    }
 
-        CacheKey {
-            prompt_hash,
-            model: call.model.clone(),
-            parameters_hash,
-            call_site_id: call.call_site_id.clone(),
-        }
+    fn build(&self, call: &Call) -> Option<CacheKey> {
+        sdk_response_cache_key(call)
     }
 }
 
 fn sha256_arr(bytes: &[u8]) -> [u8; HASH_LEN] {
     Sha256::digest(bytes).into()
-}
-
-/// Provider hint for canonicalization. We pick one for the process based on
-/// a coarse model-name probe; in practice all our reference benches use
-/// OpenAI, but supporting Anthropic without an env var means cross-vendor
-/// runs Just Work.
-fn provider_hint() -> String {
-    std::env::var("AGENTC_PROVIDER")
-        .unwrap_or_else(|_| "openai".to_string())
-        .to_lowercase()
 }
 
 /// Bundle returned from [`build_optimizer`]. Caller (the FFI layer) holds
@@ -113,6 +174,7 @@ fn set_write_pragmas(conn: &Connection) -> Result<()> {
 /// where `@memoize` already writes — so a CacheHit served by the rule and
 /// a CacheHit served by `@memoize` look identical to a downstream reader.
 pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wired> {
+    config.validate().map_err(anyhow::Error::msg)?;
     std::fs::create_dir_all(storage_dir)
         .with_context(|| format!("create storage dir {:?}", storage_dir))?;
 
@@ -138,7 +200,11 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
         .flush_dirty(&mut cost_conn)
         .context("persist resized execution-plan windows")?;
 
-    let plan_guard = Arc::new(PlanGuard::new());
+    let plan_guard = Arc::new(PlanGuard::with_limits(
+        config.selection.divergence_exposure_budget,
+        crate::plan_guard::PLAN_EXPOSURE_WINDOW_US,
+        crate::plan_guard::PLAN_DISABLE_COOLDOWN_US,
+    )?);
     let _ = plan_guard
         .warm_from_db(&cost_conn)
         .context("warm execution-plan guard")?;
@@ -188,39 +254,60 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
     // `AGENTC_ENABLED_RULES`: comma-separated whitelist of rule names.
     // When set, only the named rules are registered. Unset = all rules.
     // Example: AGENTC_ENABLED_RULES=ContextCompress,OutputBudget
-    let enabled: Option<std::collections::HashSet<String>> =
-        std::env::var("AGENTC_ENABLED_RULES").ok().map(|v| {
-            v.split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        });
-    let rule_enabled =
-        |name: &str| -> bool { enabled.as_ref().is_none_or(|set| set.contains(name)) };
+    let rule_enabled = |name: &str| -> bool {
+        config
+            .rules
+            .get(name)
+            .and_then(|settings| settings.enabled)
+            .unwrap_or(true)
+    };
 
     let mut rules: Vec<Box<dyn RewriteRule>> = Vec::with_capacity(5);
     if rule_enabled("CacheHit") {
         if let Some(cache) = cache {
-            let key_builder: Arc<dyn CacheKeyBuilder> = Arc::new(CanonicalKeyBuilder {
-                provider: provider_hint(),
-            });
-            rules.push(Box::new(CacheHitRule::new(cache, key_builder)));
+            let key_builder: Arc<dyn CacheKeyBuilder> = Arc::new(SdkResponseKeyBuilder);
+            rules.push(Box::new(
+                CacheHitRule::new(cache, key_builder)
+                    .with_cache_policy_version("agentc-sqlite-cache-ttl-v1"),
+            ));
         }
     }
     if rule_enabled("ContextCompress") {
-        rules.push(Box::new(ContextCompressRule::default()));
+        let settings = config
+            .rules
+            .get("ContextCompress")
+            .cloned()
+            .unwrap_or_default();
+        rules.push(Box::new(ContextCompressRule::new(
+            settings
+                .min_prompt_bytes
+                .unwrap_or(crate::rules::context_compress::DEFAULT_MIN_PROMPT_BYTES),
+            settings
+                .min_dead_fraction
+                .unwrap_or(crate::rules::context_compress::DEFAULT_MIN_DEAD_FRACTION),
+        )));
     }
     if rule_enabled("PromptDedup") {
         rules.push(Box::new(PromptDedupRule::default()));
     }
     if rule_enabled("ParallelBranch") {
-        rules.push(Box::new(ParallelBranchRule::default()));
+        rules.push(Box::new(ParallelBranchRule::new(
+            config
+                .rules
+                .get("ParallelBranch")
+                .and_then(|settings| settings.max_fanout)
+                .unwrap_or(4),
+        )));
     }
     if rule_enabled("ModelDowngrade") {
-        rules.push(Box::new(ModelDowngradeRule::from_catalog(
-            model_catalog.clone(),
-            budget.clone(),
-        )));
+        let rule = ModelDowngradeRule::from_catalog(model_catalog.clone(), budget.clone());
+        rules.push(Box::new(
+            if let Some(budget) = config.accuracy_budget.get("ModelDowngrade") {
+                rule.with_accuracy_budget(*budget)
+            } else {
+                rule
+            },
+        ));
     }
     if rule_enabled("StateDrop") {
         rules.push(Box::new(StateDropRule::default()));
@@ -235,6 +322,16 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
         rules.push(Box::new(DeadOutputTruncationRule::default()));
     }
 
+    let rules = rules
+        .into_iter()
+        .map(|rule| match config.accuracy_budget.get(rule.name()) {
+            None => rule,
+            Some(budget) => Box::new(ConfiguredBudget {
+                rule,
+                budget: *budget,
+            }) as Box<dyn RewriteRule>,
+        })
+        .collect();
     let optimizer = Arc::new(Optimizer::with_budget(
         cost_model.clone(),
         rules,
@@ -253,6 +350,35 @@ pub fn build_optimizer(storage_dir: &Path, config: OptimizerConfig) -> Result<Wi
     })
 }
 
+/// Share configuration handling while preserving each rule's implementation
+/// and mutation. ModelDowngrade also receives its internal probation threshold.
+struct ConfiguredBudget {
+    rule: Box<dyn RewriteRule>,
+    budget: f32,
+}
+impl RewriteRule for ConfiguredBudget {
+    fn name(&self) -> &'static str {
+        self.rule.name()
+    }
+    fn identity(&self) -> Option<RuleIdentity> {
+        let mut identity = self.rule.identity()?;
+        identity.parameters["accuracy_budget"] = serde_json::json!(self.budget);
+        Some(identity)
+    }
+    fn applies(&self, call: &Call, profile: &CallSiteProfile) -> bool {
+        self.rule.applies(call, profile)
+    }
+    fn propose(&self, call: &Call, profile: &CallSiteProfile) -> Option<Proposal> {
+        self.rule.propose(call, profile)
+    }
+    fn accuracy_budget(&self) -> f32 {
+        self.budget
+    }
+    fn preserves_native_messages(&self) -> bool {
+        self.rule.preserves_native_messages()
+    }
+}
+
 fn tracing_warn(msg: &str) {
     // We don't depend on `tracing` in this crate; eprintln is deliberately
     // cheap and survives a missing logger. Production builds run under
@@ -265,6 +391,175 @@ fn tracing_warn(msg: &str) {
 mod tests {
     use super::*;
     use crate::cost_model::CostModelUpdate;
+
+    #[test]
+    fn configured_rule_budgets_reach_every_rule_and_only_change_its_identity() {
+        let baseline_dir = tempfile::tempdir().unwrap();
+        let baseline = build_optimizer(baseline_dir.path(), OptimizerConfig::default()).unwrap();
+        for name in crate::rules::KNOWN_RULE_NAMES {
+            let dir = tempfile::tempdir().unwrap();
+            let mut config = OptimizerConfig::default();
+            config.accuracy_budget.insert(name.into(), 0.07);
+            let changed = build_optimizer(dir.path(), config).unwrap();
+            assert_eq!(changed.optimizer.accuracy_budget_for(name), Some(0.07));
+            for rule in crate::rules::KNOWN_RULE_NAMES {
+                let bind = |optimizer: &Optimizer| {
+                    let mut plan = crate::planner::Plan::Rewritten {
+                        rule: rule.into(),
+                        call: cache_call(),
+                        projected_savings_usd: 0.01,
+                    };
+                    optimizer.bind_rule_identities(&mut plan);
+                    if let crate::planner::Plan::Rewritten { call, .. } = plan {
+                        call.parameters.extra[crate::planner::RULE_IDENTITIES_KEY].clone()
+                    } else {
+                        unreachable!()
+                    }
+                };
+                assert_eq!(
+                    bind(&baseline.optimizer) == bind(&changed.optimizer),
+                    rule != name,
+                    "{name}/{rule}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn rule_enable_flags_and_tuning_reach_production_constructors() {
+        let dir = tempfile::tempdir().unwrap();
+        let config: OptimizerConfig = toml::from_str(
+            r#"
+            [rules.OutputBudget]
+            enabled = false
+            [rules.ContextCompress]
+            min_prompt_bytes = 2048
+            min_dead_fraction = 0.6
+            [rules.ParallelBranch]
+            max_fanout = 8
+        "#,
+        )
+        .unwrap();
+        let wired = build_optimizer(dir.path(), config).unwrap();
+        assert!(wired
+            .optimizer
+            .accuracy_budget_for("OutputBudget")
+            .is_none());
+        for (name, field, value) in [
+            (
+                "ContextCompress",
+                "min_prompt_bytes",
+                serde_json::json!(2048),
+            ),
+            (
+                "ContextCompress",
+                "min_dead_fraction",
+                serde_json::json!(0.6f32),
+            ),
+            ("ParallelBranch", "max_fanout", serde_json::json!(8)),
+        ] {
+            let mut plan = crate::planner::Plan::Rewritten {
+                rule: name.into(),
+                call: cache_call(),
+                projected_savings_usd: 0.01,
+            };
+            wired.optimizer.bind_rule_identities(&mut plan);
+            if let crate::planner::Plan::Rewritten { call, .. } = plan {
+                assert_eq!(
+                    call.parameters.extra[crate::planner::RULE_IDENTITIES_KEY]["rules"][name]
+                        ["parameters"]["settings"][field],
+                    value
+                );
+            }
+        }
+    }
+
+    fn cache_call() -> Call {
+        serde_json::from_value(serde_json::json!({
+            "call_site_id":"sdk-cache-request", "trace_id":"00".repeat(16),
+            "span_id":"00".repeat(8), "model":"gpt-4o",
+            "messages":[{"role":"user","content":" task "}],
+            "parameters":{"max_output_tokens":128,"extra":{"agentc_route_context":{
+                "provider_protocol":"openai.chat.completions.v1","provider_namespace":"openai",
+                "input_tokens_upper_bound":64,"image_input":false,"tool_calling":false,
+                "structured_outputs":false,"streaming":false,
+                "provider_configuration":{"version":"provider-request-config-v1","supported":true,"sha256":"a".repeat(64)}
+                ,"sdk_response_cache":{"version":SDK_RESPONSE_CACHE_VERSION,"supported":true,"message_sha256":"c".repeat(64),"shape_sha256":"d".repeat(64)}
+            }}}
+        })).unwrap()
+    }
+
+    #[test]
+    fn sdk_cache_keys_separate_output_caps_and_provider_controls() {
+        let key = SdkResponseKeyBuilder;
+        let call = cache_call();
+        let mut capped = call.clone();
+        capped.parameters.max_output_tokens = Some(2048);
+        assert_ne!(key.build(&call), key.build(&capped));
+        let mut seeded = call.clone();
+        seeded.parameters.extra["agentc_route_context"]["provider_configuration"]["sha256"] =
+            Value::String("b".repeat(64));
+        assert_ne!(key.build(&call), key.build(&seeded));
+    }
+
+    #[test]
+    fn sdk_cache_keys_bind_protocol_shapes_and_task_contracts_without_trace_metadata() {
+        let call = cache_call();
+        let expected = sdk_response_cache_key(&call).unwrap();
+        let mut traced = call.clone();
+        traced.trace_id = [1; 16];
+        traced.span_id = [2; 8];
+        traced.parameters.extra["attention_scores"] = serde_json::json!([0.2]);
+        assert_eq!(sdk_response_cache_key(&traced), Some(expected.clone()));
+        for field in [
+            "provider_namespace",
+            "provider_protocol",
+            "structured_output_schema_version",
+            "text_action_settings_version",
+        ] {
+            let mut changed = call.clone();
+            changed.parameters.extra[ROUTE_CONTEXT_KEY][field] =
+                serde_json::json!(if field == "provider_protocol" {
+                    "litellm.completion.v1"
+                } else {
+                    "changed"
+                });
+            assert_ne!(
+                sdk_response_cache_key(&changed).unwrap(),
+                expected,
+                "{field}"
+            );
+        }
+        let mut changed = call.clone();
+        changed.parameters.extra[ROUTE_CONTEXT_KEY]["sdk_response_cache"]["shape_sha256"] =
+            serde_json::json!("e".repeat(64));
+        assert_ne!(sdk_response_cache_key(&changed).unwrap(), expected);
+    }
+
+    #[test]
+    fn sdk_cache_keys_abstain_for_legacy_unsupported_and_incomplete_requests() {
+        for field in ["provider_configuration", "sdk_response_cache"] {
+            let mut call = cache_call();
+            call.parameters.extra[ROUTE_CONTEXT_KEY]
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+            assert!(sdk_response_cache_key(&call).is_none());
+        }
+        for (field, value) in [
+            ("streaming", serde_json::json!(true)),
+            ("image_input", serde_json::json!(true)),
+            ("provider_protocol", serde_json::json!("unknown")),
+        ] {
+            let mut call = cache_call();
+            call.parameters.extra[ROUTE_CONTEXT_KEY][field] = value;
+            assert!(sdk_response_cache_key(&call).is_none());
+        }
+        let mut call = cache_call();
+        call.parameters.extra[ROUTE_CONTEXT_KEY]["sdk_response_cache"]["message_sha256"] =
+            serde_json::json!("bad");
+        assert!(sdk_response_cache_key(&call).is_none());
+    }
 
     #[test]
     fn writable_dbs_are_wal_mode() {

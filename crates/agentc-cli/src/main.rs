@@ -1534,7 +1534,8 @@ fn cmd_optimize_inspect(call_site: String, storage_path: String) -> anyhow::Resu
     let storage_dir = resolve_storage_path(&storage_path);
     let cost = open_cost_model_db(&storage_dir)?;
     let audit = open_audit_db(&storage_dir)?;
-    match agentc_optimizer::build_inspect(&cost, &audit, &call_site, 50, now_us())? {
+    let config = agentc_optimizer::OptimizerConfig::from_storage(&storage_dir);
+    match agentc_optimizer::build_inspect(&cost, &audit, &call_site, config.divergence_window, now_us())? {
         Some(inspect) => {
             print!("{}", agentc_optimizer::render_inspect(&inspect));
             Ok(())

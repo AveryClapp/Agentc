@@ -4,8 +4,8 @@ use std::error::Error;
 
 use agentc_optimizer::{
     schema::ensure_cost_model_schema, CallSiteVersion, CounterfactualFeedback,
-    CounterfactualLabel, ExecutionPlanId, ExplorationCandidate, ExplorationController,
-    ExplorationPolicy, ExplorationReason, PlanProfileKey,
+    CounterfactualLabel, ExecutionPlanId, ExplorationAllocation, ExplorationCandidate,
+    ExplorationController, ExplorationPolicy, ExplorationReason, PlanProfileKey,
 };
 use rusqlite::Connection;
 use serde_json::json;
@@ -22,6 +22,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         candidate(&call_site_version, 'b')?,
     ];
     let policy = ExplorationPolicy {
+        allocation: ExplorationAllocation::LeastEvidence,
         seed: 20_260_903,
         max_calls_per_site: 4,
         max_concurrent_per_site: 1,
@@ -156,6 +157,8 @@ fn candidate(
             execution_plan_id: ExecutionPlanId::parse(plan_digit.to_string().repeat(64))?,
         },
         paired_observations: 0,
+        refresh_required: false,
+        projected_savings_usd: 0.0,
         request_compatible: true,
         forbidden: false,
         disabled: false,

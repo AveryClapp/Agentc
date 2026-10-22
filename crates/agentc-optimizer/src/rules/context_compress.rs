@@ -7,6 +7,14 @@
 //! - Safety: the compressed prompt still contains every token from
 //!   `DepSource::UserInput`, every token any subsequent span read, and
 //!   at least one token from each distinct role.
+//! - Conservatively retain the first user message as well: raw SDK histories
+//!   may label the original task `Literal` rather than `UserInput`. Explicit
+//!   `UserInput` tags still protect later instructions independently of role.
+//! - Keep the latest assistant message and everything after it. Earlier
+//!   assistant exchanges (up to the next assistant message) are indivisible:
+//!   a retained observation must keep the action that produced it, and vice
+//!   versa. This is conservative for user-role shell results and ordinary chat;
+//!   it does not infer tool provenance from message text.
 //! - Extractive only (no secondary LLM summary — would blow the
 //!   overhead budget).
 //!
@@ -37,6 +45,8 @@ pub const DEFAULT_ACCURACY_BUDGET: f32 = 0.02;
 /// (e.g. token-overlap fractions) should override via
 /// `parameters.extra.dead_attention_epsilon`.
 pub const DEAD_ATTENTION_EPSILON: f32 = 1e-4;
+/// Plan evidence from independent message deletion cannot admit this rewrite.
+pub const IMPLEMENTATION_VERSION: &str = "assistant-exchanges-provenance-v2";
 
 pub struct ContextCompressRule {
     min_prompt_bytes: usize,
@@ -65,6 +75,18 @@ impl ContextCompressRule {
 }
 
 impl RewriteRule for ContextCompressRule {
+    fn identity(&self) -> Option<crate::planner::RuleIdentity> {
+        crate::planner::RuleIdentity::new(
+            IMPLEMENTATION_VERSION,
+            self.accuracy_budget,
+            serde_json::json!({
+                "min_prompt_bytes": self.min_prompt_bytes,
+                "min_dead_fraction": self.min_dead_fraction,
+                "default_dead_attention_epsilon": DEAD_ATTENTION_EPSILON,
+            }),
+        )
+    }
+
     fn name(&self) -> &'static str {
         "ContextCompress"
     }
@@ -86,11 +108,8 @@ impl RewriteRule for ContextCompressRule {
         let epsilon = extract_dead_attention_epsilon(call).unwrap_or(DEAD_ATTENTION_EPSILON);
         let follow_ons = extract_follow_on_tokens(call);
         let user_input_messages = user_input_message_indices(call);
-        let roles_to_keep_one: HashSet<String> = call
-            .messages
-            .iter()
-            .map(|m| m.role.clone())
-            .collect();
+        let roles_to_keep_one: HashSet<String> =
+            call.messages.iter().map(|m| m.role.clone()).collect();
 
         // First pass: mark candidates for drop.
         let mut drop: Vec<bool> = scores
@@ -109,13 +128,16 @@ impl RewriteRule for ContextCompressRule {
             .collect();
 
         // Dead-fraction check on the token side.
-        let dead_fraction = scores
-            .iter()
-            .filter(|s| **s <= epsilon)
-            .count() as f32
-            / (scores.len() as f32);
+        let dead_fraction =
+            scores.iter().filter(|s| **s <= epsilon).count() as f32 / (scores.len() as f32);
         if dead_fraction < self.min_dead_fraction {
             return None;
+        }
+
+        // The current exchange is the context for the next action, even when
+        // a short/empty observation has no vocabulary in common with it.
+        if let Some(start) = call.messages.iter().rposition(|m| m.role == "assistant") {
+            drop[start..].fill(false);
         }
 
         // Second pass: ensure at least one message per role survives.
@@ -131,6 +153,20 @@ impl RewriteRule for ContextCompressRule {
                 if let Some(i) = call.messages.iter().position(|m| &m.role == role) {
                     drop[i] = false;
                 }
+            }
+        }
+
+        // Close retention over whole assistant exchanges after all other
+        // protections, including role recovery. Never emit an orphan result or
+        // an action whose result was removed. Prefix documents before the first
+        // assistant retain the existing extractive behavior.
+        let mut end = call.messages.len();
+        for start in (0..end).rev() {
+            if call.messages[start].role == "assistant" {
+                if drop[start..end].iter().any(|d| !d) {
+                    drop[start..end].fill(false);
+                }
+                end = start;
             }
         }
 
@@ -161,10 +197,16 @@ impl RewriteRule for ContextCompressRule {
                 new_messages.push(m.clone());
             }
         }
-        let rewritten_call = Call {
+        let mut rewritten_call = Call {
             messages: new_messages,
             ..call.clone()
         };
+        let retained = drop
+            .iter()
+            .enumerate()
+            .filter_map(|(i, d)| (!d).then_some(i))
+            .collect::<Vec<_>>();
+        crate::dag::retain_message_annotations(&mut rewritten_call, &retained, call.messages.len());
 
         Some(Proposal {
             rewritten: Plan::Rewritten {
@@ -226,8 +268,12 @@ struct FollowOn {
 }
 
 fn extract_follow_on_tokens(call: &Call) -> Vec<String> {
-    let Some(obj) = call.parameters.extra.as_object() else { return Vec::new(); };
-    let Some(v) = obj.get("follow_on_tokens") else { return Vec::new(); };
+    let Some(obj) = call.parameters.extra.as_object() else {
+        return Vec::new();
+    };
+    let Some(v) = obj.get("follow_on_tokens") else {
+        return Vec::new();
+    };
     if let Value::Array(items) = v {
         return items
             .iter()
@@ -240,13 +286,31 @@ fn extract_follow_on_tokens(call: &Call) -> Vec<String> {
 }
 
 fn extract_message_deps(call: &Call) -> Option<Vec<DepSource>> {
-    let v = call.parameters.extra.as_object()?.get("message_deps")?.clone();
+    let v = call
+        .parameters
+        .extra
+        .as_object()?
+        .get("message_deps")?
+        .clone();
     serde_json::from_value::<Vec<DepSource>>(v).ok()
 }
 
 fn user_input_message_indices(call: &Call) -> HashSet<usize> {
     let mut out = HashSet::new();
-    let Some(deps) = extract_message_deps(call) else { return out; };
+    // Raw SDK calls do not distinguish the initial task from later tool
+    // observations carried in user messages. Retain the first user message
+    // even when provenance is absent, Literal, or incomplete. This can keep
+    // extra context; it does not infer provenance for later user messages.
+    if let Some(i) = call
+        .messages
+        .iter()
+        .position(|message| message.role == "user")
+    {
+        out.insert(i);
+    }
+    let Some(deps) = extract_message_deps(call) else {
+        return out;
+    };
     if deps.len() != call.messages.len() {
         return out;
     }
@@ -314,7 +378,10 @@ mod tests {
             span_id: [0u8; 8],
             model: "gpt-4o".into(),
             messages,
-            parameters: Parameters { extra, ..Default::default() },
+            parameters: Parameters {
+                extra,
+                ..Default::default()
+            },
             tools: vec![],
             input_deps: vec![],
             occurrence_ix: 0,
@@ -323,7 +390,10 @@ mod tests {
 
     #[test]
     fn small_prompt_does_not_fire() {
-        let msgs = vec![Message { role: "user".into(), content: "short".into() }];
+        let msgs = vec![Message {
+            role: "user".into(),
+            content: "short".into(),
+        }];
         let call = call_with(msgs, vec![0.0], vec![DepSource::Literal], vec![]);
         let rule = ContextCompressRule::default();
         assert!(!rule.applies(&call, &hot_profile()));
@@ -332,9 +402,18 @@ mod tests {
     #[test]
     fn large_dead_prompt_fires_and_drops() {
         let msgs = vec![
-            Message { role: "system".into(), content: "sys".into() },
-            Message { role: "user".into(), content: "live question".into() },
-            Message { role: "user".into(), content: big("x ", 5000) }, // ~10KB dead
+            Message {
+                role: "system".into(),
+                content: "sys".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "live question".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: big("x ", 5000),
+            }, // ~10KB dead
         ];
         let scores = vec![1.0, 1.0, 0.0];
         let deps = vec![
@@ -362,9 +441,18 @@ mod tests {
         // assertion in `if let Some(..)`, so it passed vacuously when the rule
         // declined and asserted nothing at all (bd-004).
         let msgs = vec![
-            Message { role: "user".into(), content: "live question".into() },
-            Message { role: "user".into(), content: big("junk ", 5000) },
-            Message { role: "user".into(), content: big("garbage ", 5000) },
+            Message {
+                role: "user".into(),
+                content: "live question".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: big("junk ", 5000),
+            },
+            Message {
+                role: "user".into(),
+                content: big("garbage ", 5000),
+            },
         ];
         let call = call_with(
             msgs,
@@ -398,13 +486,22 @@ mod tests {
     #[test]
     fn user_input_messages_never_dropped() {
         let msgs = vec![
-            Message { role: "user".into(), content: "userq".into() },
-            Message { role: "user".into(), content: big("dead ", 5000) },
+            Message {
+                role: "user".into(),
+                content: "userq".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: big("dead ", 5000),
+            },
         ];
         let call = call_with(
             msgs,
             vec![0.0, 0.0], // even the user msg scores 0 → should still survive
-            vec![DepSource::UserInput { span_id: [1u8; 8] }, DepSource::Literal],
+            vec![
+                DepSource::UserInput { span_id: [1u8; 8] },
+                DepSource::Literal,
+            ],
             vec![],
         );
         let rule = ContextCompressRule::default();
@@ -415,6 +512,325 @@ mod tests {
             }
             _ => panic!("expected Rewritten"),
         }
+    }
+
+    #[test]
+    fn original_task_survives_later_observation_salience_without_user_input_tags() {
+        // Raw SDK histories mark the initial task and tool observations alike
+        // as Literal. A later observation can dominate the overlap proxy even
+        // though the initial task must remain available to the agent.
+        let messages = vec![
+            Message {
+                role: "system".into(),
+                content: "agent instructions".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "Fix the estimator regression".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: big("obsolete output ", 1000),
+            },
+            Message {
+                role: "assistant".into(),
+                content: "inspect implementation".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "current diagnostic".into(),
+            },
+        ];
+        let original = call_with(
+            messages,
+            vec![1.0, 0.0, 0.0, 1.0, 1.0],
+            vec![DepSource::Literal; 5],
+            vec!["diagnostic"],
+        );
+        for include_deps in [true, false] {
+            let mut call = original.clone();
+            if !include_deps {
+                call.parameters
+                    .extra
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("message_deps");
+            }
+            let rule = ContextCompressRule::default();
+            assert!(rule.applies(&call, &hot_profile()));
+            let proposal = rule
+                .propose(&call, &hot_profile())
+                .expect("old output is removable");
+            assert!((proposal.safety_check)(&call));
+            let Plan::Rewritten {
+                call: rewritten, ..
+            } = proposal.rewritten
+            else {
+                panic!("expected rewritten call");
+            };
+            assert_eq!(
+                serde_json::to_value(&rewritten.messages).unwrap(),
+                json!([
+                    call.messages[0].clone(),
+                    call.messages[1].clone(),
+                    call.messages[3].clone(),
+                    call.messages[4].clone(),
+                ])
+            );
+            assert_eq!(
+                rewritten.parameters.extra["follow_on_tokens"],
+                call.parameters.extra["follow_on_tokens"]
+            );
+            assert_eq!(
+                rewritten.parameters.extra["attention_scores"],
+                json!([1.0, 0.0, 1.0, 1.0])
+            );
+            if include_deps {
+                assert_eq!(
+                    rewritten.parameters.extra["message_deps"],
+                    json!([
+                        {"kind": "literal"}, {"kind": "literal"}, {"kind": "literal"}, {"kind": "literal"}
+                    ])
+                );
+            } else {
+                assert!(rewritten.parameters.extra.get("message_deps").is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn first_user_and_all_explicit_user_inputs_are_protected_together() {
+        let call = call_with(
+            vec![
+                Message {
+                    role: "user".into(),
+                    content: "initial literal task".into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: big("obsolete ", 1500),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "first clarification".into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "second clarification".into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "current observation".into(),
+                },
+            ],
+            vec![0.0, 0.0, 0.0, 0.0, 1.0],
+            vec![
+                DepSource::Literal,
+                DepSource::Literal,
+                DepSource::UserInput { span_id: [1; 8] },
+                DepSource::UserInput { span_id: [2; 8] },
+                DepSource::Literal,
+            ],
+            vec![],
+        );
+        let proposal = ContextCompressRule::default()
+            .propose(&call, &hot_profile())
+            .unwrap();
+        assert!((proposal.safety_check)(&call));
+        let Plan::Rewritten {
+            call: rewritten, ..
+        } = proposal.rewritten
+        else {
+            panic!("expected rewritten call");
+        };
+        assert_eq!(
+            serde_json::to_value(&rewritten.messages).unwrap(),
+            json!([
+                call.messages[0].clone(),
+                call.messages[2].clone(),
+                call.messages[3].clone(),
+                call.messages[4].clone(),
+            ])
+        );
+    }
+
+    #[test]
+    fn no_proposal_when_first_user_is_the_only_dead_message() {
+        let call = call_with(
+            vec![
+                Message {
+                    role: "user".into(),
+                    content: big("original task ", 1000),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "recent observation".into(),
+                },
+            ],
+            vec![0.0, 1.0],
+            vec![DepSource::Literal; 2],
+            vec![],
+        );
+        let rule = ContextCompressRule::default();
+        assert!(rule.applies(&call, &hot_profile()));
+        assert!(rule.propose(&call, &hot_profile()).is_none());
+    }
+
+    #[test]
+    fn assistant_exchanges_are_atomic_for_every_salience_mask() {
+        let messages = vec![
+            Message {
+                role: "system".into(),
+                content: "instructions".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "task".into(),
+            },
+            Message {
+                role: "assistant".into(),
+                content: "old command".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: big("old result ", 1000),
+            },
+            Message {
+                role: "assistant".into(),
+                content: "second command".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "second result".into(),
+            },
+            Message {
+                role: "assistant".into(),
+                content: "current command".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "current result".into(),
+            },
+        ];
+        for mask in 0..256 {
+            let scores = (0..8)
+                .map(|i| if mask & (1 << i) == 0 { 0.0 } else { 1.0 })
+                .collect();
+            let call = call_with(
+                messages.clone(),
+                scores,
+                vec![DepSource::Literal; 8],
+                vec![],
+            );
+            let rule = ContextCompressRule::default();
+            assert!(rule.applies(&call, &hot_profile()));
+            let selected = match rule.propose(&call, &hot_profile()) {
+                Some(proposal) => {
+                    assert!((proposal.safety_check)(&call));
+                    let Plan::Rewritten { call, .. } = proposal.rewritten else {
+                        panic!("rewrite");
+                    };
+                    call.messages
+                }
+                None => call.messages.clone(),
+            };
+            let kept = |i: usize| selected.iter().any(|m| m.content == messages[i].content);
+            assert!(kept(0) && kept(1) && kept(6) && kept(7), "mask={mask}");
+            for start in [2, 4] {
+                assert_eq!(kept(start), kept(start + 1), "mask={mask}, start={start}");
+            }
+            if mask == 0 {
+                assert_eq!(
+                    selected.len(),
+                    4,
+                    "wholly dead old exchanges remain removable"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn multiple_observations_and_protected_clarification_keep_their_exchange() {
+        let messages = vec![
+            Message {
+                role: "user".into(),
+                content: "task".into(),
+            },
+            Message {
+                role: "assistant".into(),
+                content: "obsolete command".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: big("obsolete result ", 1000),
+            },
+            Message {
+                role: "assistant".into(),
+                content: "parallel commands".into(),
+            },
+            Message {
+                role: "tool".into(),
+                content: "first result".into(),
+            },
+            Message {
+                role: "function".into(),
+                content: "second result".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "clarification".into(),
+            },
+            Message {
+                role: "assistant".into(),
+                content: "unfinished current action".into(),
+            },
+        ];
+        let mut deps = vec![DepSource::Literal; 8];
+        deps[6] = DepSource::UserInput { span_id: [2; 8] };
+        let call = call_with(messages, vec![0.0; 8], deps, vec![]);
+        let proposal = ContextCompressRule::default()
+            .propose(&call, &hot_profile())
+            .unwrap();
+        let Plan::Rewritten { call: selected, .. } = proposal.rewritten else {
+            panic!("rewrite");
+        };
+        assert_eq!(
+            serde_json::to_value(selected.messages).unwrap(),
+            json!([
+                call.messages[0],
+                call.messages[3],
+                call.messages[4],
+                call.messages[5],
+                call.messages[6],
+                call.messages[7],
+            ])
+        );
+    }
+
+    #[test]
+    fn current_exchange_only_abstains_even_with_zero_scores() {
+        let call = call_with(
+            vec![
+                Message {
+                    role: "user".into(),
+                    content: "task".into(),
+                },
+                Message {
+                    role: "assistant".into(),
+                    content: big("current action ", 1000),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "".into(),
+                },
+            ],
+            vec![0.0; 3],
+            vec![DepSource::Literal; 3],
+            vec![],
+        );
+        let rule = ContextCompressRule::default();
+        assert!(rule.applies(&call, &hot_profile()));
+        assert!(rule.propose(&call, &hot_profile()).is_none());
     }
 
     #[test]
@@ -463,11 +879,26 @@ mod tests {
         // default would never see anything as dead. With override = 0.10,
         // scores at 0.05 become drop-eligible.
         let msgs = vec![
-            Message { role: "system".into(), content: "system".into() },
-            Message { role: "user".into(), content: "live question".into() },
-            Message { role: "user".into(), content: big("x ", 5000) },
-            Message { role: "user".into(), content: big("y ", 5000) },
-            Message { role: "user".into(), content: big("z ", 5000) },
+            Message {
+                role: "system".into(),
+                content: "system".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "live question".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: big("x ", 5000),
+            },
+            Message {
+                role: "user".into(),
+                content: big("y ", 5000),
+            },
+            Message {
+                role: "user".into(),
+                content: big("z ", 5000),
+            },
         ];
         let scores = vec![0.05, 1.0, 0.05, 0.05, 0.05];
         let deps = vec![
@@ -489,7 +920,10 @@ mod tests {
             span_id: [0u8; 8],
             model: "gpt-4o".into(),
             messages: msgs,
-            parameters: Parameters { extra, ..Default::default() },
+            parameters: Parameters {
+                extra,
+                ..Default::default()
+            },
             tools: vec![],
             input_deps: vec![],
             occurrence_ix: 0,
@@ -526,18 +960,33 @@ mod tests {
     #[test]
     fn proposal_carries_input_tokens_cost_driver() {
         let msgs = vec![
-            Message { role: "system".into(), content: "sys".into() },
-            Message { role: "user".into(), content: "live question".into() },
-            Message { role: "user".into(), content: big("x ", 5000) },
+            Message {
+                role: "system".into(),
+                content: "sys".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "live question".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: big("x ", 5000),
+            },
         ];
         let call = call_with(
             msgs,
             vec![1.0, 1.0, 0.0],
-            vec![DepSource::Literal, DepSource::UserInput { span_id: [1u8; 8] }, DepSource::Literal],
+            vec![
+                DepSource::Literal,
+                DepSource::UserInput { span_id: [1u8; 8] },
+                DepSource::Literal,
+            ],
             vec![],
         );
         let rule = ContextCompressRule::default();
-        let prop = rule.propose(&call, &hot_profile()).expect("must fire on dead context");
+        let prop = rule
+            .propose(&call, &hot_profile())
+            .expect("must fire on dead context");
         assert_eq!(prop.cost_driver, CostDriver::InputTokens);
     }
 }

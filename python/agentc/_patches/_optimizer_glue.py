@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+from contextvars import copy_context
 import sys
 import threading
 import time
@@ -42,6 +43,7 @@ ANTHROPIC_MESSAGES_PROTOCOL = "anthropic.messages.v1"
 LITELLM_COMPLETION_PROTOCOL = "litellm.completion.v1"
 _ROUTE_CONTEXT_KEY = "agentc_route_context"
 _ROUTED_TARGET_KEY = "agentc_routed_target"
+_TOOL_ACTION_GUARD_VERSION = "typed-actions-v1"
 
 # Counterfactual calls are off the request path, but they are not allowed to
 # create an unbounded process-wide thread/task fan-out across many call sites.
@@ -55,6 +57,7 @@ _exploration_tasks: dict[Any, Any] = {}
 
 class UnsafeModelRouteError(ValueError):
     """A plan attempted a model change outside its declared dispatch contract."""
+
 
 # Sticky ignored modules — frames inside these are infrastructure, not the
 # call site we want to attribute optimization decisions to. The wrapper
@@ -313,7 +316,7 @@ def _structured_output_schema_version(kwargs: dict[str, Any]) -> str | None:
             output_config = model_dump()
         if isinstance(output_config, dict):
             value = output_config.get("format")
-    if value is None:
+    if value is None and not kwargs.get("tools"):
         return None
 
     model_json_schema = getattr(value, "model_json_schema", None)
@@ -324,6 +327,14 @@ def _structured_output_schema_version(kwargs: dict[str, Any]) -> str | None:
         if callable(model_dump):
             value = model_dump()
     try:
+        if kwargs.get("tools"):
+            # Legacy tool-output pairs compared two empty content strings.
+            # Cold-start their exact profiles when adopting action semantics;
+            # ordinary text/output-schema identities retain their prior digest.
+            value = {
+                "output_format": value,
+                "tool_action_guard": _TOOL_ACTION_GUARD_VERSION,
+            }
         canonical = json.dumps(value, sort_keys=True, separators=(",", ":"))
     except (TypeError, ValueError):
         value_type = value if isinstance(value, type) else type(value)
@@ -331,19 +342,175 @@ def _structured_output_schema_version(kwargs: dict[str, Any]) -> str | None:
     return "structured-output-v1:" + hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _client_tool_settings_version(kwargs: dict[str, Any], protocol: str) -> str | None:
+    """Declare comparison only for the supported single-choice client-tool seam."""
+    import hashlib
+
+    if protocol not in {OPENAI_CHAT_COMPLETIONS_PROTOCOL, LITELLM_COMPLETION_PROTOCOL}:
+        return None
+    count = kwargs.get("n")
+    if kwargs.get("stream") or (
+        count is not None and (type(count) is not int or count != 1)
+    ):
+        return None
+    tools = kwargs.get("tools")
+    if not isinstance(tools, list) or not tools:
+        return None
+    for tool in tools:
+        if not isinstance(tool, dict) or tool.get("type") != "function":
+            return None
+        function = tool.get("function")
+        if (
+            not isinstance(function, dict)
+            or not isinstance(function.get("name"), str)
+            or not function["name"]
+            or not isinstance(function.get("parameters"), dict)
+        ):
+            return None
+    messages = kwargs.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return None
+    text_layout = []
+    has_block_layout = False
+    for message in messages:
+        if not isinstance(message, dict) or set(message) - {
+            "role",
+            "content",
+            "name",
+            "tool_calls",
+            "tool_call_id",
+            "refusal",
+            "cache_control",
+        }:
+            return None
+        if message.get("role") not in {
+            "system",
+            "developer",
+            "user",
+            "assistant",
+            "tool",
+        }:
+            return None
+        content = message.get("content")
+        marker = message.get("cache_control")
+        if "cache_control" in message and (
+            message["role"] != "tool" or marker != {"type": "ephemeral"}
+        ):
+            return None
+        blocks = None
+        if isinstance(content, list):
+            if not 0 < len(content) <= 128:
+                return None
+            blocks = []
+            for block in content:
+                if (
+                    not isinstance(block, dict)
+                    or set(block) - {"type", "text", "cache_control"}
+                    or block.get("type") != "text"
+                    or not isinstance(block.get("text"), str)
+                    or "cache_control" in block
+                    and block["cache_control"] != {"type": "ephemeral"}
+                ):
+                    return None
+                blocks.append(
+                    {"type": "text", "cache_control": block.get("cache_control")}
+                )
+            has_block_layout = True
+        elif content is not None and not isinstance(content, str):
+            return None
+        if marker is not None:
+            has_block_layout = True
+        text_layout.append(
+            {"role": message["role"], "blocks": blocks, "cache_control": marker}
+        )
+        calls = message.get("tool_calls")
+        if calls is not None:
+            if not isinstance(calls, list):
+                return None
+            for call in calls:
+                function = call.get("function") if isinstance(call, dict) else None
+                if (
+                    not isinstance(call, dict)
+                    or call.get("type") != "function"
+                    or not isinstance(function, dict)
+                    or not isinstance(function.get("name"), str)
+                    or not isinstance(function.get("arguments"), str)
+                ):
+                    return None
+    parallel = kwargs.get("parallel_tool_calls")
+    if parallel is not None and type(parallel) is not bool:
+        return None
+    choice = kwargs.get("tool_choice")
+    if choice is not None and choice not in ("auto", "none", "required"):
+        if (
+            not isinstance(choice, dict)
+            or set(choice) != {"type", "function"}
+            or choice["type"] != "function"
+            or not isinstance(choice["function"], dict)
+            or set(choice["function"]) != {"name"}
+            or not isinstance(choice["function"]["name"], str)
+            or choice["function"]["name"]
+            not in {tool["function"]["name"] for tool in tools}
+        ):
+            return None
+    try:
+        declaration = {
+            "tool_choice": "auto" if choice is None else choice,
+            "parallel_tool_calls": True if parallel is None else parallel,
+            "tools": tools,
+        }
+        if has_block_layout:
+            declaration["text_block_layout"] = text_layout
+        settings = json.dumps(
+            declaration,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError):
+        return None
+    return "tool-settings-v1:" + hashlib.sha256(settings.encode()).hexdigest()
+
+
 def _route_context(
     kwargs: dict[str, Any],
     *,
     provider_protocol: str,
     provider_namespace: str,
+    provider_endpoint: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    import os
+
+    from agentc import _native
+    from agentc._provider_config import CONTEXT_KEY, VERSION, declaration
+    from agentc._response_cache import (
+        CONTEXT_KEY as CACHE_CONTEXT_KEY,
+        request_declaration,
+    )
+
+    divergence_mode = (
+        os.environ.get("AGENTC_SHADOW_DIVERGENCE_MODE", "lexical").strip().lower()
+    )
+    expected_metric = {
+        "normalized": "normalized-jaccard-v2",
+        "embedding": "embedding-cosine-normalized-jaccard-v2",
+    }.get(divergence_mode, "1")
+    if _native.optimize_divergence_metric_version(divergence_mode) != expected_metric:
+        raise RuntimeError("native divergence metric identity contract is unavailable")
+
+    if _native.optimize_provider_configuration_version() != VERSION:
+        raise RuntimeError(
+            "native provider-configuration identity contract is unavailable"
+        )
     native_values = (
         kwargs.get("system"),
         kwargs.get("messages"),
         kwargs.get("tools"),
     )
     image_input = _contains_image_input(native_values)
-    context = {
+    context: dict[str, Any] = {
+        CONTEXT_KEY: declaration(kwargs, provider_protocol=provider_protocol),
+        CACHE_CONTEXT_KEY: request_declaration(kwargs),
         "provider_protocol": provider_protocol,
         "provider_namespace": provider_namespace,
         # Provider image accounting cannot be bounded from a URL alone. Force
@@ -356,9 +523,77 @@ def _route_context(
         "structured_outputs": _structured_output_requested(kwargs),
         "streaming": bool(kwargs.get("stream")),
     }
+    if provider_endpoint is not None:
+        from agentc._provider_endpoint import CONTEXT_KEY as ENDPOINT_KEY
+
+        context[ENDPOINT_KEY] = provider_endpoint
+    from agentc._application_version import (
+        CONTEXT_KEY as APPLICATION_VERSION_KEY,
+        VERSION as APPLICATION_VERSION,
+        declaration as application_declaration,
+    )
+
+    application = application_declaration()
+    if application is not None:
+        if _native.optimize_application_version() != APPLICATION_VERSION:
+            raise RuntimeError(
+                "native application version identity contract is unavailable"
+            )
+        context[APPLICATION_VERSION_KEY] = application
+    from agentc._output_validation import (
+        CONTEXT_KEY as VALIDATION_CONTEXT_KEY,
+        VERSION as VALIDATION_VERSION,
+        request_declaration as validation_declaration,
+    )
+
+    validation = validation_declaration(
+        kwargs,
+        supported=(
+            context[CONTEXT_KEY]["supported"]
+            and not image_input
+            and not kwargs.get("stream")
+        ),
+    )
+    if validation is not None:
+        if _native.optimize_output_validation_version() != VALIDATION_VERSION:
+            raise RuntimeError(
+                "native output validation identity contract is unavailable"
+            )
+        context[VALIDATION_CONTEXT_KEY] = validation
     structured_output_schema_version = _structured_output_schema_version(kwargs)
     if structured_output_schema_version is not None:
         context["structured_output_schema_version"] = structured_output_schema_version
+    tool_settings_version = _client_tool_settings_version(kwargs, provider_protocol)
+    if tool_settings_version is not None:
+        context["tool_action_comparator_version"] = _TOOL_ACTION_GUARD_VERSION
+        context["tool_settings_version"] = tool_settings_version
+    from agentc._text_actions import current_text_action_contract
+
+    action_contract = current_text_action_contract()
+    if action_contract is not None:
+        from agentc import _native
+
+        if (
+            _native.optimize_text_action_comparator_version()
+            != action_contract.comparator_version
+        ):
+            raise RuntimeError(
+                "native text action identity/lease contract is unavailable"
+            )
+        context["text_action_comparator_version"] = action_contract.comparator_version
+        context["text_action_settings_version"] = action_contract.settings_version
+        context["text_action_contract_supported"] = action_contract.request_supported(
+            kwargs, provider_protocol
+        )
+    from agentc._evaluation_policy import current_evaluation_policy, VERSION
+
+    evaluation_policy = current_evaluation_policy()
+    if evaluation_policy is not None:
+        from agentc import _native
+
+        if _native.optimize_evaluation_policy_version() != VERSION:
+            raise RuntimeError("native frozen request-policy contract is unavailable")
+        context["frozen_request_policy"] = evaluation_policy.declaration()
     return context
 
 
@@ -411,6 +646,12 @@ def _validate_model_route(
 
     expected_namespace = _provider_namespace(provider_protocol, original_model)
     target_namespace = _provider_namespace(provider_protocol, target_model)
+    route_context = (mutated_call.get("parameters") or {}).get("extra", {}).get(_ROUTE_CONTEXT_KEY, {})
+    if "provider_endpoint" in route_context:
+        from agentc._provider_endpoint import validate_namespace
+
+        expected_namespace = validate_namespace(route_context["provider_endpoint"], provider_protocol) or "unresolved"
+        target_namespace = expected_namespace
     if (
         expected_namespace == "unresolved"
         or target_namespace != expected_namespace
@@ -455,6 +696,7 @@ def build_call_dict_openai(
     span_id_hex: str,
     provider_protocol: str = OPENAI_CHAT_COMPLETIONS_PROTOCOL,
     provider_namespace: str | None = None,
+    client: Any = None,
 ) -> dict[str, Any]:
     """Translate OpenAI ``chat.completions.create`` kwargs into a Call dict."""
     from agentc._parallel import get_parallel_peer
@@ -579,10 +821,17 @@ def build_call_dict_openai(
 
     model = str(kwargs.get("model", ""))
     namespace = provider_namespace or _provider_namespace(provider_protocol, model)
+    endpoint = None
+    if client is not None:
+        from agentc._provider_endpoint import declaration as endpoint_declaration
+
+        endpoint = endpoint_declaration(client, provider_protocol)
+        namespace = endpoint["namespace"]
     extra_obj[_ROUTE_CONTEXT_KEY] = _route_context(
         kwargs,
         provider_protocol=provider_protocol,
         provider_namespace=namespace,
+        provider_endpoint=endpoint,
     )
 
     if extra_obj:
@@ -643,6 +892,25 @@ def apply_call_mutations_openai(
     return new_kwargs
 
 
+def _reported_inference_cost(usage: Any, token_fields: tuple[str, str]) -> float | None:
+    reported_cost = getattr(usage, "cost", None)
+    if (
+        getattr(usage, "is_byok", None) is not False
+        or reported_cost is None
+        or isinstance(reported_cost, bool)
+        or not all(
+            isinstance(value, int) and not isinstance(value, bool) and value >= 0
+            for value in (getattr(usage, field, None) for field in token_fields)
+        )
+    ):
+        return None
+    try:
+        value = float(reported_cost)
+        return value if math.isfinite(value) and value >= 0 else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 def build_outcome_openai(
     response: Any,
     *,
@@ -655,6 +923,12 @@ def build_outcome_openai(
     usage = getattr(response, "usage", None)
     input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
     output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+    cost_usd = estimate_cost_usd(model, input_tokens, output_tokens)
+    cost_source = "estimated" if usage is not None else "unknown"
+    reported_cost = _reported_inference_cost(usage, ("prompt_tokens", "completion_tokens"))
+    if reported_cost is not None:
+        cost_usd = reported_cost
+        cost_source = "provider_reported"
 
     # Detect short / structured output by sampling the first choice.
     output_text = ""
@@ -672,10 +946,11 @@ def build_outcome_openai(
             output_is_structured = False
 
     return {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
+        "input_tokens": 0 if is_cache_hit(plan) else input_tokens,
+        "output_tokens": 0 if is_cache_hit(plan) else output_tokens,
         "latency_ms": elapsed_s * 1000.0,
-        "cost_usd": estimate_cost_usd(model, input_tokens, output_tokens),
+        "cost_usd": 0.0 if is_cache_hit(plan) else cost_usd,
+        "cost_source": "no_inference" if is_cache_hit(plan) else cost_source,
         "output_is_structured": output_is_structured,
         "output_is_short": output_tokens <= 128,
         "call_site_id": call_site_id,
@@ -689,6 +964,7 @@ def build_call_dict_anthropic(
     call_site_id: str,
     trace_id_hex: str,
     span_id_hex: str,
+    client: Any = None,
 ) -> dict[str, Any]:
     """Translate Anthropic ``messages.create`` kwargs into a Call dict.
 
@@ -773,10 +1049,16 @@ def build_call_dict_anthropic(
         extra_obj["follow_on_tokens"] = follow_on
         extra_obj["dead_attention_epsilon"] = 0.10
 
+    endpoint = None
+    if client is not None:
+        from agentc._provider_endpoint import declaration as endpoint_declaration
+
+        endpoint = endpoint_declaration(client, ANTHROPIC_MESSAGES_PROTOCOL)
     extra_obj[_ROUTE_CONTEXT_KEY] = _route_context(
         kwargs,
         provider_protocol=ANTHROPIC_MESSAGES_PROTOCOL,
-        provider_namespace="anthropic",
+        provider_namespace="anthropic" if endpoint is None else endpoint["namespace"],
+        provider_endpoint=endpoint,
     )
 
     if extra_obj:
@@ -865,6 +1147,12 @@ def build_outcome_anthropic(
     usage = getattr(response, "usage", None)
     input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
     output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+    cost_usd = estimate_cost_usd(model, input_tokens, output_tokens)
+    cost_source = "estimated" if usage is not None else "unknown"
+    reported_cost = _reported_inference_cost(usage, ("input_tokens", "output_tokens"))
+    if reported_cost is not None:
+        cost_usd = reported_cost
+        cost_source = "provider_reported"
 
     output_text = ""
     content = getattr(response, "content", None) or []
@@ -885,15 +1173,57 @@ def build_outcome_anthropic(
             pass
 
     return {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
+        "input_tokens": 0 if is_cache_hit(plan) else input_tokens,
+        "output_tokens": 0 if is_cache_hit(plan) else output_tokens,
         "latency_ms": elapsed_s * 1000.0,
-        "cost_usd": estimate_cost_usd(model, input_tokens, output_tokens),
+        "cost_usd": 0.0 if is_cache_hit(plan) else cost_usd,
+        "cost_source": "no_inference" if is_cache_hit(plan) else cost_source,
         "output_is_structured": output_is_structured,
         "output_is_short": output_tokens <= 128,
         "call_site_id": call_site_id,
         **_outcome_dispatch_fields(plan, model),
     }
+
+
+def is_cache_hit(plan: Any | None) -> bool:
+    """A decoded cache response performs no new provider inference."""
+    return getattr(plan, "kind", None) == "cached" and not bool(
+        getattr(plan, "dispatch_fallback", False)
+    )
+
+
+def decode_cached_response(value: Any, *, provider_protocol: str | None = None) -> Any:
+    """Load the SDK response payload shared by sync and async adapters."""
+    from agentc._response_cache import decode_response
+
+    return decode_response(value, provider_protocol=provider_protocol)
+
+
+def cache_response_attributes(
+    plan: Any | None, attrs: dict[str, Any]
+) -> dict[str, Any]:
+    """Report physical primary usage while retaining the SDK response unchanged."""
+    if not is_cache_hit(plan):
+        return attrs
+    attrs = dict(attrs)
+    attrs["agentc.memoization.hit"] = True
+    for key in (
+        "gen_ai.usage.input_tokens",
+        "gen_ai.usage.output_tokens",
+        "gen_ai.usage.cache_creation.input_tokens",
+        "gen_ai.usage.cache_read.input_tokens",
+    ):
+        if key in attrs:
+            attrs[
+                "agentc.memoization.recorded." + key.removeprefix("gen_ai.usage.")
+            ] = attrs[key]
+        attrs[key] = 0
+    value = getattr(plan, "value", None)
+    if isinstance(value, dict):
+        source = value.get("source")
+        if isinstance(source, dict) and source.get("kind") in {"exact", "lsh"}:
+            attrs["agentc.memoization.source"] = source["kind"]
+    return attrs
 
 
 def _outcome_dispatch_fields(plan: Any | None, executed_model: str) -> dict[str, Any]:
@@ -903,6 +1233,19 @@ def _outcome_dispatch_fields(plan: Any | None, executed_model: str) -> dict[str,
             "executed_model_id": executed_model,
         }
     return {
+        **(
+            {"additional_inference": plan.additional_inference}
+            if getattr(plan, "additional_inference", None) is not None
+            else {}
+        ),
+        "physical_invocations": list(getattr(plan, "physical_invocations", [])),
+        "validation_rejected": bool(getattr(plan, "validation_rejected", False)),
+        "inference_cost_complete": bool(getattr(plan, "inference_cost_complete", True)),
+        **(
+            {"reference_fallback_latency_ms": plan.reference_fallback_latency_ms}
+            if getattr(plan, "reference_fallback_latency_ms", None) is not None
+            else {}
+        ),
         "dispatch_fallback": bool(getattr(plan, "dispatch_fallback", False)),
         "dispatch_fallback_reason": getattr(plan, "dispatch_fallback_reason", None),
         "provider_protocol": getattr(plan, "provider_protocol", None),
@@ -925,10 +1268,18 @@ def dispatch_span_attributes(
     if executed_model_id:
         plan.executed_model_id = executed_model_id
     attrs: dict[str, Any] = {
-        "agentc.dispatch.fallback": bool(
-            getattr(plan, "dispatch_fallback", False)
-        )
+        "agentc.dispatch.fallback": bool(getattr(plan, "dispatch_fallback", False))
     }
+    if getattr(plan, "validation_status", None) is not None:
+        attrs["agentc.validation.status"] = plan.validation_status
+        attrs["agentc.validation.cost_complete"] = bool(
+            getattr(plan, "inference_cost_complete", True)
+        )
+        attrs["agentc.validation.uncertain_budget_usd"] = float(
+            getattr(plan, "validation_uncertain_budget_usd", 0.0)
+        )
+    for key, value in (getattr(plan, "additional_inference", None) or {}).items():
+        attrs["agentc.validation.additional_inference." + key] = value
     for attribute, field in [
         ("agentc.dispatch.fallback_reason", "dispatch_fallback_reason"),
         ("agentc.dispatch.provider_protocol", "provider_protocol"),
@@ -960,6 +1311,58 @@ def resolve_executed_model_id(
     return str(requested_model_id or "")
 
 
+class _StructuredOutput(str):
+    """A canonical action/refusal outcome compared exactly, rather than as prose."""
+
+
+class _InvalidTextAction(_StructuredOutput):
+    """An extracted reply that does not contain one supported shell action."""
+
+
+def _field(value: Any, name: str, default: Any = None) -> Any:
+    return (
+        value.get(name, default)
+        if isinstance(value, dict)
+        else getattr(value, name, default)
+    )
+
+
+def _guard_arguments(value: Any) -> Any:
+    if not isinstance(value, str):
+        return {"json": value}
+
+    def reject_constant(value: str) -> None:
+        raise ValueError("non-finite tool arguments")
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate tool argument key")
+            result[key] = value
+        return result
+
+    try:
+        parsed = json.loads(
+            value, parse_constant=reject_constant, object_pairs_hook=unique_object
+        )
+    except (ValueError, TypeError):
+        return {"raw": value}
+    return {"json": parsed}
+
+
+def _structured_output(value: Any) -> _StructuredOutput:
+    return _StructuredOutput(
+        json.dumps(
+            value,
+            sort_keys=True,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        )
+    )
+
+
 def _response_output_text(response: Any) -> Optional[str]:
     """Best-effort extraction of the assistant text from a ChatCompletion.
 
@@ -967,9 +1370,34 @@ def _response_output_text(response: Any) -> Optional[str]:
     or ``None`` if extraction FAILED (unexpected shape / attribute error).
     Callers must treat None as "unknown output", never as an empty string:
     otherwise a swallowed error would be handed to the accuracy guard as
-    maximal divergence and could auto-disable a working rule (bd-kq7).
+    maximal divergence and could auto-disable a working rule (bd-kq7). Tool
+    actions and refusals retain their semantic fields; volatile call IDs are
+    excluded. Different actions cannot compare equal as two empty text strings.
     """
     try:
+        from agentc._text_actions import current_text_action_contract
+
+        action_contract = current_text_action_contract()
+        if action_contract is not None:
+            if isinstance(response, str):
+                text = response
+            else:
+                choices = _field(response, "choices")
+                if not isinstance(choices, (list, tuple)) or len(choices) != 1:
+                    return None
+                message = _field(choices[0], "message")
+                text = _field(message, "content")
+                if (
+                    not isinstance(text, str)
+                    or _field(choices[0], "finish_reason") != "stop"
+                    or _field(message, "tool_calls")
+                    or _field(message, "refusal") is not None
+                ):
+                    return None
+            action = action_contract.action(text)
+            if action is None:
+                return _InvalidTextAction("invalid-mini-swe-bash-action")
+            return _structured_output({"bash_action": action})
         if isinstance(response, str):
             return response
         # OpenAI ChatCompletion shape: choices[0].message.content.
@@ -977,6 +1405,32 @@ def _response_output_text(response: Any) -> Optional[str]:
         if choices:
             msg = getattr(choices[0], "message", None)
             if msg is not None:
+                calls = _field(msg, "tool_calls")
+                refusal = _field(msg, "refusal")
+                if calls or refusal is not None:
+                    actions = []
+                    for call in calls or []:
+                        function = _field(call, "function")
+                        name, arguments = (
+                            _field(function, "name"),
+                            _field(function, "arguments"),
+                        )
+                        if (
+                            _field(call, "type") != "function"
+                            or not isinstance(name, str)
+                            or not isinstance(arguments, str)
+                        ):
+                            return None
+                        actions.append(
+                            {"name": name, "arguments": _guard_arguments(arguments)}
+                        )
+                    return _structured_output(
+                        {
+                            "content": _field(msg, "content"),
+                            "actions": actions,
+                            "refusal": refusal,
+                        }
+                    )
                 return str(getattr(msg, "content", "") or "")
         # Anthropic Message shape: `content` is a list of blocks, each with a
         # `.text` (object) or `"text"` (dict). Needed so the shadow guard works
@@ -984,12 +1438,35 @@ def _response_output_text(response: Any) -> Optional[str]:
         content = getattr(response, "content", None)
         if isinstance(content, list):
             parts: list[str] = []
+            actions = []
             for block in content:
-                text = getattr(block, "text", None)
-                if text is None and isinstance(block, dict):
-                    text = block.get("text")
+                kind = _field(block, "type")
+                if kind == "tool_use":
+                    name = _field(block, "name")
+                    if not isinstance(name, str) or not isinstance(
+                        _field(block, "input"), dict
+                    ):
+                        return None
+                    actions.append(
+                        {
+                            "name": name,
+                            "arguments": _guard_arguments(_field(block, "input")),
+                        }
+                    )
+                    continue
+                text = _field(block, "text")
                 if text:
                     parts.append(str(text))
+                elif kind not in (None, "text", "thinking", "redacted_thinking"):
+                    return None
+            if actions:
+                return _structured_output(
+                    {
+                        "content": " ".join(parts) or None,
+                        "actions": actions,
+                        "refusal": None,
+                    }
+                )
             return " ".join(parts)
         # Well-formed response with no recognizable content → genuinely empty.
         return ""
@@ -1002,10 +1479,10 @@ _PUNCT = str.maketrans({c: " " for c in ",.;:!?\"'`()[]{}<>-_/\\|"})
 
 
 def _normalize_tokens(s: str) -> set[str]:
-    """Lowercase, strip punctuation, drop articles. Makes the divergence
-    signal invariant to formatting/article/case noise so benign rewrites
-    (e.g. 'Kansas Song' vs 'Kansas Song (We're From Kansas)') register as
-    agreement while genuinely different answers still diverge."""
+    """Lowercase, strip punctuation and drop articles for token comparison.
+
+    Token overlap is a proxy, not a semantic or task-correctness validator.
+    """
     toks = s.lower().translate(_PUNCT).split()
     return {t for t in toks if t and t not in _ARTICLES}
 
@@ -1031,12 +1508,23 @@ def _cosine_distance_from_bytes(ba: bytes, bb: bytes) -> float:
 def _text_divergence(a: str, b: str) -> float:
     """1 - Jaccard over output tokens. ``AGENTC_SHADOW_DIVERGENCE_MODE``:
     'lexical' (default, raw whitespace tokens, mirrors the Rust meter),
-    'normalized' (article/punctuation/case-invariant) for a selective guard,
+    'normalized' (Jaccard after article/punctuation/case normalization),
     or 'embedding' (cosine distance on 256-dim model2vec embeddings).
 
     The 'embedding' mode falls back to 'normalized' if the embedder is
     unavailable at runtime, keeping the guard fail-open."""
     import os
+
+    if isinstance(a, _InvalidTextAction) or isinstance(b, _InvalidTextAction):
+        return 1.0
+    if isinstance(a, _StructuredOutput) or isinstance(b, _StructuredOutput):
+        return (
+            0.0
+            if isinstance(a, _StructuredOutput)
+            and isinstance(b, _StructuredOutput)
+            and a == b
+            else 1.0
+        )
 
     mode = os.environ.get("AGENTC_SHADOW_DIVERGENCE_MODE", "lexical").strip().lower()
     if mode == "embedding":
@@ -1059,10 +1547,9 @@ def _text_divergence(a: str, b: str) -> float:
             return 0.0
         if not sa or not sb:
             return 1.0
-        # Containment (overlap coefficient): agreement when one answer
-        # subsumes the other (e.g. a span vs the same span plus a gloss),
-        # so benign elaboration reads as 0 while a different answer diverges.
-        return 1.0 - (len(sa & sb) / min(len(sa), len(sb)))
+        # Additions, including negation and incompatible alternatives, must
+        # not become exact agreement merely because one token set contains the other.
+        return 1.0 - (len(sa & sb) / len(sa | sb))
     sa, sb = set(a.split()), set(b.split())
     if not sa and not sb:
         return 0.0
@@ -1073,6 +1560,8 @@ def _text_divergence(a: str, b: str) -> float:
 
 
 def _applied_rules(plan: Any) -> list[str]:
+    if plan.kind == "cached":
+        return ["CacheHit"]
     if plan.kind == "rewritten" and plan.rule:
         return [plan.rule]
     if plan.kind == "composed":
@@ -1085,6 +1574,11 @@ def _shadow_sample_rules(plan: Any, call_site_id: Optional[str]) -> list[str]:
     import os
     import random
 
+    from agentc._provider_receipts import graph_template_position, graph_discovery_position
+
+    if graph_template_position() is not None or graph_discovery_position() is not None:
+        return []
+
     # A failed optimized dispatch already executed the exact reference request
     # once as its user-visible fallback. Running another shadow reference would
     # duplicate side effects and violate the exactly-once fallback contract.
@@ -1092,14 +1586,17 @@ def _shadow_sample_rules(plan: Any, call_site_id: Optional[str]) -> list[str]:
         return []
 
     rules = _applied_rules(plan)
-    if (
-        not rules
-        or not call_site_id
-        or not getattr(plan, "observation_token", None)
-    ):
+    if not rules or not call_site_id or not getattr(plan, "observation_token", None):
         return []
     try:
-        rate = float(os.environ.get("AGENTC_OPTIMIZE_SHADOW", "0.02"))
+        native_context = json.loads(getattr(plan, "raw_json", None) or "{}").get(
+            "agentc_observation_context", {}
+        )
+        rate = float(
+            native_context.get(
+                "sampling_rate", os.environ.get("AGENTC_OPTIMIZE_SHADOW", "0.02")
+            )
+        )
     except (TypeError, ValueError):
         rate = 0.02
     if not math.isfinite(rate):
@@ -1144,8 +1641,12 @@ def _exploration_parts(plan: Any) -> tuple[Any, str] | None:
         or not isinstance(lease_token, str)
         or not lease_token
         or candidate is None
-        or getattr(candidate, "kind", None) not in ("rewritten", "composed")
-        or not isinstance(getattr(candidate, "call", None), dict)
+        or not (
+            getattr(candidate, "kind", None) in ("rewritten", "composed")
+            and isinstance(getattr(candidate, "call", None), dict)
+            or getattr(candidate, "kind", None) == "cached"
+            and isinstance(getattr(candidate, "value", None), dict)
+        )
     ):
         return None
     return candidate, lease_token
@@ -1191,9 +1692,9 @@ def _maybe_explore_record(
 ) -> threading.Thread | None:
     """Schedule one leased sync counterfactual after returning the reference.
 
-    The daemon worker calls only the provider's mutated-call adapter. It never
-    retries the original request and never changes the response held by the
-    caller. The returned thread exists for deterministic tests; production
+    The daemon worker dispatches a provider rewrite or decodes a cached SDK
+    response. It never retries the original request or changes the response
+    held by the caller. The returned thread exists for deterministic tests; production
     wrappers deliberately do not join it.
     """
     parts = _exploration_parts(plan)
@@ -1211,8 +1712,21 @@ def _maybe_explore_record(
     def worker() -> None:
         try:
             started = time.perf_counter()
-            candidate_response = run_mutated(candidate.call)
-            candidate.executed_model_id = str(candidate.call.get("model") or "") or None
+            if candidate.kind == "cached":
+                candidate_response = decode_cached_response(
+                    candidate.value, provider_protocol=plan.provider_protocol
+                )
+            else:
+                from agentc._dispatch_context import provider_dispatch
+
+                with provider_dispatch("exploration", plan=candidate, primary_plan=plan):
+                    candidate_response = run_mutated(candidate.call)
+                candidate.executed_model_id = (
+                    str(candidate.call.get("model") or "") or None
+                )
+            from agentc._output_validation import validate_candidate
+
+            validate_candidate(candidate, candidate_response)
             _record_exploration_result(
                 plan,
                 candidate,
@@ -1231,8 +1745,10 @@ def _maybe_explore_record(
 
     thread: threading.Thread | None = None
     try:
+        context = copy_context()
         thread = threading.Thread(
-            target=worker,
+            target=context.run,
+            args=(worker,),
             name="agentc-counterfactual",
             daemon=True,
         )
@@ -1269,7 +1785,9 @@ def maybe_explore_record(
             cancel_exploration(plan)
         except BaseException:
             log.debug("counterfactual setup lease close failed", exc_info=True)
-        log.debug("counterfactual worker setup failed; reference preserved", exc_info=True)
+        log.debug(
+            "counterfactual worker setup failed; reference preserved", exc_info=True
+        )
         return None
 
 
@@ -1297,8 +1815,23 @@ def _maybe_explore_record_async(
     async def worker() -> None:
         try:
             started = time.perf_counter()
-            candidate_response = await run_mutated(candidate.call)
-            candidate.executed_model_id = str(candidate.call.get("model") or "") or None
+            if candidate.kind == "cached":
+                candidate_response = await asyncio.to_thread(
+                    decode_cached_response,
+                    candidate.value,
+                    provider_protocol=plan.provider_protocol,
+                )
+            else:
+                from agentc._dispatch_context import provider_dispatch
+
+                with provider_dispatch("exploration", plan=candidate, primary_plan=plan):
+                    candidate_response = await run_mutated(candidate.call)
+                candidate.executed_model_id = (
+                    str(candidate.call.get("model") or "") or None
+                )
+            from agentc._output_validation import validate_candidate_async
+
+            await validate_candidate_async(candidate, candidate_response)
             _record_exploration_result(
                 plan,
                 candidate,
@@ -1312,7 +1845,9 @@ def _maybe_explore_record_async(
             raise
         except BaseException:
             cancel_exploration(plan)
-            log.debug("async counterfactual exploration failed; lease closed", exc_info=True)
+            log.debug(
+                "async counterfactual exploration failed; lease closed", exc_info=True
+            )
         finally:
             _exploration_worker_slots.release()
 
@@ -1355,7 +1890,9 @@ def maybe_explore_record_async(
             cancel_exploration(plan)
         except BaseException:
             log.debug("async counterfactual setup lease close failed", exc_info=True)
-        log.debug("async counterfactual task setup failed; reference preserved", exc_info=True)
+        log.debug(
+            "async counterfactual task setup failed; reference preserved", exc_info=True
+        )
         return None
 
 
@@ -1365,7 +1902,6 @@ def drain_exploration(timeout_ms: int) -> None:
     deadline = time.monotonic() + timeout_s
     with _exploration_workers_lock:
         threads = list(_exploration_threads.items())
-        tasks = list(_exploration_tasks.items())
 
     current = threading.current_thread()
     for thread, _plan in threads:
@@ -1406,8 +1942,8 @@ def maybe_shadow_record(
 ) -> None:
     """Shadow-mode accuracy sampling (sync path).
 
-    On a fraction (``AGENTC_OPTIMIZE_SHADOW``, default 0.02) of rewritten /
-    composed calls, run the *unrewritten* call, measure output divergence
+    On a fraction (``AGENTC_OPTIMIZE_SHADOW``, default 0.02) of rewritten,
+    composed or cached calls, run the *unrewritten* call, measure output divergence
     against the optimized result, and feed it to the Rust complete-plan
     exposure guard via :func:`record_divergence`. Crossing the rolling exposure
     budget disables that exact model-and-rewrite plan; identifiable solo plans
@@ -1423,7 +1959,10 @@ def maybe_shadow_record(
     if not rules or call_site_id is None:
         return
     try:
-        original = run_original()
+        from agentc._dispatch_context import provider_dispatch
+
+        with provider_dispatch("shadow", primary_plan=plan):
+            original = run_original()
         _record_shadow_comparison(
             plan,
             call_site_id,
@@ -1447,7 +1986,10 @@ async def maybe_shadow_record_async(
     if not rules or call_site_id is None:
         return
     try:
-        original = await run_original()
+        from agentc._dispatch_context import provider_dispatch
+
+        with provider_dispatch("shadow", primary_plan=plan):
+            original = await run_original()
         _record_shadow_comparison(
             plan,
             call_site_id,
@@ -1477,28 +2019,53 @@ def dispatch_sync(
 ) -> Any:
     """Sync mirror of ``agentc._executor.dispatch``.
 
-    ``Parallel`` plans require ``asyncio.gather`` so we fall back to the
-    original call when one shows up on the sync path.
+    ``Parallel`` plans are independence certificates for work already
+    scheduled by the caller. Both dispatchers run the original call once.
     """
     decode = decode_cached or (lambda v: v)
+    from agentc._output_validation import (
+        charge_rejected_candidate,
+        reject_failed_candidate,
+        validate_candidate,
+    )
+
+    def run_reference() -> Any:
+        if not getattr(plan, "dispatch_fallback", False):
+            return run_original()
+        started = time.perf_counter()
+        try:
+            return run_original()
+        finally:
+            plan.reference_fallback_latency_ms = (
+                time.perf_counter() - started
+            ) * 1000.0
+
+    def release_candidate(result: Any) -> Any:
+        if validate_candidate(plan, result):
+            return result
+        charge_rejected_candidate(plan, result)
+        _mark_dispatch_fallback(plan, "output_validation_rejected")
+        return run_reference()
 
     if plan.kind == "pass_through":
         try:
-            return run_original()
+            return run_reference()
         except BaseException:
             cancel_exploration(plan)
             raise
     if plan.kind == "cached":
         try:
             decoded = decode(plan.value)
-        except BaseException:
+        except Exception:
+            reject_failed_candidate(plan, cost_complete=True)
             _mark_dispatch_fallback(plan, "cache_decode_failed")
             log_degraded(
                 "cache_decode_failed",
                 "cached plan decode raised; ran the original call",
             )
-            return run_original()
+            return run_reference()
         if decoded is None:
+            reject_failed_candidate(plan, cost_complete=True)
             # A cache "hit" that cannot be materialized (missing content, or a
             # decoder that returns None instead of raising — e.g.
             # _decode_cached_openai) must NOT be served to the app as a None
@@ -1509,17 +2076,24 @@ def dispatch_sync(
                 "cache_decode_empty",
                 "cached plan decoded to None; ran the original call",
             )
-            return run_original()
-        return decoded
+            return run_reference()
+        return release_candidate(decoded)
     if plan.kind in ("rewritten", "composed"):
         if plan.call is None:
             _mark_dispatch_fallback(plan, "missing_mutated_call")
-            return run_original()
+            return run_reference()
         try:
             result = run_mutated(plan.call)
             plan.executed_model_id = str(plan.call.get("model") or "") or None
-            return result
-        except BaseException:
+        except Exception:
+            from agentc._provider_receipts import graph_template_position, graph_discovery_position
+
+            if graph_template_position() is not None or graph_discovery_position() is not None:
+                # The frozen workflow declares its physical slots. A provider
+                # failure cannot create an unprepared fallback invocation.
+                plan.inference_cost_complete = False
+                raise
+            reject_failed_candidate(plan, cost_complete=False)
             _mark_dispatch_fallback(plan, "mutated_dispatch_failed")
             # Degradation: a systematically broken mutation (bad downgrade
             # model, malformed rewritten Call) reverts to the original on
@@ -1530,10 +2104,11 @@ def dispatch_sync(
                 "rewrite_dispatch_failed",
                 f"{plan.kind} plan reverted to the original call",
             )
-            return run_original()
+            return run_reference()
+        return release_candidate(result)
     if plan.kind == "parallel":
-        # Sync path can't gather; degrade to original.
-        _mark_dispatch_fallback(plan, "parallel_sync_unsupported")
-        return run_original()
+        # The driver owns concurrency; peer descriptors are not requests.
+        _mark_dispatch_fallback(plan, "parallel_observe_only")
+        return run_reference()
     _mark_dispatch_fallback(plan, "unknown_plan_kind")
-    return run_original()
+    return run_reference()

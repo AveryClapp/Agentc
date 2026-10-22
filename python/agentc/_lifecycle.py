@@ -24,8 +24,8 @@ _init_lock = threading.Lock()
 _config: Config | None = None
 _prev_sigterm: Any = None
 _prev_sigint: Any = None
-_storage_env_previous: tuple[bool, str | None] | None = None
-_storage_env_installed: str | None = None
+_storage_env_previous: dict[str, tuple[bool, str | None]] | None = None
+_storage_env_installed: dict[str, str] | None = None
 
 
 def is_initialized() -> bool:
@@ -38,18 +38,18 @@ def get_config() -> Config | None:
     return _config
 
 
-def _configure_native_storage(storage_path: os.PathLike[str]) -> None:
+def _configure_native_storage(storage_path: os.PathLike[str], config_path: os.PathLike[str]) -> None:
     """Make one resolved path authoritative for every native subsystem."""
     global _storage_env_previous, _storage_env_installed
-    key = "AGENTC_STORAGE_PATH"
     resolved = str(storage_path)
-    _storage_env_previous = (key in os.environ, os.environ.get(key))
-    _storage_env_installed = resolved
-    os.environ[key] = resolved
+    installed = {"AGENTC_STORAGE_PATH": resolved, "AGENTC_CONFIG_PATH": str(config_path)}
+    _storage_env_previous = {key: (key in os.environ, os.environ.get(key)) for key in installed}
+    _storage_env_installed = installed
+    os.environ.update(installed)
     try:
         from agentc import _native
 
-        native_path = _native.optimize_configure(resolved)
+        native_path = _native.optimize_configure(resolved, str(config_path))
         if native_path != resolved:
             raise RuntimeError(
                 "native optimizer storage mismatch: "
@@ -69,14 +69,14 @@ def _restore_storage_environment() -> None:
     _storage_env_installed = None
     if previous is None or installed is None:
         return
-    key = "AGENTC_STORAGE_PATH"
-    if os.environ.get(key) != installed:
-        return
-    existed, value = previous
-    if existed and value is not None:
-        os.environ[key] = value
-    else:
-        os.environ.pop(key, None)
+    for key, installed_value in installed.items():
+        if os.environ.get(key) != installed_value:
+            continue
+        existed, value = previous[key]
+        if existed and value is not None:
+            os.environ[key] = value
+        else:
+            os.environ.pop(key, None)
 
 
 def init(
@@ -118,6 +118,7 @@ def init(
             capture_embeddings=config.capture_embeddings,
             fail_open=config.fail_open,
             storage_path=config.storage_path.resolve(),
+            config_path=config.config_path,
         )
 
         # Create directories
@@ -140,7 +141,7 @@ def init(
         # Native trace merging, memoization, and optimizer wiring otherwise
         # resolve storage independently from the process environment. Install
         # the resolved lifecycle path before any of those components start.
-        _configure_native_storage(config.storage_path)
+        _configure_native_storage(config.storage_path, config.config_path)
 
         try:
             # Store config
@@ -272,7 +273,9 @@ def _apply_patches() -> None:
     from agentc._patches._openai import patch as patch_openai
     from agentc._provenance_frameworks import install_all
     from agentc._scope_adapters import install_all as install_scope_adapters
+    from agentc._provider_receipts import patch_http_dispatch
 
+    patch_http_dispatch()
     patch_litellm()
     patch_anthropic()
     patch_openai()
@@ -305,11 +308,13 @@ def _remove_patches() -> None:
     from agentc._patches._openai import unpatch as unpatch_openai
     from agentc._provenance_frameworks import uninstall_all
     from agentc._scope_adapters import uninstall_all as uninstall_scope_adapters
+    from agentc._provider_receipts import unpatch_http_dispatch
 
     uninstall_scope_adapters()
     unpatch_anthropic()
     unpatch_openai()
     unpatch_litellm()
+    unpatch_http_dispatch()
     try:
         uninstall_all()
     except BaseException:

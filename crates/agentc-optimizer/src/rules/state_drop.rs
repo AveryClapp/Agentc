@@ -25,6 +25,7 @@ use crate::dag::{Call, DepSource, Message};
 use crate::planner::{CostDriver, Plan, Proposal, RewriteRule};
 
 pub const DEFAULT_ACCURACY_BUDGET: f32 = 0.01;
+pub const IMPLEMENTATION_VERSION: &str = "state-provenance-v2";
 
 /// Minimum fraction of the original messages list that must survive the
 /// rewrite. Anything below this and we treat the drop as too risky.
@@ -36,17 +37,31 @@ pub struct StateDropRule {
 
 impl Default for StateDropRule {
     fn default() -> Self {
-        Self { accuracy_budget: DEFAULT_ACCURACY_BUDGET }
+        Self {
+            accuracy_budget: DEFAULT_ACCURACY_BUDGET,
+        }
     }
 }
 
 impl RewriteRule for StateDropRule {
+    fn identity(&self) -> Option<crate::planner::RuleIdentity> {
+        crate::planner::RuleIdentity::new(
+            IMPLEMENTATION_VERSION,
+            self.accuracy_budget,
+            serde_json::json!({
+                "min_retention_fraction": MIN_RETENTION_FRACTION,
+            }),
+        )
+    }
+
     fn name(&self) -> &'static str {
         "StateDrop"
     }
 
     fn applies(&self, call: &Call, _profile: &CallSiteProfile) -> bool {
-        let Some(deps) = extract_message_deps(call) else { return false; };
+        let Some(deps) = extract_message_deps(call) else {
+            return false;
+        };
         // At least one message must carry a State tag.
         deps.iter().any(|d| matches!(d, DepSource::State { .. }))
     }
@@ -96,10 +111,16 @@ impl RewriteRule for StateDropRule {
                 rewritten_messages.push(msg.clone());
             }
         }
-        let rewritten_call = Call {
+        let mut rewritten_call = Call {
             messages: rewritten_messages,
             ..call.clone()
         };
+        let retained = keep
+            .iter()
+            .enumerate()
+            .filter_map(|(i, keep)| keep.then_some(i))
+            .collect::<Vec<_>>();
+        crate::dag::retain_message_annotations(&mut rewritten_call, &retained, call.messages.len());
 
         let dropped_keys_for_check = dropped_keys.clone();
         Some(Proposal {
@@ -111,7 +132,9 @@ impl RewriteRule for StateDropRule {
             projected_savings_usd: projected,
             cost_driver: CostDriver::InputTokens,
             safety_check: Box::new(move |call| {
-                let Some(deps) = extract_message_deps(call) else { return false; };
+                let Some(deps) = extract_message_deps(call) else {
+                    return false;
+                };
                 if deps.len() != call.messages.len() {
                     return false;
                 }
@@ -153,7 +176,12 @@ fn should_drop(msg: &Message, dep: &DepSource, window_reads: &HashSet<String>) -
 }
 
 fn extract_message_deps(call: &Call) -> Option<Vec<DepSource>> {
-    let v = call.parameters.extra.as_object()?.get("message_deps")?.clone();
+    let v = call
+        .parameters
+        .extra
+        .as_object()?
+        .get("message_deps")?
+        .clone();
     serde_json::from_value::<Vec<DepSource>>(v).ok()
 }
 
@@ -165,8 +193,12 @@ struct WindowReads {
 
 fn extract_window_state_reads(call: &Call) -> HashSet<String> {
     let mut out = HashSet::new();
-    let Some(obj) = call.parameters.extra.as_object() else { return out; };
-    let Some(v) = obj.get("window_state_reads") else { return out; };
+    let Some(obj) = call.parameters.extra.as_object() else {
+        return out;
+    };
+    let Some(v) = obj.get("window_state_reads") else {
+        return out;
+    };
     if let Value::Array(items) = v {
         for item in items {
             out.insert(item.as_str().unwrap_or_default().to_string());
@@ -204,7 +236,10 @@ mod tests {
             span_id: [0u8; 8],
             model: "gpt-4o".into(),
             messages,
-            parameters: Parameters { extra, ..Default::default() },
+            parameters: Parameters {
+                extra,
+                ..Default::default()
+            },
             tools: vec![],
             input_deps: vec![],
             occurrence_ix: 0,
@@ -214,7 +249,10 @@ mod tests {
     #[test]
     fn no_state_tags_does_not_fire() {
         let call = call_with(
-            vec![Message { role: "user".into(), content: "hi".into() }],
+            vec![Message {
+                role: "user".into(),
+                content: "hi".into(),
+            }],
             vec![DepSource::Literal],
             vec![],
         );
@@ -225,16 +263,32 @@ mod tests {
     #[test]
     fn unread_state_key_is_dropped() {
         let msgs = vec![
-            Message { role: "system".into(), content: "sys".into() },
-            Message { role: "user".into(), content: "keep".into() },
-            Message { role: "user".into(), content: "stale".into() },
-            Message { role: "user".into(), content: "stale2".into() },
+            Message {
+                role: "system".into(),
+                content: "sys".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "keep".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "stale".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "stale2".into(),
+            },
         ];
         let deps = vec![
             DepSource::Literal,
             DepSource::Literal,
-            DepSource::State { key: "scratch".into() },
-            DepSource::State { key: "scratch".into() },
+            DepSource::State {
+                key: "scratch".into(),
+            },
+            DepSource::State {
+                key: "scratch".into(),
+            },
         ];
         // window reads nothing: both scratch messages are drop-eligible.
         // Original = 4, kept = 2 → retention 50% (at floor).
@@ -251,12 +305,20 @@ mod tests {
     #[test]
     fn read_state_key_is_retained() {
         let msgs = vec![
-            Message { role: "user".into(), content: "a".into() },
-            Message { role: "user".into(), content: "b".into() },
+            Message {
+                role: "user".into(),
+                content: "a".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "b".into(),
+            },
         ];
         let deps = vec![
             DepSource::Literal,
-            DepSource::State { key: "scratch".into() },
+            DepSource::State {
+                key: "scratch".into(),
+            },
         ];
         let call = call_with(msgs, deps, vec!["scratch".into()]);
         let rule = StateDropRule::default();
@@ -266,9 +328,18 @@ mod tests {
     #[test]
     fn retention_below_50pct_rejects() {
         let msgs = vec![
-            Message { role: "user".into(), content: "a".into() },
-            Message { role: "user".into(), content: "b".into() },
-            Message { role: "user".into(), content: "c".into() },
+            Message {
+                role: "user".into(),
+                content: "a".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "b".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "c".into(),
+            },
         ];
         // All three state-tagged, none read → would drop everything.
         let deps = vec![
@@ -284,20 +355,36 @@ mod tests {
     #[test]
     fn system_prompt_state_tag_is_never_dropped() {
         let msgs = vec![
-            Message { role: "system".into(), content: "invariant".into() },
-            Message { role: "user".into(), content: "a".into() },
-            Message { role: "user".into(), content: "b".into() },
-            Message { role: "user".into(), content: "c".into() },
+            Message {
+                role: "system".into(),
+                content: "invariant".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "a".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "b".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "c".into(),
+            },
         ];
         let deps = vec![
             DepSource::State { key: "sys".into() },
             DepSource::Literal,
             DepSource::Literal,
-            DepSource::State { key: "scratch".into() },
+            DepSource::State {
+                key: "scratch".into(),
+            },
         ];
         let call = call_with(msgs, deps, vec![]);
         let rule = StateDropRule::default();
-        let prop = rule.propose(&call, &hot_profile(0.04)).expect("user scratch drops");
+        let prop = rule
+            .propose(&call, &hot_profile(0.04))
+            .expect("user scratch drops");
         match &prop.rewritten {
             Plan::Rewritten { call, .. } => {
                 assert_eq!(call.messages.len(), 3);
@@ -308,17 +395,33 @@ mod tests {
         // Safety check refuses when the *same* key we dropped also
         // appears as a system tag (it might encode an invariant).
         let deps_bad = vec![
-            DepSource::State { key: "scratch".into() }, // system carries the dropped key
+            DepSource::State {
+                key: "scratch".into(),
+            }, // system carries the dropped key
             DepSource::Literal,
             DepSource::Literal,
-            DepSource::State { key: "scratch".into() },
+            DepSource::State {
+                key: "scratch".into(),
+            },
         ];
         let call_bad = call_with(
             vec![
-                Message { role: "system".into(), content: "inv".into() },
-                Message { role: "user".into(), content: "a".into() },
-                Message { role: "user".into(), content: "b".into() },
-                Message { role: "user".into(), content: "c".into() },
+                Message {
+                    role: "system".into(),
+                    content: "inv".into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "a".into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "b".into(),
+                },
+                Message {
+                    role: "user".into(),
+                    content: "c".into(),
+                },
             ],
             deps_bad,
             vec![],

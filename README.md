@@ -31,6 +31,11 @@ the caller receives the original response while a durably leased candidate
 runs off-path. This mechanism is implemented and preflighted, but it is not yet
 an MLSys efficacy result; the held-out baseline/ablation campaign remains.
 
+The [joint-campaign engineering check](bench/repro/README.md#joint-campaign-engineering-check-no-api-key)
+runs all ten primary arms without API keys and produces hashed raw records,
+paired summaries, and a completion manifest. Its metrics are simulated and
+serve to verify the evaluation harness.
+
 **Per-rule savings (purpose-built isolation workloads; warmup-corrected, rule-only configs):**
 
 | Rule | Workload | n | Savings | Accuracy Δ | McNemar p |
@@ -156,6 +161,12 @@ maturin develop --release            # builds the PyO3 extension into the active
 pip install -e ".[test]"             # full test/bench deps; use ".[dev,openai]" for a minimal SDK env
 ```
 
+Run the Python SDK and benchmark checks, matching CI:
+
+```bash
+pytest tests/ bench/ -v --tb=short
+```
+
 Profile any agent script:
 
 ```bash
@@ -197,6 +208,60 @@ python bench/run_refiner_warmup.py       # StateDrop,       n=50   (Table 7)
 ```
 
 The reference agents stub LLM calls when no API key is set, so the harness wires up cleanly without spending money. To generate real cost/accuracy numbers, copy [`.env.example`](.env.example) to `.env` and fill in the keys you need: `OPENAI_API_KEY` for the main runs, `HF_TOKEN` for GAIA, and `TOGETHER_API_KEY` (with `BENCH_OPENAI_BASE_URL`) for the cross-model / scale-up runs. `.env.example` lists what each key unlocks.
+
+The frozen SWE-bench prerequisite check runs in the grader's Python environment
+with PyArrow and its existing dependencies. Supply the original Parquet and
+the pinned SWE-agent and evaluator source directories:
+
+```bash
+python -m bench.swebench_cohort \
+  --dataset /path/to/verified.parquet \
+  --agent /path/to/SWE-agent-0f3acafacabc0def8cc76b4e48acb4b6cf302cb9 \
+  --evaluator /path/to/SWE-bench-02e7a74ffd0b707aab73d203fe87bdc7c76afc8e \
+  --task-assets /path/to/swe-bench-tasks-3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d \
+  --pin-images \
+  --output /path/to/fresh-audit
+```
+
+The compatibility bridge verifies all 13 original fields for each selected
+task before adding the pinned task assets' evaluator metadata. It preserves
+the original 500-row universe, the 30/30/90 split, and public agent inputs.
+Omitting `--task-assets` diagnoses the original schema mismatch and exits 2.
+`--pin-images` reads public registry metadata, verifies the exact linux/amd64
+manifest bytes, and writes immutable image references without downloading
+layers. Registry failures retain every assigned task and return exit 2.
+For an offline recheck, replace `--pin-images` with
+`--image-pins /path/to/prior-audit/image-pins.json`; receipts must match the
+same cohort and bridge. Each invocation requires a fresh output directory.
+Supplying both options reuses verified receipts and queries only unresolved
+images, preserving the earlier capture in its original directory.
+These checks make no model calls and do not admit task environments; actual
+unchanged and gold-patch controls are still required before acquisition.
+
+Run those controls for the complete selected cohort using verified images
+already present in the local Docker daemon:
+
+```bash
+python -m bench.swebench_environment \
+  --dataset /path/to/verified.parquet \
+  --agent /path/to/SWE-agent-0f3acafacabc0def8cc76b4e48acb4b6cf302cb9 \
+  --evaluator /path/to/SWE-bench-02e7a74ffd0b707aab73d203fe87bdc7c76afc8e \
+  --task-assets /path/to/swe-bench-tasks-3d07b464b7b311a0cbfb5ed5b2d8a3b96f84a33d \
+  --image-pins /path/to/prior-audit/image-pins.json \
+  --output /path/to/fresh-environment-check
+```
+
+Each control uses a fresh container and the unchanged frozen grading script.
+The checker verifies a clean repository tree equal to the frozen base; the
+image may contain the official build's additional setup commit. Admission
+requires complete reference-test coverage, preserved passing tests, an
+unresolved unchanged control, and a resolved original gold-patch control.
+Missing image pins, images absent locally, and failed controls stay in the
+150-task report. The command cannot pull images implicitly and exits 2 until
+all task environments pass. It makes no model calls and preserves raw grading
+artifacts in its private output directory. A worker can use
+`verify_environment_report` from `bench.swebench_environment` to replay saved
+admissions against their exact inputs and checker version before execution.
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: Optimizer
 status: draft
-last-updated: 2026-09-04
+last-updated: 2026-10-12
 ---
 
 # Optimizer
@@ -191,7 +191,14 @@ Accuracy:     baseline 82.0% → optimized 81.2% (within budget)
 
 ### Configuration
 
-`agentc.toml`:
+Use `config.toml` in the resolved storage directory, or the explicit
+`AGENTC_CONFIG_PATH` file. Python and native bootstrap share this exact file,
+including when its `storage_path` moves runtime data. Resolve defaults, TOML,
+then environment overrides once per lifecycle. Reject unknown optimizer fields
+and invalid controls by disabling optimization and exploration; keep profiling
+and the original provider request available.
+Treat an invalid environment-only exploration allocation as a probe opt-out;
+preserve independently admitted user-visible plans.
 
 ```toml
 [optimizer]
@@ -200,17 +207,21 @@ hot_threshold = 3                   # Invocations before a call site is eligible
 cost_model_window = 50              # Rolling window for cost model fitting.
 divergence_window = 50              # Retained shadow samples per site/rule.
 plan_profile_window = 50             # Retained executions and, separately, paired divergences.
-min_plan_evidence = 20               # Paired samples before admission.
-plan_profile_freshness_hours = 24
 max_overhead_ms = 5                 # Abort optimization if budget exceeded.
 shadow_rate = 0.02                  # 2% of optimized calls run shadow execution.
 
 [optimizer.selection]
 objective = "cost"                   # "cost" or "latency".
+min_plan_evidence = 20               # Paired samples before admission.
+plan_profile_freshness_hours = 24
 max_rewrite_depth = 3
-exploration_calls_per_site_24h = 20
-max_concurrent_counterfactuals = 1
 divergence_exposure_budget = 1.0
+
+[optimizer.exploration]
+enabled = true
+allocation = "completion_first"
+calls_per_site_24h = 20
+max_concurrent_counterfactuals = 1
 
 [optimizer.accuracy_budget]
 # Maximum allowed shadow-mode divergence per rule, as a fraction.
@@ -226,15 +237,22 @@ StateDrop           = 0.01
 CacheHit.enabled            = true
 ContextCompress.enabled     = true
 ContextCompress.min_prompt_bytes = 8192
+ContextCompress.min_dead_fraction = 0.30
 ParallelBranch.enabled      = true
 ParallelBranch.max_fanout   = 4
 ModelDowngrade.enabled      = true
-ModelDowngrade.route = [
-  { from = "gpt-4o",           to = "gpt-4o-mini",          max_output_tokens = 512 },
-  { from = "claude-opus-4-7",  to = "claude-haiku-4-5",     max_output_tokens = 1024 },
-]
 StateDrop.enabled           = true
 ```
+
+Accept `enabled` for every known rule; accept compression thresholds only for
+`ContextCompress` and `max_fanout` only for `ParallelBranch`. Take routing
+candidates from the versioned model catalog. Reject custom `route` arrays.
+Apply each accuracy budget to the rule's guard threshold and semantic identity;
+changing a participating rule's budget or tuning cold-starts its complete-plan
+evidence. Preserve identities for unchanged rules. `AGENTC_ENABLED_RULES`
+overrides file enable flags as a complete whitelist without replacing tuning.
+Issue the resolved shadow rate with each native plan and use that rate for SDK
+sampling, so later environment changes cannot reinterpret an issued plan.
 
 Environment overrides:
 
@@ -329,12 +347,15 @@ the optimizer.
 
 ### FFI surface
 
-The native extension exposes ten optimizer functions:
+The native extension exposes optimizer functions including:
 
 ```python
 # python/agentc/_native.pyi
-def optimize_configure(storage_path: str) -> str:
+def optimize_configure(storage_path: str, config_path: str | None = None) -> str:
     """Flush prior state, build at storage_path, and return the owned path."""
+
+def optimize_configuration() -> str:
+    """Return resolved settings and content-free configuration diagnostics."""
 
 def optimize_storage_path() -> str:
     """Return the path owned by the active native optimizer."""
@@ -411,7 +432,7 @@ All plan execution happens in Python — the SDK receives the `Plan` back from R
     │ Python executor                 │
     │   Cached   → return CacheValue  │
     │   Rewritten → dispatch modified │
-    │   Parallel → asyncio.gather     │
+    │   Parallel → original once      │
     │   PassThrough → original call   │
     └────────────┬────────────────────┘
                  ▼
@@ -671,7 +692,14 @@ owning event loop.
 The exploration controller persists a lease before the candidate call starts.
 A failed, expired, or abandoned lease still consumes one call from the rolling
 site cap because provider work may already have started. Lease expiry releases
-only the concurrency slot. Candidate allocation prefers the smallest exact-plan
+only the concurrency slot. Cancel an exact active reservation inside the native
+planner when construction or total-overhead checks discard its envelope before
+it crosses the dispatch boundary. Remove that reservation transactionally,
+release its call and concurrency allowances, and preserve the separately
+allocated sequence number. Reject cancellation of mismatched, completed,
+failed, or abandoned leases. Keep this operation internal to Rust; the Python
+failure callback retains its conservative charge.
+Candidate allocation prefers the smallest exact-plan
 paired-evidence count, then the fewest attempts in the active window, then a
 seeded stable hash. Reordering the candidate list therefore does not change a
 seeded run. SQLite transaction serialization enforces the concurrency cap across
@@ -732,11 +760,11 @@ The optimizer targets < 1 ms p99 per intercepted call. The `plan` path's work:
 `max_overhead_ms` (default 5 ms) is the kill switch over joint selection plus
 exploration reservation. Exploration uses a non-blocking cost-DB lock, so a
 background completion never stalls the user path. If total planning work
-crosses the budget after a lease was persisted, the runtime marks that lease
-failed, strips the candidate envelope, and returns `Plan::PassThrough`. The
-failed attempt remains charged to the rolling cap. This protects against
-pathological cases while keeping provider dispatch outside an over-budget
-decision.
+crosses the budget after a lease was persisted, cancel the exact unstarted
+reservation, strip the candidate envelope, and
+returns the already-selected primary plan. A reservation whose envelope never
+left the native planner consumes no provider-call allowance. Preserve charges
+for all failed, expired, or abandoned attempts after that boundary.
 
 ### Persistent storage
 
@@ -1019,8 +1047,10 @@ alone never restores full-rate use.
 `execution_plan_exploration_site` keeps a monotonic lease sequence even after
 the rolling event window is pruned. `execution_plan_exploration` commits a
 reservation before dispatch, counts every attempted call, and keeps divergence
-exposure separate from optional labeled task damage. Expired reservations become
-`abandoned` and release concurrency without refunding spend.
+exposure separate from optional labeled task damage. Delete only exact active
+reservations canceled before their envelopes leave the native planner; do not
+rewind `execution_plan_exploration_site.next_sequence`. Expired reservations
+become `abandoned` and release concurrency without refunding spend.
 
 `plan_audit` supports pruning to a 10,000-row cap through `audit::prune`.
 Pruning is an explicit maintenance operation; the runtime does not silently
@@ -1087,7 +1117,7 @@ python/agentc/
 | Safety checks | | ✓ |
 | Projected savings ranking | | ✓ |
 | `Plan` serialization | | ✓ |
-| Plan execution (cached → return; rewritten → dispatch; parallel → asyncio.gather) | ✓ | |
+| Plan execution (cached → return; rewritten → dispatch; parallel → original once) | ✓ | |
 | Shadow-mode double-execution | ✓ | |
 | Divergence measurement | ✓ | ✓ (confirms) |
 | `optimize_observe` | | ✓ |
@@ -1163,6 +1193,7 @@ A user's LLM call never fails because the optimizer failed.
 Already in the workspace:
 - `rusqlite` (bundled)
 - `sha2`, `serde`, `serde_json`
+- `toml` — parse the shared runtime configuration.
 - `zstd`
 - `pyo3`, `pyo3-log`
 - `parking_lot` (for the in-memory cost model's `RwLock`)
@@ -1173,7 +1204,7 @@ New workspace additions:
 
 ### Python packages
 
-- `asyncio` (stdlib) — required for `ParallelBranch`.
+- `asyncio` (stdlib) — required for asynchronous provider calls and counterfactual work.
 - No new third-party dependencies.
 
 ### Framework integrations (optional)
@@ -1247,7 +1278,10 @@ Missing adapter → `DepSource::Literal` everywhere; `ParallelBranch` and `State
 | A cold live candidate is durably leased without replacing the reference response | `ffi::tests::cold_candidate_is_leased_without_replacing_the_reference_plan` |
 | A completed lease updates its exact paired plan profile once across replay | `ffi::tests::completed_counterfactual_updates_only_its_exact_paired_profile_once` |
 | Tool-bearing requests never receive the text-only exploration comparator | `ffi::tests::tool_bearing_request_never_receives_a_text_only_counterfactual` |
-| An over-budget envelope is failed before candidate dispatch | `ffi::tests::over_budget_envelope_can_be_failed_before_candidate_dispatch`, `tests/test_live_exploration_preflight.py::test_zero_total_overhead_budget_never_dispatches_counterfactual` |
+| An over-budget envelope cancels its unstarted reservation before dispatch without consuming provider capacity | `ffi::tests::over_budget_envelope_cancellation_preserves_provider_capacity`, `tests/test_live_exploration_preflight.py::test_zero_total_overhead_budget_never_dispatches_counterfactual` |
+| Cancellation releases both caps, preserves monotonic sequences and rejects old completion | `exploration::tests::cancel_unstarted_releases_caps_without_reusing_a_sequence` |
+| Cancellation rejects changed lease fields and preserves other sites | `exploration::tests::cancel_unstarted_rejects_tampering_and_preserves_other_leases` |
+| Failed and abandoned provider allowances survive attempted cancellation | `exploration::tests::cancel_unstarted_cannot_erase_failed_or_abandoned_provider_allowances` |
 | OpenAI, Anthropic, and LiteLLM adapters return the reference before scheduling the candidate | `tests/test_openai_patch.py`, `tests/test_anthropic_patch.py`, `tests/test_litellm_patch.py` |
 | Sync and async candidate failure closes the lease without retrying the reference | `tests/test_optimizer_glue.py::TestBoundedExplorationPythonEntry` |
 | Async shutdown routes cancellation through the task's owning event loop | `tests/test_optimizer_glue.py::TestBoundedExplorationPythonEntry::test_cross_thread_async_cancel_is_scheduled_on_owning_loop` |
@@ -1289,9 +1323,12 @@ permanently labeled `paper_evidence=false`.
 `bench/live_exploration_preflight.py` is the no-network production-adapter
 counterpart. A deterministic fake OpenAI provider drives the real Python patch
 and native optimizer through three warmups and 20 off-path `OutputBudget`
-comparisons. All 23 calibration responses remain the immutable reference; the
-20 exact paired observations persist across a full native reset; and the next
-call admits the evidenced candidate. The committed development artifact is
+comparisons. Allow bounded additional reference-visible calls when local
+planning aborts cancel unstarted reservations. Keep every calibration response
+as the immutable reference, require exactly 20 completed provider comparisons
+and no failed/abandoned/active rows, persist the exact paired observations across
+a full native reset, and admit the evidenced candidate on the next call.
+The committed development artifact is
 `bench/repro/live-exploration-preflight-2026-09-04.json`. It validates wiring,
 accounting, and restart semantics only and is permanently labeled
 `paper_evidence=false`.
@@ -1423,7 +1460,7 @@ Memoization is first-class as a rewrite rule so the optimizer's ranking, budget,
 
 ### Python drives plan execution; Rust plans but never dispatches
 
-The Rust optimizer computes `Plan`s and emits them as JSON. Python's executor is responsible for the actual LLM calls (cached return, rewritten dispatch, parallel fan-out). This keeps Rust free of vendor SDKs, HTTP clients, and credential handling. **Rejected: Rust executes directly.** Requires linking a Rust HTTP client, handling provider SDKs' auth conventions, and re-implementing streaming across every provider — a full second SDK surface.
+The Rust optimizer computes `Plan`s and emits them as JSON. Python's executor is responsible for the actual LLM calls (cached return, rewritten dispatch, original calls for parallel certificates). The caller's `parallel_map` driver owns fan-out; sync and async SDK dispatch each return one original response until multi-call identity, aggregation, and admission are implemented. This keeps Rust free of vendor SDKs, HTTP clients, and credential handling. **Rejected: Rust executes directly.** Requires linking a Rust HTTP client, handling provider SDKs' auth conventions, and re-implementing streaming across every provider — a full second SDK surface.
 
 ### Provenance tagging depends on framework adapters
 

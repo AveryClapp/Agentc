@@ -102,7 +102,7 @@ def uninstall() -> None:
         return
 
     try:
-        from crewai.task import Task  # type: ignore[import-not-found]
+        from crewai.task import Task
 
         for name, original in _originals.items():
             try:

@@ -7,6 +7,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 
 import pytest
@@ -47,6 +48,40 @@ def _reset_provenance():
     clear()
     yield
     clear()
+
+
+class FatalStop(BaseException):
+    pass
+
+
+@pytest.mark.parametrize("kind", ["rewritten", "composed", "cached"])
+@pytest.mark.parametrize(
+    "error_type", [FatalStop, asyncio.CancelledError, KeyboardInterrupt, SystemExit]
+)
+def test_sync_dispatch_propagates_abort_without_original_call(kind, error_type):
+    from agentc._optimizer import Plan
+
+    calls = {"original": 0, "mutated": 0}
+    plan = Plan(kind=kind, call={"model": "fixture"}, value="cached")
+
+    def original():
+        calls["original"] += 1
+        return "unwanted fallback"
+
+    def mutated(call):
+        calls["mutated"] += 1
+        raise error_type()
+
+    def decode(value):
+        raise error_type()
+
+    with pytest.raises(error_type):
+        dispatch_sync(
+            plan, run_original=original, run_mutated=mutated, decode_cached=decode
+        )
+    assert calls["original"] == 0
+    assert calls["mutated"] == (0 if kind == "cached" else 1)
+    assert plan.dispatch_fallback is False
 
 
 def _build(messages: list[dict]) -> dict:
@@ -716,7 +751,7 @@ class TestEmbeddingDivergenceMode:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """When _native.embed_text_bytes raises, the mode falls back to
-        'normalized' (containment) rather than crashing."""
+        'normalized' Jaccard rather than crashing."""
         import unittest.mock
 
         monkeypatch.setenv("AGENTC_SHADOW_DIVERGENCE_MODE", "embedding")

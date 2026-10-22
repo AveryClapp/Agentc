@@ -57,6 +57,16 @@ impl ParallelBranchRule {
 }
 
 impl RewriteRule for ParallelBranchRule {
+    fn identity(&self) -> Option<crate::planner::RuleIdentity> {
+        crate::planner::RuleIdentity::new(
+            "parallel-independence-certificate-v1",
+            self.accuracy_budget,
+            serde_json::json!({
+                "max_fanout": self.max_fanout,
+            }),
+        )
+    }
+
     fn name(&self) -> &'static str {
         "ParallelBranch"
     }
@@ -71,7 +81,7 @@ impl RewriteRule for ParallelBranchRule {
         peer_from_call(call).is_some()
     }
 
-    fn propose(&self, call: &Call, profile: &CallSiteProfile) -> Option<Proposal> {
+    fn propose(&self, call: &Call, _profile: &CallSiteProfile) -> Option<Proposal> {
         let peer = peer_from_call(call)?;
         // Safety demands we can prove disjointness. Two `Literal` deps
         // are trivially disjoint by type, but they carry no provenance
@@ -92,19 +102,10 @@ impl RewriteRule for ParallelBranchRule {
             return None;
         }
 
-        // Projection: ParallelBranch is pure reordering — cost is 0 but
-        // we still project a latency savings that the planner ranks off
-        // of. We denominate in USD of "time-equivalent" savings by
-        // scaling latency_ms.mean to a tiny positive fraction of the
-        // call's cost so the planner ranks it below cost-reducing rules
-        // when those apply. This matches the spec ranking note: "The
-        // rule never claims dollars it didn't save."
-        let latency_gain_ratio = if calls.len() >= 2 {
-            ((calls.len() - 1) as f32) / (calls.len() as f32)
-        } else {
-            0.0
-        };
-        let projected = 0.000_001_f32.max(profile.cost_usd.mean as f32 * 0.0) + latency_gain_ratio;
+        // Reordering preserves the billed calls, so projected dollar savings
+        // are zero. The greedy cost ranking must prefer actual cost reductions;
+        // the joint selector can assess latency from complete-plan observations.
+        let projected = 0.0;
 
         Some(Proposal {
             rewritten: Plan::Parallel {
@@ -152,7 +153,9 @@ struct Peer {
 impl Peer {
     fn into_call(self, base: &Call) -> Call {
         Call {
-            call_site_id: self.call_site_id.unwrap_or_else(|| base.call_site_id.clone()),
+            call_site_id: self
+                .call_site_id
+                .unwrap_or_else(|| base.call_site_id.clone()),
             trace_id: base.trace_id,
             span_id: base.span_id,
             model: self.model.unwrap_or_else(|| base.model.clone()),
@@ -211,9 +214,13 @@ fn deps_overlap(x: &DepSource, y: &DepSource) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cost_model::WelfordStats;
+    use crate::config::OptimizerConfig;
+    use crate::cost_model::{CostModel, CostModelUpdate, WelfordStats};
     use crate::dag::{Message, Parameters};
+    use crate::planner::Optimizer;
+    use crate::rules::output_budget::OutputBudgetRule;
     use serde_json::json;
+    use std::sync::Arc;
 
     fn hot_profile() -> CallSiteProfile {
         let mut p = CallSiteProfile::new("site");
@@ -229,7 +236,10 @@ mod tests {
             trace_id: [0u8; 16],
             span_id: [1u8; 8],
             model: "gpt-4o".into(),
-            messages: vec![Message { role: "user".into(), content: "hi".into() }],
+            messages: vec![Message {
+                role: "user".into(),
+                content: "hi".into(),
+            }],
             parameters: Parameters::default(),
             tools: vec![],
             input_deps: vec![DepSource::UserInput { span_id: [2u8; 8] }],
@@ -247,7 +257,10 @@ mod tests {
             }
         });
         Call {
-            parameters: Parameters { extra: peer, ..Default::default() },
+            parameters: Parameters {
+                extra: peer,
+                ..Default::default()
+            },
             ..call
         }
     }
@@ -264,6 +277,115 @@ mod tests {
             Plan::Parallel { calls, .. } => assert_eq!(calls.len(), 2),
             _ => panic!("expected Plan::Parallel"),
         }
+    }
+
+    #[test]
+    fn projection_never_converts_latency_to_money() {
+        let call = with_peer(
+            base_call(),
+            vec![DepSource::UserInput { span_id: [3u8; 8] }],
+        );
+        for cost in [0.0, 0.0001, 1000.0] {
+            let mut profile = hot_profile();
+            profile.cost_usd = WelfordStats::from_persisted(10, cost, 0.0);
+            let proposal = ParallelBranchRule::default()
+                .propose(&call, &profile)
+                .unwrap();
+            assert_eq!(proposal.projected_savings_usd, 0.0);
+            match proposal.rewritten {
+                Plan::Parallel {
+                    projected_savings_usd,
+                    ..
+                } => {
+                    assert_eq!(projected_savings_usd, 0.0);
+                }
+                _ => panic!("expected parallel observation"),
+            }
+        }
+    }
+
+    fn warmed_model() -> Arc<CostModel> {
+        let model = Arc::new(CostModel::new());
+        for _ in 0..20 {
+            model.observe(CostModelUpdate {
+                call_site_id: "site".into(),
+                input_tokens: 100,
+                output_tokens: 50,
+                latency_ms: 200.0,
+                cost_usd: 0.01,
+                output_is_structured: false,
+                output_is_short: true,
+                now_us: Some(0),
+            });
+        }
+        model
+    }
+
+    #[test]
+    fn monetary_rules_precede_parallel_observation_in_greedy_planner() {
+        let mut call = with_peer(
+            base_call(),
+            vec![DepSource::UserInput { span_id: [3u8; 8] }],
+        );
+        call.parameters.max_output_tokens = Some(1024);
+        for compose in [false, true] {
+            for parallel_first in [false, true] {
+                let mut rules: Vec<Box<dyn RewriteRule>> = vec![
+                    Box::new(ParallelBranchRule::default()),
+                    Box::new(OutputBudgetRule::default()),
+                ];
+                if !parallel_first {
+                    rules.reverse();
+                }
+                let optimizer = Optimizer::new(
+                    warmed_model(),
+                    rules,
+                    OptimizerConfig {
+                        compose,
+                        max_overhead_ms: 1000.0,
+                        ..Default::default()
+                    },
+                );
+                match optimizer.plan(&call) {
+                    Plan::Rewritten {
+                        rule,
+                        call: rewritten,
+                        projected_savings_usd,
+                    } => {
+                        assert_eq!(rule, "OutputBudget");
+                        assert!(rewritten.parameters.max_output_tokens.unwrap() < 1024);
+                        assert!(projected_savings_usd > 0.0 && projected_savings_usd < 0.01);
+                    }
+                    _ => panic!("real dollar savings must precede a parallel observation"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn zero_cost_parallel_candidate_remains_in_joint_enumeration() {
+        let call = with_peer(
+            base_call(),
+            vec![DepSource::UserInput { span_id: [3u8; 8] }],
+        );
+        let optimizer = Optimizer::new(
+            warmed_model(),
+            vec![Box::new(ParallelBranchRule::default())],
+            OptimizerConfig {
+                max_overhead_ms: 1000.0,
+                ..Default::default()
+            },
+        );
+        let catalog = crate::model_catalog::default_model_catalog().unwrap();
+        let plans = optimizer.candidate_plans(&call, &catalog);
+        assert!(plans.iter().any(|plan| matches!(plan, Plan::PassThrough)));
+        assert!(plans.iter().any(|plan| matches!(
+            plan,
+            Plan::Parallel {
+                projected_savings_usd: 0.0,
+                ..
+            }
+        )));
     }
 
     #[test]

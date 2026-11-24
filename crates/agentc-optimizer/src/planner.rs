@@ -178,8 +178,7 @@ pub struct Proposal {
 
 /// Trait implemented by rewrite rules.
 ///
-/// O2 ships the trait and planner plumbing; the concrete rules are filed
-/// under separate beads (O5 in particular).
+/// Concrete rules live in `rules/`.
 pub trait RewriteRule: Send + Sync {
     /// Stable name — used in audit rows and the `agentc optimize inspect`
     /// readout. Must never change once a rule ships.

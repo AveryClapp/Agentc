@@ -1,8 +1,7 @@
 # MLSys Presubmit Checklist
 
 This document is the submission gate for an MLSys-targeted Agentc paper. It is
-not the task tracker: mirror actionable work in `bd`, and use this file as the
-final checklist before submission.
+the final checklist before submission.
 
 Target: **MLSys 2027 research track**. Rechecked **2026-10-10**: the CFP states
 **2026-10-30 at 20:00 UTC**, while the official Dates page states **12:00 PM
@@ -276,11 +275,11 @@ Use the actual submission source filename if it differs from `main.tex`.
 | Step | Required outcome | Status |
 |---|---|---|
 | Freeze branch | Create or identify the exact submission branch/commit. | `OPEN` |
-| Close or defer issues | All MLSys-blocking `bd` issues are closed; all waived items have rationale. | `OPEN` |
+| Close or defer issues | All MLSys-blocking work is done or deferred; all waived items have rationale. | `OPEN` |
 | Re-run quality gates | Code, artifact, and PDF gates are re-run after final edits. | `OPEN` |
 | Tag source | Create a local tag or commit marker for the submitted version. | `OPEN` |
 | Save submitted PDF/source | Store the exact submitted PDF and source bundle in the agreed artifact location. | `OPEN` |
-| Push everything | Push Git and Beads state so the submitted version is not stranded locally. | `OPEN` |
+| Push everything | Push Git state so the submitted version is not stranded locally. | `OPEN` |
 | Post-submit note | Record final submission ID, title, authors, artifact status, and any waived gates. | `OPEN` |
 
 ## Current Known Issues To Resolve

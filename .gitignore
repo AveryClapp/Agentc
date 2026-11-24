@@ -1,21 +1,9 @@
-# Agent orchestration (per-user, loaded via symlink to orchestration-CLAUDE.md)
-# Project skills ARE tracked — they encode shared methodology, not user settings.
+# Per-user Claude config; project skills ARE tracked — they encode shared methodology, not user settings.
 .claude/*
 !.claude/skills/
 
-# Beads runtime state (Dolt is authoritative; issues.jsonl is the tracked interchange snapshot)
-.beads/beads.db
-.beads/beads.db-*
-.beads/dolt
-.beads/dolt-wal
-.beads/.br_history/
-.beads/.br_recovery/
-
-# Agent Mail MCP config (per-user server auth)
+# Per-user MCP config (may hold server auth)
 .mcp.json
-
-# NTM runtime state
-.ntm/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -234,9 +222,6 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# bv (beads viewer) local config and caches
-.bv/
-
 # Benchmark results (generated, not checked in)
 # — except bench/paper_results/, which carries the canonical CSVs
 # referenced by the paper for reproducibility.
@@ -251,10 +236,5 @@ docs/plans/
 # macOS debug symbols
 *.dSYM/
 
-# Beads / Dolt files (added by bd init)
-.dolt/
+# Local SQLite databases (profiler traces, caches)
 *.db
-.beads-credential-key
-
-# Beads / Dolt files (added by bd init)
-.beads/proxieddb/

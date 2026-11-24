@@ -3002,6 +3002,204 @@ pub fn record_observation_divergence(
     })
 }
 
+/// Schema of the [`propose_rule`] result envelope.
+pub const RULE_PROPOSAL_SCHEMA_VERSION: u16 = 1;
+
+/// Measurement-only: return one named rule's proposed rewrite of `call_json`
+/// using the live call-site profile, via [`Optimizer::propose_single_rule`].
+/// No admission, hot threshold, guard, audit row or observation context is
+/// involved, and nothing is recorded; the result cannot be executed as a plan.
+///
+/// Result (always valid JSON, panics included):
+/// `{"schema_version":1,"status":"proposed","rule":..,"call":<Call>,
+///   "retained_message_indices":[..]|null,"profile":{..}}` or
+/// `{"schema_version":1,"status":"not_applicable","rule":..,"reason":..}`.
+/// `retained_message_indices` lists the original index of each message in the
+/// rewritten call, so callers can remove native messages by identity.
+pub fn propose_rule(opt: &Optimizer, call_json: &str, rule_name: &str) -> String {
+    let refuse = |reason: &str| {
+        serde_json::json!({
+            "schema_version": RULE_PROPOSAL_SCHEMA_VERSION,
+            "status": "not_applicable",
+            "rule": rule_name,
+            "reason": reason,
+        })
+        .to_string()
+    };
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let Ok(mut call) = serde_json::from_str::<Call>(call_json) else {
+            return refuse("invalid_call");
+        };
+        let count = call.messages.len();
+        if !call.parameters.extra.is_object() && !call.parameters.extra.is_null() {
+            return refuse("invalid_call");
+        }
+        call.parameters.extra[crate::dag::MESSAGE_INDEX_KEY] = (0..count).collect();
+        let (mut rewritten, profile) = match opt.propose_single_rule(&call, rule_name) {
+            Ok(result) => result,
+            Err(reason) => return refuse(reason),
+        };
+        let indices = rewritten
+            .parameters
+            .extra
+            .as_object_mut()
+            .and_then(|extra| extra.remove(crate::dag::MESSAGE_INDEX_KEY))
+            .and_then(|value| serde_json::from_value::<Vec<usize>>(value).ok())
+            .filter(|indices| {
+                indices.len() == rewritten.messages.len() && indices.iter().all(|i| *i < count)
+            });
+        serde_json::to_string(&serde_json::json!({
+            "schema_version": RULE_PROPOSAL_SCHEMA_VERSION,
+            "status": "proposed",
+            "rule": rule_name,
+            "call": rewritten,
+            "retained_message_indices": indices,
+            "profile": {
+                "call_site_id": profile.call_site_id,
+                "n_observations": profile.n_observations,
+                "window_observations": profile.window_observations,
+                "output_token_p95": profile.output_token_p95,
+                "output_token_p99": profile.output_token_p99,
+            },
+        }))
+        .unwrap_or_else(|_| refuse("serialization_failed"))
+    }))
+    .unwrap_or_else(|_| refuse("panic"))
+}
+
+#[cfg(test)]
+mod propose_rule_tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::config::OptimizerConfig;
+    use crate::cost_model::CostModelUpdate;
+    use crate::rules::{ContextCompressRule, OutputBudgetRule};
+
+    fn optimizer(observations: u32) -> Optimizer {
+        let cost_model = Arc::new(CostModel::new());
+        for _ in 0..observations {
+            cost_model.observe(CostModelUpdate {
+                call_site_id: "site".into(),
+                input_tokens: 1000,
+                output_tokens: 100,
+                latency_ms: 10.0,
+                cost_usd: 0.01,
+                output_is_structured: false,
+                output_is_short: true,
+                now_us: Some(0),
+            });
+        }
+        Optimizer::new(
+            cost_model,
+            vec![
+                Box::new(OutputBudgetRule::default()),
+                Box::new(ContextCompressRule::default()),
+            ],
+            OptimizerConfig {
+                // The study entry point must ignore these production gates.
+                enabled: false,
+                hot_threshold: 1_000,
+                ..OptimizerConfig::default()
+            },
+        )
+    }
+
+    fn call(messages: serde_json::Value, extra: serde_json::Value) -> String {
+        serde_json::json!({
+            "call_site_id": "site", "trace_id": "00".repeat(16), "span_id": "00".repeat(8),
+            "model": "gpt-4o", "messages": messages, "parameters": {"extra": extra},
+        })
+        .to_string()
+    }
+
+    fn parse(json: &str) -> serde_json::Value {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn output_budget_proposes_cap_without_hot_threshold_or_master_switch() {
+        let out = parse(&propose_rule(
+            &optimizer(1),
+            &call(
+                serde_json::json!([{"role": "user", "content": "hi"}]),
+                serde_json::Value::Null,
+            ),
+            "OutputBudget",
+        ));
+        assert_eq!(out["status"], "proposed", "{out}");
+        let cap = out["call"]["parameters"]["max_output_tokens"]
+            .as_u64()
+            .unwrap();
+        assert!((120..=121).contains(&cap), "cap={cap}");
+        assert_eq!(out["retained_message_indices"], serde_json::json!([0]));
+        assert!(out["call"]["parameters"]["extra"]
+            .get(crate::dag::MESSAGE_INDEX_KEY)
+            .is_none());
+        assert_eq!(out["profile"]["window_observations"], 1);
+    }
+
+    #[test]
+    fn cold_profile_is_not_applicable() {
+        let out = parse(&propose_rule(
+            &optimizer(0),
+            &call(
+                serde_json::json!([{"role": "user", "content": "hi"}]),
+                serde_json::Value::Null,
+            ),
+            "OutputBudget",
+        ));
+        assert_eq!(out["status"], "not_applicable");
+        assert_eq!(out["reason"], "rule_does_not_apply");
+    }
+
+    #[test]
+    fn unknown_rule_and_invalid_call_are_refused() {
+        let opt = optimizer(1);
+        assert_eq!(
+            parse(&propose_rule(&opt, "{}", "OutputBudget"))["reason"],
+            "invalid_call"
+        );
+        let valid = call(serde_json::json!([]), serde_json::Value::Null);
+        assert_eq!(
+            parse(&propose_rule(&opt, &valid, "Nope"))["reason"],
+            "rule_not_registered"
+        );
+    }
+
+    #[test]
+    fn context_compress_reports_retained_original_indices_for_opaque_messages() {
+        let big = "lorem ipsum ".repeat(1_000);
+        let messages = serde_json::json!([
+            {"role": "system", "content": "policy"},
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": ""},
+            {"role": "tool", "content": big},
+            {"role": "assistant", "content": ""},
+            {"role": "tool", "content": "recent"},
+        ]);
+        let extra = serde_json::json!({
+            "attention_scores": [1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+            "agentc_native_messages_opaque": true,
+        });
+        let out = parse(&propose_rule(
+            &optimizer(0),
+            &call(messages, extra),
+            "ContextCompress",
+        ));
+        assert_eq!(out["status"], "proposed", "{out}");
+        assert_eq!(
+            out["retained_message_indices"],
+            serde_json::json!([0, 1, 4, 5])
+        );
+        assert_eq!(out["call"]["messages"].as_array().unwrap().len(), 4);
+        assert_eq!(
+            out["call"]["parameters"]["extra"]["attention_scores"],
+            serde_json::json!([1.0, 1.0, 0.0, 0.0])
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

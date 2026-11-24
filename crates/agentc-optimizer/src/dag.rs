@@ -12,6 +12,11 @@ use serde::{Deserialize, Serialize};
 /// example images, tool-use blocks, cache controls, or vendor message models).
 pub const NATIVE_MESSAGES_OPAQUE_KEY: &str = "agentc_native_messages_opaque";
 
+/// `Parameters.extra` per-message annotation holding each message's original
+/// index. Set only by measurement callers so a message-removing rewrite can be
+/// mapped back to the native messages by identity, never by text.
+pub const MESSAGE_INDEX_KEY: &str = "agentc_message_index";
+
 /// One message in a `Call`'s `messages` list. We treat `role` opaquely so
 /// `system`/`user`/`assistant`/`tool` all round-trip without an enum per
 /// vendor convention.
@@ -120,7 +125,7 @@ pub(crate) fn retain_message_annotations(
     retained: &[usize],
     original_count: usize,
 ) {
-    for name in ["message_deps", "attention_scores"] {
+    for name in ["message_deps", "attention_scores", MESSAGE_INDEX_KEY] {
         if let Some(values) = call
             .parameters
             .extra

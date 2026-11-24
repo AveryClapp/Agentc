@@ -229,6 +229,16 @@ def optimize_original_provider_call(call_json: str) -> str:
     """Issue an observation identity for an untouched call, without planning."""
     ...
 
+def optimize_propose_rule(call_json: str, rule_name: str) -> str:
+    """Measurement-only proposal of one named rule under the live call-site profile.
+
+    Skips admission, the hot threshold and the guard; records nothing. Returns
+    JSON ``{"schema_version": 1, "status": "proposed", "rule", "call",
+    "retained_message_indices", "profile"}`` or ``{"schema_version": 1,
+    "status": "not_applicable", "rule", "reason"}``. Never raises.
+    """
+    ...
+
 def optimize_record_provider_receipt(record_json: str) -> str:
     """Persist provider accounting or refresh an existing batch checkpoint."""
     ...

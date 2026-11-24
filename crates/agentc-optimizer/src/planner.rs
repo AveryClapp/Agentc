@@ -341,6 +341,42 @@ impl Optimizer {
         self.rules.push(rule);
     }
 
+    /// Measurement-only: ask one registered rule for its proposal against the
+    /// live call-site profile. Unlike [`Optimizer::plan`] this skips the master
+    /// switch, the hot threshold, operator/auto disables, the opaque-native-
+    /// message abstention, the overhead kill switch and rule-identity binding,
+    /// so the result is never an executable application plan. The rule's own
+    /// `applies`, `propose` and safety check still decide. Returns the
+    /// rewritten call and the profile the rule saw, or a stable refusal reason.
+    pub fn propose_single_rule(
+        &self,
+        call: &Call,
+        rule_name: &str,
+    ) -> Result<(Call, CallSiteProfile), &'static str> {
+        let rule = self
+            .rules
+            .iter()
+            .find(|rule| rule.name() == rule_name)
+            .ok_or("rule_not_registered")?;
+        let profile = self
+            .cost_model
+            .get(&call.call_site_id)
+            .unwrap_or_else(|| CallSiteProfile::new(call.call_site_id.clone()));
+        if !rule.applies(call, &profile) {
+            return Err("rule_does_not_apply");
+        }
+        let proposal = rule
+            .propose(call, &profile)
+            .ok_or("rule_declined_proposal")?;
+        if !(proposal.safety_check)(call) {
+            return Err("safety_check_failed");
+        }
+        match proposal.rewritten {
+            Plan::Rewritten { call, .. } | Plan::Composed { call, .. } => Ok((call, profile)),
+            _ => Err("proposal_not_a_single_call_rewrite"),
+        }
+    }
+
     /// Bind only the rules in this complete plan, so enabling an unrelated
     /// candidate does not invalidate an already learned incumbent.
     pub fn bind_rule_identities(&self, plan: &mut Plan) {

@@ -1196,6 +1196,18 @@ fn optimize_plan(py: Python<'_>, call_json: &str) -> String {
     })
 }
 
+/// Measurement-only: one named rule's proposed rewrite of `call_json` under
+/// the live call-site profile of the configured optimizer storage. Skips
+/// admission, the hot threshold and the guard; writes no audit row and
+/// records nothing. See `agentc_optimizer::ffi::propose_rule`.
+#[pyfunction]
+fn optimize_propose_rule(py: Python<'_>, call_json: &str, rule_name: &str) -> String {
+    py.allow_threads(|| {
+        let state = optimizer_state();
+        agentc_optimizer::ffi::propose_rule(&state.optimizer, call_json, rule_name)
+    })
+}
+
 #[pyfunction]
 fn optimize_original_provider_call(py: Python<'_>, call_json: &str) -> String {
     py.allow_threads(|| {
@@ -2171,6 +2183,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(optimize_storage_path, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_reset, m)?)?;
     m.add_function(wrap_pyfunction!(optimize_plan, m)?)?;
+    m.add_function(wrap_pyfunction!(optimize_propose_rule, m)?)?;
     m.add_function(wrap_pyfunction!(
         optimize_text_action_comparator_version,
         m

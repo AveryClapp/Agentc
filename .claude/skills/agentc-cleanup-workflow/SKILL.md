@@ -16,7 +16,7 @@ loss may not surface until an artifact reviewer runs the repro script.
 
 Verify every precondition against current repository state:
 
-1. **Named issue:** an in-progress `bd` issue (or explicit user authorization) names the exact
+1. **Named issue:** explicit user authorization names the exact
    paths and operation classes in the batch.
 2. **Accepted audit:** a current entry in `specs/working/maintenance-audit-findings.md`
    identifies every target, its lifecycle state, disposition, uncertainty, and do-not-touch status.
@@ -34,7 +34,7 @@ Verify every precondition against current repository state:
 If any item is absent, stale, contradictory, or unverifiable, do not mutate. Return a
 remediation plan, missing-evidence list, and blocked paths.
 
-Repository writes do not imply Git or `bd` authority. Do not stage, commit, amend, rebase, or
+Repository writes do not imply Git authority. Do not stage, commit, amend, rebase, or
 push unless separately authorized; push always requires its own authority.
 
 ## Protect Evidence And Ownership
@@ -128,7 +128,7 @@ needed to resume.
 
 ## Degraded Behavior And Routing
 
-If Git, `bd`, validation dependencies, generators, or a TeX toolchain are unavailable, remain
+If Git, validation dependencies, generators, or a TeX toolchain are unavailable, remain
 read-only. Produce a blocked-path list and a precondition-completion plan; do not claim the
 cleanup ran.
 

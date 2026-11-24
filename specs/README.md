@@ -64,9 +64,7 @@ specs/
 ├── memoization.md         # Semantic Memoization spec (active)
 ├── optimizer.md           # Optimizer spec (active)
 ├── future-work.md         # out-of-scope items, organized by component
-└── working/               # research, analysis, handoffs
-    ├── profiler-gap-analysis.md
-    └── archive/           # superseded handoffs and status notes
+└── working/               # research notes, contracts, audit findings
 ```
 
 **Top-level `.md` files** are canonical — specs, the future-work backlog, and this readme. **`working/`** holds reference material (research, gap analyses, handoff notes) that informed the specs but aren't specs themselves.

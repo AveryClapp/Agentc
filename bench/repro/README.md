@@ -829,8 +829,8 @@ python bench/paper_figures/fig_joint_architecture.py
 ```
 
 This command writes both the figure-script PDF and its included copy under
-`figures/`. The immediately preceding rule-centered manuscript is preserved
-under `paper-intelligence/archive/` and excluded from the submission build.
+`figures/`. The immediately preceding rule-centered manuscript is in git history
+(`paper-intelligence/archive/2026-10-10-pre-joint-rewrite-main.tex` at commit `c0a32cd`).
 
 The Graphviz figure scripts use explicit Times New Roman / Courier New
 families and the Quartz PDF backend on macOS; Cairo there encodes spaces as

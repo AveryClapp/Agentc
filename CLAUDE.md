@@ -1,6 +1,6 @@
 # Agentc
 
-JIT optimization runtime for multi-step LLM agent workloads. Intercepts LLM calls and applies principled optimizations to reduce token spend without changing application code.
+Runtime that intercepts an LLM agent's model calls without changing application code. Current research use: a change-safety study measuring whether cheap call-level signals from sampled counterfactual calls predict task-level damage when a deployed agent's calls are changed (see `bench/repro/change-safety-study-protocol.md`).
 
 ## Repo Structure
 

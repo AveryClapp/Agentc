@@ -15,7 +15,7 @@ published claims. Treat evidence integrity as the primary audit axis, not tidine
 ## Preserve The Read-Only Boundary
 
 - Do not edit repository files, result CSVs, figures, the manuscript, or configuration.
-- Do not create, update, close, or sync `bd` issues. Draft proposed issues as report text only.
+- Do not file or update issues. Draft proposed issues as report text only.
 - Do not stage, commit, push, install tooling, or change machine configuration.
 - Return the report in the response by default. Write a durable report only when an exact
   output path is authorized; that authority covers the report file, not any audited surface.
@@ -24,7 +24,7 @@ published claims. Treat evidence integrity as the primary audit axis, not tidine
   regenerating one mutates the evidence being audited.
 
 Use read-only commands: `rg`, `git status`, `git diff`, `git log`, `git ls-files`,
-`cargo check`, `cargo clippy`, `bd list`, `bd show`. Never run a command whose documented
+`cargo check`, `cargo clippy`. Never run a command whose documented
 behavior can mutate state. `cargo fix`, `clippy --fix`, and any `bench/run_*.py` are
 mutations.
 
@@ -49,18 +49,17 @@ Record before collecting findings:
 
 1. audit question and the decision the evidence must support;
 2. repository root, paths, and scope;
-3. authoritative surfaces: `CLAUDE.md`, `PRESUBMIT.md`, `specs/`, `bench/paper_results/DATA_MANIFEST.txt`, `main.tex`;
+3. authoritative surfaces: `CLAUDE.md`, `specs/`, `bench/paper_results/DATA_MANIFEST.txt`, `main.tex`;
 4. excluded paths, protected surfaces, and the initial do-not-touch set;
 5. snapshot identity: Git revision, dirty paths, untracked files;
-6. available and unavailable capabilities (missing TeX toolchain, unreachable `bd` server, absent API keys).
+6. available and unavailable capabilities (missing TeX toolchain, absent API keys).
 
 Resolve claims in this order:
 
 1. the manuscript (`main.tex`) — it is the artifact under submission and outranks the README;
 2. committed evidence in `bench/paper_results/` and the generators that produced it;
-3. project policy: `CLAUDE.md`, `specs/CLAUDE.md`, `PRESUBMIT.md`;
-4. `bd` issues for ownership and work state;
-5. repo docs (`README.md`, `specs/`) — these drift fastest and are the weakest authority.
+3. project policy: `CLAUDE.md`, `specs/CLAUDE.md`;
+4. repo docs (`README.md`, `specs/`) — these drift fastest and are the weakest authority.
 
 When the README and the paper disagree, the paper is presumed correct and the README is
 the finding. State the presumption; do not silently pick a side.
@@ -79,7 +78,7 @@ absence of findings is not mistaken for coverage.
   runs are labeled and quarantined, never left adjacent to canonical data under a
   confusable name.
 - **Repro-path liveness:** every command in the manuscript's reproducibility appendix,
-  `PRESUBMIT.md`, `bench/repro/`, and the README runs from a clean checkout — including
+  `bench/repro/`, and the README runs from a clean checkout — including
   fixture bootstrap. A command that assumes a gitignored artifact already exists is broken.
 - **Documentation truth:** canonical authority, duplicate claims, links, path redirects, and
   current-versus-historical labeling. Docs that publish numbers the paper has corrected or
@@ -92,7 +91,7 @@ absence of findings is not mistaken for coverage.
 - **Tests and guardrails:** contract coverage, stale expectations, skipped checks.
 - **Environment:** repository-relative paths, declared dependencies vs actual imports,
   machine-specific assumptions, credentials.
-- **Work state:** `bd` issues, handoffs, shared dirty paths, abandoned or superseded work,
+- **Work state:** handoffs, shared dirty paths, abandoned or superseded work,
   and issue IDs cited in docs that do not exist in the tracker.
 
 Completeness is an audit lens, not permission to remove suspect material.
@@ -143,7 +142,7 @@ is a hypothesis, not a finding. Mark each claim:
 - `observation` — read the file, reporting what is there without asserting a defect;
 - `inferred risk` — pattern-level signal, not yet confirmed by reading.
 
-Never report an unavailable check as clean. If the TeX toolchain, `bd` server, API keys, or
+Never report an unavailable check as clean. If the TeX toolchain, API keys, or
 a generator are unavailable, label the affected checks `not observed` and reduce confidence.
 
 ## Synthesize Without Hiding Disagreement
@@ -153,9 +152,9 @@ interpretations. Rank by blast radius first (paper > artifact > code > internal 
 impact, confidence, dependency order, reversibility, and validation cost. Do not collapse the
 result into a score that implies automatic deletion.
 
-Propose the smallest independently testable cleanup batches. Draft each proposed `bd` issue
+Propose the smallest independently testable cleanup batches. Draft each proposed issue
 with scope, rationale, exact paths, dependencies, risks, rollback expectation, validation,
-and success criteria. Do not run `bd create`.
+and success criteria.
 
 ## Report Contract
 

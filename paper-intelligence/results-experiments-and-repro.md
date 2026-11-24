@@ -122,30 +122,6 @@ the MLSys main-track assessment remains conditional.
 | `ART-024` | `python/agentc/_intercept.py` | high | `CLM-001` | Python interception flow. |
 | `ART-025` | `python/agentc/_optimizer.py` | high | `CLM-001` | Python optimizer FFI shim. |
 
-### Paper-Intelligence Artifacts
-
-| ID | Path | Importance | Linked IDs | Consolidation status |
-|---|---|---|---|---|
-| `ART-040` | `paper-intelligence/archive/agentc-paper-intelligence-workplan.md` | high | none | archived after consolidation. |
-| `ART-041` | `paper-intelligence/archive/deep-research-prompt-templates.md` | high | none | merged into `research-prompts.md`. |
-| `ART-042` | `paper-intelligence/README.md` | high | none | rewrite as entry point. |
-| `ART-043` | `paper-intelligence/AGENTS.md` | high | none | rewrite as maintenance guide. |
-| `ART-044` | `paper-intelligence/archive/pizza-import-plan.md` | medium | `DEC-003` | archived as process history. |
-| `ART-045` | `paper-intelligence/archive/reviewer-risk-register.md` | high | `RR-001` | merged here. |
-| `ART-046` | `paper-intelligence/archive/weak-point-resolution-plan.md` | high | `WP-001` | merged here. |
-| `ART-047` | `paper-intelligence/archive/red-team-review-prompts.md` | medium | `RR-001` | merged into `research-prompts.md`. |
-| `ART-048` | `paper-intelligence/archive/paper-angle-matrix.md` | high | `ANG-001` | merged into `strategy-and-venues.md`. |
-| `ART-049` | `paper-intelligence/archive/section-briefs/` | high | `CLM-001`, `RES-001` | merged into `strategy-and-venues.md`. |
-| `ART-050` | `paper-intelligence/archive/citation-style-and-hygiene.md` | medium | `CIT-001` | merged into `evidence-and-sources.md`. |
-| `ART-051` | `paper-intelligence/research-inbox/2026-05-09-literature-map.md` | high | `DRP-001`, `LIT-002`, `GAP-010` | raw/provenance, keep in inbox. |
-| `ART-052` | `paper-intelligence/research-inbox/2026-05-09-venue-research.md` | high | `DRP-002`, `VEN-001`, `VEN-009` | raw/provenance, keep in inbox. |
-| `ART-053` | `paper-intelligence/archive/style-guide.md` | medium | `CIT-002`, `RR-009` | merged relevant style rules into AGENTS/README. |
-| `ART-054` | `paper-intelligence/archive/literature-review-section-plan.md` | high | `LIT-002`, `GAP-009` | merged into `literature-and-nearest-neighbors.md`. |
-| `ART-055` | `paper-intelligence/research-inbox/2026-05-09-post-june-venue-plan.md` | high | `DRP-003`, `VEN-001`, `VEN-009`, `VEN-010` | raw/provenance, keep in inbox. |
-| `ART-056` | `paper-intelligence/archive/literature-blurb-todo.md` | high | `LIT-002`, `LIT-040`, `GAP-009`, `GAP-010`, `GAP-012`, `GAP-013`, `GAP-014`, `GAP-016` | archived; superseded by verified/consolidated blurbs. |
-| `ART-057` | `paper-intelligence/research-inbox/2026-05-09-full-literature-review-map-v2.md` | high | `DRP-004`, `LIT-040`, `GAP-010`, `GAP-012`, `GAP-013`, `GAP-014` | raw/provenance, keep in inbox. |
-| `ART-058` | `paper-intelligence/archive/literature-verified-blurbs.md` | high | `LIT-002`, `LIT-070`, `GAP-009`, `GAP-010`, `GAP-012`, `GAP-013`, `GAP-014` | merged into `literature-and-nearest-neighbors.md`; archived as provenance. |
-| `ART-059` | `paper-intelligence/current-fit-and-publishability.md` | high | `RES-001`, `RES-002`, `RES-005`, `LIT-008`, `LIT-024`, `LIT-040`, `GAP-010`, `GAP-011`, `GAP-014` | keep active. |
 
 ## Experiment Queue
 

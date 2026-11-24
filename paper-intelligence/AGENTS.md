@@ -1,109 +1,26 @@
 ---
 title: Paper Intelligence Agent Instructions
 status: active
-last-updated: 2026-05-09
+last-updated: 2026-11-24
 owner: paper-intelligence
 ---
 
 # Agent Instructions
 
-This folder is a paper intelligence base, not a manuscript directory. Improve the evidence base for a human-written AgentC paper.
-
-## Prime Directive
-
-Do not write final manuscript prose by default. Produce research notes, maps, ledgers, gap analyses, source checks, and briefs that help William and Avery decide what to write by hand.
-
-## Active Source Of Truth
-
-Use these files first:
-
-- `README.md`
-- `current-fit-and-publishability.md`
-- `literature-and-nearest-neighbors.md`
-- `claims-gaps-and-risks.md`
-- `results-experiments-and-repro.md`
-- `strategy-and-venues.md`
-- `evidence-and-sources.md`
-- `research-prompts.md`
-
-Use `research-inbox/` and `references/source/` for provenance. Use `archive/` only for historical context.
-
-## ID Namespaces — status
-
-**LIVE (keep minting):** `LIT-###` (feeds the bibliography; literature does not rot)
-and `DEC-###` (append-only decision log; DEC-007 is load-bearing). Use existing IDs; never reuse abandoned ones.
-
-**FROZEN (retired 2026-07 — do not mint new IDs):** every other prefix below
-(`RES`, `CLM`, `GAP`, `EXP`, `RUN`, `RR`, `WP`, `QST`, `CIT`, `STAT`, `AE`, `NEG`,
-`IDEA`, `QTE`, `FIG`, `TTL`, `DRP`, `ART`, `ANG`, `VEN`). `main.tex`,
-`bench/paper_results/DATA_MANIFEST.txt`, `bench/repro/`, and `PRESUBMIT.md` never
-cited any of these, so no live artifact depends on them; they persist in git history
-and in `archive/`. Claim→evidence traceability now runs through DATA_MANIFEST +
-bench/repro. The table below is retained for historical decoding only.
-
-| Prefix | Entity |
-|---|---|
-| `ART` | Artifact |
-| `RES` | Result |
-| `CLM` | Claim |
-| `GAP` | Gap, risk, missing evidence |
-| `LIT` | Literature source |
-| `CIT` | Citation gap |
-| `EXP` | Experiment candidate |
-| `RUN` | Experiment run |
-| `VEN` | Venue/workshop |
-| `FIG` | Figure/table idea |
-| `DEC` | Decision |
-| `QST` | Open question |
-| `IDEA` | Paper idea |
-| `DRP` | Deep research drop |
-| `ANG` | Paper angle |
-| `RR` | Reviewer risk |
-| `WP` | Weak-point work item |
-| `TTL` | Title/abstract idea |
-| `QTE` | Quote/evidence-bank entry |
-| `AE` | Artifact-evaluation item |
-| `STAT` | Statistical-analysis item |
-| `NEG` | Negative result or rejected angle |
-
-## Literature Blurb Style
-
-For each source, preserve:
-
-- what the source says or contributes;
-- how AgentC is similar;
-- how AgentC differs;
-- what claim it supports;
-- what reviewer risk it creates;
-- whether it is must-cite, optional, background, runnable baseline, or cite-only.
-
-Do not let routing dominate the literature map. Routing is one subsection inside runtime optimization for compound AI / multi-step LLM agent traces.
+This folder supports a human-written paper. Produce research notes, literature maps, source
+checks, and gap analyses; do not write final manuscript prose unless asked.
 
 ## Evidence Hygiene
 
-- Prefer primary sources for literature and venue work.
-- Treat generated deep research as discovery/provenance, not citation evidence.
-- Link claims to evidence IDs.
-- Link gaps to claims, results, literature, or experiments.
-- Treat new CSVs as `quarantined` until validated.
-- Partial matrices stay `partial`.
-- Record dirty-tree state for any new experiment run.
+- Prefer primary sources for literature and venue facts.
+- Treat generated deep research as discovery, not citation evidence.
+- `LIT-###` IDs feed the bibliography: reuse existing IDs and never reuse abandoned ones.
+  Other ID prefixes in older notes are historical and frozen.
+- Do not add ad hoc CSVs to `bench/paper_results/`; use ignored output paths for
+  exploratory runs.
 
 ## File Hygiene
 
-- Do not create new active Markdown files unless consolidation truly needs a new durable surface.
-- Do not leave PDFs, Markdown notes, or research drops at repo root.
-- Do not add ad hoc CSVs to `bench/paper_results/`; use scratch or ignored output paths for exploratory runs.
-- Do not delete or discard local artifacts without explicit approval.
-- When archiving, add or update `archive/README.md` with a source-to-destination map.
-
-## Handoff Format
-
-When finishing paper-intelligence work, report:
-
-- files changed;
-- IDs created or updated;
-- source artifacts used;
-- claims, gaps, or results changed;
-- remaining verification needed;
-- files intentionally archived or left as raw/provenance.
+- Prefer updating an existing file over adding a new one.
+- Put dated raw research in `research-inbox/` with a `YYYY-MM-DD-` prefix.
+- Do not leave PDFs or notes at the repo root.

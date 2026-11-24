@@ -67,7 +67,7 @@ The current evidence supports: targeted savings for `ContextCompress` (34.8% tok
 | `GAP-005` | medium | `StateDrop` accuracy check is lenient. | `CLM-004` | Limit claims or add stronger evaluation. |
 | `GAP-006` | medium | Oracle ceiling claim needs trace-query evidence, not just CSV. | `CLM-006` | Locate or reproduce trace queries. |
 | `GAP-007` | high | Nearest-neighbor metadata/baseline cleanup was incomplete. | Novelty claims | Now mostly handled by `literature-and-nearest-neighbors.md`; final BibTeX cleanup remains open. |
-| `GAP-008` | high | Venue lane affects required evidence. | Paper angle | Use `strategy-and-venues.md` to choose target lane. |
+| `GAP-008` | high | Venue lane affects required evidence. | Paper angle | Choose a target venue. |
 | `GAP-009` | high | Bibliography metadata is not final. | Related work | Final citation cleanup remains. |
 | `GAP-010` | high | Novelty must be narrowed against close systems and single-rewrite baselines. | Title, abstract, intro | Use nearest-neighbor matrix and avoid broad firstness. |
 | `GAP-011` | ~~high~~ **closed** | ~~Main venues need end-to-end optimizer evidence, not only rule-isolation ablations.~~ | EXP-002/RES-009/RES-011 | CC and SD both fire on multirule_qa and real agent traces; savings measured; multi-rule section drafted in `archive/draft-paper-edits.md §12`. |
@@ -119,7 +119,7 @@ The current evidence supports: targeted savings for `ContextCompress` (34.8% tok
 | ID | Type | Question | Current disposition |
 |---|---|---|---|
 | `QST-001` | experiment | Should we finish the partial `StateDrop` n=50 matrix before writing? | Yes for stronger systems paper; optional for short/positioning paper if caveated. |
-| `QST-002` | venue | Is the first target ATC, longer-run MLSys, or LM-native COLM? | Needs venue choice in `strategy-and-venues.md`. |
+| `QST-002` | venue | Is the first target ATC, longer-run MLSys, or LM-native COLM? | Needs a venue choice. |
 | `QST-003` | artifact | Where is the trace evidence for the Hotpot oracle ceiling? | Still open; needed before strong `CLM-006`. |
 | `QST-004` | positioning | How narrow should novelty be against close systems? | Very narrow: framework-call interception plus multi-rule trace rewriting. |
 | `QST-005` | method | What does behavior-preserving mean? | Use metric/tolerance-bounded wording, not semantic equivalence. |

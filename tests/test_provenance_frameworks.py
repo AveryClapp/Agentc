@@ -15,6 +15,7 @@ wrapped method, and assert the returned payload's tag.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import types
 from contextlib import contextmanager
@@ -388,3 +389,24 @@ def test_install_all_reports_per_framework_status():
         _cleanup_langgraph()
         _cleanup_crewai()
         _cleanup_autogen()
+
+
+def test_install_all_defers_unimported_framework_until_import():
+    """init() must not import a framework only to patch it; the adapter
+    installs when the application imports the framework."""
+    pytest.importorskip("crewai")
+    script = r"""
+import subprocess
+import sys
+from agentc._provenance_frameworks import install_all, crewai as adapter
+assert "crewai" not in sys.modules
+status = install_all()
+assert status["crewai"] is False and "crewai" not in sys.modules
+assert "sqlite3" not in sys.modules
+import crewai.task
+assert adapter._patched
+"""
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", script], capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, result.stderr

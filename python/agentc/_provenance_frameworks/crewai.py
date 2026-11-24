@@ -60,7 +60,7 @@ def install() -> bool:
         return True
 
     try:
-        from crewai.task import Task  # type: ignore[import-not-found]
+        from crewai.task import Task  # type: ignore[import-not-found,unused-ignore]
     except BaseException:
         log.debug("crewai not installed — skipping adapter install", exc_info=True)
         return False

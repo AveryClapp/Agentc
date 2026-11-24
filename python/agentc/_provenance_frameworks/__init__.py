@@ -24,6 +24,10 @@ Design:
 from __future__ import annotations
 
 import logging
+import sys
+from typing import Any
+
+import wrapt
 
 from agentc._provenance_frameworks import autogen, crewai, langgraph
 
@@ -32,19 +36,56 @@ log = logging.getLogger("agentc.provenance_frameworks")
 __all__ = ["install_all", "uninstall_all", "langgraph", "crewai", "autogen"]
 
 
-def install_all() -> dict[str, bool]:
-    """Attempt to install every framework adapter.
+_ADAPTERS: dict[str, tuple[Any, tuple[str, ...]]] = {
+    "langgraph": (langgraph, ("langgraph",)),
+    "crewai": (crewai, ("crewai",)),
+    "autogen": (autogen, ("autogen", "pyautogen")),
+}
 
-    Returns a ``framework → bool`` map reporting whether each adapter's
-    install attempt saw the framework present on import. Missing
-    frameworks are quietly skipped — the raw ``Literal`` fallback in
-    :mod:`agentc._provenance` keeps the SDK correct without them.
+# Adapters for frameworks imported after init() install from post-import hooks.
+# wrapt cannot unregister a hook, so each is registered once per process and
+# consults ``_hooks_active`` to respect shutdown.
+_hooks_active = False
+_hooks_registered: set[str] = set()
+
+
+def _deferred_install(adapter: Any) -> Any:
+    def _hook(_module: Any) -> None:
+        if not _hooks_active:
+            return
+        try:
+            adapter.install()
+        except BaseException:
+            log.debug("deferred framework adapter install failed (suppressed)", exc_info=True)
+
+    return _hook
+
+
+def install_all() -> dict[str, bool]:
+    """Install adapters for frameworks the process has already imported.
+
+    Importing a framework only to patch it is expensive (crewai alone pulls
+    in chromadb and sqlite3), so a framework that is not yet imported gets a
+    post-import hook instead and is patched when the application imports it.
+
+    Returns a ``framework → bool`` map reporting whether each adapter is
+    installed now. Missing frameworks are quietly skipped — the raw
+    ``Literal`` fallback in :mod:`agentc._provenance` keeps the SDK correct
+    without them.
     """
-    return {
-        "langgraph": langgraph.install(),
-        "crewai": crewai.install(),
-        "autogen": autogen.install(),
-    }
+    global _hooks_active
+    _hooks_active = True
+    status: dict[str, bool] = {}
+    for name, (adapter, modules) in _ADAPTERS.items():
+        if any(m in sys.modules for m in modules):
+            status[name] = adapter.install()
+            continue
+        status[name] = False
+        for module_name in modules:
+            if module_name not in _hooks_registered:
+                wrapt.register_post_import_hook(_deferred_install(adapter), module_name)
+                _hooks_registered.add(module_name)
+    return status
 
 
 def uninstall_all() -> None:
@@ -52,6 +93,8 @@ def uninstall_all() -> None:
     re-init in the same process re-attaches cleanly. Each adapter's
     ``uninstall`` is idempotent — calling it on a never-installed
     adapter is a no-op."""
+    global _hooks_active
+    _hooks_active = False
     for mod in (langgraph, crewai, autogen):
         try:
             mod.uninstall()

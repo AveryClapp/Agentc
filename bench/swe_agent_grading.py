@@ -64,12 +64,13 @@ def grade_task(
     inputs,
     environment_report: Path,
     bundle,
-    ledger: Path,
+    ledger: Path | None,
     submission_path: Path,
     output: Path,
     timeout: int = 600,
     client=None,
     measure_resources=False,
+    accounting=None,
 ):
     import docker
 
@@ -102,48 +103,14 @@ def grade_task(
         == file_sha(environment_report / "summary.json"),
         "submission differs from frozen execution inputs",
     )
-    snapshot = read_snapshot(ledger)
-    require(
-        any(
-            e["event"] == "campaign_session"
-            and e["session_id"] == provenance["transport_session_id"]
-            for e in snapshot.events
-        ),
-        "submission lacks an owned accounting session",
-    )
-    claims = [
-        e
-        for e in snapshot.events
-        if e["event"] == "reserve"
-        and e.get("session_id") == provenance["transport_session_id"]
-        and e.get("metadata", {}).get("cell_id") == provenance["cell_id"]
-    ]
-    require(
-        all(e["id"] in snapshot.state["results"] for e in claims),
-        "task contains incomplete provider calls",
-    )
-    require(
-        (claims or submission["budget_exhausted"])
-        and all(
-            e["metadata"]["task_id"] == task_id
-            and e["metadata"]["arm"] == provenance["arm"]
-            and e["metadata"]["requested_model"] == submission["model_name_or_path"]
-            and e["metadata"]["actor"] == "agent"
-            for e in claims
-        ),
-        "provider calls differ from task identity",
-    )
-    total = sum(
-        (money(snapshot.state["results"][e["id"]]["cost_usd"]) for e in claims),
-        Decimal(0),
-    )
-    state = json_object((submission_path.parent / "cell-accounting.json").read_bytes())
-    require(
-        total == money(state["committed_usd"])
-        and total <= 2
-        and money(state["pending_upper_usd"]) == 0,
-        "task accounting differs from original receipts",
-    )
+    if accounting is None:
+        call_count, total, ledger_sha256 = _journal_accounting(
+            ledger, submission, provenance, task_id, submission_path
+        )
+    else:
+        # A caller-owned ledger (the change-safety study) verifies its own
+        # receipts and returns (provider calls, total USD, ledger digest).
+        call_count, total, ledger_sha256 = accounting(submission, provenance)
     require(
         _GRADER_LOCK.acquire(blocking=False), "another frozen grader session is active"
     )
@@ -210,7 +177,7 @@ def grade_task(
                 "eval_script_sha256": sha256(spec.eval_script.encode()).hexdigest(),
                 "grading_harness_sha256": file_sha(Path(__file__)),
                 "frozen_sources_sha256": digest(inputs.sources),
-                "ledger_sha256": snapshot.sha256,
+                "ledger_sha256": ledger_sha256,
                 "environment_report_sha256": provenance["environment_report_sha256"],
             },
         )
@@ -287,7 +254,7 @@ def grade_task(
             "reference_tests_complete": verdict["complete"],
             "preservation_passed": verdict["preservation_passed"],
             "actual_test_exit_code": grading.parse_test_exit_code(log.read_text()),
-            "all_provider_calls": len(claims),
+            "all_provider_calls": call_count,
             "all_provider_cost_usd": str(total),
             "raw_artifacts": {
                 p.relative_to(output).as_posix(): file_sha(p)
@@ -352,3 +319,50 @@ def grade_task(
                         client.close()
                 finally:
                     _GRADER_LOCK.release()
+
+
+def _journal_accounting(ledger, submission, provenance, task_id, submission_path):
+    """Reconcile a task's provider calls against the original campaign journal."""
+    snapshot = read_snapshot(ledger)
+    require(
+        any(
+            e["event"] == "campaign_session"
+            and e["session_id"] == provenance["transport_session_id"]
+            for e in snapshot.events
+        ),
+        "submission lacks an owned accounting session",
+    )
+    claims = [
+        e
+        for e in snapshot.events
+        if e["event"] == "reserve"
+        and e.get("session_id") == provenance["transport_session_id"]
+        and e.get("metadata", {}).get("cell_id") == provenance["cell_id"]
+    ]
+    require(
+        all(e["id"] in snapshot.state["results"] for e in claims),
+        "task contains incomplete provider calls",
+    )
+    require(
+        (claims or submission["budget_exhausted"])
+        and all(
+            e["metadata"]["task_id"] == task_id
+            and e["metadata"]["arm"] == provenance["arm"]
+            and e["metadata"]["requested_model"] == submission["model_name_or_path"]
+            and e["metadata"]["actor"] == "agent"
+            for e in claims
+        ),
+        "provider calls differ from task identity",
+    )
+    total = sum(
+        (money(snapshot.state["results"][e["id"]]["cost_usd"]) for e in claims),
+        Decimal(0),
+    )
+    state = json_object((submission_path.parent / "cell-accounting.json").read_bytes())
+    require(
+        total == money(state["committed_usd"])
+        and total <= 2
+        and money(state["pending_upper_usd"]) == 0,
+        "task accounting differs from original receipts",
+    )
+    return len(claims), total, snapshot.sha256

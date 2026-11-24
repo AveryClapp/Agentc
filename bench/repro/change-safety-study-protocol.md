@@ -41,11 +41,14 @@ of damage.
 - Operating characteristics of each detector (catch rate within budget, calls
   and dollars to detect, false disables) at each sampling rate.
 - Which change families produce damage that call-level signals miss.
+- The billed cost of each change once provider prompt caching is counted,
+  including when a change that removes tokens raises cost because it
+  invalidates a cached prefix (Section 7.4).
 
 ### 1.2 Excluded claims
 
-- Any claim that Agentc lowers cost, tokens, or latency. Cost is recorded as
-  telemetry only.
+- Any claim that Agentc lowers cost, tokens, or latency. Cost is measured as a
+  property of each change, never as a result of Agentc.
 - That output divergence is task quality, or that a low signal certifies a
   change as safe.
 - That a result on these workloads generalizes to agents with other structure.
@@ -90,6 +93,20 @@ is independent of any earlier assignment.
 | tau2 banking knowledge (97) | first 30 | final 67 | 0 |
 | SWE-bench Verified (500) | first 20 | next 40 | remaining 440 |
 
+The tau2 ordered-ID digest under this namespace (newline-terminated IDs, as in
+the predecessor) is
+`d3fe713f676fdc1a3431aad09d99747e74bccc7d1f9410f10e8a0d642f0d439e`. The
+implementation reproduces the predecessor's published tau2 digest
+`915b4717…c417b` when given its namespace.
+
+**Open decision (SWE-bench).** The frozen SWE environment pipeline admits only
+the predecessor's 150-task cohort; task images were provisioned and verified
+for those tasks alone. Drawing 20 and 40 tasks from all 500 under the new
+namespace would select tasks with no admitted environment. Proposed resolution:
+apply the new namespace within the 150 admitted tasks (calibration first 20,
+test next 40, remaining 90 not selected). This stays outcome-blind and reuses
+verified environments. To be decided before freeze.
+
 Any task already viewed in an earlier E0 or E1 screen is listed in an exposure
 ledger before Stage C. It stays in its assigned split; it is never replaced.
 
@@ -109,6 +126,27 @@ are fixed before Stage C.
 | C4 | Provider compaction | Context removal | Anthropic `compact_20260112` where the pinned model supports it. OpenAI Responses compaction is admissible only if the agent's existing transport already uses the Responses API; otherwise C4 is excluded for OpenAI and recorded as such. |
 | C5 | Agentc `ContextCompress` at its default gate | Context removal | Client-side rewrite through the existing rule. |
 | C6 | Agentc `OutputBudget` at its default quantile | Output cap | Client-side rewrite through the existing rule. |
+
+Implementation: [changes.py](../../python/agentc/change_safety/changes.py).
+C3 and C4 shapes were checked against the provider documentation on
+2026-11-24. C4 requires a trigger of at least 50,000 input tokens, and the
+documented model list excludes `claude-sonnet-4-5-20250929`, for which C4 is
+recorded as ineligible. C5 and C6 ask the existing Rust rule for its proposal
+against the live call-site profile (`optimize_propose_rule`), without the
+hot-call threshold, admission or guard, and without recording a plan. Two
+consequences are part of the design, not defects:
+
+- C5 measures what the rule would do, not what Agentc ships. Production
+  abstains from ContextCompress on tau2-style messages whose native shape it
+  cannot represent losslessly; the study skips that abstention, or C5 could
+  never fire on tau2.
+- C5 rarely fires on tau2 even so. The rule keeps every exchange containing an
+  assistant tool-call message with no text, and most tau2 tool calls have none.
+  Its activation rate is reported per workload.
+
+Context-removal changes record characters removed and an estimate of tokens
+removed (`ceil(chars/4)`; the repository has no tokenizer-based estimator),
+which the analysis uses for damage against information removed.
 
 ### 4.1 Seeded harmful controls
 
@@ -140,11 +178,21 @@ Each (workload, model, change) cell is measured in two coupled ways.
 
 Run the baseline trajectory unchanged. At each eligible call, also send one
 **fork**: either the identical request (C0) or the changed request. Fork
-responses never enter the agent's history. This is the existing exploration
-path in [exploration.rs](../../crates/agentc-optimizer/src/exploration.rs),
-which already keeps counterfactual answers out of application history and
-charges every leased call to a rolling cap, run here with a study-mode
-assignment.
+responses never enter the agent's history.
+
+Forks are sent by the study dispatcher
+([dispatcher.py](../../bench/change_safety/dispatcher.py)) through the
+SDK's [`ShadowRunner`](../../python/agentc/change_safety/shadow.py), not by the
+optimizer's exploration leases in `exploration.rs`. Most changes in Section 4
+(provider context edits, seeded harms, formatting controls) are not optimizer
+plans, and exploration's per-site caps would stop forking long before every
+eligible call. Agentc stays active as the instrument: with the optimizer's
+master switch off, every reference call is planned as a pass-through and
+observed, which builds the call-site profile C5 and C6 read, and nothing is
+rewritten. Forks bypass Agentc's interception so they never enter that
+profile. The dispatcher refuses to start unless the optimizer, its
+exploration and its shadow sampling are all off, because their extra provider
+calls would bypass the spend ledger.
 
 The fork arm for each call is assigned by a deterministic hash of
 `(protocol, workload, task, repetition, call index)`. Each eligible call gets
@@ -174,6 +222,17 @@ arm, the change ID and its parameters, provider-reported applied edits
 counts. C3 and C4 invalidate the provider prompt cache when they fire, so
 cached and uncached input are kept separate.
 
+The record schema is [records.py](../../python/agentc/change_safety/records.py):
+one `ForkRecord` per eligible call in a baseline run and one
+`TrajectoryRecord` per trajectory. Every provider call, including the user
+simulator and forks, is billed through
+[spend.py](../../bench/change_safety/spend.py), which reserves each call's
+worst-case cost before dispatch and stops the stage before the cap can be
+crossed. A model without a known price is refused.
+
+Retries are disabled at every actor (`num_retries=0`), so no call is billed
+outside the ledger.
+
 ## 6. Signals and detectors
 
 ### 6.1 Label-free call-level signals
@@ -183,8 +242,30 @@ cached and uncached input are kept separate.
 | S1 | Lexical Jaccard divergence (`divergence_metric_version` `1`) | Exists: `_text_divergence` in [_optimizer_glue.py](../../python/agentc/_patches/_optimizer_glue.py) |
 | S2 | Normalized Jaccard divergence (`normalized-jaccard-v2`) | Exists |
 | S3 | Embedding cosine distance (`embedding-cosine-normalized-jaccard-v2`) | Exists |
-| S4 | Action agreement: same response type (text or tool call), same tool names, and per-field argument agreement after JSON canonicalization | New. Today structured outputs score only 0 or 1. |
-| S5 | Termination and length: stop reason, end-of-conversation or transfer markers, output-token ratio | New |
+| S4 | Action agreement: same response type (text or tool call), same tool names, and per-field argument agreement after JSON canonicalization | `action-agreement-v1` |
+| S5 | Termination and length: stop reason, end-of-conversation or transfer markers, output-token ratio | `termination-length-v1` |
+
+Implementation: [signals.py](../../python/agentc/change_safety/signals.py).
+Every signal is a divergence in `[0, 1]`; a signal that cannot be computed
+(provider error, missing embedding model) is null, never zero, and S3 never
+falls back to another metric.
+
+- **S1 to S3** match the production guard's metrics. Like the guard, they
+  score a response containing tool calls only as identical (0) or different (1).
+- **S4.** Two text replies agree; their wording is S1 to S3's job. A text reply
+  and a tool call disagree completely. Two tool-call responses disagree
+  completely unless they call the same multiset of tools. When they do, S4 is 1
+  minus the mean fraction of top-level argument fields that match, pairing
+  calls to the same tool in emitted order.
+- **S5** is 1 when exactly one response ends the conversation or exactly one
+  was cut off at the output limit. Otherwise it is
+  `min(1, |log2((o_f + 1) / (o_b + 1))| / 2)` over output tokens. tau2's end
+  markers are `transfer_to_human_agents`, `done` and `###STOP###`; SWE-agent's
+  is `submit`.
+
+Stage R found that S1 scores any difference as maximal on compact JSON
+replies, which contain no whitespace. S1 is reported as specified, but this
+caveat applies wherever replies are compact JSON.
 
 The **excess** of a signal is its fork value minus the A/A distribution for the
 same workload and model, summarized as the shift in mean and as the rate of
@@ -198,6 +279,10 @@ exceeding the A/A 95th percentile.
 | Five-consecutive-breach controller | Existing compatibility controller |
 | One-sided CUSUM on excess S4 or S1, threshold calibrated on A/A | New, calibration split only |
 | Sequential probability ratio test on action-disagreement rate against the A/A rate | New, calibration split only |
+| Anytime-valid confidence sequence on the mean signal; disable when its lower bound exceeds the A/A mean plus a margin | New. Its false-disable guarantee holds at any stopping time, so it needs no threshold tuning beyond the margin. |
+
+Detectors are in [detectors.py](../../python/agentc/change_safety/detectors.py),
+which ships in the SDK; replay is in [replay.py](../../bench/change_safety/replay.py).
 
 ## 7. Analysis
 
@@ -205,8 +290,8 @@ exceeding the A/A 95th percentile.
 
 | Stage | Content | Spend |
 |---|---|---|
-| R | Retrospective development analysis of the September OpenRouter protected study (63 tasks, 130 probe pairs, whole-task outcomes for a fixed arm), on branch `exp/protected-native-learning`. Exercises the analysis code end to end. | $0. Development evidence only, never cited as a test result. |
-| E0 | Mocked-provider runs of fork assignment, change adapters, and signal computation. | $0 |
+| R | Retrospective development analysis of the September OpenRouter protected study (63 tasks, 130 probe pairs, whole-task outcomes for a fixed arm), archived as tag `archive/exp/protected-native-learning`. Exercises the analysis code end to end. Converter: [stage_r.py](../../bench/change_safety/stage_r.py). | $0. Development evidence only, never cited as a test result. |
+| E0 | Mocked-provider runs of fork assignment, change adapters, signal computation, rollouts, analysis and replay: `python -m bench.change_safety.run e0`. The mock is served through LiteLLM itself, so calls take the same path, Agentc interception included, as live ones. | $0 |
 | E1 | At most 3 calibration tasks per (workload, model) cell to prove request preservation, change activation, fork isolation, and cost joins. | Small, recorded |
 | P1 | A/A noise-floor pilot on tau2 calibration tasks: baseline plus C0 forks only. Measures per-task cost and the H1 floor. | Under $5 |
 | C | Calibration: all changes on calibration tasks. Fixes `R`, the C3 and C4 parameters, detector thresholds, and the harmful-cell margin. | Forecast from P1 |
@@ -215,6 +300,14 @@ exceeding the A/A 95th percentile.
 P1 is a feasibility gate. If the A/A action-disagreement rate is so high that no
 change could exceed it, S4 is redesigned before Stage C, and the redesign is
 recorded as a new revision.
+
+**Stage R limitation.** The September study has no A/A control: every probe is
+a non-identity plan and each task ran once. Stage R therefore exercises the
+damage, replay and conversion paths but cannot estimate H1, and without an A/A
+floor it cannot compute excess signal for H2 or H3. Its one change with task
+outcomes (fixed Haiku plus ContextCompress and StateDrop) has damage −4.8 pp,
+95% interval [−12.7, +1.6]: indeterminate. P1 is the first stage that can
+measure the A/A floor.
 
 ### 7.2 Predictive validity (H2 to H4)
 
@@ -237,31 +330,64 @@ task-equivalent losses, using each cell's measured damage rate. Report catch
 rate within budget, calls, dollars, and time to disable, p50/p95/p99 damage at
 disable, and false disables on A/A and benign cells.
 
-## 8. Reuse map
+### 7.4 Cost under prompt caching
 
-| Need | Existing source |
+Each trajectory records input, cached-input, cache-creation and output tokens
+alongside billed USD. [cache_cost.py](../../bench/change_safety/cache_cost.py)
+computes billed cost from those fields and the closed-form break-even of a
+token-removing change. An agent's context is append-mostly, so removing or
+editing tokens at position `k` invalidates the cached prefix after `k`; the
+removal saves money only when the tokens saved outweigh re-writing the
+invalidated suffix at the cache-write price. The report gives each change's
+measured cost per trajectory against baseline, and where the break-even
+predicts a cost increase for a token-removing change, whether the measurement
+agrees. This describes the changes; it is not a claim about Agentc.
+
+## 8. Implementation map
+
+| Need | Source |
 |---|---|
 | Workload pins, admissible boundary, seeds | Predecessor Sections 2.1, 3, 4 |
-| tau2 and SWE-agent drivers | `bench/tau_task_worker.py`, `bench/swe_agent_task_worker.py` and their bindings |
-| Off-path counterfactual calls with a spend cap | `crates/agentc-optimizer/src/exploration.rs` |
-| Divergence metrics S1 to S3 | `python/agentc/_patches/_optimizer_glue.py` |
-| Exposure guard and persisted divergence state | `crates/agentc-optimizer/src/budget.rs`, `plan_profile.rs` |
-| Billing, receipts, spend journal | `bench/campaign_accounting.py` |
+| Splits, seeds, arm order, fork assignment | [assignment.py](../../bench/change_safety/assignment.py) |
+| Change catalog and conformance checks | [changes.py](../../python/agentc/change_safety/changes.py) |
+| Signals S1 to S5 | [signals.py](../../python/agentc/change_safety/signals.py) |
+| Off-path forks and the deployable monitor | [shadow.py](../../python/agentc/change_safety/shadow.py) |
+| Routing, rollouts, forks and per-trajectory accounting | [dispatcher.py](../../bench/change_safety/dispatcher.py) |
+| tau2 driver (any LiteLLM provider) | [tau2_driver.py](../../bench/change_safety/tau2_driver.py), tau2 at `fc0055dc4e0a316c3f83133267fbd6faaa770992` |
+| SWE-agent driver | [swe_driver.py](../../bench/change_safety/swe_driver.py) over the frozen `run_task` and `grade_task` |
+| Spend cap | [spend.py](../../bench/change_safety/spend.py) |
+| Mock provider for E0 | [mock_provider.py](../../bench/change_safety/mock_provider.py) |
+| Analysis, replay, cache cost | [analysis.py](../../bench/change_safety/analysis.py), [replay.py](../../bench/change_safety/replay.py), [cache_cost.py](../../bench/change_safety/cache_cost.py) |
+| Command line | [run.py](../../bench/change_safety/run.py) |
 | Damage contract, retry and stopping rules, artifact contract | Predecessor Sections 11, 12, 13 |
+
+The development environment pins LiteLLM 1.81.11, the version the repository's
+LiteLLM path was validated on and within tau2's supported range. LiteLLM is not
+a locked project dependency; the freeze record must name the installed version.
+
+Setup from a clean checkout:
+
+```bash
+uv sync --extra test                 # Python 3.12 venv, native extension, test deps
+bash scripts/download_model.sh       # model2vec weights for S3
+git clone https://github.com/sierra-research/tau2-bench ../tau2-bench
+git -C ../tau2-bench checkout fc0055dc4e0a316c3f83133267fbd6faaa770992
+uv pip install -e "../tau2-bench[knowledge]" "litellm==1.81.11"
+uv run python -m bench.change_safety.run e0 --out /tmp/e0   # $0
+uv run python -m bench.change_safety.stage_r --out /tmp/stage_r   # $0
+```
 
 ## 9. Known gaps before freeze
 
-- `bench/tau_task_worker.py` accepts only `openai/` models. C2 to C4 on tau2
-  need an Anthropic route through the same LiteLLM transport.
-- No adapter exists for C3, C4, X1 to X3, or B1 and B2. Each needs a request
-  transform at the interception boundary plus a pass-through conformance check.
-- S4 and S5 do not exist.
-- Exploration currently leases at most a fixed number of calls per site per
-  24 hours; study mode needs a fork-every-eligible-call setting confined to
-  experiment storage.
-- Python tooling hangs on this machine while the repository sits in the
-  iCloud-synced `~/Documents` folder, so no Stage E0 or later run is possible
-  until it moves.
+- **SWE split.** Decide the open SWE-bench split question in Section 3.1.
+- **Model pins.** Pin C1, C2 and X1 model IDs from provider catalogs, and fix
+  C3 and C4 parameters from calibration input-length quantiles.
+- **SWE environments.** A SWE-bench trajectory needs Docker and the admitted
+  task images. The binding and grading integration is tested without Docker;
+  an end-to-end SWE trajectory has not yet run on this machine.
+- **Freeze record.** `change-safety-protocol-revision-1.json` binds this file's
+  digest, the runtime commit, the tau2 and SWE-agent pins, the LiteLLM version
+  and the split digests.
 
 ## 10. Threats to validity
 
@@ -272,7 +398,7 @@ disable, and false disables on A/A and benign cells.
   gives tens of cells, which bounds the precision of H2. The per-task analysis
   is reported alongside the cell-level result.
 - **Prompt caching.** C3 and C4 change cache behavior and therefore cost.
-  Cost is telemetry only, so this affects interpretation, not the hypotheses.
+  Section 7.4 measures this directly; it does not affect H1 to H5.
 - **Interception effects.** The pass-through conformance run from predecessor
   Section 2.1 item 6 must pass before any fork is trusted.
 
